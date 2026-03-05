@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Wild-U Hub - Final Audio Fix 🌲</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Wild-U">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root {
@@ -35,12 +42,25 @@
             width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9);
             z-index: 2; }
 
-        /* --- NAVIGAZIONE --- */
-        .nav { display: grid;
-            grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222;
-        }
-        .nav button { background: #222; border: none; color: #888; padding: 15px 2px;
-            border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; }
+        /* --- NAVIGAZIONE SCROLLABLE --- */
+        .nav { display: flex; gap: 8px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .nav::-webkit-scrollbar { display: none; } /* Nasconde scrollbar */
+        .nav button { flex: 0 0 auto; background: #222; border: none; color: #888; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
+        .nav button.active { background: var(--w-green); color: #fff; box-shadow: 0 0 12px var(--w-green); }
+
+        /* --- PULSANTI SOCIAL --- */
+        .social-box { display: flex; gap: 10px; margin-bottom: 25px; }
+        .btn-social { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border-radius: 12px; text-decoration: none; font-weight: 900; font-size: 13px; text-transform: uppercase; transition: 0.3s; }
+        .btn-wa { background: #25D366; color: #fff; }
+        .btn-tg { background: #0088cc; color: #fff; }
+        .btn-social:active { transform: scale(0.95); }
+
+        /* --- CATEGORIE RISORSE --- */
+        .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; }
+        .resource-item:active { background: #252525; }
+        .resource-info { display: flex; align-items: center; gap: 15px; }
+        .resource-icon { font-size: 24px; }
+        .resource-name { font-weight: 800; color: #fff; }
         .nav button.active { background: var(--w-green);
             color: #fff; box-shadow: 0 0 12px var(--w-green); }
 
@@ -181,13 +201,24 @@
 
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
+    <button id="btn-resources" onclick="show('resources')">Risorse</button>
+    <button id="btn-free" onclick="show('free')">Gratis</button>
     <button id="btn-offers" onclick="show('offers')">Premi</button>
     <button id="btn-photo" onclick="show('photo')">Photo</button>
-    <button id="btn-wheel" onclick="show('wheel')">Ruota del Destino</button>
+    <button id="btn-wheel" onclick="show('wheel')">Ruota del destino</button>
     <button id="btn-profile" onclick="show('profile')">Profilo</button>
 </div>
 
 <div class="container">
+    <div class="social-box">
+        <a href="https://chat.whatsapp.com/I9X4C4mA7lfI0BU7ljgGYw" target="_blank" class="btn-social btn-wa">
+            <span>WhatsApp</span>
+        </a>
+        <a href="https://t.me/addlist/7UKxs5ZMeRNhYzU0" target="_blank" class="btn-social btn-tg">
+            <span>Telegram</span>
+        </a>
+    </div>
+
     <div id="sec-events">
         <div class="filter-header">
             <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
@@ -196,7 +227,74 @@
         <div class="filter-section"><div id="filter-months" class="filter-row"></div><div id="filter-regions" class="filter-row"></div></div>
         <div id="event-list"></div>
     </div>
+
+    <div id="sec-resources" class="hidden">
+        <div class="trip-counter" style="border-color: var(--w-gold); color: var(--w-gold);">Archivio Esploratore</div>
+        
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📖</span><span class="resource-name">Guide e Manuali</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📍</span><span class="resource-name">GPX</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+    </div>
+
+    <div id="sec-free" class="hidden">
+        <div class="card" style="border-left-color: #fff;">
+            <h3 style="color:#fff;">Wild Free</h3>
+            <p>Contenuti gratuiti e download in arrivo per la community.</p>
+        </div>
+    </div>
+
+<div id="sec-resources" class="hidden">
+        <div class="trip-counter" style="border-color: var(--w-gold); color: var(--w-gold);">Archivio Esploratore</div>
+        
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📖</span><span class="resource-name">Guide e Manuali</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📍</span><span class="resource-name">GPX</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+    </div>
+
+    <div id="sec-free" class="hidden">
+        <div class="card" style="border-left-color: #fff;">
+            <h3 style="color:#fff;">Wild Free</h3>
+            <p>Contenuti gratuiti e download in arrivo per la community.</p>
+        </div>
+    </div>
+
+
     <div id="sec-offers" class="hidden"><div class="card"><h3>Area Premi</h3><p>Riscatti disponibili a breve.</p></div></div>
+    
     <div id="sec-photo" class="hidden"><div class="card"><h3>Wild Wall</h3><p>Area Photo Wall in arrivo.</p></div></div>
 
     <div id="sec-wheel" class="hidden" style="text-align:center;">
@@ -562,16 +660,35 @@
     function logout() { localStorage.clear(); clearInterval(backgroundSyncTimer); location.reload(); }
     function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
     
-    function show(id) {
+   function show(id) {
         currentTab = id;
-        ['events', 'offers', 'photo', 'wheel', 'profile'].forEach(s => { 
+        // Array aggiornato con le nuove sezioni: resources e free
+        ['events', 'resources', 'free', 'offers', 'photo', 'wheel', 'profile'].forEach(s => { 
             const el = document.getElementById('sec-' + s); if(el) el.classList.add('hidden');
             const btn = document.getElementById('btn-' + s); if(btn) btn.classList.remove('active');
         });
         document.getElementById('sec-' + id).classList.remove('hidden');
         document.getElementById('btn-' + id).classList.add('active');
-        if (id === 'profile') { sXP.load(); if (cachedXPData) renderProfile(cachedXPData); else if (wildUserKey) fetchXP(); }
+        
+        // Logica profilo originale
+        if (id === 'profile') { 
+            sXP.load(); 
+            if (cachedXPData) renderProfile(cachedXPData); 
+            else if (wildUserKey) fetchXP(); 
+        }
     }
+    
+    // Registrazione Service Worker (PWA)
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch(err => {
+                console.warn('SW error:', err);
+            });
+        });
+    }
+
+    init();
+
     init();
 </script>
 </body>
