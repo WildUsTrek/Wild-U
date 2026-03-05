@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wild-U Hub - Final Audio Fix 🌲</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --w-green: #2d5a27;
+            --w-dark: #121212;
+            --w-card: #1e1e1e;
+            --w-gold: #d4af37;
+            --w-text: #e0e0e0;
+            --w-sub: #a0a0a0;
+        }
+
+        body {
+            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0;
+            overflow-x: hidden; -webkit-tap-highlight-color: transparent;
+            font-size: 18px;
+        }
+
+        /* --- HEADER --- */
+        .hero-header {
+            width: 100%; height: 160px;
+            background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000');
+            background-size: cover; background-position: center; position: relative;
+            border-bottom: 3px solid var(--w-green);
+        }
+        .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); }
+        .hero-title { position: absolute; top: 40%;
+            width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9);
+            z-index: 2; }
+
+        /* --- NAVIGAZIONE --- */
+        .nav { display: grid;
+            grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222;
+        }
+        .nav button { background: #222; border: none; color: #888; padding: 15px 2px;
+            border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; }
+        .nav button.active { background: var(--w-green);
+            color: #fff; box-shadow: 0 0 12px var(--w-green); }
+
+        /* --- CONTENUTI --- */
+        .container { padding: 20px;
+            padding-bottom: 120px; }
+        .trip-counter { background: rgba(45, 90, 39, 0.2); color: var(--w-green);
+            font-size: 14px; font-weight: 900; padding: 8px 18px; border-radius: 20px; display: inline-block; margin-bottom: 20px; border: 1px solid var(--w-green); text-transform: uppercase;
+        }
+
+        .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px;
+            border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative;
+        }
+        .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px;
+            line-height: 1.2; }
+        
+        .filter-section { margin-bottom: 15px;
+            display: flex; flex-direction: column; gap: 8px; }
+        .filter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .filter-row { display: flex; gap: 10px;
+            overflow-x: auto; padding-bottom: 5px; }
+        .pill { padding: 10px 18px; background: #222;
+            border: 1px solid #333; color: #999; border-radius: 25px; font-size: 14px; font-weight: bold; white-space: nowrap;
+        }
+        .pill.active { background: var(--w-green); color: #fff; border-color: var(--w-green);
+        }
+        .btn-reset { background: #333; color: var(--w-sub); border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
+
+        .price-box { display: flex;
+            justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333;
+        }
+        .price-prime-wrapper { text-align: right;
+        }
+        .xp-reward-label { font-size: 12px; font-weight: 800; color: var(--w-gold); display: block; margin-bottom: 4px;
+            text-transform: uppercase; letter-spacing: 0.5px; }
+        .price-prime { background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.1));
+            padding: 10px 16px; border-radius: 12px; border: 1px solid var(--w-gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+        }
+        .prime-val { font-size: 26px; font-weight: 900; color: var(--w-gold);
+        }
+        .price-standard { font-size: 16px; opacity: 0.6; font-weight: 600; }
+
+        .btn-group { display: flex; gap: 10px; margin-top: 20px;
+        }
+        .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px;
+            border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer;
+        }
+        .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444;
+            padding: 16px; border-radius: 12px; font-size: 12px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center;
+        }
+
+        .wheel-container { position: relative;
+            width: 220px; height: 220px; margin: 25px auto; }
+        .visual-wheel { width: 100%;
+            height: 100%; border-radius: 50%; border: 8px solid #333; background: conic-gradient(#1a4d1a 0deg 90deg, #2d5a27 90deg 180deg, var(--w-gold) 180deg 270deg, #3e2723 270deg 360deg);
+            position: relative; transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1); box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+        .visual-wheel::after { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; border-radius: 50%;
+            background: linear-gradient(90deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%), linear-gradient(0deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%);
+        }
+        .wheel-label { position: absolute; font-size: 30px; width: 40px; text-align: center; z-index: 5;
+        }
+        .l-wild  { top: 15%; left: 65%; transform: rotate(45deg);
+        }
+        .l-mare  { top: 65%; left: 65%; transform: rotate(135deg);
+        }
+        .l-jolly { top: 65%; left: 15%; transform: rotate(225deg);
+        }
+        .l-monti { top: 15%; left: 15%; transform: rotate(315deg);
+        }
+        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0;
+            height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid var(--w-gold); z-index: 10;
+        }
+        .spirit-msg { font-size: 16px; font-weight: bold; color: var(--w-gold); font-style: italic; margin-top: 15px;
+            min-height: 25px; }
+
+        .btn-destiny {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #d4af37, #f1c40f, #d4af37) !important;
+            color: #000 !important; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+        }
+        .btn-destiny::after {
+            content: '';
+            position: absolute; top: -50%; left: -60%; width: 20%; height: 200%;
+            background: rgba(255, 255, 255, 0.4); transform: rotate(30deg);
+            animation: shimmer 3s infinite;
+        }
+        @keyframes shimmer { 0% { left: -60%;
+            } 100% { left: 140%; } }
+
+        .xp-bar { background: #111;
+            height: 32px; border-radius: 16px; margin: 20px 0; overflow: hidden; border: 1px solid #333; position: relative;
+        }
+        .xp-fill { background: linear-gradient(90deg, #d4af37, #f1c40f, #fff); height: 100%; width: 0%;
+            transition: width 3s cubic-bezier(0.1, 0, 0.3, 1); box-shadow: 0 0 15px var(--w-gold);
+        }
+        .xp-text-inside { position: absolute; width: 100%; text-align: center; font-size: 14px; font-weight: 900;
+            color: #fff; line-height: 32px; text-shadow: 1px 1px 2px #000; z-index: 5;
+        }
+
+        .alert-revoca {
+            color: #ff4444;
+            font-weight: 900; font-size: 14px; text-transform: uppercase;
+            margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px;
+            background: rgba(255, 68, 68, 0.1);
+        }
+
+        .hidden { display: none; }
+        input { width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444;
+            background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; text-align: center; font-size: 18px;
+        }
+        
+        #reward-overlay, #levelup-overlay { position: fixed;
+            top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px;
+        }
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center;
+            justify-content:center; z-index:3000; }
+        .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 85%;
+            text-align: center; border: 2px solid var(--w-green); }
+        .levelup-img { width: 300px; height: 220px;
+            border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold);
+        }
+    </style>
+</head>
+<body>
+
+<div id="book-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h2 style="color:var(--w-gold); margin-top:0;">CONFERMA</h2>
+        <p id="modal-desc" style="font-size:18px; line-height:1.4;"></p>
+        <button id="confirm-btn" class="btn-book">SÌ, PROCEDI</button>
+        <button onclick="document.getElementById('book-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:16px;">Annulla</button>
+    </div>
+</div>
+
+<div class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub</h1></div>
+
+<div class="nav">
+    <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
+    <button id="btn-offers" onclick="show('offers')">Premi</button>
+    <button id="btn-photo" onclick="show('photo')">Photo</button>
+    <button id="btn-wheel" onclick="show('wheel')">Ruota del Destino</button>
+    <button id="btn-profile" onclick="show('profile')">Profilo</button>
+</div>
+
+<div class="container">
+    <div id="sec-events">
+        <div class="filter-header">
+            <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
+            <button class="btn-reset" onclick="resetFilters()">Reset Filtri</button>
+        </div>
+        <div class="filter-section"><div id="filter-months" class="filter-row"></div><div id="filter-regions" class="filter-row"></div></div>
+        <div id="event-list"></div>
+    </div>
+    <div id="sec-offers" class="hidden"><div class="card"><h3>Area Premi</h3><p>Riscatti disponibili a breve.</p></div></div>
+    <div id="sec-photo" class="hidden"><div class="card"><h3>Wild Wall</h3><p>Area Photo Wall in arrivo.</p></div></div>
+
+    <div id="sec-wheel" class="hidden" style="text-align:center;">
+        <div class="card" style="border-left-color: var(--w-gold);">
+            <h3 style="margin:0; font-size:26px;">Ruota del Destino</h3>
+            <div class="wheel-container">
+                <div class="wheel-pointer"></div>
+                <div id="wheel-graphics" class="visual-wheel">
+                    <div class="wheel-label l-wild">🌲</div>
+                    <div class="wheel-label l-mare">🌊</div>
+                    <div class="wheel-label l-jolly">🎁</div>
+                    <div class="wheel-label l-monti">🏔️</div>
+                </div>
+            </div>
+            <div id="spirit-msg" class="spirit-msg"></div>
+            <button id="wheel-button" onclick="spinWheel()" class="btn-book btn-destiny" style="margin-top:20px;">INVOCA IL DESTINO</button>
+        </div>
+        <div id="wheel-result-container"></div>
+    </div>
+
+    <div id="sec-profile" class="hidden">
+        <div id="login-screen">
+            <div class="card"><h3>Accesso Viaggiatore</h3><input type="text" id="user-input" placeholder="User Key"><button onclick="saveIdentity()" class="btn-book">ACCEDI</button></div>
+        </div>
+        <div id="profile-data" class="hidden">
+            <div class="card" style="text-align:center;">
+                <div id="prof-main-icon" style="font-size: 60px; margin-bottom: 10px;">🌲</div>
+                <h2 id="prof-grado" style="color:var(--w-gold); margin:0; font-size: 32px; text-transform: uppercase;">...</h2>
+                <div id="prof-key" style="font-size:12px; opacity:0.4; margin-bottom: 20px;"></div>
+                <div class="xp-bar"><div class="xp-text-inside" id="xp-percentage">0%</div><div id="xp-fill" class="xp-fill"></div></div>
+                <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;"><span id="prof-xp">0 XP</span><span id="prof-missing" style="color:var(--w-gold);"></span></div>
+                <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 25px;"></div>
+                <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Scollega Wild-Key</button>
+                <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
+<div id="levelup-overlay" onclick="this.style.display='none'">
+    <img id="lv-img" src="" class="levelup-img">
+    <h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2>
+    <p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p>
+    <p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p>
+</div>
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
+    const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
+    
+    let WILD_ASSETS = {};
+    let isPageActive = true;
+    let xpCelebrationBuffer = 0; 
+    let backgroundSyncTimer = null;
+    let cachedXPData = null; 
+
+    // MIXER VIRTUALE
+    let audioCtx = null;
+    let gainAmb = null;
+    let gainMus = null;
+
+    const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
+    const sLvl = new Audio(); const sXP = new Audio();
+    const aAmb = new Audio(); const aMus = new Audio(); 
+    
+    aAmb.crossOrigin = "anonymous";
+    aMus.crossOrigin = "anonymous";
+    
+    let audioInited = false;
+
+    // VOLUMI FINALI (Inizialmente a 0)
+    let FIXED_VOL_AMB = 0; 
+    let FIXED_VOL_MUS = 0;
+
+    const GRADI_MAP = {
+        "Socio Novizio": { ico: "🌱", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
+        "Esploratore": { ico: "🌲", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
+        "Sentinella": { ico: "🏹", img: "https://images.unsplash.com/photo-1501555088652-021faa106b9b?w=800" },
+        "Veterano": { ico: "🏔️", img: "https://images.unsplash.com/photo-1454496522488-7a8e488e8606?w=800" },
+        "Leggenda": { ico: "👑", img: "https://images.unsplash.com/photo-1533240332313-0db49b459ad6?w=800" },
+        "Divinità": { ico: "✨", img: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=800" }
+    };
+    let wildUserKey = localStorage.getItem('wildUserKey');
+    let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
+    let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
+    let isLockedXP = false;
+    let isAnimatingXP = false; 
+    let allTrips = [];
+    let config = {};
+    let activeFilters = { month: 'Tutti', region: 'Tutte' };
+    let currentWheelRotation = 0;
+    let currentTab = 'events';
+
+    document.addEventListener("visibilitychange", () => {
+        isPageActive = !document.hidden;
+        if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer();
+    });
+
+    // --- LOGICA MIXER AUTO-AVVIO CON DELAY 2 SECONDI ---
+    function startAudioMixer() {
+        if(!audioInited){
+            console.log("Inizializzazione Mixer Audio...");
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            gainAmb = audioCtx.createGain();
+            gainMus = audioCtx.createGain();
+
+            const sourceAmb = audioCtx.createMediaElementSource(aAmb);
+            const sourceMus = audioCtx.createMediaElementSource(aMus);
+
+            sourceAmb.connect(gainAmb).connect(audioCtx.destination);
+            sourceMus.connect(gainMus).connect(audioCtx.destination);
+
+            setTimeout(() => {
+                console.log("Avvio audio calibrato.");
+                
+                gainAmb.gain.value = FIXED_VOL_AMB;
+                gainMus.gain.value = FIXED_VOL_MUS;
+
+                if(aAmb.src && FIXED_VOL_AMB > 0) {
+                    aAmb.play().catch(e => console.log("Ambienza bloccata (richiede interazione):", e));
+                }
+                if(aMus.src && FIXED_VOL_MUS > 0) {
+                    aMus.play().catch(e => console.log("Musica bloccata (richiede interazione):", e));
+                }
+            }, 2000); 
+            
+            audioInited = true;
+        } else if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    // L'audio context richiede un'interazione utente per partire nella maggior parte dei browser
+    document.addEventListener('touchstart', startAudioMixer, {once: true});
+    document.addEventListener('click', startAudioMixer, {once: true});
+
+    function formatAssetLink(url) {
+        if (!url || typeof url !== 'string') return url;
+        if (url.includes("raw.githubusercontent.com")) return url;
+        let fileId = "";
+        if (url.includes("/file/d/")) fileId = url.split("/file/d/")[1].split("/")[0].split("?")[0];
+        else if (url.includes("id=")) fileId = url.split("id=")[1].split("&")[0];
+        return fileId ? `https://docs.google.com/uc?export=media&id=${fileId}` : url;
+    }
+
+    function sanitizeVolume(val) {
+        if (val === undefined || val === null || val === "") return 0;
+        let n = parseFloat(String(val).replace('%', '').replace(',', '.').trim());
+        if (isNaN(n)) return 0;
+        if (n > 1) return n / 100; 
+        return n; 
+    }
+
+    async function init() {
+        if (window.Telegram?.WebApp) { window.Telegram.WebApp.ready(); window.Telegram.WebApp.expand(); }
+        await fetchInitialAssets(); 
+        updateProfileUI(); 
+        loadData();
+        window.onfocus = () => { if(wildUserKey) fetchXP(); };
+        backgroundSyncTimer = setInterval(() => { if(wildUserKey) fetchXP(); }, 13000);
+    }
+
+    async function fetchInitialAssets() {
+        try {
+            console.log("Pescaggio Risorse e Volumi da RTP APP WILDU...");
+            const res = await fetch(`${SCRIPT_URL}?action=getAssets&nocache=${Date.now()}`);
+            const data = await res.json();
+            WILD_ASSETS = data;
+            
+            FIXED_VOL_MUS = sanitizeVolume(data.vol_musica || data.val_c13);
+            FIXED_VOL_AMB = sanitizeVolume(data.vol_ambienza || data.val_c14);
+
+            console.log("CALIBRAZIONE: Musica vol:", FIXED_VOL_MUS, "| Ambienza vol:", FIXED_VOL_AMB);
+
+            sXP.src = formatAssetLink(data.audio_xp); sXP.volume = 0.5;
+            sRew.src = formatAssetLink(data.audio_reward);
+            sLvl.src = formatAssetLink(data.audio_levelup);
+            sSpin.src = formatAssetLink(data.audio_spin); sSpin.volume = 0.2;
+            sEnd.src = formatAssetLink(data.audio_end); sEnd.volume = 0.4;
+            
+            let linkMusica = data.musica || data.audio_musica;
+            if(linkMusica) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+
+            let linkAmbienza = data.ambienza || data.audio_ambienza;
+            if(linkAmbienza) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+            
+        } catch(e) {
+            console.error("Errore fetch assets:", e);
+        }
+    }
+
+    async function loadData() {
+        try {
+            const res = await fetch(`${SCRIPT_URL}?action=getEvents&nocache=${Date.now()}`);
+            allTrips = await res.json();
+            buildFilters(); filterTrips();
+        } catch(e) {}
+    }
+
+    function buildFilters() {
+        const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
+        const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"]?.split('/')[1]))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+        const months = ['Tutti', ...monthsRaw];
+        const regions = ['Tutte', ...new Set(allTrips.map(t => t.Regione || 'Italia'))];
+        document.getElementById('filter-months').innerHTML = months.map(m => `<div class="pill ${activeFilters.month === m ? 'active' : ''}" onclick="setFilter('month', '${m}')">${m === 'Tutti' ? 'Tutti' : new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'short'})}</div>`).join('');
+        document.getElementById('filter-regions').innerHTML = regions.map(r => `<div class="pill ${activeFilters.region === r ? 'active' : ''}" onclick="setFilter('region', '${r}')">${r}</div>`).join('');
+    }
+
+    function setFilter(type, val) { activeFilters[type] = val; buildFilters(); filterTrips(); }
+    function resetFilters() { activeFilters.month = 'Tutti'; activeFilters.region = 'Tutte'; buildFilters(); filterTrips(); }
+
+    function filterTrips() {
+        const filtered = allTrips.filter(t => (activeFilters.month === 'Tutti' || t["Data inizio"]?.split('/')[1] === activeFilters.month) && (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region));
+        document.getElementById('trip-count-badge').innerText = `${filtered.length} Viaggi in Vetrina`;
+        renderTrips(filtered, 'event-list');
+    }
+
+    function renderTrips(trips, targetId) {
+        document.getElementById(targetId).innerHTML = trips.map(ev => {
+            const dataPura = `${ev["Data inizio"]}/${ev.Anno}`;
+            const xpReward = Math.floor(parseInt(ev["Prezzo Prime"]) / (config.euro_punto_ratio || 5)) || 0;
+            return `<div class="card"><span class="card-title">${ev.Titolo}</span><div style="font-size:15px; color:#aaa;">📅 dal <b>${ev["Data inizio"]}/${ev.Anno}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div><div class="price-box"><div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div><div class="price-prime-wrapper"><span class="xp-reward-label">+(${xpReward}) WILD XP</span><div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div></div></div><div class="btn-group">${ev.Link ? `<a href="${ev.Link}" target="_blank" class="btn-link">Info</a>`:''}<button class="btn-book" onclick="openBook('${ev.Titolo.replace(/'/g, "\\'")}', '${dataPura}', '${ev["Prezzo Prime"]}', '${xpReward}')">Prenota</button></div></div>`;
+        }).join('');
+    }
+
+    function openBook(t, d, p, xp) {
+        if (!wildUserKey) { show('profile'); return; }
+        document.getElementById('modal-desc').innerHTML = `Viaggio: <b>${t}</b><br>Data: <b>${d}</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style="color:var(--w-gold); font-weight:900;">+(${xp}) WILD XP AL RITORNO!</span>`;
+        document.getElementById('book-modal').style.display = 'flex';
+        document.getElementById('confirm-btn').onclick = () => {
+            const url = `${FORM_URL}?usp=pp_url&entry.1122751126=${encodeURIComponent(t)}&entry.931759730=${encodeURIComponent(d)}&entry.1978984745=${encodeURIComponent(p)}&entry.551102529=${encodeURIComponent(wildUserKey)}`;
+            window.open(url, '_blank'); document.getElementById('book-modal').style.display = 'none';
+        };
+    }
+
+    async function fetchXP() {
+        if (!wildUserKey || isLockedXP || isAnimatingXP) return;
+        try {
+            const res = await fetch(`${SCRIPT_URL}?action=getUserStatus&userKey=${encodeURIComponent(wildUserKey)}&nocache=${Date.now()}`);
+            const data = await res.json();
+            cachedXPData = data; 
+            if (data.xp < lastVXP) { lastVXP = data.xp; lastCelXP = data.xp; localStorage.setItem('lastViewedXP', data.xp); localStorage.setItem('lastCelebratedXP', data.xp); renderProfile(data); return; }
+            if (data.xp > lastCelXP && lastCelXP > 0) {
+                let delta = data.xp - lastCelXP;
+                lastCelXP = data.xp;
+                localStorage.setItem('lastCelebratedXP', lastCelXP);
+                if (!isPageActive) xpCelebrationBuffer += delta;
+                else { showReward(delta); if (currentTab === 'profile') renderProfile(data); }
+            } else if (currentTab === 'profile') renderProfile(data);
+        } catch(e) {}
+    }
+
+    function processXPBuffer() {
+        if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); }
+    }
+
+    async function renderProfile(data) {
+        if (isAnimatingXP || !data) return;
+        config = data.config;
+        const finalXP = data.xp; 
+        const soglie = config.soglie;
+        const xpFill = document.getElementById('xp-fill');
+        const profGrado = document.getElementById('prof-grado');
+        const profIcon = document.getElementById('prof-main-icon');
+        const profXPText = document.getElementById('prof-xp');
+        const xpPercentText = document.getElementById('xp-percentage');
+        const profMissing = document.getElementById('prof-missing');
+        profXPText.innerText = finalXP + " XP TOTALI";
+        document.getElementById('prof-key').innerText = "WILD-KEY: " + wildUserKey;
+        document.getElementById('legenda-container').innerHTML = soglie.map(s => `<div style="padding: 12px; background: #222; border-radius: 10px; display: flex; justify-content: space-between; opacity: ${finalXP >= s.punti ? '1' : '0.3'}; ${finalXP >= s.punti ? 'border: 1px solid var(--w-gold); color: var(--w-gold);' : ''}"><span>${GRADI_MAP[s.nome]?.ico || "🌿"} ${s.nome}</span> <b>${s.punti}</b></div>`).join('');
+        if (finalXP > lastVXP) {
+            isAnimatingXP = true; let tempXP = lastVXP;
+            while (tempXP < finalXP) {
+                const currentLevel = soglie.filter(s => s.punti <= tempXP).pop();
+                const nextLevel = soglie.find(s => s.punti > tempXP) || { punti: tempXP + 100, nome: "MAX" };
+                let stepTargetXP = Math.min(finalXP, nextLevel.punti);
+                let isLevelUpStep = stepTargetXP === nextLevel.punti && finalXP >= nextLevel.punti;
+                const startP = Math.min(100, ((tempXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
+                const endP = Math.min(100, ((stepTargetXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
+                xpFill.style.transition = 'none'; xpFill.style.width = startP + "%"; await new Promise(r => setTimeout(r, 50));
+                xpFill.style.transition = 'width 2.5s cubic-bezier(0.1, 0, 0.3, 1)';
+                xpFill.style.width = endP + "%"; xpPercentText.innerText = Math.floor(endP) + "%";
+                sXP.currentTime = 0; sXP.play().catch(() => {}); await new Promise(r => setTimeout(r, 2600)); sXP.pause();
+                if (isLevelUpStep) {
+                    const nuovoGrado = nextLevel.nome;
+                    profGrado.innerText = nuovoGrado; profIcon.innerText = GRADI_MAP[nuovoGrado]?.ico || "🌿";
+                    showLevelUpCelebration(nuovoGrado);
+                    localStorage.setItem('lastG_' + wildUserKey, nuovoGrado);
+                    await new Promise(r => setTimeout(r, 500)); xpFill.style.transition = 'none'; xpFill.style.width = "0%"; await new Promise(r => setTimeout(r, 100));
+                }
+                tempXP = stepTargetXP;
+            }
+            lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); isAnimatingXP = false;
+            const finalLevel = soglie.filter(s => s.punti <= finalXP).pop();
+            const finalNext = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
+            profGrado.innerText = finalLevel.nome; profIcon.innerText = GRADI_MAP[finalLevel.nome]?.ico || "🌿";
+            xpPercentText.innerText = Math.floor(((finalXP - finalLevel.punti) / (finalNext.punti - finalLevel.punti)) * 100) + "%";
+            profMissing.innerText = finalXP >= finalNext.punti ? "STATO DIVINO" : `-${finalNext.punti - finalXP} XP`;
+        } else if (!isAnimatingXP) {
+            const currentLevel = soglie.filter(s => s.punti <= finalXP).pop();
+            const nextLevel = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
+            const p = finalXP >= nextLevel.punti ? 100 : Math.min(100, ((finalXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
+            xpFill.style.width = p + "%"; xpPercentText.innerText = Math.floor(p) + "%";
+            profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome]?.ico || "🌿";
+            profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : `-${nextLevel.punti - finalXP} XP`;
+            lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome);
+        }
+    }
+
+    async function spinWheel() {
+        if (!wildUserKey) { show('profile'); return; }
+        const btn = document.getElementById('wheel-button');
+        const msg = document.getElementById('spirit-msg');
+        btn.disabled = true; document.getElementById('wheel-result-container').innerHTML = "";
+        msg.innerText = "Gli spiriti del bosco stanno decidendo...";
+        sSpin.currentTime = 0; sSpin.play();
+        document.getElementById('wheel-graphics').style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
+        currentWheelRotation += 2160; 
+        document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
+        try {
+            const res = await fetch(`${SCRIPT_URL}?action=spinWheel&userKey=${encodeURIComponent(wildUserKey)}&win=${Math.random() > 0.8 ? 5 : 0}`);
+            const status = await res.json();
+            const targetA = status.winAmount > 0 ? 135 : (Math.random() > 0.5 ? 225 : 315);
+            currentWheelRotation += (360 - (currentWheelRotation % 360)) + targetA;
+            document.getElementById('wheel-graphics').style.transition = "transform 3s cubic-bezier(0.1, 0, 0.2, 1)";
+            document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
+            setTimeout(() => {
+                sSpin.pause(); sEnd.play();
+                msg.innerText = "Verdetto spiriti del bosco:";
+                if (status.winAmount > 0) {
+                    isLockedXP = true; lastCelXP += status.winAmount;
+                    localStorage.setItem('lastCelebratedXP', lastCelXP);
+                    showReward(status.winAmount); fetchXP();
+                    setTimeout(() => isLockedXP = false, 8000);
+                } else {
+                    const randT = allTrips[Math.floor(Math.random() * allTrips.length)];
+                    const matchingDates = allTrips.filter(t => t.Titolo === randT.Titolo);
+                    renderTrips(matchingDates, 'wheel-result-container');
+                }
+                btn.disabled = false;
+            }, 3000);
+        } catch(e) { btn.disabled = false; sSpin.pause(); }
+    }
+
+    function showReward(amt) {
+        document.getElementById('reward-msg').innerText = `HAI VINTO +${amt} XP!`;
+        document.getElementById('reward-overlay').style.display = 'flex'; sRew.play();
+        setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500);
+    }
+
+    function showLevelUpCelebration(grado) {
+        const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"];
+        const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")];
+        document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img;
+        document.getElementById('levelup-msg').innerText = grado;
+        document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play();
+        if (window.Telegram?.WebApp) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+    }
+
+    function saveIdentity() { const v = document.getElementById('user-input').value.trim(); if (v.length > 2) { localStorage.setItem('wildUserKey', v); wildUserKey = v; updateProfileUI(); } }
+    function logout() { localStorage.clear(); clearInterval(backgroundSyncTimer); location.reload(); }
+    function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
+    
+    function show(id) {
+        currentTab = id;
+        ['events', 'offers', 'photo', 'wheel', 'profile'].forEach(s => { 
+            const el = document.getElementById('sec-' + s); if(el) el.classList.add('hidden');
+            const btn = document.getElementById('btn-' + s); if(btn) btn.classList.remove('active');
+        });
+        document.getElementById('sec-' + id).classList.remove('hidden');
+        document.getElementById('btn-' + id).classList.add('active');
+        if (id === 'profile') { sXP.load(); if (cachedXPData) renderProfile(cachedXPData); else if (wildUserKey) fetchXP(); }
+    }
+    init();
+</script>
+</body>
+</html>
