@@ -829,6 +829,20 @@
     function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
     
     function show(id) {
+        // --- SICUREZZA MODULI: Chiude i moduli aperti se l'utente clicca un'altra tab ---
+        const modContainer = document.getElementById('module-container');
+        if (modContainer && !modContainer.classList.contains('hidden')) {
+            modContainer.innerHTML = '';
+            modContainer.classList.add('hidden');
+            if(typeof restoreDefaultAudio === "function") restoreDefaultAudio();
+            
+            // Nasconde la freccia di Telegram se rimasta appesa
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
+                window.Telegram.WebApp.BackButton.hide();
+                window.Telegram.WebApp.BackButton.offClick(closeModule);
+            }
+        }
+
         currentTab = id;
         const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
         sections.forEach(s => { 
@@ -837,6 +851,21 @@
             if (el) el.classList.add('hidden');
             if (btn) btn.classList.remove('active');
         });
+
+        const targetEl = document.getElementById('sec-' + id);
+        const targetBtn = document.getElementById('btn-' + id);
+        if (targetEl) targetEl.classList.remove('hidden');
+        if (targetBtn) targetBtn.classList.add('active');
+
+        if (id === 'profile') { 
+            if (typeof sXP !== 'undefined') sXP.load(); 
+            if (cachedXPData) {
+                renderProfile(cachedXPData); 
+            } else if (wildUserKey) {
+                fetchXP(); 
+            }
+        }
+    }
 
         const targetEl = document.getElementById('sec-' + id);
         const targetBtn = document.getElementById('btn-' + id);
@@ -933,8 +962,9 @@
     // ==========================================
     let currentModuleAudio = null;
 
-    async function openModule(fileName, audioInstruction) {
-        // 1. Nascondi tutte le tab principali e mostra il contenitore moduli
+    // Aggiunto parametro isImmersive (di base è falso)
+    async function openModule(fileName, audioInstruction, isImmersive = false) {
+        // 1. Nascondi le sezioni principali
         const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
         sections.forEach(s => {
             let el = document.getElementById('sec-' + s);
@@ -945,25 +975,26 @@
         modContainer.innerHTML = '<div style="text-align:center; padding:50px; font-weight:bold; color:var(--w-gold);">Evocazione Spiriti del Bosco... 🌲</div>';
         modContainer.classList.remove('hidden');
 
-        // 2. Gestione Audio Dinamico
+        // 2. Gestione Audio
         handleModuleAudio(audioInstruction);
 
-        // 3. Mostra il pulsante nativo "Indietro" di Telegram
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
-            window.Telegram.WebApp.BackButton.show();
-            window.Telegram.WebApp.BackButton.onClick(closeModule);
+        // 3. LOGICA IMMERSIVA: Se è un minigioco, nascondi nav e usa BackButton
+        if (isImmersive) {
+            document.querySelector('.nav').style.display = 'none'; // Nasconde la barra
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
+                window.Telegram.WebApp.BackButton.show();
+                window.Telegram.WebApp.BackButton.onClick(closeModule);
+            }
         }
 
-        // 4. Scarica e inietta il file HTML esterno
+        // 4. Carica file
         try {
             const res = await fetch(fileName + '?nocache=' + Date.now());
             if (!res.ok) throw new Error("File non trovato");
-            const html = await res.text();
-            modContainer.innerHTML = html;
+            modContainer.innerHTML = await res.text();
             
-            // Riattiva gli script interni al modulo (se presenti)
-            const scripts = modContainer.querySelectorAll('script');
-            scripts.forEach(s => {
+            // Attiva script del modulo
+            modContainer.querySelectorAll('script').forEach(s => {
                 const newScript = document.createElement('script');
                 newScript.text = s.text;
                 document.body.appendChild(newScript).parentNode.removeChild(newScript);
@@ -974,38 +1005,39 @@
     }
 
     function closeModule() {
-        // 1. Nascondi tasto indietro Telegram
+        // Ripristina la barra di navigazione
+        const navBar = document.querySelector('.nav');
+        if(navBar) navBar.style.display = 'flex'; 
+        
+        // Nascondi il tasto Indietro di Telegram
         if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
             window.Telegram.WebApp.BackButton.hide();
             window.Telegram.WebApp.BackButton.offClick(closeModule);
         }
         
-        // 2. Svuota il contenitore
+        // Svuota e torna alla tab precedente
         const modContainer = document.getElementById('module-container');
-        modContainer.innerHTML = '';
-        modContainer.classList.add('hidden');
-        
-        // 3. Ripristina Audio Default
+        if(modContainer) {
+            modContainer.innerHTML = '';
+            modContainer.classList.add('hidden');
+        }
         restoreDefaultAudio();
-
-        // 4. Torna alla tab che l'utente stava guardando
         show(currentTab);
     }
 
     function handleModuleAudio(instruction) {
-        // Se c'è "STOP", fermiamo la musica base
         if (instruction && instruction.toUpperCase() === "STOP") {
-            aMus.pause(); aAmb.pause(); return;
+            if(aMus) aMus.pause(); 
+            if(aAmb) aAmb.pause(); 
+            return;
         }
-        // Se c'è un link specifico, lo suoniamo al posto del base
         if (instruction && instruction.startsWith("http")) {
-            aMus.pause(); // Mettiamo in pausa il default
+            if(aMus) aMus.pause(); 
             currentModuleAudio = new Audio(formatAssetLink(instruction));
             currentModuleAudio.loop = true;
             currentModuleAudio.play().catch(e => console.log("Modulo Audio Bloccato:", e));
             return;
         }
-        // Se è vuoto, la musica base continua ininterrotta senza fare nulla.
     }
 
     function restoreDefaultAudio() {
@@ -1013,9 +1045,8 @@
             currentModuleAudio.pause();
             currentModuleAudio = null;
         }
-        // Riprende la musica base se era stata messa in pausa
-        if (FIXED_VOL_MUS > 0 && aMus.paused) aMus.play().catch(e => {});
-        if (FIXED_VOL_AMB > 0 && aAmb.paused) aAmb.play().catch(e => {});
+        if (FIXED_VOL_MUS > 0 && aMus && aMus.paused) aMus.play().catch(e => {});
+        if (FIXED_VOL_AMB > 0 && aAmb && aAmb.paused) aAmb.play().catch(e => {});
     }
     
     init();
@@ -1032,4 +1063,3 @@
 
 </body>
 </html>
-
