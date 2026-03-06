@@ -213,7 +213,7 @@
     <button id="btn-install" onclick="show('install')">Salva App</button>
 </div>
 
-<div class="container">
+<div class="container">          <div id="module-container" class="hidden"></div>
     
     <div id="sec-events">
         <div class="filter-header">
@@ -256,7 +256,7 @@
             <div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div>
             <span style="color:var(--w-sub)">➔</span>
         </div>
-        <div class="resource-item">
+        <div class="resource-item" onclick="openModule('mappa.html', 'vuoto')">
             <div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div>
             <span style="color:var(--w-sub)">➔</span>
         </div>
@@ -928,6 +928,96 @@
         }
     }
 
+// ==========================================
+    // --- MOTORE MODULI (SPA) E AUDIO SMART ---
+    // ==========================================
+    let currentModuleAudio = null;
+
+    async function openModule(fileName, audioInstruction) {
+        // 1. Nascondi tutte le tab principali e mostra il contenitore moduli
+        const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
+        sections.forEach(s => {
+            let el = document.getElementById('sec-' + s);
+            if(el) el.classList.add('hidden');
+        });
+        
+        const modContainer = document.getElementById('module-container');
+        modContainer.innerHTML = '<div style="text-align:center; padding:50px; font-weight:bold; color:var(--w-gold);">Evocazione Spiriti del Bosco... 🌲</div>';
+        modContainer.classList.remove('hidden');
+
+        // 2. Gestione Audio Dinamico
+        handleModuleAudio(audioInstruction);
+
+        // 3. Mostra il pulsante nativo "Indietro" di Telegram
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
+            window.Telegram.WebApp.BackButton.show();
+            window.Telegram.WebApp.BackButton.onClick(closeModule);
+        }
+
+        // 4. Scarica e inietta il file HTML esterno
+        try {
+            const res = await fetch(fileName + '?nocache=' + Date.now());
+            if (!res.ok) throw new Error("File non trovato");
+            const html = await res.text();
+            modContainer.innerHTML = html;
+            
+            // Riattiva gli script interni al modulo (se presenti)
+            const scripts = modContainer.querySelectorAll('script');
+            scripts.forEach(s => {
+                const newScript = document.createElement('script');
+                newScript.text = s.text;
+                document.body.appendChild(newScript).parentNode.removeChild(newScript);
+            });
+        } catch (e) {
+            modContainer.innerHTML = '<div style="text-align:center; padding:50px; color:#ff4444; font-weight:bold;">I sentieri sono bloccati. Modulo non trovato.</div>';
+        }
+    }
+
+    function closeModule() {
+        // 1. Nascondi tasto indietro Telegram
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
+            window.Telegram.WebApp.BackButton.hide();
+            window.Telegram.WebApp.BackButton.offClick(closeModule);
+        }
+        
+        // 2. Svuota il contenitore
+        const modContainer = document.getElementById('module-container');
+        modContainer.innerHTML = '';
+        modContainer.classList.add('hidden');
+        
+        // 3. Ripristina Audio Default
+        restoreDefaultAudio();
+
+        // 4. Torna alla tab che l'utente stava guardando
+        show(currentTab);
+    }
+
+    function handleModuleAudio(instruction) {
+        // Se c'è "STOP", fermiamo la musica base
+        if (instruction && instruction.toUpperCase() === "STOP") {
+            aMus.pause(); aAmb.pause(); return;
+        }
+        // Se c'è un link specifico, lo suoniamo al posto del base
+        if (instruction && instruction.startsWith("http")) {
+            aMus.pause(); // Mettiamo in pausa il default
+            currentModuleAudio = new Audio(formatAssetLink(instruction));
+            currentModuleAudio.loop = true;
+            currentModuleAudio.play().catch(e => console.log("Modulo Audio Bloccato:", e));
+            return;
+        }
+        // Se è vuoto, la musica base continua ininterrotta senza fare nulla.
+    }
+
+    function restoreDefaultAudio() {
+        if (currentModuleAudio) {
+            currentModuleAudio.pause();
+            currentModuleAudio = null;
+        }
+        // Riprende la musica base se era stata messa in pausa
+        if (FIXED_VOL_MUS > 0 && aMus.paused) aMus.play().catch(e => {});
+        if (FIXED_VOL_AMB > 0 && aAmb.paused) aAmb.play().catch(e => {});
+    }
+    
     init();
 
     // Traduttore per "A capo" e "Grassetto" dal foglio Google
@@ -942,3 +1032,4 @@
 
 </body>
 </html>
+
