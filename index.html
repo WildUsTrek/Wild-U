@@ -842,45 +842,6 @@
     function logout() { localStorage.clear(); clearInterval(backgroundSyncTimer); location.reload(); }
     function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
     
-    function show(id) {
-        // --- SICUREZZA MODULI: Chiude i moduli aperti se l'utente clicca un'altra tab ---
-        const modContainer = document.getElementById('module-container');
-        if (modContainer && !modContainer.classList.contains('hidden')) {
-            modContainer.innerHTML = '';
-            modContainer.classList.add('hidden');
-            if(typeof restoreDefaultAudio === "function") restoreDefaultAudio();
-            
-            // Nasconde la freccia di Telegram se rimasta appesa
-            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
-                window.Telegram.WebApp.BackButton.hide();
-                window.Telegram.WebApp.BackButton.offClick(closeModule);
-            }
-        }
-
-        currentTab = id;
-        const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
-        sections.forEach(s => { 
-            const el = document.getElementById('sec-' + s); 
-            const btn = document.getElementById('btn-' + s);
-            if (el) el.classList.add('hidden');
-            if (btn) btn.classList.remove('active');
-        });
-
-        const targetEl = document.getElementById('sec-' + id);
-        const targetBtn = document.getElementById('btn-' + id);
-        if (targetEl) targetEl.classList.remove('hidden');
-        if (targetBtn) targetBtn.classList.add('active');
-
-        if (id === 'profile') { 
-            if (typeof sXP !== 'undefined') sXP.load(); 
-            if (cachedXPData) {
-                renderProfile(cachedXPData); 
-            } else if (wildUserKey) {
-                fetchXP(); 
-            }
-        }
-    }
-
     
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -1056,76 +1017,129 @@
         show(currentTab);
     }
 
-    // --- MOTORE DISSOLVENZA AUDIO (FADE IN / FADE OUT) ---
+    // --- MOTORE DISSOLVENZA AUDIO (ANTI-CRASH) ---
+    let fadeIntervals = new Map();
+
     function fadeAudio(audio, targetVolume, callback) {
         if (!audio) return;
-        let startVolume = audio.volume;
-        let change = targetVolume - startVolume;
-        let steps = 20; // 20 step di transizione
-        let stepTime = 150; // ogni 50 millisecondi (1 secondo totale)
-        let currentStep = 0;
+        try {
+            // Ferma eventuali dissolvenze precedenti sullo stesso audio
+            if (fadeIntervals.has(audio)) clearInterval(fadeIntervals.get(audio));
 
-        // Se dobbiamo alzare il volume e l'audio è in pausa, diamo il Play
-        if (targetVolume > 0 && audio.paused) audio.play().catch(e=>{});
-
-        let fadeInterval = setInterval(() => {
-            currentStep++;
-            let newVol = startVolume + (change * (currentStep / steps));
+            let startVolume = audio.volume;
+            let change = targetVolume - startVolume;
+            if (change === 0) return; // Se è già al volume giusto, si ferma
             
-            // Limiti di sicurezza per evitare errori console
-            if(newVol > 1) newVol = 1;
-            if(newVol < 0) newVol = 0;
-            
-            audio.volume = newVol;
-
-            // Fine della dissolvenza
-            if (currentStep >= steps) {
-                clearInterval(fadeInterval);
-                audio.volume = targetVolume;
-                if (targetVolume === 0) audio.pause(); // Mette in pausa se il volume è 0
-                if (callback) callback(); // Esegue azioni post-dissolvenza se richieste
+            if (targetVolume > 0 && audio.paused) {
+                audio.play().catch(e => console.log("Play silenziato dal browser"));
             }
-        }, stepTime);
-    }
 
-    // --- GESTORE AUDIO DEI MODULI (Aggiornato) ---
-    function handleModuleAudio(instruction) {
-        if (instruction && instruction.toUpperCase() === "STOP") {
-            // Sfuma la musica a ZERO
-            if(aMus) fadeAudio(aMus, 0); 
-            if(aAmb) fadeAudio(aAmb, 0); 
-            return;
-        }
-        
-        if (instruction && instruction.startsWith("http")) {
-            // Sfuma a zero il default e fa partire il nuovo audio
-            if(aMus) fadeAudio(aMus, 0); 
+            let steps = 20;
+            let currentStep = 0;
+
+            let interval = setInterval(() => {
+                try {
+                    currentStep++;
+                    let newVol = startVolume + (change * (currentStep / steps));
+                    if(newVol > 1) newVol = 1;
+                    if(newVol < 0) newVol = 0;
+                    
+                    audio.volume = newVol;
+
+                    if (currentStep >= steps) {
+                        clearInterval(interval);
+                        fadeIntervals.delete(audio);
+                        audio.volume = targetVolume;
+                        if (targetVolume === 0) audio.pause();
+                        if (callback) callback();
+                    }
+                } catch(err) { clearInterval(interval); }
+            }, 50);
             
-            currentModuleAudio = new Audio(formatAssetLink(instruction));
-            currentModuleAudio.loop = true;
-            currentModuleAudio.volume = 0; // Parte muto
-            currentModuleAudio.play().catch(e => console.log("Modulo Audio Bloccato:", e));
-            fadeAudio(currentModuleAudio, 1); // Sfuma il nuovo audio al massimo
-            return;
-        }
-
-        // SE È "VUOTO": Riaccende la musica di base dolcemente (se era stata spenta)
-        if (aMus && aMus.volume === 0) fadeAudio(aMus, 1);
-        if (aAmb && aAmb.volume === 0) fadeAudio(aAmb, 1);
+            fadeIntervals.set(audio, interval);
+        } catch(e) {}
     }
 
-    // --- RIPRISTINO AUDIO CHIUSURA MODULO (Aggiornato) ---
+    // --- GESTORE AUDIO DEI MODULI ---
+    function handleModuleAudio(instruction) {
+        try {
+            let inst = instruction ? String(instruction).trim().toUpperCase() : "";
+            
+            if (inst === "STOP") {
+                if (aMus) fadeAudio(aMus, 0); 
+                if (aAmb) fadeAudio(aAmb, 0); 
+                return;
+            }
+            
+            if (instruction && instruction.startsWith("http")) {
+                if (aMus) fadeAudio(aMus, 0); 
+                
+                currentModuleAudio = new Audio(formatAssetLink(instruction));
+                currentModuleAudio.loop = true;
+                currentModuleAudio.volume = 0; 
+                currentModuleAudio.play().catch(e => {});
+                fadeAudio(currentModuleAudio, 1); 
+                return;
+            }
+
+            // SE È VUOTO: Riaccende la musica di base (solo se era impostata > 0 dal foglio)
+            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, 1);
+            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, 1);
+        } catch(e) {}
+    }
+
+    // --- RIPRISTINO AUDIO CHIUSURA MODULO ---
     function restoreDefaultAudio() {
-        if (currentModuleAudio) {
-            // Sfuma a zero l'audio del modulo, poi lo distrugge
-            fadeAudio(currentModuleAudio, 0, () => {
-                currentModuleAudio.pause();
-                currentModuleAudio = null;
-            });
+        try {
+            if (currentModuleAudio) {
+                fadeAudio(currentModuleAudio, 0, () => {
+                    currentModuleAudio.pause();
+                    currentModuleAudio.src = "";
+                    currentModuleAudio = null;
+                });
+            }
+            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, 1);
+            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, 1);
+        } catch(e) {}
+    }
+
+    // --- NAVIGAZIONE SICURA (NO DOPPIO CLICK) ---
+    function show(id) {
+        try {
+            // 1. Chiude i moduli aperti in totale sicurezza
+            const modContainer = document.getElementById('module-container');
+            if (modContainer && !modContainer.classList.contains('hidden')) {
+                modContainer.innerHTML = '';
+                modContainer.classList.add('hidden');
+                if(typeof restoreDefaultAudio === "function") restoreDefaultAudio();
+                
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
+                    window.Telegram.WebApp.BackButton.hide();
+                    window.Telegram.WebApp.BackButton.offClick(closeModule);
+                }
+            }
+        } catch(e) {}
+
+        // 2. Normale navigazione visiva
+        currentTab = id;
+        const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
+        sections.forEach(s => { 
+            const el = document.getElementById('sec-' + s); 
+            const btn = document.getElementById('btn-' + s);
+            if (el) el.classList.add('hidden');
+            if (btn) btn.classList.remove('active');
+        });
+
+        const targetEl = document.getElementById('sec-' + id);
+        const targetBtn = document.getElementById('btn-' + id);
+        if (targetEl) targetEl.classList.remove('hidden');
+        if (targetBtn) targetBtn.classList.add('active');
+
+        if (id === 'profile') { 
+            if (typeof sXP !== 'undefined') sXP.load(); 
+            if (cachedXPData) renderProfile(cachedXPData); 
+            else if (wildUserKey) fetchXP(); 
         }
-        // Riaccende dolcemente la musica di base
-        if (aMus) fadeAudio(aMus, 1);
-        if (aAmb) fadeAudio(aAmb, 1);
     }
     
     init();
@@ -1142,6 +1156,7 @@
 
 </body>
 </html>
+
 
 
 
