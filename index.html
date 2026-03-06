@@ -465,9 +465,41 @@
 
 <div id="toast-msg"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+
+    
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
+
+// --- FIREBASE SETUP ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDIPgFA_caKlMHFgEa-enO4Jk0d7eTCFLI",
+      authDomain: "wild-u-server.firebaseapp.com",
+      projectId: "wild-u-server",
+      storageBucket: "wild-u-server.firebasestorage.app",
+      messagingSenderId: "959006418837",
+      appId: "1:959006418837:web:affce9510301b946e7389c"
+    };
+
+    // Inizializza l'App Firebase
+    firebase.initializeApp(firebaseConfig);
+    
+    // Inizializza il Database Firestore
+    const db = firebase.firestore();
+
+    // ATTIVA LA MAGIA: Persistenza Offline (Salva i dati nel telefono!)
+    db.enablePersistence()
+      .catch(function(err) {
+          if (err.code == 'failed-precondition') {
+              console.log("Persistenza fallita: troppe tab aperte.");
+          } else if (err.code == 'unimplemented') {
+              console.log("Browser non supportato per offline.");
+          }
+      });
+    // --- FINE FIREBASE SETUP ---
+
     
     let WILD_ASSETS = {};
     let isPageActive = true;
@@ -838,7 +870,53 @@
         }
     }
 
-    function saveIdentity() { const v = document.getElementById('user-input').value.trim(); if (v.length > 2) { localStorage.setItem('wildUserKey', v); wildUserKey = v; updateProfileUI(); } }
+   // --- NUOVO LOGIN CON FIREBASE ---
+    async function saveIdentity() { 
+        const v = document.getElementById('user-input').value.trim(); 
+        
+        if (v.length > 2) { 
+            try {
+                // Riferimento al documento dell'utente in Firebase
+                const userRef = db.collection("utenti").doc(v);
+                
+                // Cerca l'utente nel database
+                const docSnap = await userRef.get();
+                
+                if (docSnap.exists) {
+                    // L'utente esiste, recuperiamo i suoi dati
+                    console.log("Utente trovato in Firebase:", docSnap.data());
+                    // Aggiorniamo la cache locale per non fare altre chiamate
+                    cachedXPData = docSnap.data();
+                } else {
+                    // È un nuovo utente! Creiamo il suo profilo di base in Firebase
+                    console.log("Nuovo utente. Creazione profilo in corso...");
+                    const newUserData = {
+                        xp: 0,
+                        grado: "Socio Novizio",
+                        registratoIl: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    await userRef.set(newUserData);
+                    cachedXPData = newUserData;
+                }
+
+                // Salviamo la chiave nel telefono per le prossime volte
+                localStorage.setItem('wildUserKey', v); 
+                wildUserKey = v; 
+                
+                // Aggiorna l'interfaccia (mostra la tab profilo invece del login)
+                updateProfileUI(); 
+
+                // Avvisa l'utente
+                showToast("Accesso completato! Benvenuto, viaggiatore.");
+
+            } catch (error) {
+                console.error("Errore durante il login Firebase:", error);
+                showToast("Errore di connessione. Riprova.");
+            }
+        } else {
+            showToast("Inserisci una Wild Key valida.");
+        }
+    }
     function logout() { localStorage.clear(); clearInterval(backgroundSyncTimer); location.reload(); }
     function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
     
@@ -1159,3 +1237,4 @@
 
 </body>
 </html>
+
