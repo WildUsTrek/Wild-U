@@ -1056,28 +1056,76 @@
         show(currentTab);
     }
 
-    function handleModuleAudio(instruction) {
-        if (instruction && instruction.toUpperCase() === "STOP") {
-            if(aMus) aMus.pause(); 
-            if(aAmb) aAmb.pause(); 
-            return;
-        }
-        if (instruction && instruction.startsWith("http")) {
-            if(aMus) aMus.pause(); 
-            currentModuleAudio = new Audio(formatAssetLink(instruction));
-            currentModuleAudio.loop = true;
-            currentModuleAudio.play().catch(e => console.log("Modulo Audio Bloccato:", e));
-            return;
-        }
+    // --- MOTORE DISSOLVENZA AUDIO (FADE IN / FADE OUT) ---
+    function fadeAudio(audio, targetVolume, callback) {
+        if (!audio) return;
+        let startVolume = audio.volume;
+        let change = targetVolume - startVolume;
+        let steps = 20; // 20 step di transizione
+        let stepTime = 150; // ogni 50 millisecondi (1 secondo totale)
+        let currentStep = 0;
+
+        // Se dobbiamo alzare il volume e l'audio è in pausa, diamo il Play
+        if (targetVolume > 0 && audio.paused) audio.play().catch(e=>{});
+
+        let fadeInterval = setInterval(() => {
+            currentStep++;
+            let newVol = startVolume + (change * (currentStep / steps));
+            
+            // Limiti di sicurezza per evitare errori console
+            if(newVol > 1) newVol = 1;
+            if(newVol < 0) newVol = 0;
+            
+            audio.volume = newVol;
+
+            // Fine della dissolvenza
+            if (currentStep >= steps) {
+                clearInterval(fadeInterval);
+                audio.volume = targetVolume;
+                if (targetVolume === 0) audio.pause(); // Mette in pausa se il volume è 0
+                if (callback) callback(); // Esegue azioni post-dissolvenza se richieste
+            }
+        }, stepTime);
     }
 
+    // --- GESTORE AUDIO DEI MODULI (Aggiornato) ---
+    function handleModuleAudio(instruction) {
+        if (instruction && instruction.toUpperCase() === "STOP") {
+            // Sfuma la musica a ZERO
+            if(aMus) fadeAudio(aMus, 0); 
+            if(aAmb) fadeAudio(aAmb, 0); 
+            return;
+        }
+        
+        if (instruction && instruction.startsWith("http")) {
+            // Sfuma a zero il default e fa partire il nuovo audio
+            if(aMus) fadeAudio(aMus, 0); 
+            
+            currentModuleAudio = new Audio(formatAssetLink(instruction));
+            currentModuleAudio.loop = true;
+            currentModuleAudio.volume = 0; // Parte muto
+            currentModuleAudio.play().catch(e => console.log("Modulo Audio Bloccato:", e));
+            fadeAudio(currentModuleAudio, 1); // Sfuma il nuovo audio al massimo
+            return;
+        }
+
+        // SE È "VUOTO": Riaccende la musica di base dolcemente (se era stata spenta)
+        if (aMus && aMus.volume === 0) fadeAudio(aMus, 1);
+        if (aAmb && aAmb.volume === 0) fadeAudio(aAmb, 1);
+    }
+
+    // --- RIPRISTINO AUDIO CHIUSURA MODULO (Aggiornato) ---
     function restoreDefaultAudio() {
         if (currentModuleAudio) {
-            currentModuleAudio.pause();
-            currentModuleAudio = null;
+            // Sfuma a zero l'audio del modulo, poi lo distrugge
+            fadeAudio(currentModuleAudio, 0, () => {
+                currentModuleAudio.pause();
+                currentModuleAudio = null;
+            });
         }
-        if (FIXED_VOL_MUS > 0 && aMus && aMus.paused) aMus.play().catch(e => {});
-        if (FIXED_VOL_AMB > 0 && aAmb && aAmb.paused) aAmb.play().catch(e => {});
+        // Riaccende dolcemente la musica di base
+        if (aMus) fadeAudio(aMus, 1);
+        if (aAmb) fadeAudio(aAmb, 1);
     }
     
     init();
@@ -1094,6 +1142,7 @@
 
 </body>
 </html>
+
 
 
 
