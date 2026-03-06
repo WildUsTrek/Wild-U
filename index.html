@@ -780,9 +780,21 @@
 
     async function renderProfile(data) {
         if (isAnimatingXP || !data) return;
-        config = data.config;
-        const finalXP = data.xp; 
-        const soglie = config.soglie;
+        
+        config = data.config || {};
+        const finalXP = data.xp || 0; 
+        
+        // Cerca le soglie del tuo Excel. Se mancano, usa il salvavita.
+        const soglie = config.soglie || [
+            {nome: "Socio Novizio", punti: 0},
+            {nome: "Esploratore", punti: 100},
+            {nome: "Sentinella", punti: 300},
+            {nome: "Veterano", punti: 900},
+            {nome: "Leggenda", punti: 1800},
+            {nome: "Divinità", punti: 3600}
+        ]; 
+
+        // Rimosso il doppione! Procediamo con la grafica:
         const xpFill = document.getElementById('xp-fill');
         const profGrado = document.getElementById('prof-grado');
         const profIcon = document.getElementById('prof-main-icon');
@@ -792,6 +804,8 @@
         
         profXPText.innerText = finalXP + " XP TOTALI";
         document.getElementById('prof-key').innerText = "WILD-KEY: " + wildUserKey;
+        
+        // ... (il resto della funzione continua uguale)
         
         document.getElementById('legenda-container').innerHTML = soglie.map(s => {
             const isUnlocked = finalXP >= s.punti;
@@ -861,9 +875,10 @@
             if (winAmount > 0) {
                 const userRef = db.collection("utenti").doc(wildUserKey);
                 // "increment" è un comando speciale di Firebase che somma in modo sicuro!
-                await userRef.update({
+                // PEZZO CORRETTO (da incollare)
+                await userRef.set({
                     xp: firebase.firestore.FieldValue.increment(winAmount)
-                });
+                }, { merge: true });
                 
                 // Aggiorniamo anche la memoria locale dell'app al volo
                 if (cachedXPData) cachedXPData.xp += winAmount;
@@ -1287,6 +1302,7 @@
 
 </body>
 </html>
+
 
 
 
