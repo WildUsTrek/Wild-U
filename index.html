@@ -26,8 +26,24 @@
             font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0;
             overflow-x: hidden; -webkit-tap-highlight-color: transparent;
-            font-size: 18px;
+          font-size: 18px;
+            /* --- BLOCCO SELEZIONE TESTO --- */
+            -webkit-user-select: none;
+            user-select: none;
         }
+
+        /* --- BOTTONI GRUPPI E GUIDE --- */
+        .btn-action-group { background: #333; color: white; padding: 18px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; font-weight: 900; font-size: 16px; border: none; width: 100%; text-align: left; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
+        .btn-action-group:active { transform: scale(0.98); }
+        .btn-action-group.wa { border-left: 5px solid #25D366; }
+        .btn-action-group.tg { border-left: 5px solid #0088cc; }
+        
+        .guide-box { background: #222; padding: 18px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--w-green); }
+        .guide-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 16px; }
+        .guide-box p { margin: 0; font-size: 14px; color: #ccc; line-height: 1.5; }
+
+        /* TOAST NOTIFICA (Pop-up di successo) */
+        #toast-msg { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--w-green); color: #fff; padding: 12px 24px; border-radius: 25px; z-index: 9999; display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 14px; white-space: nowrap; }
 
         /* --- HEADER --- */
         .hero-header {
@@ -48,25 +64,15 @@
         .nav button { flex: 0 0 auto; background: #222; border: none; color: #888; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
         .nav button.active { background: var(--w-green); color: #fff; box-shadow: 0 0 12px var(--w-green); }
 
-        /* --- PULSANTI SOCIAL --- */
-        .social-box { display: flex; gap: 10px; margin-bottom: 25px; }
-        .btn-social { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; border-radius: 12px; text-decoration: none; font-weight: 900; font-size: 13px; text-transform: uppercase; transition: 0.3s; }
-        .btn-wa { background: #25D366; color: #fff; }
-        .btn-tg { background: #0088cc; color: #fff; }
-        .btn-social:active { transform: scale(0.95); }
-
         /* --- CATEGORIE RISORSE --- */
         .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; }
         .resource-item:active { background: #252525; }
         .resource-info { display: flex; align-items: center; gap: 15px; }
         .resource-icon { font-size: 24px; }
         .resource-name { font-weight: 800; color: #fff; }
-        .nav button.active { background: var(--w-green);
-            color: #fff; box-shadow: 0 0 12px var(--w-green); }
 
         /* --- CONTENUTI --- */
-        .container { padding: 20px;
-            padding-bottom: 120px; }
+        .container { padding: 20px; padding-bottom: 120px; }
         .trip-counter { background: rgba(45, 90, 39, 0.2); color: var(--w-green);
             font-size: 14px; font-weight: 900; padding: 8px 18px; border-radius: 20px; display: inline-block; margin-bottom: 20px; border: 1px solid var(--w-green); text-transform: uppercase;
         }
@@ -74,116 +80,95 @@
         .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px;
             border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative;
         }
-        .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px;
-            line-height: 1.2; }
+        .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
         
-        .filter-section { margin-bottom: 15px;
-            display: flex; flex-direction: column; gap: 8px; }
+        .filter-section { margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; }
         .filter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-        .filter-row { display: flex; gap: 10px;
-            overflow-x: auto; padding-bottom: 5px; }
-        .pill { padding: 10px 18px; background: #222;
-            border: 1px solid #333; color: #999; border-radius: 25px; font-size: 14px; font-weight: bold; white-space: nowrap;
-        }
-        .pill.active { background: var(--w-green); color: #fff; border-color: var(--w-green);
-        }
+        .filter-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+        .pill { padding: 10px 18px; background: #222; border: 1px solid #333; color: #999; border-radius: 25px; font-size: 14px; font-weight: bold; white-space: nowrap; }
+        .pill.active { background: var(--w-green); color: #fff; border-color: var(--w-green); }
         .btn-reset { background: #333; color: var(--w-sub); border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
 
-        .price-box { display: flex;
-            justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333;
-        }
-        .price-prime-wrapper { text-align: right;
-        }
-        .xp-reward-label { font-size: 12px; font-weight: 800; color: var(--w-gold); display: block; margin-bottom: 4px;
-            text-transform: uppercase; letter-spacing: 0.5px; }
-        .price-prime { background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.1));
-            padding: 10px 16px; border-radius: 12px; border: 1px solid var(--w-gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
-        }
-        .prime-val { font-size: 26px; font-weight: 900; color: var(--w-gold);
-        }
+        .price-box { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333; }
+        .price-prime-wrapper { text-align: right; }
+        .xp-reward-label { font-size: 12px; font-weight: 800; color: var(--w-gold); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .price-prime { background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.1)); padding: 10px 16px; border-radius: 12px; border: 1px solid var(--w-gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); }
+        .prime-val { font-size: 26px; font-weight: 900; color: var(--w-gold); }
         .price-standard { font-size: 16px; opacity: 0.6; font-weight: 600; }
 
-        .btn-group { display: flex; gap: 10px; margin-top: 20px;
+        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer; }
+        .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+
+        .wheel-container { position: relative; width: 220px; height: 220px; margin: 25px auto; }
+        .visual-wheel { width: 100%; height: 100%; border-radius: 50%; border: 8px solid #333; background: conic-gradient(#1a4d1a 0deg 90deg, #2d5a27 90deg 180deg, var(--w-gold) 180deg 270deg, #3e2723 270deg 360deg); position: relative; transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1); box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+        .visual-wheel::after { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; border-radius: 50%; background: linear-gradient(90deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%), linear-gradient(0deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%); }
+        .wheel-label { position: absolute; font-size: 30px; width: 40px; text-align: center; z-index: 5; }
+        .l-wild  { top: 15%; left: 65%; transform: rotate(45deg); }
+        .l-mare  { top: 65%; left: 65%; transform: rotate(135deg); }
+        .l-jolly { top: 65%; left: 15%; transform: rotate(225deg); }
+        .l-monti { top: 15%; left: 15%; transform: rotate(315deg); }
+        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid var(--w-gold); z-index: 10; }
+        .spirit-msg { font-size: 16px; font-weight: bold; color: var(--w-gold); font-style: italic; margin-top: 15px; min-height: 25px; }
+
+        .btn-destiny { position: relative; overflow: hidden; background: linear-gradient(135deg, #d4af37, #f1c40f, #d4af37) !important; color: #000 !important; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
+        .btn-destiny::after { content: ''; position: absolute; top: -50%; left: -60%; width: 20%; height: 200%; background: rgba(255, 255, 255, 0.4); transform: rotate(30deg); animation: shimmer 3s infinite; }
+        @keyframes shimmer { 0% { left: -60%; } 100% { left: 140%; } }
+
+        .xp-bar { background: #111; height: 32px; border-radius: 16px; margin: 20px 0; overflow: hidden; border: 1px solid #333; position: relative; }
+        .xp-fill { background: linear-gradient(90deg, #d4af37, #f1c40f, #fff); height: 100%; width: 0%; transition: width 3s cubic-bezier(0.1, 0, 0.3, 1); box-shadow: 0 0 15px var(--w-gold); }
+        .xp-text-inside { position: absolute; width: 100%; text-align: center; font-size: 14px; font-weight: 900; color: #fff; line-height: 32px; text-shadow: 1px 1px 2px #000; z-index: 5; }
+
+        .alert-revoca { color: #ff4444; font-weight: 900; font-size: 14px; text-transform: uppercase; margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px; background: rgba(255, 68, 68, 0.1); }
+
+       /* --- STILI PULSANTI PREMIUM --- */
+        .btn-prenota {
+            background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important;
+            color: #000 !important;
+            box-shadow: 0 0 12px rgba(212, 175, 55, 0.4);
+            border: 1px solid #f1c40f !important;
+            transition: 0.2s;
         }
-        .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px;
-            border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer;
+        .btn-prenota:hover { 
+            box-shadow: 0 0 25px rgba(212, 175, 55, 0.9); 
+            filter: brightness(1.15); 
         }
-        .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444;
-            padding: 16px; border-radius: 12px; font-size: 12px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center;
+        .btn-prenota:active { 
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.8); 
+            transform: scale(0.98); 
         }
 
-        .wheel-container { position: relative;
-            width: 220px; height: 220px; margin: 25px auto; }
-        .visual-wheel { width: 100%;
-            height: 100%; border-radius: 50%; border: 8px solid #333; background: conic-gradient(#1a4d1a 0deg 90deg, #2d5a27 90deg 180deg, var(--w-gold) 180deg 270deg, #3e2723 270deg 360deg);
-            position: relative; transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1); box-shadow: 0 0 30px rgba(0,0,0,0.8);
-        }
-        .visual-wheel::after { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; border-radius: 50%;
-            background: linear-gradient(90deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%), linear-gradient(0deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%);
-        }
-        .wheel-label { position: absolute; font-size: 30px; width: 40px; text-align: center; z-index: 5;
-        }
-        .l-wild  { top: 15%; left: 65%; transform: rotate(45deg);
-        }
-        .l-mare  { top: 65%; left: 65%; transform: rotate(135deg);
-        }
-        .l-jolly { top: 65%; left: 15%; transform: rotate(225deg);
-        }
-        .l-monti { top: 15%; left: 15%; transform: rotate(315deg);
-        }
-        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0;
-            height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid var(--w-gold); z-index: 10;
-        }
-        .spirit-msg { font-size: 16px; font-weight: bold; color: var(--w-gold); font-style: italic; margin-top: 15px;
-            min-height: 25px; }
-
-        .btn-destiny {
-            position: relative;
-            overflow: hidden;
-            background: linear-gradient(135deg, #d4af37, #f1c40f, #d4af37) !important;
-            color: #000 !important; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
-        }
-        .btn-destiny::after {
-            content: '';
-            position: absolute; top: -50%; left: -60%; width: 20%; height: 200%;
-            background: rgba(255, 255, 255, 0.4); transform: rotate(30deg);
-            animation: shimmer 3s infinite;
-        }
-        @keyframes shimmer { 0% { left: -60%;
-            } 100% { left: 140%; } }
-
-        .xp-bar { background: #111;
-            height: 32px; border-radius: 16px; margin: 20px 0; overflow: hidden; border: 1px solid #333; position: relative;
-        }
-        .xp-fill { background: linear-gradient(90deg, #d4af37, #f1c40f, #fff); height: 100%; width: 0%;
-            transition: width 3s cubic-bezier(0.1, 0, 0.3, 1); box-shadow: 0 0 15px var(--w-gold);
-        }
-        .xp-text-inside { position: absolute; width: 100%; text-align: center; font-size: 14px; font-weight: 900;
-            color: #fff; line-height: 32px; text-shadow: 1px 1px 2px #000; z-index: 5;
-        }
-
-        .alert-revoca {
-            color: #ff4444;
-            font-weight: 900; font-size: 14px; text-transform: uppercase;
-            margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px;
-            background: rgba(255, 68, 68, 0.1);
+        .btn-action-glow {
+            background: var(--w-green) !important;
+            color: #fff !important;
+            box-shadow: 0 0 12px var(--w-green) !important;
+            border: none !important;
         }
 
         .hidden { display: none; }
-        input { width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444;
-            background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; text-align: center; font-size: 18px;
+        input { 
+            width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444; 
+            background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; 
+            text-align: center; font-size: 18px;
+            /* --- RIABILITA SELEZIONE SOLO QUI --- */
+            -webkit-user-select: text;
+            user-select: text;
         }
         
-        #reward-overlay, #levelup-overlay { position: fixed;
-            top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px;
-        }
-        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center;
-            justify-content:center; z-index:3000; }
-        .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 85%;
-            text-align: center; border: 2px solid var(--w-green); }
-        .levelup-img { width: 300px; height: 220px;
-            border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold);
-        }
+        #reward-overlay, #levelup-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px; }
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center; justify-content:center; z-index:3000; }
+        .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 85%; text-align: center; border: 2px solid var(--w-green); }
+        .levelup-img { width: 300px; height: 220px; border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold); }
+
+        /* --- TENDINE ISTRUZIONI (ACCORDION) --- */
+        .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
+        .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; }
+        .guide-summary::-webkit-details-marker { display: none; } /* Nasconde la freccia di default */
+        .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; }
+        .guide-accordion[open] .acc-icon { transform: rotate(180deg); }
+        .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; }
+        .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
+
     </style>
 </head>
 <body>
@@ -197,28 +182,20 @@
     </div>
 </div>
 
-<div class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub</h1></div>
+<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub</h1></div>
 
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
-    <button id="btn-resources" onclick="show('resources')">Risorse</button>
-    <button id="btn-free" onclick="show('free')">Gratis</button>
-    <button id="btn-offers" onclick="show('offers')">Premi</button>
-    <button id="btn-photo" onclick="show('photo')">Photo</button>
+    <button id="btn-free" onclick="show('free')">Open Day</button>
     <button id="btn-wheel" onclick="show('wheel')">Ruota del destino</button>
+    <button id="btn-rewards" onclick="show('rewards')">Premi e Giochi</button>
     <button id="btn-profile" onclick="show('profile')">Profilo</button>
+    <button id="btn-groups" onclick="show('groups')">Gruppi</button>
+    <button id="btn-install" onclick="show('install')">Salva App</button>
 </div>
 
 <div class="container">
-    <div class="social-box">
-        <a href="https://chat.whatsapp.com/I9X4C4mA7lfI0BU7ljgGYw" target="_blank" class="btn-social btn-wa">
-            <span>WhatsApp</span>
-        </a>
-        <a href="https://t.me/addlist/7UKxs5ZMeRNhYzU0" target="_blank" class="btn-social btn-tg">
-            <span>Telegram</span>
-        </a>
-    </div>
-
+    
     <div id="sec-events">
         <div class="filter-header">
             <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
@@ -228,9 +205,29 @@
         <div id="event-list"></div>
     </div>
 
-    <div id="sec-resources" class="hidden">
-        <div class="trip-counter" style="border-color: var(--w-gold); color: var(--w-gold);">Archivio Esploratore</div>
+    <div id="sec-free" class="hidden">
+        <div class="card" style="border-left-color: #fff;">
+            <h3 style="color:#fff;">Wild Free & Open Day</h3>
+            <p>Scopri i prossimi eventi gratuiti e i contenuti esclusivi per la community.</p>
+        </div>
+    </div>
+
+    <div id="sec-rewards" class="hidden">
+        <div class="trip-counter" style="border-color: var(--w-gold); color: var(--w-gold);">Area Premi & Giochi</div>
         
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">🏕️</span><span class="resource-name">Costruisci il tuo rifugio</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">🎟️</span><span class="resource-name">Codici sconto vinti</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
+        <div class="resource-item">
+            <div class="resource-info"><span class="resource-icon">📸</span><span class="resource-name">Wild Wall (Photo)</span></div>
+            <span style="color:var(--w-sub)">➔</span>
+        </div>
         <div class="resource-item">
             <div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div>
             <span style="color:var(--w-sub)">➔</span>
@@ -251,51 +248,12 @@
             <div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div>
             <span style="color:var(--w-sub)">➔</span>
         </div>
-    </div>
 
-    <div id="sec-free" class="hidden">
-        <div class="card" style="border-left-color: #fff;">
-            <h3 style="color:#fff;">Wild Free</h3>
-            <p>Contenuti gratuiti e download in arrivo per la community.</p>
-        </div>
-    </div>
-
-<div id="sec-resources" class="hidden">
-        <div class="trip-counter" style="border-color: var(--w-gold); color: var(--w-gold);">Archivio Esploratore</div>
-        
-        <div class="resource-item">
-            <div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-        <div class="resource-item">
-            <div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-        <div class="resource-item">
-            <div class="resource-info"><span class="resource-icon">📖</span><span class="resource-name">Guide e Manuali</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-        <div class="resource-item">
-            <div class="resource-info"><span class="resource-icon">📍</span><span class="resource-name">GPX</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-        <div class="resource-item">
-            <div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div>
+        <div class="resource-item" onclick="document.getElementById('social-action-modal').style.display='flex'" style="margin-top: 25px; border-left-color: #0088cc;">
+            <div class="resource-info"><span class="resource-icon">🌐</span><span class="resource-name">Social Network</span></div>
             <span style="color:var(--w-sub)">➔</span>
         </div>
     </div>
-
-    <div id="sec-free" class="hidden">
-        <div class="card" style="border-left-color: #fff;">
-            <h3 style="color:#fff;">Wild Free</h3>
-            <p>Contenuti gratuiti e download in arrivo per la community.</p>
-        </div>
-    </div>
-
-
-    <div id="sec-offers" class="hidden"><div class="card"><h3>Area Premi</h3><p>Riscatti disponibili a breve.</p></div></div>
-    
-    <div id="sec-photo" class="hidden"><div class="card"><h3>Wild Wall</h3><p>Area Photo Wall in arrivo.</p></div></div>
 
     <div id="sec-wheel" class="hidden" style="text-align:center;">
         <div class="card" style="border-left-color: var(--w-gold);">
@@ -332,6 +290,86 @@
             </div>
         </div>
     </div>
+
+    <div id="sec-groups" class="hidden">
+        <div class="card">
+            <h3 style="margin-top:0;">Community Wild-U</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Unisciti ai nostri canali ufficiali per non perderti nessun aggiornamento.</p>
+            
+            <button class="btn-action-group wa" onclick="openGroupChoice('WhatsApp', WILD_ASSETS['link_whatsapp'] || 'https://chat.whatsapp.com/I9X4C4mA7lfI0BU7ljgGYw')">
+                <span>WhatsApp</span> <span>➔</span>
+            </button>
+            <button class="btn-action-group tg" onclick="openGroupChoice('Telegram', WILD_ASSETS['link_telegram'] || 'https://t.me/addlist/7UKxs5ZMeRNhYzU0')">
+                <span>Telegram</span> <span>➔</span>
+            </button>
+        </div>
+
+        <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
+            <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Scrivici direttamente su WhatsApp per qualsiasi dubbio o informazione sui nostri viaggi.</p>
+            <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
+        </div>
+    </div>
+
+    <div id="sec-install" class="hidden">
+        <div class="card">
+            <h3 style="margin-top:0;">Installa Wild-U sul telefono, OPZIONI SOFT oppure donwload?</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Porta l'avventura sempre con te senza banner. Segui le istruzioni in base al tuo dispositivo, sotto le installazioni soft.</p>
+            
+            <div id="install-instructions">
+                <details class="guide-accordion">
+                    <summary class="guide-summary" style="border-left-color: #007aff;">
+                        <div style="display: flex; flex-direction: column;">
+                            <span id="apple-title" style="font-weight: 900; font-size: 16px; color: #fff;">🍏 Apple (iPhone/iPad)</span>
+                            <span id="apple-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare su iOS</span>
+                        </div>
+                        <span class="acc-icon">▼</span>
+                    </summary>
+                    <div id="apple-instructions" class="guide-content" style="border-left: 4px solid #007aff;">
+                        Tocca l'icona Condividi e seleziona "Aggiungi alla schermata Home".
+                    </div>
+                </details>
+
+                <details class="guide-accordion">
+                    <summary class="guide-summary" style="border-left-color: #3ddc84;">
+                        <div style="display: flex; flex-direction: column;">
+                            <span id="android-title" style="font-weight: 900; font-size: 16px; color: #fff;">🤖 Android</span>
+                            <span id="android-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare su Android</span>
+                        </div>
+                        <span class="acc-icon">▼</span>
+                    </summary>
+                    <div id="android-instructions" class="guide-content" style="border-left: 4px solid #3ddc84;">
+                        Tocca i tre puntini in alto a destra e seleziona "Installa app".
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <div class="card" style="border-left-color: #3ddc84; margin-top: 25px;">
+            <h3 style="margin-top:0; color:#fff;">Le altre opzioni HARD di Download</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:15px;">
+                Scarica l'app direttamente dagli store ufficiali o tramite pacchetto di installazione APK (solo per Android).
+            </p>
+            
+            <div style="background: rgba(255, 170, 0, 0.1); border: 1px dashed #ffaa00; padding: 12px; border-radius: 10px; margin-bottom: 20px;">
+                <span style="color:#ffaa00; font-weight:900; font-size:13px;">⚠️ NOTA PER APK ANDROID:</span>
+                <p style="margin: 5px 0 0 0; font-size: 13px; color: #ccc; line-height: 1.4;">
+                    Scaricando l'app fuori dal Play Store, il telefono mostrerà un avviso di sicurezza. Tocca <b>"Scarica comunque"</b> e consenti l'installazione da <b>"Origini sconosciute"</b> se richiesto.
+                </p>
+            </div>
+
+            <button class="btn-book btn-action-glow" style="width:100%; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="document.getElementById('download-action-modal').style.display='flex'">
+                <span style="font-size:20px;">⬇️</span> SCEGLI VERSIONE
+            </button>
+        </div>
+
+        <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
+            <h3 style="margin-top:0; color:#fff;">Non riesci a installarla?</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Se hai problemi con il salvataggio dell'App sul tuo telefono, il nostro supporto è qui per guidarti passo passo.</p>
+            <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
+        </div>
+    </div>
+
 </div>
 
 <div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
@@ -341,6 +379,53 @@
     <p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p>
     <p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p>
 </div>
+
+<div id="social-action-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3>
+        
+        <button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS['link_facebook'] || 'https://www.facebook.com', '_blank')">
+            <span>Facebook</span> <span>➔</span>
+        </button>
+        <button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS['link_instagram'] || 'https://www.instagram.com', '_blank')">
+            <span>Instagram</span> <span>➔</span>
+        </button>
+        <button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS['link_youtube'] || 'https://www.youtube.com', '_blank')">
+            <span>YouTube</span> <span>➔</span>
+        </button>
+        
+        <button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button>
+    </div>
+</div>
+
+<div id="group-action-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3>
+        <button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button>
+        <button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button>
+        <button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button>
+    </div>
+</div>
+
+<div id="download-action-modal" class="modal-overlay">
+    <div class="modal-card">
+        <h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3>
+        
+        <button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')">
+            <span>📦 Pacchetto Android (.APK)</span> <span>➔</span>
+        </button>
+        <button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')">
+            <span>▶️ Google Play Store</span> <span>➔</span>
+        </button>
+        <button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')">
+            <span>🍏 Apple App Store</span> <span>➔</span>
+        </button>
+        
+        <button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button>
+    </div>
+</div>
+
+<div id="toast-msg"></div>
 
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
@@ -394,11 +479,9 @@
         if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer();
     });
 
-    // --- LOGICA MIXER AUTO-AVVIO CON DELAY 2 SECONDI ---
     function startAudioMixer() {
         if(!audioInited){
             console.log("Inizializzazione Mixer Audio...");
-            
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             gainAmb = audioCtx.createGain();
             gainMus = audioCtx.createGain();
@@ -411,15 +494,14 @@
 
             setTimeout(() => {
                 console.log("Avvio audio calibrato.");
-                
                 gainAmb.gain.value = FIXED_VOL_AMB;
                 gainMus.gain.value = FIXED_VOL_MUS;
 
                 if(aAmb.src && FIXED_VOL_AMB > 0) {
-                    aAmb.play().catch(e => console.log("Ambienza bloccata (richiede interazione):", e));
+                    aAmb.play().catch(e => console.log("Ambienza bloccata:", e));
                 }
                 if(aMus.src && FIXED_VOL_MUS > 0) {
-                    aMus.play().catch(e => console.log("Musica bloccata (richiede interazione):", e));
+                    aMus.play().catch(e => console.log("Musica bloccata:", e));
                 }
             }, 2000); 
             
@@ -429,7 +511,6 @@
         }
     }
 
-    // L'audio context richiede un'interazione utente per partire nella maggior parte dei browser
     document.addEventListener('touchstart', startAudioMixer, {once: true});
     document.addEventListener('click', startAudioMixer, {once: true});
 
@@ -439,7 +520,7 @@
         let fileId = "";
         if (url.includes("/file/d/")) fileId = url.split("/file/d/")[1].split("/")[0].split("?")[0];
         else if (url.includes("id=")) fileId = url.split("id=")[1].split("&")[0];
-        return fileId ? `https://docs.google.com/uc?export=media&id=${fileId}` : url;
+        return fileId ? "https://docs.google.com/uc?export=media&id=" + fileId : url;
     }
 
     function sanitizeVolume(val) {
@@ -451,7 +532,7 @@
     }
 
     async function init() {
-        if (window.Telegram?.WebApp) { window.Telegram.WebApp.ready(); window.Telegram.WebApp.expand(); }
+        if (window.Telegram && window.Telegram.WebApp) { window.Telegram.WebApp.ready(); window.Telegram.WebApp.expand(); }
         await fetchInitialAssets(); 
         updateProfileUI(); 
         loadData();
@@ -461,15 +542,12 @@
 
     async function fetchInitialAssets() {
         try {
-            console.log("Pescaggio Risorse e Volumi da RTP APP WILDU...");
-            const res = await fetch(`${SCRIPT_URL}?action=getAssets&nocache=${Date.now()}`);
+            const res = await fetch(SCRIPT_URL + "?action=getAssets&nocache=" + Date.now());
             const data = await res.json();
             WILD_ASSETS = data;
             
             FIXED_VOL_MUS = sanitizeVolume(data.vol_musica || data.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(data.vol_ambienza || data.val_c14);
-
-            console.log("CALIBRAZIONE: Musica vol:", FIXED_VOL_MUS, "| Ambienza vol:", FIXED_VOL_AMB);
 
             sXP.src = formatAssetLink(data.audio_xp); sXP.volume = 0.5;
             sRew.src = formatAssetLink(data.audio_reward);
@@ -482,15 +560,27 @@
 
             let linkAmbienza = data.ambienza || data.audio_ambienza;
             if(linkAmbienza) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+
+            // --- INIEZIONE ISTRUZIONI A TENDINA (APPLE E ANDROID) ---
+            if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
+            if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
+            if (WILD_ASSETS['istruzioni_apple']) document.getElementById('apple-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_apple']);
             
-        } catch(e) {
-            console.error("Errore fetch assets:", e);
-        }
+            if (WILD_ASSETS['titolo_android']) document.getElementById('android-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_android']);
+            if (WILD_ASSETS['sottotitolo_android']) document.getElementById('android-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_android']);
+            if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
+
+            // --- INIEZIONE IMMAGINE HEADER DINAMICA ---
+            if (WILD_ASSETS['img_header']) {
+                document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+            }
+
+        } catch(e) {}
     }
 
     async function loadData() {
         try {
-            const res = await fetch(`${SCRIPT_URL}?action=getEvents&nocache=${Date.now()}`);
+            const res = await fetch(SCRIPT_URL + "?action=getEvents&nocache=" + Date.now());
             allTrips = await res.json();
             buildFilters(); filterTrips();
         } catch(e) {}
@@ -498,36 +588,60 @@
 
     function buildFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
-        const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"]?.split('/')[1]))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+        const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"] ? t["Data inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
         const months = ['Tutti', ...monthsRaw];
         const regions = ['Tutte', ...new Set(allTrips.map(t => t.Regione || 'Italia'))];
-        document.getElementById('filter-months').innerHTML = months.map(m => `<div class="pill ${activeFilters.month === m ? 'active' : ''}" onclick="setFilter('month', '${m}')">${m === 'Tutti' ? 'Tutti' : new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'short'})}</div>`).join('');
-        document.getElementById('filter-regions').innerHTML = regions.map(r => `<div class="pill ${activeFilters.region === r ? 'active' : ''}" onclick="setFilter('region', '${r}')">${r}</div>`).join('');
+        
+        document.getElementById('filter-months').innerHTML = months.map(m => 
+            '<div class="pill ' + (activeFilters.month === m ? 'active' : '') + '" onclick="setFilter(\'month\', \'' + m + '\')">' + 
+            (m === 'Tutti' ? 'Tutti' : new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'short'})) + '</div>'
+        ).join('');
+        
+        document.getElementById('filter-regions').innerHTML = regions.map(r => 
+            '<div class="pill ' + (activeFilters.region === r ? 'active' : '') + '" onclick="setFilter(\'region\', \'' + r + '\')">' + r + '</div>'
+        ).join('');
     }
 
     function setFilter(type, val) { activeFilters[type] = val; buildFilters(); filterTrips(); }
     function resetFilters() { activeFilters.month = 'Tutti'; activeFilters.region = 'Tutte'; buildFilters(); filterTrips(); }
 
     function filterTrips() {
-        const filtered = allTrips.filter(t => (activeFilters.month === 'Tutti' || t["Data inizio"]?.split('/')[1] === activeFilters.month) && (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region));
-        document.getElementById('trip-count-badge').innerText = `${filtered.length} Viaggi in Vetrina`;
+        const filtered = allTrips.filter(t => (activeFilters.month === 'Tutti' || (t["Data inizio"] && t["Data inizio"].split('/')[1] === activeFilters.month)) && (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region));
+        document.getElementById('trip-count-badge').innerText = filtered.length + " Viaggi in Vetrina";
         renderTrips(filtered, 'event-list');
     }
 
     function renderTrips(trips, targetId) {
         document.getElementById(targetId).innerHTML = trips.map(ev => {
-            const dataPura = `${ev["Data inizio"]}/${ev.Anno}`;
+            const dataPura = ev["Data inizio"] + "/" + ev.Anno;
             const xpReward = Math.floor(parseInt(ev["Prezzo Prime"]) / (config.euro_punto_ratio || 5)) || 0;
-            return `<div class="card"><span class="card-title">${ev.Titolo}</span><div style="font-size:15px; color:#aaa;">📅 dal <b>${ev["Data inizio"]}/${ev.Anno}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div><div class="price-box"><div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div><div class="price-prime-wrapper"><span class="xp-reward-label">+(${xpReward}) WILD XP</span><div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div></div></div><div class="btn-group">${ev.Link ? `<a href="${ev.Link}" target="_blank" class="btn-link">Info</a>`:''}<button class="btn-book" onclick="openBook('${ev.Titolo.replace(/'/g, "\\'")}', '${dataPura}', '${ev["Prezzo Prime"]}', '${xpReward}')">Prenota</button></div></div>`;
+            const linkBtn = ev.Link ? "<a href='" + ev.Link + "' target='_blank' class='btn-link'>Info</a>" : "";
+            const safeTitle = ev.Titolo.replace(/'/g, "\\'");
+            
+            return '<div class="card">' +
+                '<span class="card-title">' + ev.Titolo + '</span>' +
+                '<div style="font-size:15px; color:#aaa;">📅 dal <b>' + dataPura + '</b> al <b>' + ev["Data fine"] + '/' + ev.Anno + '</b></div>' +
+                '<div class="price-box">' +
+                    '<div class="price-standard">Standard: ' + ev["Prezzo (€)"] + '€</div>' +
+                    '<div class="price-prime-wrapper">' +
+                        '<span class="xp-reward-label">+(' + xpReward + ') WILD XP</span>' +
+                        '<div class="price-prime"><span class="prime-val">' + ev["Prezzo Prime"] + '€</span></div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="btn-group">' +
+                    linkBtn +
+                    '<button class="btn-book btn-prenota" onclick="openBook(\'' + safeTitle + '\', \'' + dataPura + '\', \'' + ev["Prezzo Prime"] + '\', \'' + xpReward + '\')">Prenota</button>' +
+                '</div>' +
+            '</div>';
         }).join('');
     }
 
     function openBook(t, d, p, xp) {
         if (!wildUserKey) { show('profile'); return; }
-        document.getElementById('modal-desc').innerHTML = `Viaggio: <b>${t}</b><br>Data: <b>${d}</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style="color:var(--w-gold); font-weight:900;">+(${xp}) WILD XP AL RITORNO!</span>`;
+        document.getElementById('modal-desc').innerHTML = "Viaggio: <b>" + t + "</b><br>Data: <b>" + d + "</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style='color:var(--w-gold); font-weight:900;'>+(" + xp + ") WILD XP AL RITORNO!</span>";
         document.getElementById('book-modal').style.display = 'flex';
         document.getElementById('confirm-btn').onclick = () => {
-            const url = `${FORM_URL}?usp=pp_url&entry.1122751126=${encodeURIComponent(t)}&entry.931759730=${encodeURIComponent(d)}&entry.1978984745=${encodeURIComponent(p)}&entry.551102529=${encodeURIComponent(wildUserKey)}`;
+            const url = FORM_URL + "?usp=pp_url&entry.1122751126=" + encodeURIComponent(t) + "&entry.931759730=" + encodeURIComponent(d) + "&entry.1978984745=" + encodeURIComponent(p) + "&entry.551102529=" + encodeURIComponent(wildUserKey);
             window.open(url, '_blank'); document.getElementById('book-modal').style.display = 'none';
         };
     }
@@ -535,7 +649,7 @@
     async function fetchXP() {
         if (!wildUserKey || isLockedXP || isAnimatingXP) return;
         try {
-            const res = await fetch(`${SCRIPT_URL}?action=getUserStatus&userKey=${encodeURIComponent(wildUserKey)}&nocache=${Date.now()}`);
+            const res = await fetch(SCRIPT_URL + "?action=getUserStatus&userKey=" + encodeURIComponent(wildUserKey) + "&nocache=" + Date.now());
             const data = await res.json();
             cachedXPData = data; 
             if (data.xp < lastVXP) { lastVXP = data.xp; lastCelXP = data.xp; localStorage.setItem('lastViewedXP', data.xp); localStorage.setItem('lastCelebratedXP', data.xp); renderProfile(data); return; }
@@ -564,9 +678,18 @@
         const profXPText = document.getElementById('prof-xp');
         const xpPercentText = document.getElementById('xp-percentage');
         const profMissing = document.getElementById('prof-missing');
+        
         profXPText.innerText = finalXP + " XP TOTALI";
         document.getElementById('prof-key').innerText = "WILD-KEY: " + wildUserKey;
-        document.getElementById('legenda-container').innerHTML = soglie.map(s => `<div style="padding: 12px; background: #222; border-radius: 10px; display: flex; justify-content: space-between; opacity: ${finalXP >= s.punti ? '1' : '0.3'}; ${finalXP >= s.punti ? 'border: 1px solid var(--w-gold); color: var(--w-gold);' : ''}"><span>${GRADI_MAP[s.nome]?.ico || "🌿"} ${s.nome}</span> <b>${s.punti}</b></div>`).join('');
+        
+        document.getElementById('legenda-container').innerHTML = soglie.map(s => {
+            const isUnlocked = finalXP >= s.punti;
+            const opacita = isUnlocked ? '1' : '0.3';
+            const bordo = isUnlocked ? 'border: 1px solid var(--w-gold); color: var(--w-gold);' : '';
+            const icona = GRADI_MAP[s.nome] ? GRADI_MAP[s.nome].ico : "🌿";
+            return '<div style="padding: 12px; background: #222; border-radius: 10px; display: flex; justify-content: space-between; opacity: ' + opacita + '; ' + bordo + '"><span>' + icona + ' ' + s.nome + '</span> <b>' + s.punti + '</b></div>';
+        }).join('');
+
         if (finalXP > lastVXP) {
             isAnimatingXP = true; let tempXP = lastVXP;
             while (tempXP < finalXP) {
@@ -582,7 +705,7 @@
                 sXP.currentTime = 0; sXP.play().catch(() => {}); await new Promise(r => setTimeout(r, 2600)); sXP.pause();
                 if (isLevelUpStep) {
                     const nuovoGrado = nextLevel.nome;
-                    profGrado.innerText = nuovoGrado; profIcon.innerText = GRADI_MAP[nuovoGrado]?.ico || "🌿";
+                    profGrado.innerText = nuovoGrado; profIcon.innerText = GRADI_MAP[nuovoGrado] ? GRADI_MAP[nuovoGrado].ico : "🌿";
                     showLevelUpCelebration(nuovoGrado);
                     localStorage.setItem('lastG_' + wildUserKey, nuovoGrado);
                     await new Promise(r => setTimeout(r, 500)); xpFill.style.transition = 'none'; xpFill.style.width = "0%"; await new Promise(r => setTimeout(r, 100));
@@ -592,16 +715,16 @@
             lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); isAnimatingXP = false;
             const finalLevel = soglie.filter(s => s.punti <= finalXP).pop();
             const finalNext = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
-            profGrado.innerText = finalLevel.nome; profIcon.innerText = GRADI_MAP[finalLevel.nome]?.ico || "🌿";
+            profGrado.innerText = finalLevel.nome; profIcon.innerText = GRADI_MAP[finalLevel.nome] ? GRADI_MAP[finalLevel.nome].ico : "🌿";
             xpPercentText.innerText = Math.floor(((finalXP - finalLevel.punti) / (finalNext.punti - finalLevel.punti)) * 100) + "%";
-            profMissing.innerText = finalXP >= finalNext.punti ? "STATO DIVINO" : `-${finalNext.punti - finalXP} XP`;
+            profMissing.innerText = finalXP >= finalNext.punti ? "STATO DIVINO" : "-" + (finalNext.punti - finalXP) + " XP";
         } else if (!isAnimatingXP) {
             const currentLevel = soglie.filter(s => s.punti <= finalXP).pop();
             const nextLevel = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
             const p = finalXP >= nextLevel.punti ? 100 : Math.min(100, ((finalXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
             xpFill.style.width = p + "%"; xpPercentText.innerText = Math.floor(p) + "%";
-            profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome]?.ico || "🌿";
-            profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : `-${nextLevel.punti - finalXP} XP`;
+            profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome] ? GRADI_MAP[currentLevel.nome].ico : "🌿";
+            profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "-" + (nextLevel.punti - finalXP) + " XP";
             lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome);
         }
     }
@@ -615,14 +738,15 @@
         sSpin.currentTime = 0; sSpin.play();
         document.getElementById('wheel-graphics').style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
         currentWheelRotation += 2160; 
-        document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
+        document.getElementById('wheel-graphics').style.transform = "rotate(" + currentWheelRotation + "deg)";
         try {
-            const res = await fetch(`${SCRIPT_URL}?action=spinWheel&userKey=${encodeURIComponent(wildUserKey)}&win=${Math.random() > 0.8 ? 5 : 0}`);
+            const winVal = Math.random() > 0.8 ? 5 : 0;
+            const res = await fetch(SCRIPT_URL + "?action=spinWheel&userKey=" + encodeURIComponent(wildUserKey) + "&win=" + winVal);
             const status = await res.json();
             const targetA = status.winAmount > 0 ? 135 : (Math.random() > 0.5 ? 225 : 315);
             currentWheelRotation += (360 - (currentWheelRotation % 360)) + targetA;
             document.getElementById('wheel-graphics').style.transition = "transform 3s cubic-bezier(0.1, 0, 0.2, 1)";
-            document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
+            document.getElementById('wheel-graphics').style.transform = "rotate(" + currentWheelRotation + "deg)";
             setTimeout(() => {
                 sSpin.pause(); sEnd.play();
                 msg.innerText = "Verdetto spiriti del bosco:";
@@ -642,7 +766,7 @@
     }
 
     function showReward(amt) {
-        document.getElementById('reward-msg').innerText = `HAI VINTO +${amt} XP!`;
+        document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!";
         document.getElementById('reward-overlay').style.display = 'flex'; sRew.play();
         setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500);
     }
@@ -653,43 +777,126 @@
         document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img;
         document.getElementById('levelup-msg').innerText = grado;
         document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play();
-        if (window.Telegram?.WebApp) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+             window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
     }
 
     function saveIdentity() { const v = document.getElementById('user-input').value.trim(); if (v.length > 2) { localStorage.setItem('wildUserKey', v); wildUserKey = v; updateProfileUI(); } }
     function logout() { localStorage.clear(); clearInterval(backgroundSyncTimer); location.reload(); }
     function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
     
-   function show(id) {
+    function show(id) {
         currentTab = id;
-        // Array aggiornato con le nuove sezioni: resources e free
-        ['events', 'resources', 'free', 'offers', 'photo', 'wheel', 'profile'].forEach(s => { 
-            const el = document.getElementById('sec-' + s); if(el) el.classList.add('hidden');
-            const btn = document.getElementById('btn-' + s); if(btn) btn.classList.remove('active');
+        const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
+        sections.forEach(s => { 
+            const el = document.getElementById('sec-' + s); 
+            const btn = document.getElementById('btn-' + s);
+            if (el) el.classList.add('hidden');
+            if (btn) btn.classList.remove('active');
         });
-        document.getElementById('sec-' + id).classList.remove('hidden');
-        document.getElementById('btn-' + id).classList.add('active');
-        
-        // Logica profilo originale
+
+        const targetEl = document.getElementById('sec-' + id);
+        const targetBtn = document.getElementById('btn-' + id);
+        if (targetEl) targetEl.classList.remove('hidden');
+        if (targetBtn) targetBtn.classList.add('active');
+
         if (id === 'profile') { 
-            sXP.load(); 
-            if (cachedXPData) renderProfile(cachedXPData); 
-            else if (wildUserKey) fetchXP(); 
+            if (typeof sXP !== 'undefined') sXP.load(); 
+            if (cachedXPData) {
+                renderProfile(cachedXPData); 
+            } else if (wildUserKey) {
+                fetchXP(); 
+            }
         }
     }
     
-    // Registrazione Service Worker (PWA)
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch(err => {
-                console.warn('SW error:', err);
-            });
+            navigator.serviceWorker.register('sw.js').catch(err => {});
         });
+    }
+
+    // --- LOGICA GRUPPI E COPIA LINK ---
+    let currentGroupLink = '';
+
+    function openGroupChoice(name, link) {
+        currentGroupLink = link;
+        document.getElementById('group-modal-title').innerText = name;
+        document.getElementById('group-action-modal').style.display = 'flex';
+        
+        document.getElementById('btn-go-group').onclick = function() {
+            window.open(currentGroupLink, '_blank');
+            document.getElementById('group-action-modal').style.display = 'none';
+        };
+        
+        document.getElementById('btn-copy-group').onclick = function() {
+            copyToClipboard(currentGroupLink);
+        };
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(function() {
+                showToast("Link copiato! 🚀 Pronto per essere incollato.");
+            }).catch(function() {
+                fallbackCopyText(text);
+            });
+        } else {
+            fallbackCopyText(text);
+        }
+        document.getElementById('group-action-modal').style.display = 'none';
+    }
+
+    function fallbackCopyText(text) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed"; 
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            var successful = document.execCommand('copy');
+            if(successful) showToast("Link copiato! 🚀 Pronto per essere incollato.");
+            else showToast("Errore: copia manuale richiesta.");
+        } catch (err) {
+            showToast("Errore durante la copia.");
+        }
+        document.body.removeChild(textArea);
+    }
+
+    function showToast(msg) {
+        var t = document.getElementById('toast-msg');
+        t.innerText = msg;
+        t.style.display = 'block';
+        setTimeout(function(){ t.style.display = 'none'; }, 3500);
+    }
+
+    // --- LOGICA INTELLIGENTE PER I LINK DEGLI STORE ---
+    function handleStoreLink(chiaveFoglio) {
+        document.getElementById('download-action-modal').style.display = 'none';
+        let valore = WILD_ASSETS[chiaveFoglio];
+        
+        if (!valore || valore.trim() === "") {
+            showToast("Versione non ancora disponibile.");
+        } else if (valore.startsWith("http")) {
+            window.open(valore, '_blank');
+        } else {
+            showToast(valore);
+        }
     }
 
     init();
 
-    init();
+    // Traduttore per "A capo" e "Grassetto" dal foglio Google
+    function parseSheetText(text) {
+        if (!text) return "";
+        return String(text)
+            .replace(/\n/g, '<br>') // Converte gli a capo
+            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // Converte **testo** in grassetto
+    }
+
 </script>
+
 </body>
 </html>
