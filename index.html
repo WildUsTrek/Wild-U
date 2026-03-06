@@ -737,18 +737,41 @@
     async function fetchXP() {
         if (!wildUserKey || isLockedXP || isAnimatingXP) return;
         try {
-            const res = await fetch(SCRIPT_URL + "?action=getUserStatus&userKey=" + encodeURIComponent(wildUserKey) + "&nocache=" + Date.now());
-            const data = await res.json();
-            cachedXPData = data; 
-            if (data.xp < lastVXP) { lastVXP = data.xp; lastCelXP = data.xp; localStorage.setItem('lastViewedXP', data.xp); localStorage.setItem('lastCelebratedXP', data.xp); renderProfile(data); return; }
-            if (data.xp > lastCelXP && lastCelXP > 0) {
-                let delta = data.xp - lastCelXP;
-                lastCelXP = data.xp;
+            // --- LETTURA ISTANTANEA DA FIREBASE ---
+            const docSnap = await db.collection("utenti").doc(wildUserKey).get();
+            if (!docSnap.exists) return; // Utente non trovato
+            
+            const data = docSnap.data();
+            
+            // Impacchettiamo i dati unendo gli XP di Firebase con le configurazioni di base
+            const userData = {
+                xp: data.xp || 0,
+                grado: data.grado || "Socio Novizio",
+                config: config // La config con le soglie (caricata da Google Sheets all'avvio)
+            };
+            
+            cachedXPData = userData; 
+            
+            // --- LOGICA AGGIORNAMENTO BARRA E ANIMAZIONI ---
+            if (userData.xp < lastVXP) { 
+                lastVXP = userData.xp; lastCelXP = userData.xp; 
+                localStorage.setItem('lastViewedXP', userData.xp); 
+                localStorage.setItem('lastCelebratedXP', userData.xp); 
+                renderProfile(userData); 
+                return; 
+            }
+            if (userData.xp > lastCelXP && lastCelXP > 0) {
+                let delta = userData.xp - lastCelXP;
+                lastCelXP = userData.xp;
                 localStorage.setItem('lastCelebratedXP', lastCelXP);
                 if (!isPageActive) xpCelebrationBuffer += delta;
-                else { showReward(delta); if (currentTab === 'profile') renderProfile(data); }
-            } else if (currentTab === 'profile') renderProfile(data);
-        } catch(e) {}
+                else { showReward(delta); if (currentTab === 'profile') renderProfile(userData); }
+            } else if (currentTab === 'profile') {
+                renderProfile(userData);
+            }
+        } catch(e) {
+            console.error("Errore Lettura XP da Firebase:", e);
+        }
     }
 
     function processXPBuffer() {
@@ -817,40 +840,67 @@
         }
     }
 
-    async function spinWheel() {
+   async function spinWheel() {
         if (!wildUserKey) { show('profile'); return; }
         const btn = document.getElementById('wheel-button');
         const msg = document.getElementById('spirit-msg');
         btn.disabled = true; document.getElementById('wheel-result-container').innerHTML = "";
         msg.innerText = "Gli spiriti del bosco stanno decidendo...";
         sSpin.currentTime = 0; sSpin.play();
+        
         document.getElementById('wheel-graphics').style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
         currentWheelRotation += 2160; 
         document.getElementById('wheel-graphics').style.transform = "rotate(" + currentWheelRotation + "deg)";
+        
         try {
-            const winVal = Math.random() > 0.8 ? 5 : 0;
-            const res = await fetch(SCRIPT_URL + "?action=spinWheel&userKey=" + encodeURIComponent(wildUserKey) + "&win=" + winVal);
-            const status = await res.json();
-            const targetA = status.winAmount > 0 ? 135 : (Math.random() > 0.5 ? 225 : 315);
+            // --- LOGICA VINCITA LOCALE ---
+            // 20% di probabilità di vincere 5 XP (Puoi cambiare i valori quando vuoi)
+            const winAmount = Math.random() > 0.8 ? 5 : 0;
+            
+            // --- SALVATAGGIO SU FIREBASE (Niente più chiamate lente a Google Sheets!) ---
+            if (winAmount > 0) {
+                const userRef = db.collection("utenti").doc(wildUserKey);
+                // "increment" è un comando speciale di Firebase che somma in modo sicuro!
+                await userRef.update({
+                    xp: firebase.firestore.FieldValue.increment(winAmount)
+                });
+                
+                // Aggiorniamo anche la memoria locale dell'app al volo
+                if (cachedXPData) cachedXPData.xp += winAmount;
+            }
+
+            // Calcolo dell'angolo visivo per far fermare la ruota nel punto giusto
+            const targetA = winAmount > 0 ? 135 : (Math.random() > 0.5 ? 225 : 315);
             currentWheelRotation += (360 - (currentWheelRotation % 360)) + targetA;
             document.getElementById('wheel-graphics').style.transition = "transform 3s cubic-bezier(0.1, 0, 0.2, 1)";
             document.getElementById('wheel-graphics').style.transform = "rotate(" + currentWheelRotation + "deg)";
+            
             setTimeout(() => {
                 sSpin.pause(); sEnd.play();
                 msg.innerText = "Verdetto spiriti del bosco:";
-                if (status.winAmount > 0) {
-                    isLockedXP = true; lastCelXP += status.winAmount;
+                if (winAmount > 0) {
+                    isLockedXP = true; 
+                    lastCelXP += winAmount;
                     localStorage.setItem('lastCelebratedXP', lastCelXP);
-                    showReward(status.winAmount); fetchXP();
+                    showReward(winAmount); 
+                    
+                    // Aggiorniamo la grafica del profilo con i nuovi dati
+                    if (cachedXPData) renderProfile(cachedXPData); 
+                    
                     setTimeout(() => isLockedXP = false, 8000);
                 } else {
+                    // Sconfitta: mostra un viaggio casuale
                     const randT = allTrips[Math.floor(Math.random() * allTrips.length)];
                     const matchingDates = allTrips.filter(t => t.Titolo === randT.Titolo);
                     renderTrips(matchingDates, 'wheel-result-container');
                 }
                 btn.disabled = false;
             }, 3000);
-        } catch(e) { btn.disabled = false; sSpin.pause(); }
+        } catch(e) { 
+            console.error("Errore Ruota:", e);
+            btn.disabled = false; sSpin.pause(); 
+            msg.innerText = "Gli spiriti sono confusi. Riprova."; 
+        }
     }
 
     function showReward(amt) {
@@ -1237,5 +1287,6 @@
 
 </body>
 </html>
+
 
 
