@@ -975,8 +975,8 @@
                 glassPane.style.left = '0';
                 glassPane.style.width = '100%';
                 glassPane.style.height = '100%';
-                glassPane.style.zIndex = '9999'; 
-                glassPane.style.backgroundColor = 'rgba(18, 18, 18, 0.4)'; // Scurisce leggermente la pagina
+                glassPane.style.zIndex = '50'; 
+                glassPane.style.backgroundColor = 'rgba(18, 18, 18, 0.7)';
                 
                 glassPane.onclick = function(e) {
                     e.stopPropagation(); // Ferma il click
@@ -1089,38 +1089,22 @@
     }
 
     // --- RIPRISTINO AUDIO CHIUSURA MODULO ---
-    function restoreDefaultAudio() {
+   function restoreDefaultAudio() {
         try {
             if (currentModuleAudio) {
                 fadeAudio(currentModuleAudio, 0, () => {
                     currentModuleAudio.pause();
-                    currentModuleAudio.src = "";
                     currentModuleAudio = null;
                 });
             }
+            // Forza il ripristino delle tracce base
             if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, 1);
             if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, 1);
-        } catch(e) {}
+        } catch(e) { console.log("Errore ripristino audio"); }
     }
 
-    // --- NAVIGAZIONE SICURA (NO DOPPIO CLICK) ---
     function show(id) {
-        try {
-            // 1. Chiude i moduli aperti in totale sicurezza
-            const modContainer = document.getElementById('module-container');
-            if (modContainer && !modContainer.classList.contains('hidden')) {
-                modContainer.innerHTML = '';
-                modContainer.classList.add('hidden');
-                if(typeof restoreDefaultAudio === "function") restoreDefaultAudio();
-                
-                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
-                    window.Telegram.WebApp.BackButton.hide();
-                    window.Telegram.WebApp.BackButton.offClick(closeModule);
-                }
-            }
-        } catch(e) {}
-
-        // 2. Normale navigazione visiva
+        // --- 1. CAMBIO TAB IMMEDIATO (Risolve il problema del doppio click) ---
         currentTab = id;
         const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
         sections.forEach(s => { 
@@ -1135,8 +1119,25 @@
         if (targetEl) targetEl.classList.remove('hidden');
         if (targetBtn) targetBtn.classList.add('active');
 
+        // --- 2. RISVEGLIO AUDIO (Sempre attivo al cambio tab) ---
+        if (aMus && FIXED_VOL_MUS > 0 && aMus.volume < 0.1) fadeAudio(aMus, 1);
+        if (aAmb && FIXED_VOL_AMB > 0 && aAmb.volume < 0.1) fadeAudio(aAmb, 1);
+
+        // --- 3. PULIZIA MODULI (Se presenti) ---
+        const modContainer = document.getElementById('module-container');
+        if (modContainer && !modContainer.classList.contains('hidden')) {
+            modContainer.innerHTML = '';
+            modContainer.classList.add('hidden');
+            if (currentModuleAudio) { 
+                currentModuleAudio.pause(); 
+                currentModuleAudio = null; 
+            }
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
+                window.Telegram.WebApp.BackButton.hide();
+            }
+        }
+
         if (id === 'profile') { 
-            if (typeof sXP !== 'undefined') sXP.load(); 
             if (cachedXPData) renderProfile(cachedXPData); 
             else if (wildUserKey) fetchXP(); 
         }
@@ -1156,6 +1157,7 @@
 
 </body>
 </html>
+
 
 
 
