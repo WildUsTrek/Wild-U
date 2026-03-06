@@ -73,8 +73,22 @@
 
         /* --- CONTENUTI --- */
         .container { padding: 20px; padding-bottom: 120px; }
-        .trip-counter { background: rgba(45, 90, 39, 0.2); color: var(--w-green);
-            font-size: 14px; font-weight: 900; padding: 8px 18px; border-radius: 20px; display: inline-block; margin-bottom: 20px; border: 1px solid var(--w-green); text-transform: uppercase;
+
+        /* HEADER FILTRI: Allinea Reset e Contatore a destra */
+        .filter-header { 
+            display: flex; 
+            justify-content: flex-end; 
+            align-items: center; 
+            gap: 12px; 
+            margin-bottom: 15px; 
+        }
+
+        /* TESTO CONTATORE: Semplice testo verde, non sembra più un tasto */
+        .trip-counter { 
+            color: var(--w-green); 
+            font-size: 14px; 
+            font-weight: 900; 
+            text-transform: uppercase;
         }
 
         .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px;
@@ -82,11 +96,16 @@
         }
         .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
         
-        .filter-section { margin-bottom: 15px; display: flex; flex-direction: column; gap: 8px; }
-        .filter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-        .filter-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
-        .pill { padding: 10px 18px; background: #222; border: 1px solid #333; color: #999; border-radius: 25px; font-size: 14px; font-weight: bold; white-space: nowrap; }
-        .pill.active { background: var(--w-green); color: #fff; border-color: var(--w-green); }
+        /* NUOVI FILTRI A TENDINA STILIZZATI */
+        .filter-section-dropdowns { display: flex; gap: 10px; margin-bottom: 20px; }
+        .pill-select {
+            flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px;
+            font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>');
+            background-repeat: no-repeat; background-position: right 15px center; background-size: 12px;
+        }
+        .pill-select:focus { border-color: var(--w-green); box-shadow: 0 0 10px var(--w-green); }
+
         .btn-reset { background: #333; color: var(--w-sub); border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
 
         .price-box { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333; }
@@ -121,7 +140,7 @@
 
         .alert-revoca { color: #ff4444; font-weight: 900; font-size: 14px; text-transform: uppercase; margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px; background: rgba(255, 68, 68, 0.1); }
 
-       /* --- STILI PULSANTI PREMIUM --- */
+        /* --- STILI PULSANTI PREMIUM --- */
         .btn-prenota {
             background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important;
             color: #000 !important;
@@ -198,10 +217,15 @@
     
     <div id="sec-events">
         <div class="filter-header">
+            <button class="btn-reset" onclick="resetFilters()" style="margin:0;">Reset Filtri</button>
             <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
-            <button class="btn-reset" onclick="resetFilters()">Reset Filtri</button>
         </div>
-        <div class="filter-section"><div id="filter-months" class="filter-row"></div><div id="filter-regions" class="filter-row"></div></div>
+        
+        <div class="filter-section-dropdowns">
+            <select id="filter-months-select" class="pill-select" onchange="setFilter('month', this.value)"></select>
+            <select id="filter-regions-select" class="pill-select" onchange="setFilter('region', this.value)"></select>
+        </div>
+
         <div id="event-list"></div>
     </div>
 
@@ -586,24 +610,42 @@
         } catch(e) {}
     }
 
+   // --- GESTIONE FILTRI (LOGICA TENDINE E RESET) ---
     function buildFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
+        
+        // Popolamento Mesi
         const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"] ? t["Data inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
-        const months = ['Tutti', ...monthsRaw];
-        const regions = ['Tutte', ...new Set(allTrips.map(t => t.Regione || 'Italia'))];
-        
-        document.getElementById('filter-months').innerHTML = months.map(m => 
-            '<div class="pill ' + (activeFilters.month === m ? 'active' : '') + '" onclick="setFilter(\'month\', \'' + m + '\')">' + 
-            (m === 'Tutti' ? 'Tutti' : new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'short'})) + '</div>'
-        ).join('');
-        
-        document.getElementById('filter-regions').innerHTML = regions.map(r => 
-            '<div class="pill ' + (activeFilters.region === r ? 'active' : '') + '" onclick="setFilter(\'region\', \'' + r + '\')">' + r + '</div>'
-        ).join('');
+        const monthsSelect = document.getElementById('filter-months-select');
+        if (monthsSelect) {
+            monthsSelect.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + 
+                monthsRaw.map(m => `<option value="${m}" ${activeFilters.month === m ? 'selected' : ''}>${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
+        }
+
+        // Popolamento Regioni
+        const regionsRaw = [...new Set(allTrips.map(t => t.Regione || 'Italia'))].sort();
+        const regionsSelect = document.getElementById('filter-regions-select');
+        if (regionsSelect) {
+            regionsSelect.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + 
+                regionsRaw.map(r => `<option value="${r}" ${activeFilters.region === r ? 'selected' : ''}>${r}</option>`).join('');
+        }
     }
 
-    function setFilter(type, val) { activeFilters[type] = val; buildFilters(); filterTrips(); }
-    function resetFilters() { activeFilters.month = 'Tutti'; activeFilters.region = 'Tutte'; buildFilters(); filterTrips(); }
+    function setFilter(type, val) { 
+        activeFilters[type] = val; 
+        filterTrips(); 
+    }
+
+    function resetFilters() { 
+        activeFilters.month = 'Tutti'; 
+        activeFilters.region = 'Tutte'; 
+        // Riporta i selettori visivi allo stato iniziale
+        const mSel = document.getElementById('filter-months-select');
+        const rSel = document.getElementById('filter-regions-select');
+        if(mSel) mSel.value = 'Tutti';
+        if(rSel) rSel.value = 'Tutte';
+        filterTrips(); 
+    }
 
     function filterTrips() {
         const filtered = allTrips.filter(t => (activeFilters.month === 'Tutti' || (t["Data inizio"] && t["Data inizio"].split('/')[1] === activeFilters.month)) && (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region));
