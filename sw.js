@@ -1,14 +1,23 @@
-const CACHE_NAME = 'wildu-cache-v1';
+const CACHE_NAME = 'wildu-cache-v2';
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', (e) => {
     self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-    event.waitUntil(clients.claim());
+self.addEventListener('activate', (e) => {
+    e.waitUntil(clients.claim());
 });
 
-self.addEventListener('fetch', (event) => {
-    // Pass-through semplice per permettere all'app di parlare con Google Script
-    event.respondWith(fetch(event.request));
+self.addEventListener('fetch', (e) => {
+    // Lascia passare il login di Google e il database Firebase senza intromettersi!
+    if (e.request.url.includes('firestore.googleapis.com') || 
+        e.request.url.includes('identitytoolkit') || 
+        e.request.url.includes('google.com') ||
+        e.request.method !== 'GET') {
+        return; 
+    }
+
+    e.respondWith(
+        fetch(e.request).catch(() => caches.match(e.request))
+    );
 });
