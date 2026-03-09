@@ -58,6 +58,13 @@
     </div>
 </div>
 
+<div id="iframe-modal" class="modal-overlay" style="z-index:9000; flex-direction:column; padding:15px; display:none;">
+    <div style="width:100%; max-width:600px; text-align:right; margin-bottom:10px;">
+        <button onclick="document.getElementById('iframe-modal').style.display='none'; location.reload();" class="btn-book" style="padding:10px 20px; font-size:14px;">CHIUDI E AGGIORNA 🔄</button>
+    </div>
+    <iframe id="booking-iframe" style="width:100%; max-width:600px; height:80vh; border-radius:15px; background:#fff; border:none;"></iframe>
+</div>
+    
 <div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub</h1></div>
 
 <div class="nav">
@@ -611,7 +618,10 @@
         document.getElementById('book-modal').style.display = 'flex';
         document.getElementById('confirm-btn').onclick = () => {
             const url = FORM_URL + "?usp=pp_url&entry.1122751126=" + encodeURIComponent(t) + "&entry.931759730=" + encodeURIComponent(d) + "&entry.1978984745=" + encodeURIComponent(p) + "&entry.551102529=" + encodeURIComponent(wildUserKey);
-            window.open(url, '_blank'); document.getElementById('book-modal').style.display = 'none';
+            document.getElementById('book-modal').style.display = 'none';
+            // Invece di aprire una nuova scheda, carichiamo il link nell'Iframe
+            document.getElementById('booking-iframe').src = url;
+            document.getElementById('iframe-modal').style.display = 'flex';
         };
     }
 
@@ -771,4 +781,5 @@
 </script>
 </body>
 </html>
+
 
