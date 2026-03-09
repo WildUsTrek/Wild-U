@@ -4,38 +4,31 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wild-U Hub - Final Audio Fix 🌲</title>
+    <title>Wild-U Hub - Master Edition 🌲</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#121212">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Wild-U">
     <link rel="apple-touch-icon" href="icon-192.png">
+    
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
     <style>
         :root {
-            --w-green: #2d5a27;
-            --w-dark: #121212;
-            --w-card: #1e1e1e;
-            --w-gold: #d4af37;
-            --w-text: #e0e0e0;
-            --w-sub: #a0a0a0;
+            --w-green: #2d5a27; --w-dark: #121212; --w-card: #1e1e1e;
+            --w-gold: #d4af37; --w-text: #e0e0e0; --w-sub: #a0a0a0;
         }
 
         body {
             font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0;
-            overflow-x: hidden; -webkit-tap-highlight-color: transparent;
-          font-size: 18px;
-            /* --- BLOCCO SELEZIONE TESTO --- */
-            -webkit-user-select: none;
-            user-select: none;
+            overflow-x: hidden; -webkit-tap-highlight-color: transparent; font-size: 18px;
+            -webkit-user-select: none; user-select: none;
         }
 
-        /* --- BOTTONI GRUPPI E GUIDE --- */
         .btn-action-group { background: #333; color: white; padding: 18px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; font-weight: 900; font-size: 16px; border: none; width: 100%; text-align: left; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
         .btn-action-group:active { transform: scale(0.98); }
         .btn-action-group.wa { border-left: 5px solid #25D366; }
@@ -45,68 +38,33 @@
         .guide-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 16px; }
         .guide-box p { margin: 0; font-size: 14px; color: #ccc; line-height: 1.5; }
 
-        /* TOAST NOTIFICA (Pop-up di successo) */
         #toast-msg { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--w-green); color: #fff; padding: 12px 24px; border-radius: 25px; z-index: 9999; display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 14px; white-space: nowrap; }
 
-        /* --- HEADER --- */
-        .hero-header {
-            width: 100%; height: 160px;
-            background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000');
-            background-size: cover; background-position: center; position: relative;
-            border-bottom: 3px solid var(--w-green);
-        }
-        .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); }
-        .hero-title { position: absolute; top: 40%;
-            width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9);
-            z-index: 2; }
+        .hero-header { width: 100%; height: 160px; background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000'); background-size: cover; background-position: center; position: relative; border-bottom: 3px solid var(--w-green); }
+        .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); }
+        .hero-title { position: absolute; top: 40%; width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); z-index: 2; }
 
-        /* --- NAVIGAZIONE SCROLLABLE --- */
         .nav { display: flex; gap: 8px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .nav::-webkit-scrollbar { display: none; } /* Nasconde scrollbar */
+        .nav::-webkit-scrollbar { display: none; }
         .nav button { flex: 0 0 auto; background: #222; border: none; color: #888; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
         .nav button.active { background: var(--w-green); color: #fff; box-shadow: 0 0 12px var(--w-green); }
 
-        /* --- CATEGORIE RISORSE --- */
         .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; }
         .resource-item:active { background: #252525; }
         .resource-info { display: flex; align-items: center; gap: 15px; }
         .resource-icon { font-size: 24px; }
         .resource-name { font-weight: 800; color: #fff; }
 
-        /* --- CONTENUTI --- */
         .container { padding: 20px; padding-bottom: 120px; }
 
-        /* HEADER FILTRI: Allinea Reset e Contatore a destra */
-        .filter-header { 
-            display: flex; 
-            justify-content: flex-end; 
-            align-items: center; 
-            gap: 12px; 
-            margin-bottom: 15px; 
-        }
+        .filter-header { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 15px; }
+        .trip-counter { color: var(--w-green); font-size: 14px; font-weight: 900; text-transform: uppercase; }
 
-        /* TESTO CONTATORE: Semplice testo verde, non sembra più un tasto */
-        .trip-counter { 
-            color: var(--w-green); 
-            font-size: 14px; 
-            font-weight: 900; 
-            text-transform: uppercase;
-        }
-
-        .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px;
-            border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative;
-        }
+        .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px; border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative; }
         .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
         
-        /* NUOVI FILTRI A TENDINA STILIZZATI */
         .filter-section-dropdowns { display: flex; gap: 10px; margin-bottom: 20px; }
-        .pill-select {
-            flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px;
-            font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s;
-            background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>');
-            background-repeat: no-repeat; background-position: right 15px center; background-size: 12px;
-        }
+        .pill-select { flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px; font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat: no-repeat; background-position: right 15px center; background-size: 12px; }
         .pill-select:focus { border-color: var(--w-green); box-shadow: 0 0 10px var(--w-green); }
 
         .btn-reset { background: #333; color: var(--w-sub); border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
@@ -121,6 +79,14 @@
         .btn-group { display: flex; gap: 10px; margin-top: 20px; }
         .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer; }
         .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+
+        .btn-prenota { background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important; color: #000 !important; box-shadow: 0 0 12px rgba(212, 175, 55, 0.4); border: 1px solid #f1c40f !important; transition: 0.2s; }
+        .btn-prenota:hover { box-shadow: 0 0 25px rgba(212, 175, 55, 0.9); filter: brightness(1.15); }
+        .btn-prenota:active { box-shadow: 0 0 20px rgba(212, 175, 55, 0.8); transform: scale(0.98); }
+        .btn-action-glow { background: var(--w-green) !important; color: #fff !important; box-shadow: 0 0 12px var(--w-green) !important; border: none !important; }
+        
+        /* NUOVO: BOTTONE DISABILITATO */
+        .btn-disabled { background: #444 !important; color: #888 !important; box-shadow: none !important; border: 1px solid #555 !important; cursor: not-allowed; }
 
         .wheel-container { position: relative; width: 220px; height: 220px; margin: 25px auto; }
         .visual-wheel { width: 100%; height: 100%; border-radius: 50%; border: 8px solid #333; background: conic-gradient(#1a4d1a 0deg 90deg, #2d5a27 90deg 180deg, var(--w-gold) 180deg 270deg, #3e2723 270deg 360deg); position: relative; transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1); box-shadow: 0 0 30px rgba(0,0,0,0.8); }
@@ -143,54 +109,21 @@
 
         .alert-revoca { color: #ff4444; font-weight: 900; font-size: 14px; text-transform: uppercase; margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px; background: rgba(255, 68, 68, 0.1); }
 
-        /* --- STILI PULSANTI PREMIUM --- */
-        .btn-prenota {
-            background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important;
-            color: #000 !important;
-            box-shadow: 0 0 12px rgba(212, 175, 55, 0.4);
-            border: 1px solid #f1c40f !important;
-            transition: 0.2s;
-        }
-        .btn-prenota:hover { 
-            box-shadow: 0 0 25px rgba(212, 175, 55, 0.9); 
-            filter: brightness(1.15); 
-        }
-        .btn-prenota:active { 
-            box-shadow: 0 0 20px rgba(212, 175, 55, 0.8); 
-            transform: scale(0.98); 
-        }
-
-        .btn-action-glow {
-            background: var(--w-green) !important;
-            color: #fff !important;
-            box-shadow: 0 0 12px var(--w-green) !important;
-            border: none !important;
-        }
-
         .hidden { display: none; }
-        input { 
-            width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444; 
-            background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; 
-            text-align: center; font-size: 18px;
-            /* --- RIABILITA SELEZIONE SOLO QUI --- */
-            -webkit-user-select: text;
-            user-select: text;
-        }
+        input { width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444; background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; text-align: center; font-size: 18px; -webkit-user-select: text; user-select: text; }
         
         #reward-overlay, #levelup-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px; }
         .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center; justify-content:center; z-index:3000; }
         .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 85%; text-align: center; border: 2px solid var(--w-green); }
         .levelup-img { width: 300px; height: 220px; border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold); }
 
-        /* --- TENDINE ISTRUZIONI (ACCORDION) --- */
         .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
         .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; }
-        .guide-summary::-webkit-details-marker { display: none; } /* Nasconde la freccia di default */
+        .guide-summary::-webkit-details-marker { display: none; } 
         .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; }
         .guide-accordion[open] .acc-icon { transform: rotate(180deg); }
         .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; }
         .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
-
     </style>
 </head>
 <body>
@@ -216,7 +149,8 @@
     <button id="btn-install" onclick="show('install')">Salva App</button>
 </div>
 
-<div class="container">          <div id="module-container" class="hidden"></div>
+<div class="container">          
+    <div id="module-container" class="hidden"></div>
     
     <div id="sec-events">
         <div class="filter-header">
@@ -237,62 +171,24 @@
             <button class="btn-reset" onclick="/* Da fare */" style="margin:0;">Reset Filtri</button>
             <div id="openday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Open Day...</div>
         </div>
-        
         <div class="filter-section-dropdowns">
             <select id="filter-od-months-select" class="pill-select"></select>
             <select id="filter-od-regions-select" class="pill-select"></select>
         </div>
-
         <div id="openday-list"></div>
     </div>
 
    <div id="sec-rewards" class="hidden">
         <div class="trip-counter" style="border-color: var(--w-gold); color: var(--w-gold);">Area Premi & Giochi</div>
-        
-        <div class="resource-item" onclick="openModule('rifugio.html', WILD_ASSETS['audio_rifugio'], true, WILD_ASSETS['grado_rifugio'])">
-            <div class="resource-info"><span class="resource-icon">🏕️</span><span class="resource-name">Costruisci il tuo rifugio</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('sconti.html', WILD_ASSETS['audio_sconti'], false, WILD_ASSETS['grado_sconti'])">
-            <div class="resource-info"><span class="resource-icon">🎟️</span><span class="resource-name">Codici sconto vinti</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('wildwall.html', WILD_ASSETS['audio_wildwall'], false, WILD_ASSETS['grado_wildwall'])">
-            <div class="resource-info"><span class="resource-icon">📸</span><span class="resource-name">Wild Wall (Photo)</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('radio.html', WILD_ASSETS['audio_radio'], false, WILD_ASSETS['grado_radio'])">
-            <div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('mappa.html', WILD_ASSETS['audio_mappa'], false, WILD_ASSETS['grado_mappa'])">
-            <div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('guide.html', WILD_ASSETS['audio_guide'], false, WILD_ASSETS['grado_guide'])">
-            <div class="resource-info"><span class="resource-icon">📖</span><span class="resource-name">Guide e Manuali</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('gpx.html', WILD_ASSETS['audio_gpx'], false, WILD_ASSETS['grado_gpx'])">
-            <div class="resource-info"><span class="resource-icon">📍</span><span class="resource-name">GPX</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="openModule('libri.html', WILD_ASSETS['audio_libri'], false, WILD_ASSETS['grado_libri'])">
-            <div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
-
-        <div class="resource-item" onclick="document.getElementById('social-action-modal').style.display='flex'" style="margin-top: 25px; border-left-color: #0088cc;">
-            <div class="resource-info"><span class="resource-icon">🌐</span><span class="resource-name">Social Network</span></div>
-            <span style="color:var(--w-sub)">➔</span>
-        </div>
+        <div class="resource-item" onclick="openModule('rifugio.html', WILD_ASSETS['audio_rifugio'], true, WILD_ASSETS['grado_rifugio'])"><div class="resource-info"><span class="resource-icon">🏕️</span><span class="resource-name">Costruisci il tuo rifugio</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('sconti.html', WILD_ASSETS['audio_sconti'], false, WILD_ASSETS['grado_sconti'])"><div class="resource-info"><span class="resource-icon">🎟️</span><span class="resource-name">Codici sconto vinti</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('wildwall.html', WILD_ASSETS['audio_wildwall'], false, WILD_ASSETS['grado_wildwall'])"><div class="resource-info"><span class="resource-icon">📸</span><span class="resource-name">Wild Wall (Photo)</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('radio.html', WILD_ASSETS['audio_radio'], false, WILD_ASSETS['grado_radio'])"><div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('mappa.html', WILD_ASSETS['audio_mappa'], false, WILD_ASSETS['grado_mappa'])"><div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('guide.html', WILD_ASSETS['audio_guide'], false, WILD_ASSETS['grado_guide'])"><div class="resource-info"><span class="resource-icon">📖</span><span class="resource-name">Guide e Manuali</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('gpx.html', WILD_ASSETS['audio_gpx'], false, WILD_ASSETS['grado_gpx'])"><div class="resource-info"><span class="resource-icon">📍</span><span class="resource-name">GPX</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="openModule('libri.html', WILD_ASSETS['audio_libri'], false, WILD_ASSETS['grado_libri'])"><div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div><span style="color:var(--w-sub)">➔</span></div>
+        <div class="resource-item" onclick="document.getElementById('social-action-modal').style.display='flex'" style="margin-top: 25px; border-left-color: #0088cc;"><div class="resource-info"><span class="resource-icon">🌐</span><span class="resource-name">Social Network</span></div><span style="color:var(--w-sub)">➔</span></div>
     </div>
 
     <div id="sec-wheel" class="hidden" style="text-align:center;">
@@ -301,10 +197,8 @@
             <div class="wheel-container">
                 <div class="wheel-pointer"></div>
                 <div id="wheel-graphics" class="visual-wheel">
-                    <div class="wheel-label l-wild">🌲</div>
-                    <div class="wheel-label l-mare">🌊</div>
-                    <div class="wheel-label l-jolly">🎁</div>
-                    <div class="wheel-label l-monti">🏔️</div>
+                    <div class="wheel-label l-wild">🌲</div><div class="wheel-label l-mare">🌊</div>
+                    <div class="wheel-label l-jolly">🎁</div><div class="wheel-label l-monti">🏔️</div>
                 </div>
             </div>
             <div id="spirit-msg" class="spirit-msg"></div>
@@ -328,6 +222,12 @@
                 <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Scollega Wild-Key</button>
                 <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
             </div>
+            
+            <div class="card" style="border-left-color: #0088cc;">
+                <h3 style="margin-top:0;">Le Mie Prenotazioni</h3>
+                <p style="font-size:12px; color:#aaa; margin-bottom:15px;">Max 3 avventure attive. Gli XP vengono aggiunti il giorno dopo il viaggio!</p>
+                <div id="my-bookings-list"></div>
+            </div>
         </div>
     </div>
 
@@ -335,15 +235,9 @@
         <div class="card">
             <h3 style="margin-top:0;">Community Wild-U</h3>
             <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Unisciti ai nostri canali ufficiali per non perderti nessun aggiornamento.</p>
-            
-            <button class="btn-action-group wa" onclick="openGroupChoice('WhatsApp', WILD_ASSETS['link_whatsapp'] || 'https://chat.whatsapp.com/I9X4C4mA7lfI0BU7ljgGYw')">
-                <span>WhatsApp</span> <span>➔</span>
-            </button>
-            <button class="btn-action-group tg" onclick="openGroupChoice('Telegram', WILD_ASSETS['link_telegram'] || 'https://t.me/addlist/7UKxs5ZMeRNhYzU0')">
-                <span>Telegram</span> <span>➔</span>
-            </button>
+            <button class="btn-action-group wa" onclick="openGroupChoice('WhatsApp', WILD_ASSETS['link_whatsapp'])"><span>WhatsApp</span> <span>➔</span></button>
+            <button class="btn-action-group tg" onclick="openGroupChoice('Telegram', WILD_ASSETS['link_telegram'])"><span>Telegram</span> <span>➔</span></button>
         </div>
-
         <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
             <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
             <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Scrivici direttamente su WhatsApp per qualsiasi dubbio o informazione sui nostri viaggi.</p>
@@ -353,177 +247,71 @@
 
     <div id="sec-install" class="hidden">
         <div class="card">
-            <h3 style="margin-top:0;">Installa Wild-U sul telefono, OPZIONI SOFT oppure donwload?</h3>
-            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Porta l'avventura sempre con te senza banner. Segui le istruzioni in base al tuo dispositivo, sotto le installazioni soft.</p>
-            
+            <h3 style="margin-top:0;">Installa Wild-U sul telefono</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Porta l'avventura sempre con te senza banner. Segui le istruzioni in base al tuo dispositivo.</p>
             <div id="install-instructions">
                 <details class="guide-accordion">
                     <summary class="guide-summary" style="border-left-color: #007aff;">
-                        <div style="display: flex; flex-direction: column;">
-                            <span id="apple-title" style="font-weight: 900; font-size: 16px; color: #fff;">🍏 Apple (iPhone/iPad)</span>
-                            <span id="apple-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare su iOS</span>
-                        </div>
-                        <span class="acc-icon">▼</span>
+                        <div style="display: flex; flex-direction: column;"><span id="apple-title" style="font-weight: 900; font-size: 16px; color: #fff;">🍏 Apple</span><span id="apple-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare</span></div><span class="acc-icon">▼</span>
                     </summary>
-                    <div id="apple-instructions" class="guide-content" style="border-left: 4px solid #007aff;">
-                        Tocca l'icona Condividi e seleziona "Aggiungi alla schermata Home".
-                    </div>
+                    <div id="apple-instructions" class="guide-content" style="border-left: 4px solid #007aff;">Tocca l'icona Condividi e seleziona "Aggiungi alla schermata Home".</div>
                 </details>
-
                 <details class="guide-accordion">
                     <summary class="guide-summary" style="border-left-color: #3ddc84;">
-                        <div style="display: flex; flex-direction: column;">
-                            <span id="android-title" style="font-weight: 900; font-size: 16px; color: #fff;">🤖 Android</span>
-                            <span id="android-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare su Android</span>
-                        </div>
-                        <span class="acc-icon">▼</span>
+                        <div style="display: flex; flex-direction: column;"><span id="android-title" style="font-weight: 900; font-size: 16px; color: #fff;">🤖 Android</span><span id="android-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare</span></div><span class="acc-icon">▼</span>
                     </summary>
-                    <div id="android-instructions" class="guide-content" style="border-left: 4px solid #3ddc84;">
-                        Tocca i tre puntini in alto a destra e seleziona "Installa app".
-                    </div>
+                    <div id="android-instructions" class="guide-content" style="border-left: 4px solid #3ddc84;">Tocca i tre puntini e seleziona "Installa app".</div>
                 </details>
             </div>
         </div>
-
         <div class="card" style="border-left-color: #3ddc84; margin-top: 25px;">
             <h3 style="margin-top:0; color:#fff;">Le altre opzioni HARD di Download</h3>
-            <p style="font-size:14px; color:#aaa; margin-bottom:15px;">
-                Scarica l'app direttamente dagli store ufficiali o tramite pacchetto di installazione APK (solo per Android).
-            </p>
-            
-            <div style="background: rgba(255, 170, 0, 0.1); border: 1px dashed #ffaa00; padding: 12px; border-radius: 10px; margin-bottom: 20px;">
-                <span style="color:#ffaa00; font-weight:900; font-size:13px;">⚠️ NOTA PER APK ANDROID:</span>
-                <p style="margin: 5px 0 0 0; font-size: 13px; color: #ccc; line-height: 1.4;">
-                    Scaricando l'app fuori dal Play Store, il telefono mostrerà un avviso di sicurezza. Tocca <b>"Scarica comunque"</b> e consenti l'installazione da <b>"Origini sconosciute"</b> se richiesto.
-                </p>
-            </div>
-
-            <button class="btn-book btn-action-glow" style="width:100%; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="document.getElementById('download-action-modal').style.display='flex'">
-                <span style="font-size:20px;">⬇️</span> SCEGLI VERSIONE
-            </button>
-        </div>
-
-        <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
-            <h3 style="margin-top:0; color:#fff;">Non riesci a installarla?</h3>
-            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Se hai problemi con il salvataggio dell'App sul tuo telefono, il nostro supporto è qui per guidarti passo passo.</p>
-            <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
+            <div style="background: rgba(255, 170, 0, 0.1); border: 1px dashed #ffaa00; padding: 12px; border-radius: 10px; margin-bottom: 20px;"><span style="color:#ffaa00; font-weight:900; font-size:13px;">⚠️ NOTA PER APK ANDROID:</span><p style="margin: 5px 0 0 0; font-size: 13px; color: #ccc; line-height: 1.4;">Scaricando l'app fuori dal Play Store, il telefono mostrerà un avviso. Tocca <b>"Scarica comunque"</b>.</p></div>
+            <button class="btn-book btn-action-glow" style="width:100%; display:flex; justify-content:center; align-items:center; gap:8px;" onclick="document.getElementById('download-action-modal').style.display='flex'"><span style="font-size:20px;">⬇️</span> SCEGLI VERSIONE</button>
         </div>
     </div>
-
 </div>
 
 <div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
-<div id="levelup-overlay" onclick="this.style.display='none'">
-    <img id="lv-img" src="" class="levelup-img">
-    <h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2>
-    <p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p>
-    <p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p>
-</div>
+<div id="levelup-overlay" onclick="this.style.display='none'"><img id="lv-img" src="" class="levelup-img"><h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2><p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p><p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p></div>
 
-<div id="social-action-modal" class="modal-overlay">
-    <div class="modal-card">
-        <h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3>
-        
-        <button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS['link_facebook'] || 'https://www.facebook.com', '_blank')">
-            <span>Facebook</span> <span>➔</span>
-        </button>
-        <button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS['link_instagram'] || 'https://www.instagram.com', '_blank')">
-            <span>Instagram</span> <span>➔</span>
-        </button>
-        <button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS['link_youtube'] || 'https://www.youtube.com', '_blank')">
-            <span>YouTube</span> <span>➔</span>
-        </button>
-        
-        <button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button>
-    </div>
-</div>
-
-<div id="group-action-modal" class="modal-overlay">
-    <div class="modal-card">
-        <h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3>
-        <button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button>
-        <button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button>
-        <button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button>
-    </div>
-</div>
-
-<div id="download-action-modal" class="modal-overlay">
-    <div class="modal-card">
-        <h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3>
-        
-        <button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')">
-            <span>📦 Pacchetto Android (.APK)</span> <span>➔</span>
-        </button>
-        <button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')">
-            <span>▶️ Google Play Store</span> <span>➔</span>
-        </button>
-        <button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')">
-            <span>🍏 Apple App Store</span> <span>➔</span>
-        </button>
-        
-        <button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button>
-    </div>
-</div>
-
+<div id="social-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3><button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS['link_facebook'], '_blank')"><span>Facebook</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS['link_instagram'], '_blank')"><span>Instagram</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS['link_youtube'], '_blank')"><span>YouTube</span> <span>➔</span></button><button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button></div></div>
+<div id="group-action-modal" class="modal-overlay"><div class="modal-card"><h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3><button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button><button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button><button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
+<div id="download-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3><button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')"><span>📦 Android (.APK)</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')"><span>▶️ Google Play Store</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')"><span>🍏 Apple App Store</span> <span>➔</span></button><button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="toast-msg"></div>
-
-
     
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
 
-// --- FIREBASE SETUP ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyDIPgFA_caKlMHFgEa-enO4Jk0d7eTCFLI",
-      authDomain: "wild-u-server.firebaseapp.com",
-      projectId: "wild-u-server",
-      storageBucket: "wild-u-server.firebasestorage.app",
-      messagingSenderId: "959006418837",
-      appId: "1:959006418837:web:affce9510301b946e7389c"
-    };
-
-    // Inizializza l'App Firebase
+    // --- FIREBASE SETUP ---
+    const firebaseConfig = { apiKey: "AIzaSyDIPgFA_caKlMHFgEa-enO4Jk0d7eTCFLI", authDomain: "wild-u-server.firebaseapp.com", projectId: "wild-u-server", storageBucket: "wild-u-server.firebasestorage.app", messagingSenderId: "959006418837", appId: "1:959006418837:web:affce9510301b946e7389c" };
     firebase.initializeApp(firebaseConfig);
-    
-    // Inizializza il Database Firestore
     const db = firebase.firestore();
+    db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
 
-    // ATTIVA LA MAGIA: Persistenza Offline (Salva i dati nel telefono!)
-    db.enablePersistence()
-      .catch(function(err) {
-          if (err.code == 'failed-precondition') {
-              console.log("Persistenza fallita: troppe tab aperte.");
-          } else if (err.code == 'unimplemented') {
-              console.log("Browser non supportato per offline.");
-          }
-      });
-    // --- FINE FIREBASE SETUP ---
-
+    // --- VARIABILI GLOBALI ---
+    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = [];
+    let wildUserKey = localStorage.getItem('wildUserKey');
+    let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
+    let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
+    let isLockedXP = false; let isAnimatingXP = false; let isPageActive = true; let currentTab = 'events';
+    let cachedXPData = null; let xpCelebrationBuffer = 0;
     
-    let WILD_ASSETS = {};
-    let isPageActive = true;
-    let xpCelebrationBuffer = 0; 
-    let backgroundSyncTimer = null;
-    let cachedXPData = null; 
+    // NUOVE VARIABILI MASTER
+    let isBanned = false; 
+    let canBook = true; 
+    let banReason = "";
+    let viaggiRiscattati = [];
 
-    // MIXER VIRTUALE
-    let audioCtx = null;
-    let gainAmb = null;
-    let gainMus = null;
-
+    // --- AUDIO ---
+    let audioCtx = null; let gainAmb = null; let gainMus = null;
     const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
     const sLvl = new Audio(); const sXP = new Audio();
     const aAmb = new Audio(); const aMus = new Audio(); 
-    
-    aAmb.crossOrigin = "anonymous";
-    aMus.crossOrigin = "anonymous";
-    
-    let audioInited = false;
-
-    // VOLUMI FINALI (Inizialmente a 0)
-    let FIXED_VOL_AMB = 0; 
-    let FIXED_VOL_MUS = 0;
+    aAmb.crossOrigin = "anonymous"; aMus.crossOrigin = "anonymous";
+    let audioInited = false; let FIXED_VOL_AMB = 0; let FIXED_VOL_MUS = 0;
+    let fadeIntervals = new Map(); let currentModuleAudio = null;
 
     const GRADI_MAP = {
         "Socio Novizio": { ico: "🌱", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
@@ -533,163 +321,178 @@
         "Leggenda": { ico: "👑", img: "https://images.unsplash.com/photo-1533240332313-0db49b459ad6?w=800" },
         "Divinità": { ico: "✨", img: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=800" }
     };
-    let wildUserKey = localStorage.getItem('wildUserKey');
-    let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
-    let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
-    let isLockedXP = false;
-    let isAnimatingXP = false; 
-    let allTrips = [];
-    let config = {};
-    let activeFilters = { month: 'Tutti', region: 'Tutte' };
-    let currentWheelRotation = 0;
-    let currentTab = 'events';
 
-    document.addEventListener("visibilitychange", () => {
-        isPageActive = !document.hidden;
-        if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer();
-    });
-
-    function startAudioMixer() {
-        if(!audioInited){
-            console.log("Inizializzazione Mixer Audio...");
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            gainAmb = audioCtx.createGain();
-            gainMus = audioCtx.createGain();
-
-            const sourceAmb = audioCtx.createMediaElementSource(aAmb);
-            const sourceMus = audioCtx.createMediaElementSource(aMus);
-
-            sourceAmb.connect(gainAmb).connect(audioCtx.destination);
-            sourceMus.connect(gainMus).connect(audioCtx.destination);
-
-            setTimeout(() => {
-                console.log("Avvio audio calibrato.");
-                gainAmb.gain.value = FIXED_VOL_AMB;
-                gainMus.gain.value = FIXED_VOL_MUS;
-
-                if(aAmb.src && FIXED_VOL_AMB > 0) {
-                    aAmb.play().catch(e => console.log("Ambienza bloccata:", e));
-                }
-                if(aMus.src && FIXED_VOL_MUS > 0) {
-                    aMus.play().catch(e => console.log("Musica bloccata:", e));
-                }
-            }, 2000); 
-            
-            audioInited = true;
-        } else if (audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
-    }
-
+    document.addEventListener("visibilitychange", () => { isPageActive = !document.hidden; if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer(); });
     document.addEventListener('touchstart', startAudioMixer, {once: true});
     document.addEventListener('click', startAudioMixer, {once: true});
 
-    function formatAssetLink(url) {
-        if (!url || typeof url !== 'string') return url;
-        if (url.includes("raw.githubusercontent.com")) return url;
-        let fileId = "";
-        if (url.includes("/file/d/")) fileId = url.split("/file/d/")[1].split("/")[0].split("?")[0];
-        else if (url.includes("id=")) fileId = url.split("id=")[1].split("&")[0];
-        return fileId ? "https://docs.google.com/uc?export=media&id=" + fileId : url;
-    }
-
-    function sanitizeVolume(val) {
-        if (val === undefined || val === null || val === "") return 0;
-        let n = parseFloat(String(val).replace('%', '').replace(',', '.').trim());
-        if (isNaN(n)) return 0;
-        if (n > 1) return n / 100; 
-        return n; 
-    }
-
+    // ==========================================
+    // INIZIALIZZAZIONE (MEGA-PACCHETTO)
+    // ==========================================
     async function init() {
         if (window.Telegram && window.Telegram.WebApp) { window.Telegram.WebApp.ready(); window.Telegram.WebApp.expand(); }
-        await fetchInitialAssets(); 
+        await fetchInitData(); 
         updateProfileUI(); 
-        loadData();
         window.onfocus = () => { if(wildUserKey) fetchXP(); };
-        backgroundSyncTimer = setInterval(() => { if(wildUserKey) fetchXP(); }, 13000);
     }
 
-    async function fetchInitialAssets() {
+    async function fetchInitData() {
         try {
-            const res = await fetch(SCRIPT_URL + "?action=getAssets&nocache=" + Date.now());
+            const res = await fetch(SCRIPT_URL + "?action=getInitData&nocache=" + Date.now());
             const data = await res.json();
-            WILD_ASSETS = data;
             
-            FIXED_VOL_MUS = sanitizeVolume(data.vol_musica || data.val_c13);
-            FIXED_VOL_AMB = sanitizeVolume(data.vol_ambienza || data.val_c14);
-
-            sXP.src = formatAssetLink(data.audio_xp); sXP.volume = 0.5;
-            sRew.src = formatAssetLink(data.audio_reward);
-            sLvl.src = formatAssetLink(data.audio_levelup);
-            sSpin.src = formatAssetLink(data.audio_spin); sSpin.volume = 0.2;
-            sEnd.src = formatAssetLink(data.audio_end); sEnd.volume = 0.4;
+            WILD_ASSETS = data.assets || {};
+            config = data.config || {};
+            if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+            allTrips = data.events || [];
+            allBookings = data.bookings || [];
             
-            let linkMusica = data.musica || data.audio_musica;
-            if(linkMusica) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+            FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
+            FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
 
-            let linkAmbienza = data.ambienza || data.audio_ambienza;
-            if(linkAmbienza) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+            sXP.src = formatAssetLink(WILD_ASSETS.audio_xp); sXP.volume = 0.5;
+            sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
+            sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
+            sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
+            sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
+            
+            if(WILD_ASSETS.musica) { aMus.src = formatAssetLink(WILD_ASSETS.musica); aMus.loop = true; }
+            if(WILD_ASSETS.ambienza) { aAmb.src = formatAssetLink(WILD_ASSETS.ambienza); aAmb.loop = true; }
 
-            // --- INIEZIONE ISTRUZIONI A TENDINA (APPLE E ANDROID) ---
             if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
             if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
             if (WILD_ASSETS['istruzioni_apple']) document.getElementById('apple-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_apple']);
-            
             if (WILD_ASSETS['titolo_android']) document.getElementById('android-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_android']);
             if (WILD_ASSETS['sottotitolo_android']) document.getElementById('android-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_android']);
             if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
+            if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
-            // --- INIEZIONE IMMAGINE HEADER DINAMICA ---
-            if (WILD_ASSETS['img_header']) {
-                document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
-            }
-
-        } catch(e) {}
-    }
-
-    async function loadData() {
-        try {
-            const res = await fetch(SCRIPT_URL + "?action=getEvents&nocache=" + Date.now());
-            allTrips = await res.json();
             buildFilters(); filterTrips();
-        } catch(e) {}
+        } catch(e) { console.error("Errore Mega-Pacchetto:", e); }
     }
 
-   // --- GESTIONE FILTRI (LOGICA TENDINE E RESET) ---
-    function buildFilters() {
-        const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
+    // ==========================================
+    // LOGICA XP E CONTROLLO TIME-TRAVEL
+    // ==========================================
+    async function fetchXP() {
+        if (!wildUserKey || isLockedXP || isAnimatingXP) return;
+        try {
+            const docSnap = await db.collection("utenti").doc(wildUserKey).get();
+            if (!docSnap.exists) return; 
+            
+            const data = docSnap.data();
+            isBanned = data.bannato === true;
+            viaggiRiscattati = data.viaggi_riscattati || [];
+            
+            const userData = { xp: data.xp || 0, grado: data.grado || "Socio Novizio", config: config };
+            cachedXPData = userData; 
+            
+            evaluateBookings();
+
+            if (userData.xp < lastVXP) { 
+                lastVXP = userData.xp; lastCelXP = userData.xp; 
+                localStorage.setItem('lastViewedXP', userData.xp); localStorage.setItem('lastCelebratedXP', userData.xp); 
+                renderProfile(userData); return; 
+            }
+            if (userData.xp > lastCelXP && lastCelXP > 0) {
+                let delta = userData.xp - lastCelXP; lastCelXP = userData.xp; localStorage.setItem('lastCelebratedXP', lastCelXP);
+                if (!isPageActive) xpCelebrationBuffer += delta;
+                else { showReward(delta); if (currentTab === 'profile') renderProfile(userData); }
+            } else if (currentTab === 'profile') {
+                renderProfile(userData);
+            }
+        } catch(e) { console.error("Errore FetchXP:", e); }
+    }
+
+    function evaluateBookings() {
+        if(!wildUserKey) return;
+        const ratio = config.euro_punto_ratio || 5;
         
-        // Popolamento Mesi
-        const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"] ? t["Data inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
-        const monthsSelect = document.getElementById('filter-months-select');
-        if (monthsSelect) {
-            monthsSelect.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + 
-                monthsRaw.map(m => `<option value="${m}" ${activeFilters.month === m ? 'selected' : ''}>${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
+        const myB = allBookings.filter(b => {
+            const k = b["ID Utente"] || b["id utente"] || b["Key"] || b["key"] || "";
+            return k.toString().toLowerCase() === wildUserKey.toLowerCase();
+        });
+
+        const today = new Date(); today.setHours(0,0,0,0);
+        let activeCount = 0; let activeHtml = '';
+
+        for(let b of myB) {
+            const title = b["Titolo"] || b["titolo"] || "Viaggio Misterioso";
+            const dateStr = b["Data"] || b["data"] || b["Data inizio"] || "";
+            const priceStr = b["Prezzo Prime"] || b["prezzo prime"] || "0";
+            const bDate = parseItalianDate(dateStr);
+            const xpVal = Math.floor((parseFloat(priceStr.replace(',','.')) || 0) / ratio);
+            const tripId = title + "_" + dateStr;
+
+            if(bDate < today) {
+                if(!viaggiRiscattati.includes(tripId) && xpVal > 0) awardTripXP(tripId, xpVal);
+            } else {
+                activeCount++;
+                activeHtml += `
+                <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
+                    <div><div style="font-weight: bold; color: #fff;">${title}</div><div style="font-size: 13px; color: var(--w-gold);">📅 ${dateStr}</div></div>
+                    <button onclick="requestCancel('${title}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer;">Annulla</button>
+                </div>`;
+            }
         }
 
-        // Popolamento Regioni
-        const regionsRaw = [...new Set(allTrips.map(t => t.Regione || 'Italia'))].sort();
-        const regionsSelect = document.getElementById('filter-regions-select');
-        if (regionsSelect) {
-            regionsSelect.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + 
-                regionsRaw.map(r => `<option value="${r}" ${activeFilters.region === r ? 'selected' : ''}>${r}</option>`).join('');
-        }
-    }
+        if(activeCount === 0) activeHtml = '<p style="color:#aaa; font-size: 14px;">Nessuna avventura in attesa. Lo zaino piange!</p>';
+        document.getElementById('my-bookings-list').innerHTML = activeHtml;
 
-    function setFilter(type, val) { 
-        activeFilters[type] = val; 
+        canBook = !isBanned && activeCount < 3;
+        if(isBanned) banReason = "ACCOUNT SOSPESO";
+        else if (activeCount >= 3) banReason = "LIMITE ATTESE (3/3)";
+        
         filterTrips(); 
     }
 
-    function resetFilters() { 
-        activeFilters.month = 'Tutti'; 
-        activeFilters.region = 'Tutte'; 
-        // Riporta i selettori visivi allo stato iniziale
+    async function awardTripXP(tripId, xpVal) {
+        try {
+            const userRef = db.collection("utenti").doc(wildUserKey);
+            await userRef.set({
+                xp: firebase.firestore.FieldValue.increment(xpVal),
+                viaggi_riscattati: firebase.firestore.FieldValue.arrayUnion(tripId)
+            }, { merge: true });
+            viaggiRiscattati.push(tripId);
+            setTimeout(fetchXP, 600); 
+        } catch(e) { console.error("Errore Reward Time-Travel", e); }
+    }
+
+    function requestCancel(title) {
+        const msg = `Ciao Admin, purtroppo devo annullare la mia presenza al viaggio *${title}*. La mia Wild-Key è *${wildUserKey}*.`;
+        const phone = WILD_ASSETS['numero_admin'] || '393931326733';
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
+    function parseItalianDate(dStr) {
+        if(!dStr) return new Date();
+        let p = dStr.split('/');
+        if(p.length < 2) return new Date();
+        let y = p.length > 2 ? parseInt(p[2]) : new Date().getFullYear();
+        if(y < 100) y += 2000;
+        return new Date(y, parseInt(p[1]) - 1, parseInt(p[0]));
+    }
+
+    // ==========================================
+    // CATALOGO VIAGGI E FILTRI
+    // ==========================================
+    let activeFilters = { month: 'Tutti', region: 'Tutte' };
+    function buildFilters() {
+        const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
+        const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"] ? t["Data inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
         const mSel = document.getElementById('filter-months-select');
+        if (mSel) mSel.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + monthsRaw.map(m => `<option value="${m}">${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
+        
+        const regionsRaw = [...new Set(allTrips.map(t => t.Regione || 'Italia'))].sort();
         const rSel = document.getElementById('filter-regions-select');
-        if(mSel) mSel.value = 'Tutti';
-        if(rSel) rSel.value = 'Tutte';
+        if (rSel) rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
+    }
+
+    function setFilter(type, val) { activeFilters[type] = val; filterTrips(); }
+    function resetFilters() { 
+        activeFilters.month = 'Tutti'; activeFilters.region = 'Tutte'; 
+        if(document.getElementById('filter-months-select')) document.getElementById('filter-months-select').value = 'Tutti';
+        if(document.getElementById('filter-regions-select')) document.getElementById('filter-regions-select').value = 'Tutte';
         filterTrips(); 
     }
 
@@ -706,27 +509,31 @@
             const linkBtn = ev.Link ? "<a href='" + ev.Link + "' target='_blank' class='btn-link'>Info</a>" : "";
             const safeTitle = ev.Titolo.replace(/'/g, "\\'");
             
-            return '<div class="card">' +
-                '<span class="card-title">' + ev.Titolo + '</span>' +
-                '<div style="font-size:15px; color:#aaa;">📅 dal <b>' + dataPura + '</b> al <b>' + ev["Data fine"] + '/' + ev.Anno + '</b></div>' +
-                '<div class="price-box">' +
-                    '<div class="price-standard">Standard: ' + ev["Prezzo (€)"] + '€</div>' +
-                    '<div class="price-prime-wrapper">' +
-                        '<span class="xp-reward-label">+(' + xpReward + ') WILD XP</span>' +
-                        '<div class="price-prime"><span class="prime-val">' + ev["Prezzo Prime"] + '€</span></div>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="btn-group">' +
-                    linkBtn +
-                    '<button class="btn-book btn-prenota" onclick="openBook(\'' + safeTitle + '\', \'' + dataPura + '\', \'' + ev["Prezzo Prime"] + '\', \'' + xpReward + '\')">Prenota</button>' +
-                '</div>' +
-            '</div>';
+            let actionBtn = "";
+            if (canBook) {
+                actionBtn = `<button class="btn-book btn-prenota" onclick="openBook('${safeTitle}', '${dataPura}', '${ev["Prezzo Prime"]}', '${xpReward}')">Prenota</button>`;
+            } else {
+                actionBtn = `<button class="btn-book btn-disabled" onclick="showToast('${banReason}')">${banReason}</button>`;
+            }
+            
+            return `<div class="card">
+                <span class="card-title">${ev.Titolo}</span>
+                <div style="font-size:15px; color:#aaa;">📅 dal <b>${dataPura}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div>
+                <div class="price-box">
+                    <div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div>
+                    <div class="price-prime-wrapper">
+                        <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
+                        <div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div>
+                    </div>
+                </div>
+                <div class="btn-group">${linkBtn} ${actionBtn}</div>
+            </div>`;
         }).join('');
     }
 
     function openBook(t, d, p, xp) {
         if (!wildUserKey) { show('profile'); return; }
-        document.getElementById('modal-desc').innerHTML = "Viaggio: <b>" + t + "</b><br>Data: <b>" + d + "</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style='color:var(--w-gold); font-weight:900;'>+(" + xp + ") WILD XP AL RITORNO!</span>";
+        document.getElementById('modal-desc').innerHTML = `Viaggio: <b>${t}</b><br>Data: <b>${d}</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style='color:var(--w-gold); font-weight:900;'>+(${xp}) WILD XP AL RITORNO!</span>`;
         document.getElementById('book-modal').style.display = 'flex';
         document.getElementById('confirm-btn').onclick = () => {
             const url = FORM_URL + "?usp=pp_url&entry.1122751126=" + encodeURIComponent(t) + "&entry.931759730=" + encodeURIComponent(d) + "&entry.1978984745=" + encodeURIComponent(p) + "&entry.551102529=" + encodeURIComponent(wildUserKey);
@@ -734,575 +541,175 @@
         };
     }
 
-    async function fetchXP() {
-        if (!wildUserKey || isLockedXP || isAnimatingXP) return;
-        try {
-            // --- LETTURA ISTANTANEA DA FIREBASE ---
-            const docSnap = await db.collection("utenti").doc(wildUserKey).get();
-            if (!docSnap.exists) return; // Utente non trovato
-            
-            const data = docSnap.data();
-            
-            // Impacchettiamo i dati unendo gli XP di Firebase con le configurazioni di base
-            const userData = {
-                xp: data.xp || 0,
-                grado: data.grado || "Socio Novizio",
-                config: config // La config con le soglie (caricata da Google Sheets all'avvio)
-            };
-            
-            cachedXPData = userData; 
-            
-            // --- LOGICA AGGIORNAMENTO BARRA E ANIMAZIONI ---
-            if (userData.xp < lastVXP) { 
-                lastVXP = userData.xp; lastCelXP = userData.xp; 
-                localStorage.setItem('lastViewedXP', userData.xp); 
-                localStorage.setItem('lastCelebratedXP', userData.xp); 
-                renderProfile(userData); 
-                return; 
-            }
-            if (userData.xp > lastCelXP && lastCelXP > 0) {
-                let delta = userData.xp - lastCelXP;
-                lastCelXP = userData.xp;
-                localStorage.setItem('lastCelebratedXP', lastCelXP);
-                if (!isPageActive) xpCelebrationBuffer += delta;
-                else { showReward(delta); if (currentTab === 'profile') renderProfile(userData); }
-            } else if (currentTab === 'profile') {
-                renderProfile(userData);
-            }
-        } catch(e) {
-            console.error("Errore Lettura XP da Firebase:", e);
-        }
-    }
-
-    function processXPBuffer() {
-        if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); }
-    }
-
+    // ==========================================
+    // PROFILO, RUOTA E SISTEMA
+    // ==========================================
     async function renderProfile(data) {
         if (isAnimatingXP || !data) return;
         
-        config = data.config || {};
-        const finalXP = data.xp || 0; 
-        
-        // Cerca le soglie del tuo Excel. Se mancano, usa il salvavita.
-        const soglie = config.soglie || [
-            {nome: "Socio Novizio", punti: 0},
-            {nome: "Esploratore", punti: 100},
-            {nome: "Sentinella", punti: 300},
-            {nome: "Veterano", punti: 900},
-            {nome: "Leggenda", punti: 1800},
-            {nome: "Divinità", punti: 3600}
-        ]; 
+        const currentConfig = data.config || config || {};
+        const finalXP = parseInt(data.xp || 0);
+        const soglie = (currentConfig && currentConfig.soglie) ? currentConfig.soglie : [
+            {nome: "Socio Novizio", punti: 0}, {nome: "Esploratore", punti: 100}, {nome: "Sentinella", punti: 300},
+            {nome: "Veterano", punti: 900}, {nome: "Leggenda", punti: 1800}, {nome: "Divinità", punti: 3600}
+        ];
 
-        // Rimosso il doppione! Procediamo con la grafica:
-        const xpFill = document.getElementById('xp-fill');
-        const profGrado = document.getElementById('prof-grado');
-        const profIcon = document.getElementById('prof-main-icon');
-        const profXPText = document.getElementById('prof-xp');
-        const xpPercentText = document.getElementById('xp-percentage');
-        const profMissing = document.getElementById('prof-missing');
+        const xpFill = document.getElementById('xp-fill'); const profGrado = document.getElementById('prof-grado');
+        const profIcon = document.getElementById('prof-main-icon'); const profXPText = document.getElementById('prof-xp');
+        const xpPercentText = document.getElementById('xp-percentage'); const profMissing = document.getElementById('prof-missing');
         
         profXPText.innerText = finalXP + " XP TOTALI";
         document.getElementById('prof-key').innerText = "WILD-KEY: " + wildUserKey;
-        
-        // ... (il resto della funzione continua uguale)
         
         document.getElementById('legenda-container').innerHTML = soglie.map(s => {
             const isUnlocked = finalXP >= s.punti;
             const opacita = isUnlocked ? '1' : '0.3';
             const bordo = isUnlocked ? 'border: 1px solid var(--w-gold); color: var(--w-gold);' : '';
             const icona = GRADI_MAP[s.nome] ? GRADI_MAP[s.nome].ico : "🌿";
-            return '<div style="padding: 12px; background: #222; border-radius: 10px; display: flex; justify-content: space-between; opacity: ' + opacita + '; ' + bordo + '"><span>' + icona + ' ' + s.nome + '</span> <b>' + s.punti + '</b></div>';
+            return `<div style="padding: 12px; background: #222; border-radius: 10px; display: flex; justify-content: space-between; opacity: ${opacita}; ${bordo}"><span>${icona} ${s.nome}</span> <b>${s.punti}</b></div>`;
         }).join('');
 
         if (finalXP > lastVXP) {
             isAnimatingXP = true; let tempXP = lastVXP;
             while (tempXP < finalXP) {
-                const currentLevel = soglie.filter(s => s.punti <= tempXP).pop();
+                const currentLevel = soglie.filter(s => s.punti <= tempXP).pop() || soglie[0];
                 const nextLevel = soglie.find(s => s.punti > tempXP) || { punti: tempXP + 100, nome: "MAX" };
                 let stepTargetXP = Math.min(finalXP, nextLevel.punti);
                 let isLevelUpStep = stepTargetXP === nextLevel.punti && finalXP >= nextLevel.punti;
                 const startP = Math.min(100, ((tempXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
                 const endP = Math.min(100, ((stepTargetXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
+                
                 xpFill.style.transition = 'none'; xpFill.style.width = startP + "%"; await new Promise(r => setTimeout(r, 50));
-                xpFill.style.transition = 'width 2.5s cubic-bezier(0.1, 0, 0.3, 1)';
-                xpFill.style.width = endP + "%"; xpPercentText.innerText = Math.floor(endP) + "%";
+                xpFill.style.transition = 'width 2.5s cubic-bezier(0.1, 0, 0.3, 1)'; xpFill.style.width = endP + "%"; xpPercentText.innerText = Math.floor(endP) + "%";
                 sXP.currentTime = 0; sXP.play().catch(() => {}); await new Promise(r => setTimeout(r, 2600)); sXP.pause();
                 if (isLevelUpStep) {
-                    const nuovoGrado = nextLevel.nome;
-                    profGrado.innerText = nuovoGrado; profIcon.innerText = GRADI_MAP[nuovoGrado] ? GRADI_MAP[nuovoGrado].ico : "🌿";
-                    showLevelUpCelebration(nuovoGrado);
-                    localStorage.setItem('lastG_' + wildUserKey, nuovoGrado);
+                    profGrado.innerText = nextLevel.nome; profIcon.innerText = GRADI_MAP[nextLevel.nome] ? GRADI_MAP[nextLevel.nome].ico : "🌿";
+                    showLevelUpCelebration(nextLevel.nome); localStorage.setItem('lastG_' + wildUserKey, nextLevel.nome);
                     await new Promise(r => setTimeout(r, 500)); xpFill.style.transition = 'none'; xpFill.style.width = "0%"; await new Promise(r => setTimeout(r, 100));
                 }
                 tempXP = stepTargetXP;
             }
             lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); isAnimatingXP = false;
-            const finalLevel = soglie.filter(s => s.punti <= finalXP).pop();
-            const finalNext = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
-            profGrado.innerText = finalLevel.nome; profIcon.innerText = GRADI_MAP[finalLevel.nome] ? GRADI_MAP[finalLevel.nome].ico : "🌿";
-            xpPercentText.innerText = Math.floor(((finalXP - finalLevel.punti) / (finalNext.punti - finalLevel.punti)) * 100) + "%";
-            profMissing.innerText = finalXP >= finalNext.punti ? "STATO DIVINO" : "-" + (finalNext.punti - finalXP) + " XP";
-        } else if (!isAnimatingXP) {
-            const currentLevel = soglie.filter(s => s.punti <= finalXP).pop();
-            const nextLevel = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
-            const p = finalXP >= nextLevel.punti ? 100 : Math.min(100, ((finalXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
-            xpFill.style.width = p + "%"; xpPercentText.innerText = Math.floor(p) + "%";
-            profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome] ? GRADI_MAP[currentLevel.nome].ico : "🌿";
-            profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "-" + (nextLevel.punti - finalXP) + " XP";
-            lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome);
-        }
+        } 
+        
+        const currentLevel = soglie.filter(s => s.punti <= finalXP).pop() || soglie[0];
+        const nextLevel = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
+        const p = finalXP >= nextLevel.punti ? 100 : Math.min(100, ((finalXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
+        xpFill.style.width = p + "%"; xpPercentText.innerText = Math.floor(p) + "%";
+        profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome] ? GRADI_MAP[currentLevel.nome].ico : "🌿";
+        profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "-" + (nextLevel.punti - finalXP) + " XP";
+        if(!isAnimatingXP){ lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome); }
     }
 
-   async function spinWheel() {
+    async function spinWheel() {
         if (!wildUserKey) { show('profile'); return; }
-        const btn = document.getElementById('wheel-button');
-        const msg = document.getElementById('spirit-msg');
+        const oggi = new Date().toLocaleDateString('it-IT');
+        const limiteGiocate = parseInt(config.limite_ruota_daily || 3);
+        let giocateOggi = parseInt(localStorage.getItem('ruota_count_' + oggi) || 0);
+
+        if (giocateOggi >= limiteGiocate) { showToast("Hai esaurito i giri per oggi. Gli spiriti riposano."); return; }
+
+        const btn = document.getElementById('wheel-button'); const msg = document.getElementById('spirit-msg');
         btn.disabled = true; document.getElementById('wheel-result-container').innerHTML = "";
-        msg.innerText = "Gli spiriti del bosco stanno decidendo...";
-        sSpin.currentTime = 0; sSpin.play();
+        msg.innerText = "Gli spiriti del bosco stanno decidendo..."; sSpin.currentTime = 0; sSpin.play();
         
+        let currentWheelRotation = parseInt(document.getElementById('wheel-graphics').style.transform.replace(/[^0-9]/g, '') || 0);
         document.getElementById('wheel-graphics').style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
         currentWheelRotation += 2160; 
-        document.getElementById('wheel-graphics').style.transform = "rotate(" + currentWheelRotation + "deg)";
+        document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
         
         try {
-            // --- LOGICA VINCITA LOCALE ---
-            // 20% di probabilità di vincere 5 XP (Puoi cambiare i valori quando vuoi)
             const winAmount = Math.random() > 0.8 ? 5 : 0;
-            
-            // --- SALVATAGGIO SU FIREBASE (Niente più chiamate lente a Google Sheets!) ---
             if (winAmount > 0) {
                 const userRef = db.collection("utenti").doc(wildUserKey);
-                // "increment" è un comando speciale di Firebase che somma in modo sicuro!
-                // PEZZO CORRETTO (da incollare)
-                await userRef.set({
-                    xp: firebase.firestore.FieldValue.increment(winAmount)
-                }, { merge: true });
-                
-                // Aggiorniamo anche la memoria locale dell'app al volo
+                await userRef.set({ xp: firebase.firestore.FieldValue.increment(winAmount) }, { merge: true });
                 if (cachedXPData) cachedXPData.xp += winAmount;
             }
 
-            // Calcolo dell'angolo visivo per far fermare la ruota nel punto giusto
             const targetA = winAmount > 0 ? 135 : (Math.random() > 0.5 ? 225 : 315);
             currentWheelRotation += (360 - (currentWheelRotation % 360)) + targetA;
             document.getElementById('wheel-graphics').style.transition = "transform 3s cubic-bezier(0.1, 0, 0.2, 1)";
-            document.getElementById('wheel-graphics').style.transform = "rotate(" + currentWheelRotation + "deg)";
+            document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
             
             setTimeout(() => {
-                sSpin.pause(); sEnd.play();
-                msg.innerText = "Verdetto spiriti del bosco:";
+                sSpin.pause(); sEnd.play(); msg.innerText = "Verdetto spiriti del bosco:";
+                localStorage.setItem('ruota_count_' + oggi, giocateOggi + 1);
+                
                 if (winAmount > 0) {
-                    isLockedXP = true; 
-                    lastCelXP += winAmount;
-                    localStorage.setItem('lastCelebratedXP', lastCelXP);
-                    showReward(winAmount); 
-                    
-                    // Aggiorniamo la grafica del profilo con i nuovi dati
-                    if (cachedXPData) renderProfile(cachedXPData); 
-                    
+                    isLockedXP = true; lastCelXP += winAmount; localStorage.setItem('lastCelebratedXP', lastCelXP);
+                    showReward(winAmount); if (cachedXPData) renderProfile(cachedXPData); 
                     setTimeout(() => isLockedXP = false, 8000);
                 } else {
-                    // Sconfitta: mostra un viaggio casuale
                     const randT = allTrips[Math.floor(Math.random() * allTrips.length)];
-                    const matchingDates = allTrips.filter(t => t.Titolo === randT.Titolo);
-                    renderTrips(matchingDates, 'wheel-result-container');
+                    renderTrips(allTrips.filter(t => t.Titolo === randT.Titolo), 'wheel-result-container');
                 }
                 btn.disabled = false;
             }, 3000);
-        } catch(e) { 
-            console.error("Errore Ruota:", e);
-            btn.disabled = false; sSpin.pause(); 
-            msg.innerText = "Gli spiriti sono confusi. Riprova."; 
-        }
+        } catch(e) { console.error(e); btn.disabled = false; sSpin.pause(); msg.innerText = "Gli spiriti sono confusi. Riprova."; }
     }
 
-    function showReward(amt) {
-        document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!";
-        document.getElementById('reward-overlay').style.display = 'flex'; sRew.play();
-        setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500);
-    }
-
-    function showLevelUpCelebration(grado) {
-        const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"];
-        const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")];
-        document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img;
-        document.getElementById('levelup-msg').innerText = grado;
-        document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play();
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
-             window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-        }
-    }
-
-   // --- NUOVO LOGIN CON FIREBASE ---
+    // --- FUNZIONI DI SUPPORTO (Audio, Moduli, Login) ---
+    function sanitizeVolume(val) { if (!val) return 0; let n = parseFloat(String(val).replace('%', '').replace(',', '.')); return isNaN(n) ? 0 : (n > 1 ? n/100 : n); }
+    function formatAssetLink(url) { if (!url) return url; if (url.includes("/file/d/")) return "https://docs.google.com/uc?export=media&id=" + url.split("/file/d/")[1].split("/")[0].split("?")[0]; if (url.includes("id=")) return "https://docs.google.com/uc?export=media&id=" + url.split("id=")[1].split("&")[0]; return url; }
+    function showToast(msg) { var t = document.getElementById('toast-msg'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
+    function processXPBuffer() { if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); } }
+    function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; sRew.play(); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
+    function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play(); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
+    
     async function saveIdentity() { 
         const v = document.getElementById('user-input').value.trim(); 
-        
         if (v.length > 2) { 
             try {
-                // Riferimento al documento dell'utente in Firebase
-                const userRef = db.collection("utenti").doc(v);
-                
-                // Cerca l'utente nel database
-                const docSnap = await userRef.get();
-                
-                if (docSnap.exists) {
-                    // L'utente esiste, recuperiamo i suoi dati
-                    console.log("Utente trovato in Firebase:", docSnap.data());
-                    // Aggiorniamo la cache locale per non fare altre chiamate
-                    cachedXPData = docSnap.data();
-                } else {
-                    // È un nuovo utente! Creiamo il suo profilo di base in Firebase
-                    console.log("Nuovo utente. Creazione profilo in corso...");
-                    const newUserData = {
-                        xp: 0,
-                        grado: "Socio Novizio",
-                        registratoIl: firebase.firestore.FieldValue.serverTimestamp()
-                    };
-                    await userRef.set(newUserData);
-                    cachedXPData = newUserData;
-                }
-
-                // Salviamo la chiave nel telefono per le prossime volte
-                localStorage.setItem('wildUserKey', v); 
-                wildUserKey = v; 
-                
-                // Aggiorna l'interfaccia (mostra la tab profilo invece del login)
-                updateProfileUI(); 
-
-                // Avvisa l'utente
-                showToast("Accesso completato! Benvenuto, viaggiatore.");
-
-            } catch (error) {
-                console.error("Errore durante il login Firebase:", error);
-                showToast("Errore di connessione. Riprova.");
-            }
-        } else {
-            showToast("Inserisci una Wild Key valida.");
-        }
+                const userRef = db.collection("utenti").doc(v); const docSnap = await userRef.get();
+                if (docSnap.exists) cachedXPData = docSnap.data(); else { const newU = { xp: 0, grado: "Socio Novizio", registratoIl: firebase.firestore.FieldValue.serverTimestamp() }; await userRef.set(newU); cachedXPData = newU; }
+                localStorage.setItem('wildUserKey', v); wildUserKey = v; updateProfileUI(); showToast("Accesso completato!");
+            } catch (e) { showToast("Errore di connessione."); }
+        } else showToast("Inserisci una Wild Key valida.");
     }
-    function logout() { localStorage.clear(); clearInterval(backgroundSyncTimer); location.reload(); }
+    function logout() { localStorage.clear(); location.reload(); }
     function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
-    
-    
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch(err => {});
-        });
-    }
-
-    // --- LOGICA GRUPPI E COPIA LINK ---
-    let currentGroupLink = '';
-
-    function openGroupChoice(name, link) {
-        currentGroupLink = link;
-        document.getElementById('group-modal-title').innerText = name;
-        document.getElementById('group-action-modal').style.display = 'flex';
-        
-        document.getElementById('btn-go-group').onclick = function() {
-            window.open(currentGroupLink, '_blank');
-            document.getElementById('group-action-modal').style.display = 'none';
-        };
-        
-        document.getElementById('btn-copy-group').onclick = function() {
-            copyToClipboard(currentGroupLink);
-        };
-    }
-
-    function copyToClipboard(text) {
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(function() {
-                showToast("Link copiato! 🚀 Pronto per essere incollato.");
-            }).catch(function() {
-                fallbackCopyText(text);
-            });
-        } else {
-            fallbackCopyText(text);
-        }
-        document.getElementById('group-action-modal').style.display = 'none';
-    }
-
-    function fallbackCopyText(text) {
-        var textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.position = "fixed"; 
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-            var successful = document.execCommand('copy');
-            if(successful) showToast("Link copiato! 🚀 Pronto per essere incollato.");
-            else showToast("Errore: copia manuale richiesta.");
-        } catch (err) {
-            showToast("Errore durante la copia.");
-        }
-        document.body.removeChild(textArea);
-    }
-
-    function showToast(msg) {
-        var t = document.getElementById('toast-msg');
-        t.innerText = msg;
-        t.style.display = 'block';
-        setTimeout(function(){ t.style.display = 'none'; }, 3500);
-    }
-
-    // --- LOGICA INTELLIGENTE PER I LINK DEGLI STORE ---
-    function handleStoreLink(chiaveFoglio) {
-        document.getElementById('download-action-modal').style.display = 'none';
-        let valore = WILD_ASSETS[chiaveFoglio];
-        
-        if (!valore || valore.trim() === "") {
-            showToast("Versione non ancora disponibile.");
-        } else if (valore.startsWith("http")) {
-            window.open(valore, '_blank');
-        } else {
-            showToast(valore);
-        }
-    }
-
-// --- Funzione di supporto per controllare il grado (ORA INTELLIGENTE/CASE-INSENSITIVE) ---
-    function checkRankMet(reqRank) {
-        if (!reqRank || reqRank.trim() === "") return true; // Accesso libero
-        
-        // Mettiamo l'array tutto in minuscolo per il confronto
-        const RANKS_ORDER = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"];
-        
-        // Prendiamo il grado dell'utente e quello richiesto, e li abbassiamo entrambi a minuscolo
-        const userRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase();
-        const reqRankLower = reqRank.toLowerCase().trim();
-        
-        let uIdx = RANKS_ORDER.indexOf(userRank);
-        let rIdx = RANKS_ORDER.indexOf(reqRankLower);
-        
-        if(uIdx === -1) uIdx = 0;
-        return uIdx >= rIdx;
-    }
-
-    // --- MOTORE MODULI AGGIORNATO (Con Blocco Vetro) ---
-    async function openModule(fileName, audioInstruction, isImmersive = false, requiredRank = "") {
-        // Controlla se l'utente ha il grado necessario
-        const hasAccess = checkRankMet(requiredRank);
-
-        const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
-        sections.forEach(s => {
-            let el = document.getElementById('sec-' + s);
-            if(el) el.classList.add('hidden');
-        });
-        
-        const modContainer = document.getElementById('module-container');
-        modContainer.innerHTML = '<div style="text-align:center; padding:50px; font-weight:bold; color:var(--w-gold);">Evocazione Spiriti del Bosco... 🌲</div>';
-        modContainer.classList.remove('hidden');
-
-        handleModuleAudio(audioInstruction);
-
-        if (isImmersive) {
-            document.querySelector('.nav').style.display = 'none'; 
-            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
-                window.Telegram.WebApp.BackButton.show();
-                window.Telegram.WebApp.BackButton.onClick(closeModule);
-            }
-        }
-
-        try {
-            const res = await fetch(fileName + '?nocache=' + Date.now());
-            if (!res.ok) throw new Error("File non trovato");
-            modContainer.innerHTML = await res.text();
-            
-            // IL VETRO ANTIPROIETTILE: Se non ha accesso, blocchiamo le azioni!
-            if (!hasAccess) {
-                modContainer.style.position = 'relative';
-                const glassPane = document.createElement('div');
-                glassPane.style.position = 'absolute';
-                glassPane.style.top = '0';
-                glassPane.style.left = '0';
-                glassPane.style.width = '100%';
-                glassPane.style.height = '100%';
-                glassPane.style.zIndex = '50'; 
-                glassPane.style.backgroundColor = 'rgba(18, 18, 18, 0.7)';
-                
-                glassPane.onclick = function(e) {
-                    e.stopPropagation(); // Ferma il click
-                    showToast("🔒 Modulo protetto. Grado richiesto: " + requiredRank.toUpperCase());
-                };
-                modContainer.appendChild(glassPane);
-            } else {
-                // Attiva gli script del modulo SOLO se ha l'accesso (per evitare glitch)
-                modContainer.querySelectorAll('script').forEach(s => {
-                    const newScript = document.createElement('script');
-                    newScript.text = s.text;
-                    document.body.appendChild(newScript).parentNode.removeChild(newScript);
-                });
-            }
-        } catch (e) {
-            modContainer.innerHTML = '<div style="text-align:center; padding:50px; color:#ff4444; font-weight:bold;">I sentieri sono bloccati. Modulo non trovato.</div>';
-        }
-    }
-
-    function closeModule() {
-        // Ripristina la barra di navigazione
-        const navBar = document.querySelector('.nav');
-        if(navBar) navBar.style.display = 'flex'; 
-        
-        // Nascondi il tasto Indietro di Telegram
-        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
-            window.Telegram.WebApp.BackButton.hide();
-            window.Telegram.WebApp.BackButton.offClick(closeModule);
-        }
-        
-        // Svuota e torna alla tab precedente
-        const modContainer = document.getElementById('module-container');
-        if(modContainer) {
-            modContainer.innerHTML = '';
-            modContainer.classList.add('hidden');
-        }
-        restoreDefaultAudio();
-        show(currentTab);
-    }
 
     function show(id) {
-        // --- 1. CAMBIO TAB IMMEDIATO ---
         currentTab = id;
-        const sections = ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'];
-        sections.forEach(s => { 
-            const el = document.getElementById('sec-' + s); 
-            const btn = document.getElementById('btn-' + s);
-            if (el) el.classList.add('hidden');
-            if (btn) btn.classList.remove('active');
+        ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { 
+            if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); 
+            if(document.getElementById('btn-' + s)) document.getElementById('btn-' + s).classList.remove('active'); 
         });
-
-        const targetEl = document.getElementById('sec-' + id);
-        const targetBtn = document.getElementById('btn-' + id);
-        if (targetEl) targetEl.classList.remove('hidden');
-        if (targetBtn) targetBtn.classList.add('active');
-
-        // --- 2. PULIZIA MODULI ---
-        const modContainer = document.getElementById('module-container');
-        if (modContainer && !modContainer.classList.contains('hidden')) {
-            modContainer.innerHTML = '';
-            modContainer.classList.add('hidden');
-            if (currentModuleAudio) { 
-                currentModuleAudio.pause(); 
-                currentModuleAudio = null; 
-            }
-            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton) {
-                window.Telegram.WebApp.BackButton.hide();
-            }
-        }
-        // --- 3. RISVEGLIO AUDIO SINCRONIZZATO (Ritardato di 100ms) ---
-        setTimeout(() => {
-            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
-            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
-        }, 100);
-
-        if (id === 'profile') { 
-            if (cachedXPData) renderProfile(cachedXPData); 
-            else if (wildUserKey) fetchXP(); 
-        }
+        if(document.getElementById('sec-' + id)) document.getElementById('sec-' + id).classList.remove('hidden');
+        if(document.getElementById('btn-' + id)) document.getElementById('btn-' + id).classList.add('active');
+        const m = document.getElementById('module-container'); if(m && !m.classList.contains('hidden')){ m.innerHTML=''; m.classList.add('hidden'); if(currentModuleAudio){ currentModuleAudio.pause(); currentModuleAudio=null; } }
+        setTimeout(() => { if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); }, 100);
+        if (id === 'profile') { if (cachedXPData) renderProfile(cachedXPData); else if (wildUserKey) fetchXP(); }
     }
 
+    // --- MODULI RESOURCES E AUDIO CORE ---
+    function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
+    async function openModule(f, a, i, r) { if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); const m = document.getElementById('module-container'); m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; m.classList.remove('hidden'); handleModuleAudio(a); if (i) document.querySelector('.nav').style.display = 'none'; try { const res = await fetch(f + '?nocache=' + Date.now()); m.innerHTML = await res.text(); m.querySelectorAll('script').forEach(s => { const n = document.createElement('script'); n.text = s.text; document.body.appendChild(n).parentNode.removeChild(n); }); } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } }
+    function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
     
-    // --- MOTORE DISSOLVENZA AUDIO (ANTI-CRASH) ---
-    let fadeIntervals = new Map();
+    function startAudioMixer() { if(!audioInited){ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); gainAmb = audioCtx.createGain(); gainMus = audioCtx.createGain(); audioCtx.createMediaElementSource(aAmb).connect(gainAmb).connect(audioCtx.destination); audioCtx.createMediaElementSource(aMus).connect(gainMus).connect(audioCtx.destination); setTimeout(() => { gainAmb.gain.value = FIXED_VOL_AMB; gainMus.gain.value = FIXED_VOL_MUS; if(aAmb.src && FIXED_VOL_AMB>0) aAmb.play().catch(e=>{}); if(aMus.src && FIXED_VOL_MUS>0) aMus.play().catch(e=>{}); }, 2000); audioInited = true; } else if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }
+    function fadeAudio(audio, targetVolume, callback) { if (!audio) return; try { if (fadeIntervals.has(audio)) clearInterval(fadeIntervals.get(audio)); let start = audio.volume; let change = targetVolume - start; if (change === 0) return; if (targetVolume > 0 && audio.paused) audio.play().catch(e => {}); let step = 0; let interval = setInterval(() => { step++; let newVol = start + (change * (step / 20)); if(newVol>1) newVol=1; if(newVol<0) newVol=0; audio.volume = newVol; if (step >= 20) { clearInterval(interval); fadeIntervals.delete(audio); audio.volume = targetVolume; if (targetVolume === 0) audio.pause(); if (callback) callback(); } }, 50); fadeIntervals.set(audio, interval); } catch(e) {} }
+    function handleModuleAudio(instruction) { try { let i = instruction ? String(instruction).trim().toUpperCase() : ""; if (i === "STOP") { fadeAudio(aMus, 0); fadeAudio(aAmb, 0); return; } if (instruction && instruction.startsWith("http")) { fadeAudio(aMus, 0); currentModuleAudio = new Audio(formatAssetLink(instruction)); currentModuleAudio.loop = true; currentModuleAudio.volume = 0; currentModuleAudio.play().catch(e => {}); fadeAudio(currentModuleAudio, 1); return; } if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
+    function restoreDefaultAudio() { try { if (currentModuleAudio) fadeAudio(currentModuleAudio, 0, () => { currentModuleAudio.pause(); currentModuleAudio = null; }); if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
 
-    function fadeAudio(audio, targetVolume, callback) {
-        if (!audio) return;
-        try {
-            // Ferma eventuali dissolvenze precedenti sullo stesso audio
-            if (fadeIntervals.has(audio)) clearInterval(fadeIntervals.get(audio));
+    let currentGroupLink = '';
+    function openGroupChoice(name, link) { currentGroupLink = link; document.getElementById('group-modal-title').innerText = name; document.getElementById('group-action-modal').style.display = 'flex'; document.getElementById('btn-go-group').onclick = () => { window.open(currentGroupLink, '_blank'); document.getElementById('group-action-modal').style.display = 'none'; }; document.getElementById('btn-copy-group').onclick = () => copyToClipboard(currentGroupLink); }
+    function copyToClipboard(text) { if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => showToast("Link copiato!")).catch(() => fallbackCopyText(text)); else fallbackCopyText(text); document.getElementById('group-action-modal').style.display = 'none'; }
+    function fallbackCopyText(text) { let t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; document.body.appendChild(t); t.focus(); t.select(); try { document.execCommand('copy'); showToast("Link copiato!"); } catch (e) { showToast("Errore copia."); } document.body.removeChild(t); }
+    function handleStoreLink(chiave) { document.getElementById('download-action-modal').style.display = 'none'; let val = WILD_ASSETS[chiave]; if (!val || val.trim() === "") showToast("Versione non ancora disponibile."); else if (val.startsWith("http")) window.open(val, '_blank'); else showToast(val); }
+    function parseSheetText(text) { return text ? String(text).replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') : ""; }
 
-            let startVolume = audio.volume;
-            let change = targetVolume - startVolume;
-            if (change === 0) return; // Se è già al volume giusto, si ferma
-            
-            if (targetVolume > 0 && audio.paused) {
-                audio.play().catch(e => console.log("Play silenziato dal browser"));
-            }
-
-            let steps = 20;
-            let currentStep = 0;
-
-            let interval = setInterval(() => {
-                try {
-                    currentStep++;
-                    let newVol = startVolume + (change * (currentStep / steps));
-                    if(newVol > 1) newVol = 1;
-                    if(newVol < 0) newVol = 0;
-                    
-                    audio.volume = newVol;
-
-                    if (currentStep >= steps) {
-                        clearInterval(interval);
-                        fadeIntervals.delete(audio);
-                        audio.volume = targetVolume;
-                        if (targetVolume === 0) audio.pause();
-                        if (callback) callback();
-                    }
-                } catch(err) { clearInterval(interval); }
-            }, 50);
-            
-            fadeIntervals.set(audio, interval);
-        } catch(e) {}
-    }
-
-    // --- GESTORE AUDIO DEI MODULI ---
-    function handleModuleAudio(instruction) {
-        try {
-            let inst = instruction ? String(instruction).trim().toUpperCase() : "";
-            
-            if (inst === "STOP") {
-                if (aMus) fadeAudio(aMus, 0); 
-                if (aAmb) fadeAudio(aAmb, 0); 
-                return;
-            }
-            
-            if (instruction && instruction.startsWith("http")) {
-                if (aMus) fadeAudio(aMus, 0); 
-                currentModuleAudio = new Audio(formatAssetLink(instruction));
-                currentModuleAudio.loop = true;
-                currentModuleAudio.volume = 0; 
-                currentModuleAudio.play().catch(e => {});
-                fadeAudio(currentModuleAudio, 1); 
-                return;
-            }
-
-            // SE VUOTO: Torna ai volumi del foglio
-            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
-            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
-        } catch(e) {}
-    }
-
-    function restoreDefaultAudio() {
-        try {
-            if (currentModuleAudio) {
-                fadeAudio(currentModuleAudio, 0, () => {
-                    currentModuleAudio.pause();
-                    currentModuleAudio = null;
-                });
-            }
-            // Risveglio post-modulo usando volumi foglio
-            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
-            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
-        } catch(e) {}
-    }
-
-        
-    
     init();
 
-    // Traduttore per "A capo" e "Grassetto" dal foglio Google
-    function parseSheetText(text) {
-        if (!text) return "";
-        return String(text)
-            .replace(/\n/g, '<br>') // Converte gli a capo
-            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // Converte **testo** in grassetto
+    // --- RIATTIVATO: SERVICE WORKER PER INSTALLAZIONE PWA E OFFLINE ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch(err => {
+                console.log("Service Worker fallito:", err);
+            });
+        });
     }
 
 </script>
-
 </body>
 </html>
-
-
-
-
