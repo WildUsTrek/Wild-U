@@ -489,9 +489,17 @@
         if(!wildUserKey) return;
         const ratio = config.euro_punto_ratio || 5;
         
+        // FILTRO BLINDATO: Cerca la Wild-Key (Email/ID) in tutte le colonne che si chiamano "utente" o "key"
         const myB = allBookings.filter(b => {
-            const k = b["ID Utente / Wild Key "] || b["ID Utente / Wild Key"] || b["ID Utente"] || b["id utente"] || b["Key"] || b["key"] || "";
-            return k.toString().trim().toLowerCase() === wildUserKey.toLowerCase();
+            let extractedKey = "";
+            for (let colName in b) {
+                let cleanColName = colName.toLowerCase();
+                if (cleanColName.includes("utente") || cleanColName.includes("key")) {
+                    extractedKey = b[colName];
+                    break;
+                }
+            }
+            return extractedKey && extractedKey.toString().trim().toLowerCase() === wildUserKey.toString().trim().toLowerCase();
         });
 
         const today = new Date(); today.setHours(0,0,0,0);
@@ -781,6 +789,7 @@
 </script>
 </body>
 </html>
+
 
 
 
