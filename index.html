@@ -203,7 +203,15 @@
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
 
     // --- FIREBASE SETUP ---
-    const firebaseConfig = { apiKey: "AIzaSyDIPgFA_caKlMHFgEa-enO4Jk0d7eTCFLI", authDomain: "wild-u-server.firebaseapp.com", projectId: "wild-u-server", storageBucket: "wild-u-server.firebasestorage.app", messagingSenderId: "959006418837", appId: "1:959006418837:web:affce9510301b946e7389c" };
+    const firebaseConfig = { 
+        apiKey: "AIzaSyDIPgFA_caKIMHFgEa-enO4Jk0d7eTCFLI", 
+        authDomain: "wild-u-server.firebaseapp.com", 
+        projectId: "wild-u-server", 
+        storageBucket: "wild-u-server.firebasestorage.app", 
+        messagingSenderId: "959006418837", 
+        appId: "1:959006418837:web:affce9510301b946e7389c",
+        measurementId: "G-KC1R6VSMF5"
+    };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const auth = firebase.auth(); 
@@ -225,11 +233,9 @@
     let lastFetchTime = 0; 
 
     // --- AUDIO ---
-    let audioCtx = null; let gainAmb = null; let gainMus = null;
     const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
     const sLvl = new Audio(); const sXP = new Audio();
     const aAmb = new Audio(); const aMus = new Audio(); 
-    aAmb.crossOrigin = "anonymous"; aMus.crossOrigin = "anonymous";
     let audioInited = false; let FIXED_VOL_AMB = 0; let FIXED_VOL_MUS = 0;
     let fadeIntervals = new Map(); let currentModuleAudio = null;
 
@@ -749,14 +755,10 @@
     function restoreDefaultAudio() { try { if (currentModuleAudio) fadeAudio(currentModuleAudio, 0, () => { currentModuleAudio.pause(); currentModuleAudio = null; }); if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
 
 function startAudioMixer() { 
-        if(!audioInited){ 
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
-            gainAmb = audioCtx.createGain(); gainMus = audioCtx.createGain(); 
-            audioCtx.createMediaElementSource(aAmb).connect(gainAmb).connect(audioCtx.destination); 
-            audioCtx.createMediaElementSource(aMus).connect(gainMus).connect(audioCtx.destination); 
-            gainAmb.gain.value = FIXED_VOL_AMB; gainMus.gain.value = FIXED_VOL_MUS; 
-            audioInited = true; 
-        } 
+        if(!audioInited) audioInited = true; 
+        if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
+        if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
+    }
         
         // Questo è il salvavita: se l'audio è in pausa e i link sono arrivati, lo FORZA a partire al momento del click.
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -778,4 +780,5 @@ function startAudioMixer() {
 </script>
 </body>
 </html>
+
 
