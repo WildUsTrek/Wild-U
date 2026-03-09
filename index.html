@@ -323,9 +323,12 @@
 
     function loginWithGoogle() {
         const provider = new firebase.auth.GoogleAuthProvider();
-        auth.signInWithRedirect(provider); 
+        // Usiamo Popup invece di Redirect! La pagina non si ricarica e la musica continua.
+        auth.signInWithPopup(provider).catch(error => {
+            console.error("Errore Popup:", error);
+            showToast("Login annullato o errore di rete.");
+        }); 
     }
-
     async function completeRegistration() {
         const phone = document.getElementById('reg-phone').value.trim();
         if(phone.length < 8) { showToast("Inserisci un numero valido per le prenotazioni."); return; }
@@ -768,3 +771,4 @@
 </script>
 </body>
 </html>
+
