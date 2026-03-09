@@ -202,7 +202,7 @@
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
 
-    // --- FIREBASE SETUP ---
+    // --- FIREBASE SETUP CON LA TUA CHIAVE ESATTA ---
     const firebaseConfig = { 
         apiKey: "AIzaSyDIPgFA_caKIMHFgEa-enO4Jk0d7eTCFLI", 
         authDomain: "wild-u-server.firebaseapp.com", 
@@ -232,7 +232,7 @@
     let tempTelegramUser = null;
     let lastFetchTime = 0; 
 
-    // --- AUDIO ---
+    // --- AUDIO NATIVO SENZA BLOCCHI GITHUB ---
     const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
     const sLvl = new Audio(); const sXP = new Audio();
     const aAmb = new Audio(); const aMus = new Audio(); 
@@ -257,7 +257,6 @@
         if(wildUserKey && (Date.now() - lastFetchTime > 300000)) fetchXP(); 
     };
 
-    // Togliamo il "once: true". Il sistema verificherà l'audio a ogni tocco, ma senza sovraccaricare nulla.
     document.addEventListener('touchstart', startAudioMixer);
     document.addEventListener('click', startAudioMixer);
 
@@ -268,21 +267,18 @@
         const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
         
         if (tgUser) {
-            // L'UTENTE E' DENTRO TELEGRAM
             document.getElementById('login-method-google').classList.add('hidden');
             document.getElementById('login-method-telegram').classList.remove('hidden');
             document.getElementById('login-desc').innerText = "Accesso automatico protetto da Telegram.";
             handleTelegramAuth(tgUser);
         } else {
-            // L'UTENTE E' SUL BROWSER (Safari/Chrome/PWA)
             document.getElementById('login-method-telegram').classList.add('hidden');
             document.getElementById('login-method-google').classList.remove('hidden');
-            // La gestione viene lasciata a auth.onAuthStateChanged qui sotto
         }
     }
 
     async function handleTelegramAuth(tgUser) {
-        const tgId = "TG-" + tgUser.id; // La sua Wild-Key esclusiva per Telegram
+        const tgId = "TG-" + tgUser.id; 
         try {
             const docSnap = await db.collection("utenti").doc(tgId).get();
             if (docSnap.exists) {
@@ -300,9 +296,8 @@
         }
     }
 
-    // Listener per il Login di Google (Si attiva solo se non siamo su Telegram)
     auth.onAuthStateChanged(async (user) => {
-        if (window.Telegram?.WebApp?.initDataUnsafe?.user) return; // Ignora se siamo su TG
+        if (window.Telegram?.WebApp?.initDataUnsafe?.user) return; 
 
         if (user) {
             tempGoogleUser = user;
@@ -376,9 +371,9 @@
 
     function logout() { 
         if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
-            localStorage.clear(); location.reload(); // Su TG disconnette e ricarica
+            localStorage.clear(); location.reload(); 
         } else {
-            auth.signOut().then(() => { localStorage.clear(); location.reload(); }); // Su Web scollega Google
+            auth.signOut().then(() => { localStorage.clear(); location.reload(); }); 
         }
     }
 
@@ -404,7 +399,7 @@
             window.Telegram.WebApp.expand(); 
         }
         await fetchInitData(); 
-        checkAuthEnvironment(); // Attiva il Bivio
+        checkAuthEnvironment(); 
     }
 
     async function fetchInitData() {
@@ -725,7 +720,6 @@
         } catch(e) { console.error(e); btn.disabled = false; sSpin.pause(); msg.innerText = "Gli spiriti sono confusi. Riprova."; }
     }
 
-    // --- FUNZIONI DI SUPPORTO E MODULI ---
     function sanitizeVolume(val) { if (!val) return 0; let n = parseFloat(String(val).replace('%', '').replace(',', '.')); return isNaN(n) ? 0 : (n > 1 ? n/100 : n); }
     function formatAssetLink(url) { if (!url) return url; if (url.includes("/file/d/")) return "https://docs.google.com/uc?export=media&id=" + url.split("/file/d/")[1].split("/")[0].split("?")[0]; if (url.includes("id=")) return "https://docs.google.com/uc?export=media&id=" + url.split("id=")[1].split("&")[0]; return url; }
     function showToast(msg) { var t = document.getElementById('toast-msg'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
@@ -750,22 +744,16 @@
     async function openModule(f, a, i, r) { if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); const m = document.getElementById('module-container'); m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; m.classList.remove('hidden'); handleModuleAudio(a); if (i) document.querySelector('.nav').style.display = 'none'; try { const res = await fetch(f + '?nocache=' + Date.now()); m.innerHTML = await res.text(); m.querySelectorAll('script').forEach(s => { const n = document.createElement('script'); n.text = s.text; document.body.appendChild(n).parentNode.removeChild(n); }); } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } }
     function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
     
-    function fadeAudio(audio, targetVolume, callback) { if (!audio) return; try { if (fadeIntervals.has(audio)) clearInterval(fadeIntervals.get(audio)); let start = audio.volume; let change = targetVolume - start; if (change === 0) return; if (targetVolume > 0 && audio.paused) audio.play().catch(e => {}); let step = 0; let interval = setInterval(() => { step++; let newVol = start + (change * (step / 20)); if(newVol>1) newVol=1; if(newVol<0) newVol=0; audio.volume = newVol; if (step >= 20) { clearInterval(interval); fadeIntervals.delete(audio); audio.volume = targetVolume; if (targetVolume === 0) audio.pause(); if (callback) callback(); } }, 50); fadeIntervals.set(audio, interval); } catch(e) {} }
-    function handleModuleAudio(instruction) { try { let i = instruction ? String(instruction).trim().toUpperCase() : ""; if (i === "STOP") { fadeAudio(aMus, 0); fadeAudio(aAmb, 0); return; } if (instruction && instruction.startsWith("http")) { fadeAudio(aMus, 0); currentModuleAudio = new Audio(formatAssetLink(instruction)); currentModuleAudio.loop = true; currentModuleAudio.volume = 0; currentModuleAudio.play().catch(e => {}); fadeAudio(currentModuleAudio, 1); return; } if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
-    function restoreDefaultAudio() { try { if (currentModuleAudio) fadeAudio(currentModuleAudio, 0, () => { currentModuleAudio.pause(); currentModuleAudio = null; }); if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
-
-function startAudioMixer() { 
+    function startAudioMixer() { 
         if(!audioInited) audioInited = true; 
         if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
         if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
     }
-        
-        // Questo è il salvavita: se l'audio è in pausa e i link sono arrivati, lo FORZA a partire al momento del click.
-        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-        if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) aMus.play().catch(e=>console.log("Play Musica Bloccato:", e));
-        if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) aAmb.play().catch(e=>console.log("Play Ambienza Bloccato:", e));
-    }
     
+    function fadeAudio(audio, targetVolume, callback) { if (!audio) return; try { if (fadeIntervals.has(audio)) clearInterval(fadeIntervals.get(audio)); let start = audio.volume; let change = targetVolume - start; if (change === 0) return; if (targetVolume > 0 && audio.paused) audio.play().catch(e => {}); let step = 0; let interval = setInterval(() => { step++; let newVol = start + (change * (step / 20)); if(newVol>1) newVol=1; if(newVol<0) newVol=0; audio.volume = newVol; if (step >= 20) { clearInterval(interval); fadeIntervals.delete(audio); audio.volume = targetVolume; if (targetVolume === 0) audio.pause(); if (callback) callback(); } }, 50); fadeIntervals.set(audio, interval); } catch(e) {} }
+    function handleModuleAudio(instruction) { try { let i = instruction ? String(instruction).trim().toUpperCase() : ""; if (i === "STOP") { fadeAudio(aMus, 0); fadeAudio(aAmb, 0); return; } if (instruction && instruction.startsWith("http")) { fadeAudio(aMus, 0); currentModuleAudio = new Audio(formatAssetLink(instruction)); currentModuleAudio.loop = true; currentModuleAudio.volume = 0; currentModuleAudio.play().catch(e => {}); fadeAudio(currentModuleAudio, 1); return; } if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
+    function restoreDefaultAudio() { try { if (currentModuleAudio) fadeAudio(currentModuleAudio, 0, () => { currentModuleAudio.pause(); currentModuleAudio = null; }); if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
+
     let currentGroupLink = '';
     function openGroupChoice(name, link) { currentGroupLink = link; document.getElementById('group-modal-title').innerText = name; document.getElementById('group-action-modal').style.display = 'flex'; document.getElementById('btn-go-group').onclick = () => { window.open(currentGroupLink, '_blank'); document.getElementById('group-action-modal').style.display = 'none'; }; document.getElementById('btn-copy-group').onclick = () => copyToClipboard(currentGroupLink); }
     function copyToClipboard(text) { if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => showToast("Link copiato!")).catch(() => fallbackCopyText(text)); else fallbackCopyText(text); document.getElementById('group-action-modal').style.display = 'none'; }
@@ -780,5 +768,3 @@ function startAudioMixer() {
 </script>
 </body>
 </html>
-
-
