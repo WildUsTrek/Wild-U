@@ -14,116 +14,37 @@
     
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+    
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     
     <style>
-        :root {
-            --w-green: #2d5a27; --w-dark: #121212; --w-card: #1e1e1e;
-            --w-gold: #d4af37; --w-text: #e0e0e0; --w-sub: #a0a0a0;
-        }
-
-        body {
-            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0;
-            overflow-x: hidden; -webkit-tap-highlight-color: transparent; font-size: 18px;
-            -webkit-user-select: none; user-select: none;
-        }
-
+        :root { --w-green: #2d5a27; --w-dark: #121212; --w-card: #1e1e1e; --w-gold: #d4af37; --w-text: #e0e0e0; --w-sub: #a0a0a0; }
+        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
         .btn-action-group { background: #333; color: white; padding: 18px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; font-weight: 900; font-size: 16px; border: none; width: 100%; text-align: left; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
-        .btn-action-group:active { transform: scale(0.98); }
-        .btn-action-group.wa { border-left: 5px solid #25D366; }
-        .btn-action-group.tg { border-left: 5px solid #0088cc; }
-        
-        .guide-box { background: #222; padding: 18px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--w-green); }
-        .guide-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 16px; }
-        .guide-box p { margin: 0; font-size: 14px; color: #ccc; line-height: 1.5; }
-
+        .btn-action-group:active { transform: scale(0.98); } .btn-action-group.wa { border-left: 5px solid #25D366; } .btn-action-group.tg { border-left: 5px solid #0088cc; }
+        .guide-box { background: #222; padding: 18px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--w-green); } .guide-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 16px; } .guide-box p { margin: 0; font-size: 14px; color: #ccc; line-height: 1.5; }
         #toast-msg { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--w-green); color: #fff; padding: 12px 24px; border-radius: 25px; z-index: 9999; display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 14px; white-space: nowrap; }
-
-        .hero-header { width: 100%; height: 160px; background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000'); background-size: cover; background-position: center; position: relative; border-bottom: 3px solid var(--w-green); }
-        .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); }
-        .hero-title { position: absolute; top: 40%; width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); z-index: 2; }
-
-        .nav { display: flex; gap: 8px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .nav::-webkit-scrollbar { display: none; }
-        .nav button { flex: 0 0 auto; background: #222; border: none; color: #888; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; white-space: nowrap; }
-        .nav button.active { background: var(--w-green); color: #fff; box-shadow: 0 0 12px var(--w-green); }
-
-        .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; }
-        .resource-item:active { background: #252525; }
-        .resource-info { display: flex; align-items: center; gap: 15px; }
-        .resource-icon { font-size: 24px; }
-        .resource-name { font-weight: 800; color: #fff; }
-
+        .hero-header { width: 100%; height: 160px; background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000'); background-size: cover; background-position: center; position: relative; border-bottom: 3px solid var(--w-green); } .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); } .hero-title { position: absolute; top: 40%; width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); z-index: 2; }
+        .nav { display: flex; gap: 8px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222; overflow-x: auto; -webkit-overflow-scrolling: touch; } .nav::-webkit-scrollbar { display: none; } .nav button { flex: 0 0 auto; background: #222; border: none; color: #888; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; white-space: nowrap; } .nav button.active { background: var(--w-green); color: #fff; box-shadow: 0 0 12px var(--w-green); }
+        .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; } .resource-item:active { background: #252525; } .resource-info { display: flex; align-items: center; gap: 15px; } .resource-icon { font-size: 24px; } .resource-name { font-weight: 800; color: #fff; }
         .container { padding: 20px; padding-bottom: 120px; }
-
-        .filter-header { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 15px; }
-        .trip-counter { color: var(--w-green); font-size: 14px; font-weight: 900; text-transform: uppercase; }
-
-        .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px; border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative; }
-        .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
-        
-        .filter-section-dropdowns { display: flex; gap: 10px; margin-bottom: 20px; }
-        .pill-select { flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px; font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat: no-repeat; background-position: right 15px center; background-size: 12px; }
-        .pill-select:focus { border-color: var(--w-green); box-shadow: 0 0 10px var(--w-green); }
-
+        .filter-header { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 15px; } .trip-counter { color: var(--w-green); font-size: 14px; font-weight: 900; text-transform: uppercase; }
+        .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px; border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative; } .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
+        .filter-section-dropdowns { display: flex; gap: 10px; margin-bottom: 20px; } .pill-select { flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px; font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat: no-repeat; background-position: right 15px center; background-size: 12px; } .pill-select:focus { border-color: var(--w-green); box-shadow: 0 0 10px var(--w-green); }
         .btn-reset { background: #333; color: var(--w-sub); border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
-
-        .price-box { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333; }
-        .price-prime-wrapper { text-align: right; }
-        .xp-reward-label { font-size: 12px; font-weight: 800; color: var(--w-gold); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .price-prime { background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.1)); padding: 10px 16px; border-radius: 12px; border: 1px solid var(--w-gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); }
-        .prime-val { font-size: 26px; font-weight: 900; color: var(--w-gold); }
-        .price-standard { font-size: 16px; opacity: 0.6; font-weight: 600; }
-
-        .btn-group { display: flex; gap: 10px; margin-top: 20px; }
-        .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer; }
-        .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
-
-        .btn-prenota { background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important; color: #000 !important; box-shadow: 0 0 12px rgba(212, 175, 55, 0.4); border: 1px solid #f1c40f !important; transition: 0.2s; }
-        .btn-prenota:hover { box-shadow: 0 0 25px rgba(212, 175, 55, 0.9); filter: brightness(1.15); }
-        .btn-prenota:active { box-shadow: 0 0 20px rgba(212, 175, 55, 0.8); transform: scale(0.98); }
-        .btn-action-glow { background: var(--w-green) !important; color: #fff !important; box-shadow: 0 0 12px var(--w-green) !important; border: none !important; }
-        
-        /* NUOVO: BOTTONE DISABILITATO */
-        .btn-disabled { background: #444 !important; color: #888 !important; box-shadow: none !important; border: 1px solid #555 !important; cursor: not-allowed; }
-
-        .wheel-container { position: relative; width: 220px; height: 220px; margin: 25px auto; }
-        .visual-wheel { width: 100%; height: 100%; border-radius: 50%; border: 8px solid #333; background: conic-gradient(#1a4d1a 0deg 90deg, #2d5a27 90deg 180deg, var(--w-gold) 180deg 270deg, #3e2723 270deg 360deg); position: relative; transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1); box-shadow: 0 0 30px rgba(0,0,0,0.8); }
-        .visual-wheel::after { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; border-radius: 50%; background: linear-gradient(90deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%), linear-gradient(0deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%); }
-        .wheel-label { position: absolute; font-size: 30px; width: 40px; text-align: center; z-index: 5; }
-        .l-wild  { top: 15%; left: 65%; transform: rotate(45deg); }
-        .l-mare  { top: 65%; left: 65%; transform: rotate(135deg); }
-        .l-jolly { top: 65%; left: 15%; transform: rotate(225deg); }
-        .l-monti { top: 15%; left: 15%; transform: rotate(315deg); }
-        .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid var(--w-gold); z-index: 10; }
-        .spirit-msg { font-size: 16px; font-weight: bold; color: var(--w-gold); font-style: italic; margin-top: 15px; min-height: 25px; }
-
-        .btn-destiny { position: relative; overflow: hidden; background: linear-gradient(135deg, #d4af37, #f1c40f, #d4af37) !important; color: #000 !important; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
-        .btn-destiny::after { content: ''; position: absolute; top: -50%; left: -60%; width: 20%; height: 200%; background: rgba(255, 255, 255, 0.4); transform: rotate(30deg); animation: shimmer 3s infinite; }
-        @keyframes shimmer { 0% { left: -60%; } 100% { left: 140%; } }
-
-        .xp-bar { background: #111; height: 32px; border-radius: 16px; margin: 20px 0; overflow: hidden; border: 1px solid #333; position: relative; }
-        .xp-fill { background: linear-gradient(90deg, #d4af37, #f1c40f, #fff); height: 100%; width: 0%; transition: width 3s cubic-bezier(0.1, 0, 0.3, 1); box-shadow: 0 0 15px var(--w-gold); }
-        .xp-text-inside { position: absolute; width: 100%; text-align: center; font-size: 14px; font-weight: 900; color: #fff; line-height: 32px; text-shadow: 1px 1px 2px #000; z-index: 5; }
-
+        .price-box { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333; } .price-prime-wrapper { text-align: right; } .xp-reward-label { font-size: 12px; font-weight: 800; color: var(--w-gold); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; } .price-prime { background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.1)); padding: 10px 16px; border-radius: 12px; border: 1px solid var(--w-gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); } .prime-val { font-size: 26px; font-weight: 900; color: var(--w-gold); } .price-standard { font-size: 16px; opacity: 0.6; font-weight: 600; }
+        .btn-group { display: flex; gap: 10px; margin-top: 20px; } .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer; } .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+        .btn-prenota { background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important; color: #000 !important; box-shadow: 0 0 12px rgba(212, 175, 55, 0.4); border: 1px solid #f1c40f !important; transition: 0.2s; } .btn-prenota:hover { box-shadow: 0 0 25px rgba(212, 175, 55, 0.9); filter: brightness(1.15); } .btn-prenota:active { box-shadow: 0 0 20px rgba(212, 175, 55, 0.8); transform: scale(0.98); } .btn-action-glow { background: var(--w-green) !important; color: #fff !important; box-shadow: 0 0 12px var(--w-green) !important; border: none !important; } .btn-disabled { background: #444 !important; color: #888 !important; box-shadow: none !important; border: 1px solid #555 !important; cursor: not-allowed; }
+        .wheel-container { position: relative; width: 220px; height: 220px; margin: 25px auto; } .visual-wheel { width: 100%; height: 100%; border-radius: 50%; border: 8px solid #333; background: conic-gradient(#1a4d1a 0deg 90deg, #2d5a27 90deg 180deg, var(--w-gold) 180deg 270deg, #3e2723 270deg 360deg); position: relative; transition: transform 4s cubic-bezier(0.1, 0, 0.2, 1); box-shadow: 0 0 30px rgba(0,0,0,0.8); } .visual-wheel::after { content: ''; position: absolute; top:0; left:0; width:100%; height:100%; border-radius: 50%; background: linear-gradient(90deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%), linear-gradient(0deg, transparent 49.5%, rgba(0,0,0,0.4) 49.5%, rgba(0,0,0,0.4) 50.5%, transparent 50.5%); } .wheel-label { position: absolute; font-size: 30px; width: 40px; text-align: center; z-index: 5; } .l-wild  { top: 15%; left: 65%; transform: rotate(45deg); } .l-mare  { top: 65%; left: 65%; transform: rotate(135deg); } .l-jolly { top: 65%; left: 15%; transform: rotate(225deg); } .l-monti { top: 15%; left: 15%; transform: rotate(315deg); } .wheel-pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid var(--w-gold); z-index: 10; } .spirit-msg { font-size: 16px; font-weight: bold; color: var(--w-gold); font-style: italic; margin-top: 15px; min-height: 25px; }
+        .btn-destiny { position: relative; overflow: hidden; background: linear-gradient(135deg, #d4af37, #f1c40f, #d4af37) !important; color: #000 !important; box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); } .btn-destiny::after { content: ''; position: absolute; top: -50%; left: -60%; width: 20%; height: 200%; background: rgba(255, 255, 255, 0.4); transform: rotate(30deg); animation: shimmer 3s infinite; } @keyframes shimmer { 0% { left: -60%; } 100% { left: 140%; } }
+        .xp-bar { background: #111; height: 32px; border-radius: 16px; margin: 20px 0; overflow: hidden; border: 1px solid #333; position: relative; } .xp-fill { background: linear-gradient(90deg, #d4af37, #f1c40f, #fff); height: 100%; width: 0%; transition: width 3s cubic-bezier(0.1, 0, 0.3, 1); box-shadow: 0 0 15px var(--w-gold); } .xp-text-inside { position: absolute; width: 100%; text-align: center; font-size: 14px; font-weight: 900; color: #fff; line-height: 32px; text-shadow: 1px 1px 2px #000; z-index: 5; }
         .alert-revoca { color: #ff4444; font-weight: 900; font-size: 14px; text-transform: uppercase; margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px; background: rgba(255, 68, 68, 0.1); }
-
-        .hidden { display: none; }
+        .hidden { display: none !important; } 
         input { width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444; background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; text-align: center; font-size: 18px; -webkit-user-select: text; user-select: text; }
-        
         #reward-overlay, #levelup-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px; }
-        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center; justify-content:center; z-index:3000; }
-        .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 85%; text-align: center; border: 2px solid var(--w-green); }
-        .levelup-img { width: 300px; height: 220px; border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold); }
-
-        .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
-        .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; }
-        .guide-summary::-webkit-details-marker { display: none; } 
-        .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; }
-        .guide-accordion[open] .acc-icon { transform: rotate(180deg); }
-        .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; }
-        .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
+        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center; justify-content:center; z-index:3000; } .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 85%; text-align: center; border: 2px solid var(--w-green); } .levelup-img { width: 300px; height: 220px; border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold); }
+        .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); } .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; } .guide-summary::-webkit-details-marker { display: none; } .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; } .guide-accordion[open] .acc-icon { transform: rotate(180deg); } .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; } .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
     </style>
 </head>
 <body>
@@ -153,28 +74,14 @@
     <div id="module-container" class="hidden"></div>
     
     <div id="sec-events">
-        <div class="filter-header">
-            <button class="btn-reset" onclick="resetFilters()" style="margin:0;">Reset Filtri</button>
-            <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
-        </div>
-        
-        <div class="filter-section-dropdowns">
-            <select id="filter-months-select" class="pill-select" onchange="setFilter('month', this.value)"></select>
-            <select id="filter-regions-select" class="pill-select" onchange="setFilter('region', this.value)"></select>
-        </div>
-
+        <div class="filter-header"><button class="btn-reset" onclick="resetFilters()" style="margin:0;">Reset Filtri</button><div id="trip-count-badge" class="trip-counter">Caricamento...</div></div>
+        <div class="filter-section-dropdowns"><select id="filter-months-select" class="pill-select" onchange="setFilter('month', this.value)"></select><select id="filter-regions-select" class="pill-select" onchange="setFilter('region', this.value)"></select></div>
         <div id="event-list"></div>
     </div>
 
     <div id="sec-free" class="hidden">
-        <div class="filter-header">
-            <button class="btn-reset" onclick="/* Da fare */" style="margin:0;">Reset Filtri</button>
-            <div id="openday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Open Day...</div>
-        </div>
-        <div class="filter-section-dropdowns">
-            <select id="filter-od-months-select" class="pill-select"></select>
-            <select id="filter-od-regions-select" class="pill-select"></select>
-        </div>
+        <div class="filter-header"><button class="btn-reset" onclick="/* Da fare */" style="margin:0;">Reset Filtri</button><div id="openday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Open Day...</div></div>
+        <div class="filter-section-dropdowns"><select id="filter-od-months-select" class="pill-select"></select><select id="filter-od-regions-select" class="pill-select"></select></div>
         <div id="openday-list"></div>
     </div>
 
@@ -196,10 +103,7 @@
             <h3 style="margin:0; font-size:26px;">Ruota del Destino</h3>
             <div class="wheel-container">
                 <div class="wheel-pointer"></div>
-                <div id="wheel-graphics" class="visual-wheel">
-                    <div class="wheel-label l-wild">🌲</div><div class="wheel-label l-mare">🌊</div>
-                    <div class="wheel-label l-jolly">🎁</div><div class="wheel-label l-monti">🏔️</div>
-                </div>
+                <div id="wheel-graphics" class="visual-wheel"><div class="wheel-label l-wild">🌲</div><div class="wheel-label l-mare">🌊</div><div class="wheel-label l-jolly">🎁</div><div class="wheel-label l-monti">🏔️</div></div>
             </div>
             <div id="spirit-msg" class="spirit-msg"></div>
             <button id="wheel-button" onclick="spinWheel()" class="btn-book btn-destiny" style="margin-top:20px;">INVOCA IL DESTINO</button>
@@ -208,9 +112,34 @@
     </div>
 
     <div id="sec-profile" class="hidden">
+        
         <div id="login-screen">
-            <div class="card"><h3>Accesso Viaggiatore</h3><input type="text" id="user-input" placeholder="User Key"><button onclick="saveIdentity()" class="btn-book">ACCEDI</button></div>
+            <div class="card" style="border-left-color: #4285F4; text-align: center;">
+                <h3 style="margin-top:0;">Accesso Esploratore</h3>
+                <p style="font-size:14px; color:#aaa; margin-bottom:20px;" id="login-desc">Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.</p>
+                
+                <div id="login-method-google" class="hidden">
+                    <button onclick="loginWithGoogle()" class="btn-book" style="background: #fff; color: #000; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;">
+                        <svg style="width:24px;height:24px" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
+                        ACCEDI CON GOOGLE
+                    </button>
+                </div>
+
+                <div id="login-method-telegram" class="hidden">
+                    <p style="color:var(--w-gold); font-weight:bold;">Verifica Identità Telegram in corso... 🌲</p>
+                </div>
+            </div>
         </div>
+
+        <div id="complete-profile-screen" class="hidden">
+            <div class="card" style="border-left-color: var(--w-gold);">
+                <h3 style="margin-top:0;">Ultimo Passo!</h3>
+                <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Per poterti contattare in caso di modifiche ai viaggi, inserisci il tuo numero WhatsApp.</p>
+                <input type="tel" id="reg-phone" placeholder="Es: +39 333 1234567">
+                <button onclick="completeRegistration()" class="btn-book btn-action-glow" style="width:100%;">INIZIA L'AVVENTURA</button>
+            </div>
+        </div>
+
         <div id="profile-data" class="hidden">
             <div class="card" style="text-align:center;">
                 <div id="prof-main-icon" style="font-size: 60px; margin-bottom: 10px;">🌲</div>
@@ -219,7 +148,7 @@
                 <div class="xp-bar"><div class="xp-text-inside" id="xp-percentage">0%</div><div id="xp-fill" class="xp-fill"></div></div>
                 <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;"><span id="prof-xp">0 XP</span><span id="prof-missing" style="color:var(--w-gold);"></span></div>
                 <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 25px;"></div>
-                <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Scollega Wild-Key</button>
+                <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Ricarica / Scollega Account</button>
                 <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
             </div>
             
@@ -250,18 +179,8 @@
             <h3 style="margin-top:0;">Installa Wild-U sul telefono</h3>
             <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Porta l'avventura sempre con te senza banner. Segui le istruzioni in base al tuo dispositivo.</p>
             <div id="install-instructions">
-                <details class="guide-accordion">
-                    <summary class="guide-summary" style="border-left-color: #007aff;">
-                        <div style="display: flex; flex-direction: column;"><span id="apple-title" style="font-weight: 900; font-size: 16px; color: #fff;">🍏 Apple</span><span id="apple-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare</span></div><span class="acc-icon">▼</span>
-                    </summary>
-                    <div id="apple-instructions" class="guide-content" style="border-left: 4px solid #007aff;">Tocca l'icona Condividi e seleziona "Aggiungi alla schermata Home".</div>
-                </details>
-                <details class="guide-accordion">
-                    <summary class="guide-summary" style="border-left-color: #3ddc84;">
-                        <div style="display: flex; flex-direction: column;"><span id="android-title" style="font-weight: 900; font-size: 16px; color: #fff;">🤖 Android</span><span id="android-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare</span></div><span class="acc-icon">▼</span>
-                    </summary>
-                    <div id="android-instructions" class="guide-content" style="border-left: 4px solid #3ddc84;">Tocca i tre puntini e seleziona "Installa app".</div>
-                </details>
+                <details class="guide-accordion"><summary class="guide-summary" style="border-left-color: #007aff;"><div style="display: flex; flex-direction: column;"><span id="apple-title" style="font-weight: 900; font-size: 16px; color: #fff;">🍏 Apple</span><span id="apple-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare</span></div><span class="acc-icon">▼</span></summary><div id="apple-instructions" class="guide-content" style="border-left: 4px solid #007aff;">Tocca l'icona Condividi e seleziona "Aggiungi alla schermata Home".</div></details>
+                <details class="guide-accordion"><summary class="guide-summary" style="border-left-color: #3ddc84;"><div style="display: flex; flex-direction: column;"><span id="android-title" style="font-weight: 900; font-size: 16px; color: #fff;">🤖 Android</span><span id="android-subtitle" style="font-size: 12px; color: #aaa; margin-top: 4px;">Come installare</span></div><span class="acc-icon">▼</span></summary><div id="android-instructions" class="guide-content" style="border-left: 4px solid #3ddc84;">Tocca i tre puntini e seleziona "Installa app".</div></details>
             </div>
         </div>
         <div class="card" style="border-left-color: #3ddc84; margin-top: 25px;">
@@ -274,7 +193,6 @@
 
 <div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
 <div id="levelup-overlay" onclick="this.style.display='none'"><img id="lv-img" src="" class="levelup-img"><h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2><p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p><p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p></div>
-
 <div id="social-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3><button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS['link_facebook'], '_blank')"><span>Facebook</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS['link_instagram'], '_blank')"><span>Instagram</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS['link_youtube'], '_blank')"><span>YouTube</span> <span>➔</span></button><button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button></div></div>
 <div id="group-action-modal" class="modal-overlay"><div class="modal-card"><h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3><button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button><button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button><button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="download-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3><button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')"><span>📦 Android (.APK)</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')"><span>▶️ Google Play Store</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')"><span>🍏 Apple App Store</span> <span>➔</span></button><button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
@@ -288,6 +206,8 @@
     const firebaseConfig = { apiKey: "AIzaSyDIPgFA_caKlMHFgEa-enO4Jk0d7eTCFLI", authDomain: "wild-u-server.firebaseapp.com", projectId: "wild-u-server", storageBucket: "wild-u-server.firebasestorage.app", messagingSenderId: "959006418837", appId: "1:959006418837:web:affce9510301b946e7389c" };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    const auth = firebase.auth(); 
+
     db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
 
     // --- VARIABILI GLOBALI ---
@@ -297,12 +217,12 @@
     let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
     let isLockedXP = false; let isAnimatingXP = false; let isPageActive = true; let currentTab = 'events';
     let cachedXPData = null; let xpCelebrationBuffer = 0;
-    
-    // NUOVE VARIABILI MASTER
-    let isBanned = false; 
-    let canBook = true; 
-    let banReason = "";
-    let viaggiRiscattati = [];
+    let isBanned = false; let canBook = true; let banReason = ""; let viaggiRiscattati = [];
+
+    // LO SCUDO E L'IDENTITA'
+    let tempGoogleUser = null;
+    let tempTelegramUser = null;
+    let lastFetchTime = 0; 
 
     // --- AUDIO ---
     let audioCtx = null; let gainAmb = null; let gainMus = null;
@@ -322,18 +242,162 @@
         "Divinità": { ico: "✨", img: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=800" }
     };
 
-    document.addEventListener("visibilitychange", () => { isPageActive = !document.hidden; if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer(); });
+    // SCUDO IN AZIONE SUL CAMBIO TAB/FOCUS
+    document.addEventListener("visibilitychange", () => { 
+        isPageActive = !document.hidden; 
+        if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer(); 
+    });
+    window.onfocus = () => { 
+        if(wildUserKey && (Date.now() - lastFetchTime > 300000)) fetchXP(); 
+    };
+
     document.addEventListener('touchstart', startAudioMixer, {once: true});
     document.addEventListener('click', startAudioMixer, {once: true});
 
     // ==========================================
-    // INIZIALIZZAZIONE (MEGA-PACCHETTO)
+    // IL MOTORE DEL BIVIO (TELEGRAM VS GOOGLE)
+    // ==========================================
+    function checkAuthEnvironment() {
+        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+        
+        if (tgUser) {
+            // L'UTENTE E' DENTRO TELEGRAM
+            document.getElementById('login-method-google').classList.add('hidden');
+            document.getElementById('login-method-telegram').classList.remove('hidden');
+            document.getElementById('login-desc').innerText = "Accesso automatico protetto da Telegram.";
+            handleTelegramAuth(tgUser);
+        } else {
+            // L'UTENTE E' SUL BROWSER (Safari/Chrome/PWA)
+            document.getElementById('login-method-telegram').classList.add('hidden');
+            document.getElementById('login-method-google').classList.remove('hidden');
+            // La gestione viene lasciata a auth.onAuthStateChanged qui sotto
+        }
+    }
+
+    async function handleTelegramAuth(tgUser) {
+        const tgId = "TG-" + tgUser.id; // La sua Wild-Key esclusiva per Telegram
+        try {
+            const docSnap = await db.collection("utenti").doc(tgId).get();
+            if (docSnap.exists) {
+                wildUserKey = tgId;
+                localStorage.setItem('wildUserKey', wildUserKey);
+                updateProfileUI();
+            } else {
+                tempTelegramUser = tgUser;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('complete-profile-screen').classList.remove('hidden');
+            }
+        } catch(e) {
+            console.error("Errore Login Telegram", e);
+            showToast("Errore di connessione a Telegram.");
+        }
+    }
+
+    // Listener per il Login di Google (Si attiva solo se non siamo su Telegram)
+    auth.onAuthStateChanged(async (user) => {
+        if (window.Telegram?.WebApp?.initDataUnsafe?.user) return; // Ignora se siamo su TG
+
+        if (user) {
+            tempGoogleUser = user;
+            try {
+                const docSnap = await db.collection("utenti").doc(user.email).get();
+                if (docSnap.exists) {
+                    wildUserKey = user.email;
+                    localStorage.setItem('wildUserKey', wildUserKey);
+                    document.getElementById('complete-profile-screen').classList.add('hidden');
+                    updateProfileUI();
+                } else {
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('profile-data').classList.add('hidden');
+                    document.getElementById('complete-profile-screen').classList.remove('hidden');
+                }
+            } catch(e) { showToast("Errore di connessione."); }
+        } else {
+            wildUserKey = null;
+            localStorage.removeItem('wildUserKey');
+            updateProfileUI();
+        }
+    });
+
+    function loginWithGoogle() {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        auth.signInWithRedirect(provider); 
+    }
+
+    async function completeRegistration() {
+        const phone = document.getElementById('reg-phone').value.trim();
+        if(phone.length < 8) { showToast("Inserisci un numero valido per le prenotazioni."); return; }
+
+        try {
+            let userId, userEmail, userName;
+            
+            if (tempTelegramUser) {
+                userId = "TG-" + tempTelegramUser.id;
+                userName = tempTelegramUser.first_name || "Esploratore TG";
+                userEmail = "Utente Telegram"; 
+            } else if (tempGoogleUser) {
+                userId = tempGoogleUser.email;
+                userName = tempGoogleUser.displayName || "Esploratore Web";
+                userEmail = tempGoogleUser.email;
+            } else {
+                return showToast("Errore di sessione. Ricarica l'app.");
+            }
+
+            const newUserData = {
+                xp: 0,
+                grado: "Socio Novizio",
+                registratoIl: firebase.firestore.FieldValue.serverTimestamp(),
+                email: userEmail,
+                nome: userName,
+                telefono: phone,
+                bannato: false
+            };
+            
+            await db.collection("utenti").doc(userId).set(newUserData);
+            
+            wildUserKey = userId;
+            localStorage.setItem('wildUserKey', wildUserKey);
+            
+            document.getElementById('complete-profile-screen').classList.add('hidden');
+            updateProfileUI();
+            showToast("Avventura iniziata! Benvenuto.");
+        } catch(e) {
+            console.error(e);
+            showToast("Errore durante la registrazione. Riprova.");
+        }
+    }
+
+    function logout() { 
+        if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+            localStorage.clear(); location.reload(); // Su TG disconnette e ricarica
+        } else {
+            auth.signOut().then(() => { localStorage.clear(); location.reload(); }); // Su Web scollega Google
+        }
+    }
+
+    function updateProfileUI() { 
+        if (wildUserKey) { 
+            document.getElementById('login-screen').classList.add('hidden'); 
+            document.getElementById('complete-profile-screen').classList.add('hidden');
+            document.getElementById('profile-data').classList.remove('hidden'); 
+            fetchXP(); 
+        } else { 
+            document.getElementById('login-screen').classList.remove('hidden'); 
+            document.getElementById('complete-profile-screen').classList.add('hidden');
+            document.getElementById('profile-data').classList.add('hidden'); 
+        } 
+    }
+
+    // ==========================================
+    // INIZIALIZZAZIONE
     // ==========================================
     async function init() {
-        if (window.Telegram && window.Telegram.WebApp) { window.Telegram.WebApp.ready(); window.Telegram.WebApp.expand(); }
+        if (window.Telegram && window.Telegram.WebApp) { 
+            window.Telegram.WebApp.ready(); 
+            window.Telegram.WebApp.expand(); 
+        }
         await fetchInitData(); 
-        updateProfileUI(); 
-        window.onfocus = () => { if(wildUserKey) fetchXP(); };
+        checkAuthEnvironment(); // Attiva il Bivio
     }
 
     async function fetchInitData() {
@@ -356,8 +420,11 @@
             sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
             sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
             
-            if(WILD_ASSETS.musica) { aMus.src = formatAssetLink(WILD_ASSETS.musica); aMus.loop = true; }
-            if(WILD_ASSETS.ambienza) { aAmb.src = formatAssetLink(WILD_ASSETS.ambienza); aAmb.loop = true; }
+            let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
+            if(linkMusica) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+
+            let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
+            if(linkAmbienza) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
 
             if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
             if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
@@ -378,6 +445,8 @@
         if (!wildUserKey || isLockedXP || isAnimatingXP) return;
         try {
             const docSnap = await db.collection("utenti").doc(wildUserKey).get();
+            lastFetchTime = Date.now(); 
+            
             if (!docSnap.exists) return; 
             
             const data = docSnap.data();
@@ -410,7 +479,7 @@
         
         const myB = allBookings.filter(b => {
             const k = b["ID Utente"] || b["id utente"] || b["Key"] || b["key"] || "";
-            return k.toString().toLowerCase() === wildUserKey.toLowerCase();
+            return k.toString().trim().toLowerCase() === wildUserKey.toLowerCase();
         });
 
         const today = new Date(); today.setHours(0,0,0,0);
@@ -474,7 +543,7 @@
     }
 
     // ==========================================
-    // CATALOGO VIAGGI E FILTRI
+    // CATALOGO E PRENOTAZIONI
     // ==========================================
     let activeFilters = { month: 'Tutti', region: 'Tutte' };
     function buildFilters() {
@@ -542,7 +611,7 @@
     }
 
     // ==========================================
-    // PROFILO, RUOTA E SISTEMA
+    // GRAFICA PROFILO E RUOTA
     // ==========================================
     async function renderProfile(data) {
         if (isAnimatingXP || !data) return;
@@ -637,7 +706,8 @@
                 
                 if (winAmount > 0) {
                     isLockedXP = true; lastCelXP += winAmount; localStorage.setItem('lastCelebratedXP', lastCelXP);
-                    showReward(winAmount); if (cachedXPData) renderProfile(cachedXPData); 
+                    showReward(winAmount); 
+                    setTimeout(() => { document.getElementById('reward-overlay').style.display = 'none'; show('profile'); }, 2000); 
                     setTimeout(() => isLockedXP = false, 8000);
                 } else {
                     const randT = allTrips[Math.floor(Math.random() * allTrips.length)];
@@ -648,7 +718,7 @@
         } catch(e) { console.error(e); btn.disabled = false; sSpin.pause(); msg.innerText = "Gli spiriti sono confusi. Riprova."; }
     }
 
-    // --- FUNZIONI DI SUPPORTO (Audio, Moduli, Login) ---
+    // --- FUNZIONI DI SUPPORTO E MODULI ---
     function sanitizeVolume(val) { if (!val) return 0; let n = parseFloat(String(val).replace('%', '').replace(',', '.')); return isNaN(n) ? 0 : (n > 1 ? n/100 : n); }
     function formatAssetLink(url) { if (!url) return url; if (url.includes("/file/d/")) return "https://docs.google.com/uc?export=media&id=" + url.split("/file/d/")[1].split("/")[0].split("?")[0]; if (url.includes("id=")) return "https://docs.google.com/uc?export=media&id=" + url.split("id=")[1].split("&")[0]; return url; }
     function showToast(msg) { var t = document.getElementById('toast-msg'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
@@ -656,19 +726,6 @@
     function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; sRew.play(); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
     function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play(); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
     
-    async function saveIdentity() { 
-        const v = document.getElementById('user-input').value.trim(); 
-        if (v.length > 2) { 
-            try {
-                const userRef = db.collection("utenti").doc(v); const docSnap = await userRef.get();
-                if (docSnap.exists) cachedXPData = docSnap.data(); else { const newU = { xp: 0, grado: "Socio Novizio", registratoIl: firebase.firestore.FieldValue.serverTimestamp() }; await userRef.set(newU); cachedXPData = newU; }
-                localStorage.setItem('wildUserKey', v); wildUserKey = v; updateProfileUI(); showToast("Accesso completato!");
-            } catch (e) { showToast("Errore di connessione."); }
-        } else showToast("Inserisci una Wild Key valida.");
-    }
-    function logout() { localStorage.clear(); location.reload(); }
-    function updateProfileUI() { if (wildUserKey) { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('profile-data').classList.remove('hidden'); fetchXP(); } else { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('profile-data').classList.add('hidden'); } }
-
     function show(id) {
         currentTab = id;
         ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { 
@@ -682,7 +739,6 @@
         if (id === 'profile') { if (cachedXPData) renderProfile(cachedXPData); else if (wildUserKey) fetchXP(); }
     }
 
-    // --- MODULI RESOURCES E AUDIO CORE ---
     function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
     async function openModule(f, a, i, r) { if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); const m = document.getElementById('module-container'); m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; m.classList.remove('hidden'); handleModuleAudio(a); if (i) document.querySelector('.nav').style.display = 'none'; try { const res = await fetch(f + '?nocache=' + Date.now()); m.innerHTML = await res.text(); m.querySelectorAll('script').forEach(s => { const n = document.createElement('script'); n.text = s.text; document.body.appendChild(n).parentNode.removeChild(n); }); } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } }
     function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
@@ -699,16 +755,9 @@
     function handleStoreLink(chiave) { document.getElementById('download-action-modal').style.display = 'none'; let val = WILD_ASSETS[chiave]; if (!val || val.trim() === "") showToast("Versione non ancora disponibile."); else if (val.startsWith("http")) window.open(val, '_blank'); else showToast(val); }
     function parseSheetText(text) { return text ? String(text).replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') : ""; }
 
-    init();
+    if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); }); }
 
-    // --- RIATTIVATO: SERVICE WORKER PER INSTALLAZIONE PWA E OFFLINE ---
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch(err => {
-                console.log("Service Worker fallito:", err);
-            });
-        });
-    }
+    init();
 
 </script>
 </body>
