@@ -826,16 +826,28 @@
         const badge = document.getElementById('openday-count-badge');
         if(!container) return; 
 
-        if(!allOpenDays || allOpenDays.length === 0) {
+        // TRUCCO TEMPORALE: Calcoliamo "oggi" a mezzanotte
+        const today = new Date(); 
+        today.setHours(0,0,0,0);
+        
+        // Filtriamo l'array scartando gli eventi già passati
+        const upcomingOpenDays = allOpenDays.filter(od => {
+            if (!od["Data Inizio"]) return true; // Se manca la data lo mostriamo per sicurezza
+            const odDate = parseItalianDate(od["Data Inizio"]);
+            return odDate >= today;
+        });
+
+        // Ora usiamo l'array filtrato (upcomingOpenDays) invece di quello grezzo
+        if(!upcomingOpenDays || upcomingOpenDays.length === 0) {
             if(badge) badge.innerText = "Nessun evento";
             container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Zaino vuoto! Nessun Open Day in programma al momento.</p>';
             return;
         }
 
-        if(badge) badge.innerText = allOpenDays.length + " Open Day in Vetrina";
+        if(badge) badge.innerText = upcomingOpenDays.length + " Open Day in Vetrina";
 
         let html = '';
-        for(let od of allOpenDays) {
+        for(let od of upcomingOpenDays) {
             const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
             const titolo = od["Titolo"] || "Evento Speciale";
             const dataInizio = od["Data Inizio"] || "";
@@ -947,6 +959,7 @@
     
 </body>
 </html>
+
 
 
 
