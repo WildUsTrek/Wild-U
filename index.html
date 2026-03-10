@@ -932,10 +932,64 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         document.getElementById('custom-booking-modal').style.display = 'none';
     }
 
-    // Funzione (Temporanea) del tasto Conferma
-    function sendCustomBooking() {
-        alert("Modulo perfettamente integrato! Manca solo il Postino per spedire il foglio. Passiamo alla Fase C?");
+    // IL POSTINO CHE SPEDISCE I DATI ALLO SCRIPT
+async function sendCustomBooking() {
+    const btn = document.querySelector('#custom-booking-modal button[onclick="sendCustomBooking()"]');
+    const originalText = btn.innerText;
+    
+    const telefono = document.getElementById('cb-telefono').value.trim();
+    if (telefono.length < 8) {
+        alert("⚠️ Inserisci un numero di telefono valido per essere contattato in caso di necessità.");
+        return;
     }
+
+    // Effetto visivo caricamento
+    btn.innerText = "SPEDIZIONE... 🌲";
+    btn.disabled = true;
+    btn.style.opacity = "0.7";
+
+    // Impacchettiamo tutti i dati del modulo
+    const payload = {
+        action: "bookCustom",
+        tipo: document.getElementById('cb-tipo-evento').value, // "APP" o "OPENDAY"
+        titolo: document.getElementById('cb-titolo').innerText,
+        data: document.getElementById('cb-data').innerText,
+        prezzo: document.getElementById('cb-prezzo').innerText,
+        nome: document.getElementById('cb-nome').value,
+        telefono: telefono,
+        wildKey: wildUserKey
+    };
+
+    try {
+        // Chiamata diretta (POST) al tuo script Google
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            // Usiamo text/plain per aggirare i blocchi di sicurezza (CORS) dei browser
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        
+        if (result.status === "success") {
+            closeCustomBooking();
+            showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
+            
+            // Forza l'aggiornamento silenzioso dello Smart Calendar per far apparire la prenotazione
+            setTimeout(fetchInitData, 1000); 
+        } else {
+            throw new Error(result.message || "Errore sconosciuto dal server");
+        }
+    } catch (error) {
+        console.error("Errore di spedizione:", error);
+        alert("❌ I server degli spiriti sono occupati. Riprova tra un attimo.");
+    } finally {
+        // Ripristino tasto
+        btn.innerText = originalText;
+        btn.disabled = false;
+        btn.style.opacity = "1";
+    }
+}
 
     // ==========================================
     // GRAFICA PROFILO E RUOTA
@@ -1221,6 +1275,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
