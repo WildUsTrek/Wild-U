@@ -657,7 +657,7 @@
 
 
     // ==========================================
-    // MOTORE FILTRI OPEN DAY (Il pezzo nuovo da incollare QUI SOTTO)
+    // MOTORE FILTRI OPEN DAY
     // ==========================================
     let activeODFilters = { month: 'Tutti', region: 'Tutte' };
 
@@ -665,7 +665,7 @@
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
         const today = new Date(); today.setHours(0,0,0,0);
         
-        // Prendiamo solo i futuri per creare le voci del menu
+        // Prendiamo solo gli eventi futuri
         const futuri = allOpenDays.filter(od => !od["Data Inizio"] || parseItalianDate(od["Data Inizio"]) >= today);
 
         // Costruiamo i Mesi
@@ -676,8 +676,8 @@
             mSel.onchange = (e) => { activeODFilters.month = e.target.value; renderOpenDays(); };
         }
         
-        // Costruiamo le Regioni (Legge la nuova colonna!)
-        const regionsRaw = [...new Set(futuri.map(t => t.Regione || t.regione || null))].filter(x => x && x.trim() !== "").sort();
+        // Costruiamo le Regioni: legge la colonna "Regione"
+        const regionsRaw = [...new Set(futuri.map(t => t["Regione"]))].filter(x => x && x.trim() !== "").sort();
         const rSel = document.getElementById('filter-od-regions-select');
         if (rSel) {
             rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
@@ -691,6 +691,67 @@
         if(document.getElementById('filter-od-months-select')) document.getElementById('filter-od-months-select').value = 'Tutti';
         if(document.getElementById('filter-od-regions-select')) document.getElementById('filter-od-regions-select').value = 'Tutte';
         renderOpenDays(); 
+    }
+
+    function renderOpenDays() {
+        const container = document.getElementById('openday-list'); 
+        const badge = document.getElementById('openday-count-badge');
+        if(!container) return; 
+
+        const today = new Date(); today.setHours(0,0,0,0);
+        
+        // 1. Filtro Temporale + Ordinamento
+        let processedList = allOpenDays.filter(od => {
+            if (!od["Data Inizio"]) return true;
+            return parseItalianDate(od["Data Inizio"]) >= today;
+        }).sort((a, b) => {
+            return parseItalianDate(a["Data Inizio"]) - parseItalianDate(b["Data Inizio"]);
+        });
+
+        // 2. Applica i filtri a tendina (Mese e Regione)
+        processedList = processedList.filter(od => {
+            const passMonth = (activeODFilters.month === 'Tutti' || (od["Data Inizio"] && od["Data Inizio"].split('/')[1] === activeODFilters.month));
+            const rVal = od["Regione"] || "";
+            const passRegion = (activeODFilters.region === 'Tutte' || rVal.toLowerCase() === activeODFilters.region.toLowerCase());
+            return passMonth && passRegion;
+        });
+
+        if(!processedList || processedList.length === 0) {
+            if(badge) badge.innerText = "Nessun evento";
+            container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Zaino vuoto! Nessun Open Day trovato con questi filtri.</p>';
+            return;
+        }
+
+        if(badge) badge.innerText = processedList.length + " Open Day";
+
+        let html = '';
+        for(let od of processedList) {
+            const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
+            const titolo = od["Titolo"] || "Evento Speciale";
+            const dataInizio = od["Data Inizio"] || "";
+            const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+            
+            // INSERIMENTO DELLA REGIONE
+            const nomeRegione = od["Regione"] ? `${od["Regione"]} - ` : "";
+            const luogo = od["Luogo Nome"] || "Luogo da definire";
+            const luogoCompleto = `${nomeRegione}${luogo}`;
+
+            const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
+            const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
+
+            html += `
+            <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
+                <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
+                <p style="color: #00aaff; font-weight: bold; margin: 0 0 12px 0; font-size: 15px;">📅 ${dataInizio} <span style="color:#777; font-weight:normal;">| 🕒 ${orario}</span></p>
+                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
+                    ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
+                </div>
+                <button onclick="showOpenDayDetails('${id}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+            </div>`;
+        }
+        container.innerHTML = html;
     }
 
     
@@ -859,57 +920,6 @@
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); }); }
 
 
-// 1. DISEGNA LA VETRINA DEGLI OPEN DAY
-    function renderOpenDays() {
-        const container = document.getElementById('openday-list'); 
-        const badge = document.getElementById('openday-count-badge');
-        if(!container) return; 
-
-        // TRUCCO TEMPORALE: Calcoliamo "oggi" a mezzanotte
-        const today = new Date(); 
-        today.setHours(0,0,0,0);
-        
-        // Filtriamo l'array scartando gli eventi già passati
-        const upcomingOpenDays = allOpenDays.filter(od => {
-            if (!od["Data Inizio"]) return true; // Se manca la data lo mostriamo per sicurezza
-            const odDate = parseItalianDate(od["Data Inizio"]);
-            return odDate >= today;
-        });
-
-        // Ora usiamo l'array filtrato (upcomingOpenDays) invece di quello grezzo
-        if(!upcomingOpenDays || upcomingOpenDays.length === 0) {
-            if(badge) badge.innerText = "Nessun evento";
-            container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Zaino vuoto! Nessun Open Day in programma al momento.</p>';
-            return;
-        }
-
-        if(badge) badge.innerText = upcomingOpenDays.length + " Open Day in Vetrina";
-
-        let html = '';
-        for(let od of upcomingOpenDays) {
-            const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
-            const titolo = od["Titolo"] || "Evento Speciale";
-            const dataInizio = od["Data Inizio"] || "";
-            const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
-            const luogo = od["Luogo Nome"] || "Luogo da definire";
-            const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
-            const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
-
-            html += `
-            <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
-                <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
-                <p style="color: #00aaff; font-weight: bold; margin: 0 0 12px 0; font-size: 15px;">📅 ${dataInizio} <span style="color:#777; font-weight:normal;">| 🕒 ${orario}</span></p>
-                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogo}</p>
-                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
-                    ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
-                </div>
-                <button onclick="showOpenDayDetails('${id}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
-            </div>`;
-        }
-        container.innerHTML = html;
-    }
-
     // 2. APRI IL POP-UP E DECODIFICA IL JSON
     function showOpenDayDetails(id) {
         const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
@@ -1018,6 +1028,7 @@
     
 </body>
 </html>
+
 
 
 
