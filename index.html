@@ -497,7 +497,12 @@
             isBanned = data.bannato === true;
             viaggiRiscattati = data.viaggi_riscattati || [];
             
-            const userData = { xp: data.xp || 0, grado: data.grado || "Socio Novizio", config: config };
+           const userData = { 
+        xp: data.xp || 0, 
+        grado: data.grado || "Socio Novizio", 
+        telefono: data.telefono || "", // <--- Questo è il pezzo fondamentale!
+        config: config 
+        };
             cachedXPData = userData; 
             
             evaluateBookings();
@@ -766,12 +771,25 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
     function openBook(t, d, p, xp) {
         if (!wildUserKey) { show('profile'); return; }
+        
+        // Recuperiamo il telefono salvato nel profilo utente
+        const userPhone = cachedXPData ? cachedXPData.telefono : "";
+
         document.getElementById('modal-desc').innerHTML = `Viaggio: <b>${t}</b><br>Data: <b>${d}</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style='color:var(--w-gold); font-weight:900;'>+(${xp}) WILD XP AL RITORNO!</span>`;
         document.getElementById('book-modal').style.display = 'flex';
+        
         document.getElementById('confirm-btn').onclick = () => {
-            const url = FORM_URL + "?usp=pp_url&entry.1122751126=" + encodeURIComponent(t) + "&entry.931759730=" + encodeURIComponent(d) + "&entry.1978984745=" + encodeURIComponent(p) + "&entry.551102529=" + encodeURIComponent(wildUserKey);
+            // Costruiamo l'URL usando i tuoi entry ID verificati
+            const url = FORM_URL + "?usp=pp_url" +
+                "&entry.1122751126=" + encodeURIComponent(t) + 
+                "&entry.931759730=" + encodeURIComponent(d) + 
+                "&entry.1978984745=" + encodeURIComponent(p) + 
+                "&entry.551102529=" + encodeURIComponent(wildUserKey) +
+                "&entry.2136667673=" + encodeURIComponent(userPhone); 
+
             document.getElementById('book-modal').style.display = 'none';
-            // Invece di aprire una nuova scheda, carichiamo il link nell'Iframe
+            
+            // Apriamo l'Iframe con tutti i campi già compilati
             document.getElementById('booking-iframe').src = url;
             document.getElementById('iframe-modal').style.display = 'flex';
         };
@@ -991,16 +1009,37 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         const bookBtn = document.getElementById('od-modal-book');
         const openDayFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeOP7YNod8RPe8Dl8elZ8Q13T5VxeGOecDt7O5omwbaC1c8mQ/viewform?usp=sharing&ouid=110836671267215438086";
         
+        // Gestione Tasto Iscriviti (COMPILAZIONE AUTOMATICA TOTALE)
+        const bookBtn = document.getElementById('od-modal-book');
+        
         bookBtn.onclick = function() {
+            if (!wildUserKey) { 
+                document.getElementById('od-details-modal').style.display = 'none';
+                show('profile'); 
+                return; 
+            }
+
+            // Recupero dati dall'evento e dall'utente (Cache)
+            const t = od["Titolo"] || "";
+            const d = od["Data Inizio"] || "";
+            const k = wildUserKey;
+            const p = cachedXPData ? cachedXPData.telefono : ""; 
+
+            // Costruzione URL con i tuoi ID REALI recuperati dal link precompilato
+            const baseUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeOP7YNod8RPe8Dl8elZ8Q13T5VxeGOecDt7O5omwbaC1c8mQ/viewform?usp=pp_url";
+            const finalUrl = baseUrl + 
+                "&entry.1122751126=" + encodeURIComponent(t) + 
+                "&entry.931759730=" + encodeURIComponent(d) +  
+                "&entry.551102529=" + encodeURIComponent(k) +
+                "&entry.2136667673=" + encodeURIComponent(p);
+
+            // Esecuzione: chiude il pop-up dettagli e apre l'Iframe con il modulo pronto
             document.getElementById('od-details-modal').style.display = 'none'; 
-            if (!wildUserKey) { show('profile'); return; } // Se non è loggato, lo manda al profilo
-            
-            // Apriamo direttamente l'Iframe con il link corretto degli Open Day!
-            document.getElementById('booking-iframe').src = openDayFormUrl;
+            document.getElementById('booking-iframe').src = finalUrl;
             document.getElementById('iframe-modal').style.display = 'flex';
         };
 
-        // Mostra il Pop-up
+        // MOSTRA IL POP-UP (Questa riga è fondamentale per far apparire la finestra!)
         document.getElementById('od-details-modal').style.display = 'block';
     }
 
@@ -1041,6 +1080,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
