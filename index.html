@@ -87,8 +87,14 @@
     </div>
 
     <div id="sec-free" class="hidden">
-        <div class="filter-header"><button class="btn-reset" onclick="/* Da fare */" style="margin:0;">Reset Filtri</button><div id="openday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Open Day...</div></div>
-        <div class="filter-section-dropdowns"><select id="filter-od-months-select" class="pill-select"></select><select id="filter-od-regions-select" class="pill-select"></select></div>
+        <div class="filter-header">
+            <button class="btn-reset" onclick="resetODFilters()" style="margin:0;">Reset Filtri</button>
+            <div id="openday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Open Day...</div>
+        </div>
+        <div class="filter-section-dropdowns">
+            <select id="filter-od-months-select" class="pill-select"></select>
+            <select id="filter-od-regions-select" class="pill-select"></select>
+        </div>
         <div id="openday-list"></div>
     </div>
 
@@ -425,6 +431,7 @@
                 if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
                 
                 buildFilters(); filterTrips();
+                buildODFilters(); // <--- AGGIUNGI QUESTA
                 if (wildUserKey) evaluateBookings();
                 renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
             } catch(e) {}
@@ -468,6 +475,7 @@
             if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
             buildFilters(); filterTrips();
+            buildODFilters(); // <--- AGGIUNGI QUESTA
             if (wildUserKey) evaluateBookings();
             renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
             
@@ -676,8 +684,8 @@
             mSel.onchange = (e) => { activeODFilters.month = e.target.value; renderOpenDays(); };
         }
         
-        // Costruiamo le Regioni: legge la colonna "Regione"
-        const regionsRaw = [...new Set(futuri.map(t => t["Regione"]))].filter(x => x && x.trim() !== "").sort();
+        // Costruiamo le Regioni: legge sia "Regione" che "regione" per sicurezza
+const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].filter(x => x && x.trim() !== "").sort();
         const rSel = document.getElementById('filter-od-regions-select');
         if (rSel) {
             rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
@@ -711,7 +719,8 @@
         // 2. Applica i filtri a tendina (Mese e Regione)
         processedList = processedList.filter(od => {
             const passMonth = (activeODFilters.month === 'Tutti' || (od["Data Inizio"] && od["Data Inizio"].split('/')[1] === activeODFilters.month));
-            const rVal = od["Regione"] || "";
+            // Cerca il dato in entrambe le varianti di scrittura
+            const rVal = od["Regione"] || od["regione"] || "";["Regione"] || "";
             const passRegion = (activeODFilters.region === 'Tutte' || rVal.toLowerCase() === activeODFilters.region.toLowerCase());
             return passMonth && passRegion;
         });
@@ -1028,6 +1037,7 @@
     
 </body>
 </html>
+
 
 
 
