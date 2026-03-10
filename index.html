@@ -662,71 +662,84 @@ let myBookedTitles = [];
 
 function evaluateBookings() {
     if(!wildUserKey) return;
-    myBookedTitles = []; // Reset dello zaino
+    myBookedTitles = []; // Reset dello zaino per i duplicati
     
-    const currentUser = wildUserKey.toString().trim().toLowerCase();
+    // 1. Identifichiamo le TUE prenotazioni (Logica testata e funzionante)
+    const myB = allBookings.filter(b => {
+        let rowContent = JSON.stringify(b).toLowerCase();
+        return rowContent.includes(wildUserKey.toLowerCase().trim());
+    });
+
     const today = new Date(); today.setHours(0,0,0,0);
     let activeCount = 0; 
     let activeHtml = '';
 
-    // LO SCANNER AGNOSTICO: Cerca te in ogni riga, ignorando i nomi delle colonne
-    allBookings.forEach(row => {
-        // Trasforma tutta la riga (colonne e valori) in un unico testo minuscolo
-        let rowContent = JSON.stringify(row).toLowerCase();
+    for(let b of myB) {
+        // Recuperiamo i dati usando le intestazioni REALI dei tuoi fogli
+        const title = b["Viaggio Scelto (non modificare)"] || "";
+        const dateStr = b["Data Inizio (non modificare)"] || "";
         
-        // Se la riga contiene la tua Wild-Key (es. la tua email)
-        if (rowContent.includes(currentUser)) {
-            let foundTitle = "";
-            let foundDate = "";
+        if(!title) continue;
 
-            // Recupera Titolo e Data cercando parole chiave nelle chiavi dell'oggetto
-            for (let key in row) {
-                let k = key.toLowerCase();
-                if (k.includes("viaggio") || k.includes("titolo") || k.includes("evento") || k.includes("scelto")) {
-                    foundTitle = row[key];
-                }
-                if (k.includes("data")) {
-                    foundDate = row[key];
-                }
+        const bDate = parseItalianDate(dateStr);
+
+        // Mostriamo solo i viaggi da oggi in poi
+        if(bDate >= today) {
+            activeCount++;
+            
+            // Alimentiamo la memoria per il blocco duplicati (quella che ha superato il test)
+            myBookedTitles.push(title.toLowerCase().trim());
+
+            // --- REVERSE ENGINEERING: Cerchiamo l'originale per recuperare i dettagli ---
+            let infoBtn = "";
+
+            // A. Cerchiamo se è un Viaggio (per il Link del sito)
+            const tripOrig = allTrips.find(t => t.Titolo === title && t["Data inizio"] === dateStr);
+            
+            // B. Cerchiamo se è un Open Day (per riaprire il Modal Info)
+            const odOrig = allOpenDays.find(od => od.Titolo === title && od["Data Inizio"] === dateStr);
+
+            if (tripOrig && tripOrig.Link) {
+                infoBtn = `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 12px;">LINK SITO</button>`;
+            } else if (odOrig) {
+                const odId = odOrig["ID Evento (Super-Key)"];
+                infoBtn = `<button onclick="showODDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 12px;">INFO</button>`;
             }
 
-            if (foundTitle) {
-                const bDate = parseItalianDate(foundDate);
-                
-                // Se il viaggio deve ancora avvenire
-                if (bDate >= today) {
-                    activeCount++;
-                    myBookedTitles.push(foundTitle.toString().toLowerCase().trim());
-
-                    activeHtml += `
-                    <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
-                        <div>
-                            <div style="font-weight: bold; color: #fff;">${foundTitle}</div>
-                            <div style="font-size: 13px; color: var(--w-gold);">📅 ${foundDate}</div>
-                        </div>
-                        <button onclick="requestCancel('${foundTitle.replace(/'/g, "\\'")}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer;">Annulla</button>
-                    </div>`;
-                }
-            }
+            activeHtml += `
+            <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                <div style="margin-bottom: 12px;">
+                    <div style="font-weight: bold; color: #fff; font-size: 15px; text-transform: uppercase;">${title}</div>
+                    <div style="font-size: 13px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr}</div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; align-items: center;">
+                    ${infoBtn}
+                    <button onclick="requestCancel('${title.replace(/'/g, "\\'")}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px;">ANNULLA</button>
+                </div>
+            </div>`;
         }
-    });
+    }
 
-    // Aggiorna la lista visiva nel profilo
-    if(activeCount === 0) activeHtml = '<p style="color:#aaa; font-size: 14px;">Nessuna avventura in attesa. Lo zaino piange!</p>';
-    document.getElementById('my-bookings-list').innerHTML = activeHtml;
+    // Aggiornamento interfaccia
+    const listContainer = document.getElementById('my-bookings-list');
+    if (listContainer) {
+        listContainer.innerHTML = (activeCount === 0) 
+            ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto. Nessuna avventura in attesa! 🎒</p>' 
+            : activeHtml;
+    }
 
-    // Gestione dei limiti di prenotazione
-    const maxPrenotazioni = parseInt(config.limite_prenotazioni) || 3;
-    canBook = !isBanned && activeCount < maxPrenotazioni;
+    // Aggiornamento dei limiti globali (per i tasti Prenota)
+    const max = parseInt(config.limite_prenotazioni) || 3;
+    canBook = !isBanned && activeCount < max;
     
     if(isBanned) banReason = "ACCOUNT SOSPESO";
-    else if (activeCount >= maxPrenotazioni) banReason = `ZAINO PIENO (${activeCount}/${maxPrenotazioni})`;
+    else if (activeCount >= max) banReason = `ZAINO PIENO (${activeCount}/${max})`;
     else banReason = "";
     
-    filterTrips(); // Nasconde o mostra i tasti Prenota nei Viaggi
-    if (typeof renderOpenDays === "function") renderOpenDays(); // Fa lo stesso per gli Open Day
+    // Notifichiamo ai tasti "Iscriviti" di aggiornarsi
+    filterTrips(); 
+    if (typeof renderOpenDays === "function") renderOpenDays();
 }
-
     async function awardTripXP(tripId, xpVal) {
         try {
             const userRef = db.collection("utenti").doc(wildUserKey);
@@ -1384,6 +1397,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
