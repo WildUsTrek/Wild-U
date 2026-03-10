@@ -655,6 +655,45 @@
         }).join('');
     }
 
+
+    // ==========================================
+    // MOTORE FILTRI OPEN DAY (Il pezzo nuovo da incollare QUI SOTTO)
+    // ==========================================
+    let activeODFilters = { month: 'Tutti', region: 'Tutte' };
+
+    function buildODFilters() {
+        const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
+        const today = new Date(); today.setHours(0,0,0,0);
+        
+        // Prendiamo solo i futuri per creare le voci del menu
+        const futuri = allOpenDays.filter(od => !od["Data Inizio"] || parseItalianDate(od["Data Inizio"]) >= today);
+
+        // Costruiamo i Mesi
+        const monthsRaw = [...new Set(futuri.map(t => t["Data Inizio"] ? t["Data Inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+        const mSel = document.getElementById('filter-od-months-select');
+        if (mSel) {
+            mSel.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + monthsRaw.map(m => `<option value="${m}">${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
+            mSel.onchange = (e) => { activeODFilters.month = e.target.value; renderOpenDays(); };
+        }
+        
+        // Costruiamo le Regioni (Legge la nuova colonna!)
+        const regionsRaw = [...new Set(futuri.map(t => t.Regione || t.regione || null))].filter(x => x && x.trim() !== "").sort();
+        const rSel = document.getElementById('filter-od-regions-select');
+        if (rSel) {
+            rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
+            rSel.onchange = (e) => { activeODFilters.region = e.target.value; renderOpenDays(); };
+        }
+    }
+
+    function resetODFilters() { 
+        activeODFilters.month = 'Tutti'; 
+        activeODFilters.region = 'Tutte'; 
+        if(document.getElementById('filter-od-months-select')) document.getElementById('filter-od-months-select').value = 'Tutti';
+        if(document.getElementById('filter-od-regions-select')) document.getElementById('filter-od-regions-select').value = 'Tutte';
+        renderOpenDays(); 
+    }
+
+    
     function openBook(t, d, p, xp) {
         if (!wildUserKey) { show('profile'); return; }
         document.getElementById('modal-desc').innerHTML = `Viaggio: <b>${t}</b><br>Data: <b>${d}</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style='color:var(--w-gold); font-weight:900;'>+(${xp}) WILD XP AL RITORNO!</span>`;
@@ -903,12 +942,28 @@
         } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
         document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
-        // Gestione Tasto Mappe
+        // Gestione Tasto Mappe e Iframe Anteprima
         const mapsBtn = document.getElementById('od-modal-maps');
-        if(od["Luogo Link Maps"]) {
-            mapsBtn.href = od["Luogo Link Maps"];
+        const mapContainer = document.getElementById('od-map-container');
+        const mapIframe = document.getElementById('od-map-iframe');
+        
+        const linkStr = od["Luogo Link Maps"] || od["Luogo Link"];
+        const nomeLuogo = od["Luogo Nome"];
+
+        if(linkStr || nomeLuogo) {
             mapsBtn.style.display = "block";
-        } else { mapsBtn.style.display = "none"; }
+            mapContainer.style.display = "block";
+            
+            // Per il tasto usiamo il link (se c'è), altrimenti creiamo una ricerca testuale
+            mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(nomeLuogo + ", Italy");
+            
+            // Per l'Iframe, creiamo l'embed interattivo
+            const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
+            mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+        } else { 
+            mapsBtn.style.display = "none"; 
+            mapContainer.style.display = "none";
+        }
 
         // Gestione Tasto Iscriviti (RIUTILIZZA IL POP-UP DEI VIAGGI!)
         const bookBtn = document.getElementById('od-modal-book');
@@ -950,8 +1005,12 @@
             <h3 style="color:#00aaff; border-bottom:1px solid #333; padding-bottom:10px;">🎒 Nello Zaino</h3>
             <ul id="od-modal-gear" style="list-style:none; padding:0; color:#ddd; font-size:15px;"></ul>
             
-            <div style="margin-top:30px; display:flex; gap:15px; flex-direction:column;">
-                <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 APRI IL NAVIGATORE</a>
+            <div id="od-map-container" style="width:100%; height:180px; border-radius:10px; overflow:hidden; margin-top:25px; display:none; border:2px solid #333;">
+                <iframe id="od-map-iframe" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
+            </div>
+            
+            <div style="margin-top:25px; display:flex; gap:15px; flex-direction:column;">
+                <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 START POINT SU MAPS</a>
                 <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
             </div>
         </div>
@@ -959,6 +1018,7 @@
     
 </body>
 </html>
+
 
 
 
