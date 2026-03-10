@@ -512,7 +512,7 @@
         if(!wildUserKey) return;
         const ratio = config.euro_punto_ratio || 5;
         
-        // RICERCA SUPER-BLINDATA: Controlla tutte le colonne senza fermarsi per sbaglio!
+        // 1. RICERCA SUPER-BLINDATA UTENTE
         const myB = allBookings.filter(b => {
             let found = false;
             for (let colName in b) {
@@ -531,7 +531,16 @@
         let activeCount = 0; let activeHtml = '';
 
         for(let b of myB) {
-            const title = b["Titolo"] || b["titolo"] || "Viaggio Misterioso";
+            // 2. RICERCA SUPER-BLINDATA TITOLO VIAGGIO
+            let title = "Viaggio Misterioso";
+            for (let colName in b) {
+                let cleanColName = colName.toLowerCase();
+                if (cleanColName.includes("viaggio scelto") || cleanColName.includes("titolo")) {
+                    title = b[colName];
+                    break;
+                }
+            }
+
             const dateStr = b["Data"] || b["data"] || b["Data inizio"] || "";
             const priceStr = b["Prezzo Prime"] || b["prezzo prime"] || "0";
             const bDate = parseItalianDate(dateStr);
@@ -814,6 +823,7 @@
 </script>
 </body>
 </html>
+
 
 
 
