@@ -660,15 +660,21 @@ async function saveProfileData() {
         if(!wildUserKey) return;
         const ratio = config.euro_punto_ratio || 5;
         
-        // 1. RICERCA SUPER-BLINDATA UTENTE
+        // 1. RICERCA SUPER-BLINDATA UTENTE (Ora immune all'arricchimento del nome!)
         const myB = allBookings.filter(b => {
             let found = false;
             for (let colName in b) {
                 let cleanColName = colName.toLowerCase();
                 if (cleanColName.includes("utente") || cleanColName.includes("key")) {
-                    if (b[colName] && b[colName].toString().trim().toLowerCase() === wildUserKey.toString().trim().toLowerCase()) {
-                        found = true;
-                        break;
+                    if (b[colName]) {
+                        // IL COLTELLO: Separiamo la stringa al simbolo "|" e prendiamo solo la prima parte (indice 0)
+                        let rawCellValue = b[colName].toString().split('|')[0].trim().toLowerCase();
+                        let currentUserKey = wildUserKey.toString().trim().toLowerCase();
+                        
+                        if (rawCellValue === currentUserKey) {
+                            found = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -1275,6 +1281,7 @@ async function sendCustomBooking() {
     
 </body>
 </html>
+
 
 
 
