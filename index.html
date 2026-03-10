@@ -294,7 +294,16 @@
     const db = firebase.firestore();
     const auth = firebase.auth(); 
 
-    db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
+    // LA NUOVA SINTASSI MODERNA PER IL DATABASE OFFLINE
+    try {
+        db.settings({
+            localCache: firebase.firestore.persistentLocalCache({
+                tabManager: firebase.firestore.persistentMultipleTabManager()
+            })
+        });
+    } catch (e) {
+        console.log("Offline non disponibile o già inizializzato", e);
+    }
 
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = [];    let wildUserKey = localStorage.getItem('wildUserKey');
@@ -725,7 +734,7 @@ if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.l
         } catch(e) { console.error("Errore Reward Time-Travel", e); }
     }
 
-    // IL MANGANELLO CON PERCENTUALE VARIABILE
+    // IL MANGANELLO CON PERCENTUALE VARIABILE E DOLORE IN DIRETTA
 async function requestCancel(title) {
     const currentXP = cachedXPData ? parseInt(cachedXPData.xp) : 0;
     
@@ -737,11 +746,23 @@ async function requestCancel(title) {
     const msgAlert = `⚠️ ATTENZIONE:\nSe annulli "${title}" subirai una PENALE del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere e avvisare l'Admin?`;
     if (!confirm(msgAlert)) return; 
 
-    // 1. TAGLIAMO I PUNTI SU FIREBASE
+    // 1. TAGLIAMO I PUNTI SU FIREBASE E SULLO SCHERMO (Il dolore in diretta)
     try {
         if (penalty > 0) {
             await db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(-penalty) }, { merge: true });
-            if (cachedXPData) cachedXPData.xp -= penalty;
+            
+            if (cachedXPData) {
+                cachedXPData.xp -= penalty;
+                
+                // Aggiorniamo le memorie per evitare disallineamenti e premi fantasma
+                lastCelXP = cachedXPData.xp;
+                lastVXP = cachedXPData.xp;
+                localStorage.setItem('lastCelebratedXP', lastCelXP);
+                localStorage.setItem('lastViewedXP', lastVXP);
+                
+                // Diciamo alla grafica del profilo di ricalcolare subito la larghezza della barra
+                if (currentTab === 'profile') renderProfile(cachedXPData);
+            }
         }
     } catch(e) { console.error("Errore decurtazione", e); }
 
@@ -759,10 +780,20 @@ async function requestCancel(title) {
         });
     } catch(e) {}
 
-    // 3. APRIAMO WHATSAPP
+    // 3. APRIAMO WHATSAPP CON IL BIVIO INTELLIGENTE
     const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey}*.`;
     const phone = WILD_ASSETS['numero_admin'] || '393931326733';
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msgWa)}`, '_blank');
+    
+    // Riconoscimento del dispositivo (Leggiamo la "targa")
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // Creazione del link su misura
+    const waLink = isMobile 
+        ? `whatsapp://send?phone=${phone}&text=${encodeURIComponent(msgWa)}` 
+        : `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msgWa)}`;
+
+    // Apertura sicura (Il '_blank' garantisce che la nostra App resti aperta in background)
+    window.open(waLink, '_blank');
 
     showToast("Prenotazione annullata. Penale applicata.");
     setTimeout(fetchInitData, 1500);
@@ -936,53 +967,48 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     }
 
     
-   // IL NUOVO MOTORE DI PRENOTAZIONE (CON CONTROLLO DUPLICATI E SICUREZZA)
+// IL NUOVO MOTORE DI PRENOTAZIONE (CON BULLDOZER ANTI-DUPLICATI)
 function openBook(titolo, data, prezzo, xp) {
     if (!wildUserKey) { show('profile'); return; }
 
-    // --- 1. POSTO DI BLOCCO: CONTROLLO DUPLICATI ---
-    // Verifichiamo se l'utente è già presente in allBookings per questo titolo e questa data
+    // Puliamo i dati in ingresso da spazi invisibili e maiuscole
+    const safeTitolo = titolo.toString().toLowerCase().trim();
+    const safeData = data.toString().toLowerCase().trim();
+
+    // 1. POSTO DI BLOCCO BULLDOZER
     const giaPrenotato = allBookings.some(b => {
         let bKey = "";
-        // Cerchiamo la colonna della chiave (come fatto in evaluateBookings)
         for (let k in b) {
             if (k.toLowerCase().includes("utente") || k.toLowerCase().includes("key")) {
-                bKey = b[k] ? b[k].toString().split('|')[0].trim().toLowerCase() : "";
+                bKey = b[k] ? b[k].toString().split('|')[0].toLowerCase().trim() : "";
                 break;
             }
         }
         
-        // Cerchiamo il titolo e la data nelle colonne (supportando diverse varianti di nome colonna)
-        let bTitle = b["Titolo"] || b["Viaggio Scelto"] || b["Viaggio scelto"] || "";
-        let bDate = b["Data"] || b["Data inizio"] || b["Data Inizio"] || "";
+        // Puliamo anche i dati letti dall'Excel
+        let bTitle = (b["Titolo"] || b["Viaggio Scelto"] || b["Viaggio scelto"] || "").toString().toLowerCase().trim();
+        let bDate = (b["Data"] || b["Data inizio"] || b["Data Inizio"] || "").toString().toLowerCase().trim();
         
-        return bKey === wildUserKey.toLowerCase() && bTitle === titolo && bDate === data;
+        return bKey === wildUserKey.toLowerCase().trim() && bTitle === safeTitolo && bDate === safeData;
     });
 
     if (giaPrenotato) {
         showToast("⚠️ Sei già in lista per questa avventura!");
-        return; // Fermiamo tutto qui, il paradosso è evitato.
+        return; 
     }
     
-    // --- 2. PROCEDURA STANDARD (I tuoi dati originali, intatti) ---
-    
-    // Inseriamo i dati "fissi" nel modulo
+    // 2. PROCEDURA STANDARD
     document.getElementById('cb-titolo').innerText = titolo;
     document.getElementById('cb-data').innerText = data;
     document.getElementById('cb-prezzo').innerText = prezzo + "€";
-    
-    // Registriamo i dati nascosti
     document.getElementById('cb-tipo-evento').value = "APP"; 
     document.getElementById('cb-xp').value = xp;
 
-    // Peschiamo Nome e Telefono dal profilo
     const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
     const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
-    
     document.getElementById('cb-nome').value = nomeSalvato;
     document.getElementById('cb-telefono').value = telefonoSalvato;
 
-    // Mostriamo la magia
     document.getElementById('custom-booking-modal').style.display = 'flex';
 }
 
@@ -991,7 +1017,7 @@ function openBook(titolo, data, prezzo, xp) {
         document.getElementById('custom-booking-modal').style.display = 'none';
     }
 
-    // IL POSTINO CHE SPEDISCE I DATI ALLO SCRIPT
+  // IL POSTINO CHE SPEDISCE I DATI ALLO SCRIPT E BLOCCA I DOPPI CLICK
 async function sendCustomBooking() {
     const btn = document.querySelector('#custom-booking-modal button[onclick="sendCustomBooking()"]');
     const originalText = btn.innerText;
@@ -1006,6 +1032,14 @@ async function sendCustomBooking() {
     btn.innerText = "SPEDIZIONE... 🌲";
     btn.disabled = true;
     btn.style.opacity = "0.7";
+
+    // --- L'INIEZIONE DI MEMORIA ISTANTANEA (Il vero Anti-Latenza) ---
+    // Segniamo SUBITO il viaggio in locale, prima ancora di interrogare Google!
+    allBookings.push({
+        "Key": wildUserKey,
+        "Titolo": document.getElementById('cb-titolo').innerText,
+        "Data": document.getElementById('cb-data').innerText
+    });
 
     // Impacchettiamo tutti i dati del modulo
     const payload = {
@@ -1023,7 +1057,6 @@ async function sendCustomBooking() {
         // Chiamata diretta (POST) al tuo script Google
         const response = await fetch(SCRIPT_URL, {
             method: 'POST',
-            // Usiamo text/plain per aggirare i blocchi di sicurezza (CORS) dei browser
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
         });
@@ -1034,23 +1067,29 @@ async function sendCustomBooking() {
             closeCustomBooking();
             showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
 
-            // --- INIEZIONE MEMORIA ISTANTANEA (Anti-Latenza) ---
-            // Infiliamo subito il viaggio nella lista locale prima che Google risponda!
-            allBookings.push({
-                "Key": wildUserKey,
-                "Titolo": payload.titolo,
-                "Data": payload.data
-            });
-
-            
-            // --- DOPAMINA: ASSEGNAZIONE PUNTI IMMEDIATA ---
+            // --- DOPAMINA: ASSEGNAZIONE PUNTI E TELETRASPORTO ---
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
             if (earnedXP > 0) {
-                // Scrive su Firebase all'istante
+                // 1. Scrive su Firebase all'istante
                 db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(earnedXP) }, { merge: true });
+                
+                // 2. Aggiorna la cache locale e BLOCCA IL LOOP FANTASMA
                 if (cachedXPData) cachedXPData.xp += earnedXP;
-                // Lancia l'animazione della vittoria sullo schermo
-                setTimeout(() => showReward(earnedXP), 600);
+                lastCelXP += earnedXP; 
+                localStorage.setItem('lastCelebratedXP', lastCelXP);
+                // (Nota: Non tocchiamo lastVXP qui, così la barra XP saprà che deve salire!)
+
+                // 3. Lancia l'animazione e ti porta a vedere la barra che sale
+                setTimeout(() => {
+                    showReward(earnedXP);
+                    setTimeout(() => { 
+                        document.getElementById('reward-overlay').style.display = 'none'; 
+                        show('profile'); 
+                    }, 2000);
+                }, 600);
+            } else {
+                // Se i punti sono zero, ti porta comunque al profilo per farti vedere la prenotazione in lista
+                setTimeout(() => show('profile'), 1000);
             }
 
             // Forza l'aggiornamento silenzioso dello Smart Calendar
@@ -1283,28 +1322,30 @@ function showOpenDayDetails(id) {
             show('profile'); return; 
         }
 
-
         // IL BUTTAFUORI: Controllo limite globale zaino
-            if (!canBook) {
-                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite di prenotazioni in attesa."));
-                return;
-            }
-        
+        if (!canBook) {
+            showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite di prenotazioni in attesa."));
+            return;
+        }
+
         const t = od["Titolo"] || "Open Day";
         const d = od["Data Inizio"] || "";
 
-        // 1. BLOCCO DUPLICATI (Cerca se sei già in lista)
+        const safeTitolo = t.toString().toLowerCase().trim();
+        const safeData = d.toString().toLowerCase().trim();
+
+        // 1. BLOCCO DUPLICATI BULLDOZER
         const giaPrenotato = allBookings.some(b => {
             let bKey = "";
             for (let k in b) {
                 if (k.toLowerCase().includes("utente") || k.toLowerCase().includes("key")) {
-                    bKey = b[k] ? b[k].toString().split('|')[0].trim().toLowerCase() : "";
+                    bKey = b[k] ? b[k].toString().split('|')[0].toLowerCase().trim() : "";
                     break;
                 }
             }
-            let bTitle = b["Titolo"] || b["Viaggio Scelto"] || "";
-            let bDate = b["Data"] || b["Data Inizio"] || b["Data inizio"] || "";
-            return bKey === wildUserKey.toLowerCase() && bTitle === t && bDate === d;
+            let bTitle = (b["Titolo"] || b["Viaggio Scelto"] || "").toString().toLowerCase().trim();
+            let bDate = (b["Data"] || b["Data Inizio"] || b["Data inizio"] || "").toString().toLowerCase().trim();
+            return bKey === wildUserKey.toLowerCase().trim() && bTitle === safeTitolo && bDate === safeData;
         });
 
         if (giaPrenotato) {
@@ -1312,20 +1353,18 @@ function showOpenDayDetails(id) {
             return;
         }
 
-        // 2. PREPARAZIONE PASSAPORTO
+        // 2. PREPARAZIONE PASSAPORTO E XP RANDOM
         document.getElementById('od-details-modal').style.display = 'none';
         document.getElementById('cb-titolo').innerText = t;
         document.getElementById('cb-data').innerText = d;
         document.getElementById('cb-prezzo').innerText = "GRATUITO";
         document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
 
-        // 3. GENERATORE XP RANDOM (Fallback 4-12)
         const min = parseInt(config.od_xp_min) || 4;
         const max = parseInt(config.od_xp_max) || 12;
         const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
         document.getElementById('cb-xp').value = randomXP;
 
-        // 4. DATI PROFILO
         const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
         const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
         document.getElementById('cb-nome').value = nomeSalvato;
@@ -1334,7 +1373,7 @@ function showOpenDayDetails(id) {
         document.getElementById('custom-booking-modal').style.display = 'flex';
     };
 
-    // MOSTRA IL POP-UP
+    // MOSTRA IL POP-UP (La riga vitale che mancava!)
     document.getElementById('od-details-modal').style.display = 'block';
 }
     
@@ -1374,6 +1413,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
