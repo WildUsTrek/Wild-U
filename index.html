@@ -226,8 +226,7 @@
     db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
 
     // --- VARIABILI GLOBALI ---
-    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = [];
-    let wildUserKey = localStorage.getItem('wildUserKey');
+    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = [];    let wildUserKey = localStorage.getItem('wildUserKey');
     let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
     let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
     let isLockedXP = false; let isAnimatingXP = false; let isPageActive = true; let currentTab = 'events';
@@ -823,14 +822,17 @@
 
 // 1. DISEGNA LA VETRINA DEGLI OPEN DAY
     function renderOpenDays() {
-        // Cerca il contenitore dove vuoi mostrare gli Open Day (Assicurati di avere un <div id="openday-list"></div> nel tab degli Open Day)
         const container = document.getElementById('openday-list'); 
+        const badge = document.getElementById('openday-count-badge');
         if(!container) return; 
 
         if(!allOpenDays || allOpenDays.length === 0) {
+            if(badge) badge.innerText = "Nessun evento";
             container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Zaino vuoto! Nessun Open Day in programma al momento.</p>';
             return;
         }
+
+        if(badge) badge.innerText = allOpenDays.length + " Open Day in Vetrina";
 
         let html = '';
         for(let od of allOpenDays) {
@@ -842,7 +844,6 @@
             const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
             const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
 
-            // Design azzurro per gli Open Day (per distinguerli dai viaggi dorati)
             html += `
             <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
@@ -902,8 +903,12 @@
         const openDayFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeOP7YNod8RPe8Dl8elZ8Q13T5VxeGOecDt7O5omwbaC1c8mQ/viewform?usp=sharing&ouid=110836671267215438086";
         
         bookBtn.onclick = function() {
-            document.getElementById('od-details-modal').style.display = 'none'; // Chiude i dettagli
-            openBook(openDayFormUrl); // Apre l'Iframe Pop-up dei Viaggi per non uscire dall'App!
+            document.getElementById('od-details-modal').style.display = 'none'; 
+            if (!wildUserKey) { show('profile'); return; } // Se non è loggato, lo manda al profilo
+            
+            // Apriamo direttamente l'Iframe con il link corretto degli Open Day!
+            document.getElementById('booking-iframe').src = openDayFormUrl;
+            document.getElementById('iframe-modal').style.display = 'flex';
         };
 
         // Mostra il Pop-up
@@ -942,6 +947,7 @@
     
 </body>
 </html>
+
 
 
 
