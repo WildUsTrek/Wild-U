@@ -690,11 +690,13 @@ function evaluateBookings() {
 
             // --- REVERSE ENGINEERING (IL PONTE TRA PRENOTAZIONE E CALENDARIO) ---
             
-            // 1. Cerchiamo nei Viaggi (allTrips) pulendo i testi per il confronto
-            const tripOrig = allTrips.find(t => 
-                clean(t.Titolo) === clean(title) && 
-                clean(t["Data inizio"]) === clean(dateStr)
-            );
+            // 1. VIAGGI (Qui c'è il trucco: la data del calendario è più corta!)
+            const tripOrig = allTrips.find(t => {
+                const titoloMatch = clean(t.Titolo) === clean(title);
+                // Usiamo startsWith: "14/03/2026" inizia con "14/03"? SÌ.
+                const dataMatch = clean(dateStr).startsWith(clean(t["Data inizio"]));
+                return titoloMatch && dataMatch;
+            });
             
             // 2. Cerchiamo negli Open Day (allOpenDays)
             const odOrig = allOpenDays.find(od => 
@@ -1398,6 +1400,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
