@@ -413,9 +413,29 @@
     }
 
     async function fetchInitData() {
+        // TRUCCO VELOCITÀ: Leggiamo subito la memoria interna del telefono
+        const cachedData = localStorage.getItem('wildCache');
+        if (cachedData) {
+            try {
+                const data = JSON.parse(cachedData);
+                allTrips = data.events || [];
+                allBookings = data.bookings || [];
+                config = data.config || {};
+                if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+                
+                // Disegniamo subito lo schermo con i dati in memoria (App istantanea!)
+                buildFilters(); filterTrips();
+                if (wildUserKey) evaluateBookings();
+            } catch(e) {}
+        }
+
         try {
+            // Nel frattempo scarichiamo in background i dati nuovi (la "Tartaruga")
             const res = await fetch(SCRIPT_URL + "?action=getInitData&nocache=" + Date.now());
             const data = await res.json();
+            
+            // Salviamo i dati freschi in memoria per la prossima volta
+            localStorage.setItem('wildCache', JSON.stringify(data));
             
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
@@ -446,7 +466,10 @@
             if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
             if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
+            // Aggiorniamo silenziosamente lo schermo e le prenotazioni con i dati reali!
             buildFilters(); filterTrips();
+            if (wildUserKey) evaluateBookings();
+            
         } catch(e) { console.error("Errore Mega-Pacchetto:", e); }
     }
 
@@ -489,17 +512,19 @@
         if(!wildUserKey) return;
         const ratio = config.euro_punto_ratio || 5;
         
-        // FILTRO BLINDATO: Cerca la Wild-Key (Email/ID) in tutte le colonne che si chiamano "utente" o "key"
+        // RICERCA SUPER-BLINDATA: Controlla tutte le colonne senza fermarsi per sbaglio!
         const myB = allBookings.filter(b => {
-            let extractedKey = "";
+            let found = false;
             for (let colName in b) {
                 let cleanColName = colName.toLowerCase();
                 if (cleanColName.includes("utente") || cleanColName.includes("key")) {
-                    extractedKey = b[colName];
-                    break;
+                    if (b[colName] && b[colName].toString().trim().toLowerCase() === wildUserKey.toString().trim().toLowerCase()) {
+                        found = true;
+                        break;
+                    }
                 }
             }
-            return extractedKey && extractedKey.toString().trim().toLowerCase() === wildUserKey.toString().trim().toLowerCase();
+            return found;
         });
 
         const today = new Date(); today.setHours(0,0,0,0);
@@ -789,6 +814,7 @@
 </script>
 </body>
 </html>
+
 
 
 
