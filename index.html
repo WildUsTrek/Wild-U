@@ -665,8 +665,14 @@ if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.l
     } catch(e) { console.error("Errore FetchXP:", e); }
 }
 
-    function evaluateBookings() {
+    // --- VARIABILE GLOBALE DELLO ZAINO INVISIBILE ---
+let myBookedTitles = []; 
+
+function evaluateBookings() {
     if(!wildUserKey) return;
+    
+    // Svuotiamo lo zaino invisibile a ogni refresh per ricalcolarlo pulito
+    myBookedTitles = [];
     
     // 1. Ricerca Utente
     const myB = allBookings.filter(b => {
@@ -687,7 +693,7 @@ if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.l
     const today = new Date(); today.setHours(0,0,0,0);
     let activeCount = 0; let activeHtml = '';
 
-    // 2. Controllo Viaggi Futuri (Addio Time-Travel, i punti li diamo subito!)
+    // 2. Controllo Viaggi Futuri e riempimento dello Zaino Invisibile
     for(let b of myB) {
         let title = "Viaggio Misterioso";
         for (let colName in b) {
@@ -701,6 +707,10 @@ if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.l
 
         if(bDate >= today) {
             activeCount++;
+            
+            // IL SEGRETO: Memorizziamo il titolo in minuscolo per controlli futuri istantanei
+            myBookedTitles.push(title.toLowerCase().trim());
+
             activeHtml += `
             <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
                 <div><div style="font-weight: bold; color: #fff;">${title}</div><div style="font-size: 13px; color: var(--w-gold);">📅 ${dateStr}</div></div>
@@ -967,32 +977,14 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     }
 
     
-// IL NUOVO MOTORE DI PRENOTAZIONE (CON BULLDOZER ANTI-DUPLICATI)
+// IL NUOVO MOTORE DI PRENOTAZIONE (Controllo Zaino Invisibile)
 function openBook(titolo, data, prezzo, xp) {
     if (!wildUserKey) { show('profile'); return; }
 
-    // Puliamo i dati in ingresso da spazi invisibili e maiuscole
     const safeTitolo = titolo.toString().toLowerCase().trim();
-    const safeData = data.toString().toLowerCase().trim();
 
-    // 1. POSTO DI BLOCCO BULLDOZER
-    const giaPrenotato = allBookings.some(b => {
-        let bKey = "";
-        for (let k in b) {
-            if (k.toLowerCase().includes("utente") || k.toLowerCase().includes("key")) {
-                bKey = b[k] ? b[k].toString().split('|')[0].toLowerCase().trim() : "";
-                break;
-            }
-        }
-        
-        // Puliamo anche i dati letti dall'Excel
-        let bTitle = (b["Titolo"] || b["Viaggio Scelto"] || b["Viaggio scelto"] || "").toString().toLowerCase().trim();
-        let bDate = (b["Data"] || b["Data inizio"] || b["Data Inizio"] || "").toString().toLowerCase().trim();
-        
-        return bKey === wildUserKey.toLowerCase().trim() && bTitle === safeTitolo && bDate === safeData;
-    });
-
-    if (giaPrenotato) {
+    // 1. CONTROLLO ZAINO INVISIBILE
+    if (myBookedTitles.includes(safeTitolo)) {
         showToast("⚠️ Sei già in lista per questa avventura!");
         return; 
     }
@@ -1033,13 +1025,10 @@ async function sendCustomBooking() {
     btn.disabled = true;
     btn.style.opacity = "0.7";
 
-    // --- L'INIEZIONE DI MEMORIA ISTANTANEA (Il vero Anti-Latenza) ---
-    // Segniamo SUBITO il viaggio in locale, prima ancora di interrogare Google!
-    allBookings.push({
-        "Key": wildUserKey,
-        "Titolo": document.getElementById('cb-titolo').innerText,
-        "Data": document.getElementById('cb-data').innerText
-    });
+    // --- L'INIEZIONE NELLO ZAINO INVISIBILE (Il vero Anti-Latenza) ---
+    // Inseriamo subito il titolo nella lista per bloccare i doppi click
+    const titoloInPartenza = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
+    myBookedTitles.push(titoloInPartenza);
 
     // Impacchettiamo tutti i dati del modulo
     const payload = {
@@ -1322,33 +1311,16 @@ function showOpenDayDetails(id) {
             show('profile'); return; 
         }
 
-        // IL BUTTAFUORI: Controllo limite globale zaino
         if (!canBook) {
             showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite di prenotazioni in attesa."));
             return;
         }
 
         const t = od["Titolo"] || "Open Day";
-        const d = od["Data Inizio"] || "";
-
         const safeTitolo = t.toString().toLowerCase().trim();
-        const safeData = d.toString().toLowerCase().trim();
 
-        // 1. BLOCCO DUPLICATI BULLDOZER
-        const giaPrenotato = allBookings.some(b => {
-            let bKey = "";
-            for (let k in b) {
-                if (k.toLowerCase().includes("utente") || k.toLowerCase().includes("key")) {
-                    bKey = b[k] ? b[k].toString().split('|')[0].toLowerCase().trim() : "";
-                    break;
-                }
-            }
-            let bTitle = (b["Titolo"] || b["Viaggio Scelto"] || "").toString().toLowerCase().trim();
-            let bDate = (b["Data"] || b["Data Inizio"] || b["Data inizio"] || "").toString().toLowerCase().trim();
-            return bKey === wildUserKey.toLowerCase().trim() && bTitle === safeTitolo && bDate === safeData;
-        });
-
-        if (giaPrenotato) {
+        // 1. CONTROLLO ZAINO INVISIBILE
+        if (myBookedTitles.includes(safeTitolo)) {
             showToast("⚠️ Sei già iscritto a questo Open Day!");
             return;
         }
@@ -1356,7 +1328,8 @@ function showOpenDayDetails(id) {
         // 2. PREPARAZIONE PASSAPORTO E XP RANDOM
         document.getElementById('od-details-modal').style.display = 'none';
         document.getElementById('cb-titolo').innerText = t;
-        document.getElementById('cb-data').innerText = d;
+        // ... (il resto rimane identico: data, prezzo GRATUITO, dopamina, ecc.)
+        document.getElementById('cb-data').innerText = od["Data Inizio"] || "";
         document.getElementById('cb-prezzo').innerText = "GRATUITO";
         document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
 
@@ -1413,6 +1386,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
