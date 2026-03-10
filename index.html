@@ -64,6 +64,47 @@
     </div>
     <iframe id="booking-iframe" style="width:100%; max-width:600px; height:80vh; border-radius:15px; background:#fff; border:none;"></iframe>
 </div>
+
+<div id="custom-booking-modal" class="modal-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center; padding: 20px;">
+    
+    <div class="modal-content" style="background: #1a1a1a; padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; text-align: left; border: 1px solid var(--w-gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+        
+        <h2 style="color: var(--w-gold); margin-top:0; text-align: center; text-transform: uppercase;">Il tuo Passaporto</h2>
+        <p style="text-align: center; font-size: 13px; color: #aaa; margin-bottom: 20px;">Controlla i dettagli prima di preparare lo zaino.</p>
+        
+        <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 3px solid var(--w-gold);">
+            <div style="font-size: 11px; color: #888; letter-spacing: 1px;">DESTINAZIONE</div>
+            <div id="cb-titolo" style="font-size: 18px; font-weight: bold; margin-bottom: 10px; color: white;">...</div>
+            
+            <div style="font-size: 11px; color: #888; letter-spacing: 1px;">DATA</div>
+            <div id="cb-data" style="font-size: 15px; margin-bottom: 10px; color: white;">...</div>
+
+            <div id="cb-prezzo-container">
+                <div style="font-size: 11px; color: #888; letter-spacing: 1px;">PREZZO</div>
+                <div id="cb-prezzo" style="font-size: 16px; color: var(--w-gold); font-weight: bold;">...</div>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label style="font-size: 11px; color: #888; letter-spacing: 1px;">IL TUO NOME E COGNOME</label>
+            <input type="text" id="cb-nome" class="wild-input-profile" readonly style="color:#888; border-bottom: 1px solid #333; cursor: not-allowed;" title="Modificabile dal tuo Profilo">
+        </div>
+
+        <div style="margin-bottom: 25px;">
+            <label style="font-size: 11px; color: #888; letter-spacing: 1px;">TELEFONO / TELEGRAM</label>
+            <input type="text" id="cb-telefono" class="wild-input-profile" style="border-bottom: 1px solid var(--w-gold); color: white;" placeholder="Inserisci il tuo numero">
+            <div style="font-size: 10px; color: #666; margin-top: 3px;">*Puoi modificarlo ora se per questo viaggio usi un altro numero.</div>
+        </div>
+
+        <input type="hidden" id="cb-tipo-evento">
+        <input type="hidden" id="cb-xp">
+
+        <div style="display: flex; gap: 10px;">
+            <button onclick="closeCustomBooking()" style="flex: 1; padding: 12px; border-radius: 8px; background: #333; color: white; border: none; font-weight: bold; cursor: pointer;">Indietro</button>
+            <button onclick="sendCustomBooking()" style="flex: 2; padding: 12px; border-radius: 8px; background: var(--w-gold); color: black; font-weight: bold; border: none; cursor: pointer; text-transform: uppercase;">Conferma</button>
+        </div>
+    </div>
+</div>
     
 <div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub</h1></div>
 
@@ -862,30 +903,38 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     }
 
     
-    function openBook(t, d, p, xp) {
+    // IL NUOVO MOTORE DI PRENOTAZIONE (CUSTOM FORM)
+    function openBook(titolo, data, prezzo, xp) {
         if (!wildUserKey) { show('profile'); return; }
         
-        // Recuperiamo il telefono salvato nel profilo utente
-        const userPhone = cachedXPData ? cachedXPData.telefono : "";
-
-        document.getElementById('modal-desc').innerHTML = `Viaggio: <b>${t}</b><br>Data: <b>${d}</b><br><br>La prenotazione è <b>gratuita e senza impegno</b>.<br><span style='color:var(--w-gold); font-weight:900;'>+(${xp}) WILD XP AL RITORNO!</span>`;
-        document.getElementById('book-modal').style.display = 'flex';
+        // 1. Inseriamo i dati "fissi" nel modulo
+        document.getElementById('cb-titolo').innerText = titolo;
+        document.getElementById('cb-data').innerText = data;
+        document.getElementById('cb-prezzo').innerText = prezzo + "€";
         
-        document.getElementById('confirm-btn').onclick = () => {
-            // Costruiamo l'URL usando i tuoi entry ID verificati
-            const url = FORM_URL + "?usp=pp_url" +
-                "&entry.1122751126=" + encodeURIComponent(t) + 
-                "&entry.931759730=" + encodeURIComponent(d) + 
-                "&entry.1978984745=" + encodeURIComponent(p) + 
-                "&entry.551102529=" + encodeURIComponent(wildUserKey) +
-                "&entry.2136667673=" + encodeURIComponent(userPhone); 
+        // 2. Registriamo i dati nascosti
+        document.getElementById('cb-tipo-evento').value = "APP"; 
+        document.getElementById('cb-xp').value = xp;
 
-            document.getElementById('book-modal').style.display = 'none';
-            
-            // Apriamo l'Iframe con tutti i campi già compilati
-            document.getElementById('booking-iframe').src = url;
-            document.getElementById('iframe-modal').style.display = 'flex';
-        };
+        // 3. Peschiamo Nome e Telefono dal profilo
+        const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+        const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+        
+        document.getElementById('cb-nome').value = nomeSalvato;
+        document.getElementById('cb-telefono').value = telefonoSalvato;
+
+        // 4. Mostriamo la magia
+        document.getElementById('custom-booking-modal').style.display = 'flex';
+    }
+
+    // Funzione per chiudere il modulo
+    function closeCustomBooking() {
+        document.getElementById('custom-booking-modal').style.display = 'none';
+    }
+
+    // Funzione (Temporanea) del tasto Conferma
+    function sendCustomBooking() {
+        alert("Modulo perfettamente integrato! Manca solo il Postino per spedire il foglio. Passiamo alla Fase C?");
     }
 
     // ==========================================
@@ -1171,6 +1220,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
