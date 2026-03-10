@@ -586,10 +586,10 @@ async function saveProfileData() {
             sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
             
             let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-            if(linkMusica) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+if(linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
 
-            let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-            if(linkAmbienza) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
+if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
 
             if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
             if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
@@ -657,71 +657,61 @@ async function saveProfileData() {
 }
 
     function evaluateBookings() {
-        if(!wildUserKey) return;
-        const ratio = config.euro_punto_ratio || 5;
-        
-        // 1. RICERCA SUPER-BLINDATA UTENTE (Ora immune all'arricchimento del nome!)
-        const myB = allBookings.filter(b => {
-            let found = false;
-            for (let colName in b) {
-                let cleanColName = colName.toLowerCase();
-                if (cleanColName.includes("utente") || cleanColName.includes("key")) {
-                    if (b[colName]) {
-                        // IL COLTELLO: Separiamo la stringa al simbolo "|" e prendiamo solo la prima parte (indice 0)
-                        let rawCellValue = b[colName].toString().split('|')[0].trim().toLowerCase();
-                        let currentUserKey = wildUserKey.toString().trim().toLowerCase();
-                        
-                        if (rawCellValue === currentUserKey) {
-                            found = true;
-                            break;
-                        }
-                    }
+    if(!wildUserKey) return;
+    
+    // 1. Ricerca Utente
+    const myB = allBookings.filter(b => {
+        let found = false;
+        for (let colName in b) {
+            let cleanColName = colName.toLowerCase();
+            if (cleanColName.includes("utente") || cleanColName.includes("key")) {
+                if (b[colName]) {
+                    let rawCellValue = b[colName].toString().split('|')[0].trim().toLowerCase();
+                    let currentUserKey = wildUserKey.toString().trim().toLowerCase();
+                    if (rawCellValue === currentUserKey) { found = true; break; }
                 }
             }
-            return found;
-        });
+        }
+        return found;
+    });
 
-        const today = new Date(); today.setHours(0,0,0,0);
-        let activeCount = 0; let activeHtml = '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    let activeCount = 0; let activeHtml = '';
 
-        for(let b of myB) {
-            // 2. RICERCA SUPER-BLINDATA TITOLO VIAGGIO
-            let title = "Viaggio Misterioso";
-            for (let colName in b) {
-                let cleanColName = colName.toLowerCase();
-                if (cleanColName.includes("viaggio scelto") || cleanColName.includes("titolo")) {
-                    title = b[colName];
-                    break;
-                }
-            }
-
-            const dateStr = b["Data"] || b["data"] || b["Data inizio"] || "";
-            const priceStr = b["Prezzo Prime"] || b["prezzo prime"] || "0";
-            const bDate = parseItalianDate(dateStr);
-            const xpVal = Math.floor((parseFloat(priceStr.replace(',','.')) || 0) / ratio);
-            const tripId = title + "_" + dateStr;
-
-            if(bDate < today) {
-                if(!viaggiRiscattati.includes(tripId) && xpVal > 0) awardTripXP(tripId, xpVal);
-            } else {
-                activeCount++;
-                activeHtml += `
-                <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
-                    <div><div style="font-weight: bold; color: #fff;">${title}</div><div style="font-size: 13px; color: var(--w-gold);">📅 ${dateStr}</div></div>
-                    <button onclick="requestCancel('${title}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer;">Annulla</button>
-                </div>`;
+    // 2. Controllo Viaggi Futuri (Addio Time-Travel, i punti li diamo subito!)
+    for(let b of myB) {
+        let title = "Viaggio Misterioso";
+        for (let colName in b) {
+            if (colName.toLowerCase().includes("viaggio") || colName.toLowerCase().includes("titolo")) {
+                title = b[colName]; break;
             }
         }
 
-        if(activeCount === 0) activeHtml = '<p style="color:#aaa; font-size: 14px;">Nessuna avventura in attesa. Lo zaino piange!</p>';
-        document.getElementById('my-bookings-list').innerHTML = activeHtml;
+        const dateStr = b["Data"] || b["data"] || b["Data Inizio"] || b["Data inizio"] || "";
+        const bDate = parseItalianDate(dateStr);
 
-        canBook = !isBanned && activeCount < 3;
-        if(isBanned) banReason = "ACCOUNT SOSPESO";
-        else if (activeCount >= 3) banReason = "LIMITE ATTESE (3/3)";
-        
-        filterTrips(); 
+        if(bDate >= today) {
+            activeCount++;
+            activeHtml += `
+            <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
+                <div><div style="font-weight: bold; color: #fff;">${title}</div><div style="font-size: 13px; color: var(--w-gold);">📅 ${dateStr}</div></div>
+                <button onclick="requestCancel('${title}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer;">Annulla</button>
+            </div>`;
+        }
     }
+
+    if(activeCount === 0) activeHtml = '<p style="color:#aaa; font-size: 14px;">Nessuna avventura in attesa. Lo zaino piange!</p>';
+    document.getElementById('my-bookings-list').innerHTML = activeHtml;
+
+    // 3. IL LIMITE VARIABILE DAL FOGLIO (Default 3 se non lo compili)
+    const maxPrenotazioni = parseInt(config.limite_prenotazioni) || 3;
+    canBook = !isBanned && activeCount < maxPrenotazioni;
+    
+    if(isBanned) banReason = "ACCOUNT SOSPESO";
+    else if (activeCount >= maxPrenotazioni) banReason = `LIMITE ATTESE (${maxPrenotazioni}/${maxPrenotazioni})`;
+    
+    filterTrips(); 
+}
 
     async function awardTripXP(tripId, xpVal) {
         try {
@@ -735,11 +725,48 @@ async function saveProfileData() {
         } catch(e) { console.error("Errore Reward Time-Travel", e); }
     }
 
-    function requestCancel(title) {
-        const msg = `Ciao Admin, purtroppo devo annullare la mia presenza al viaggio *${title}*. La mia Wild-Key è *${wildUserKey}*.`;
-        const phone = WILD_ASSETS['numero_admin'] || '393931326733';
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
-    }
+    // IL MANGANELLO CON PERCENTUALE VARIABILE
+async function requestCancel(title) {
+    const currentXP = cachedXPData ? parseInt(cachedXPData.xp) : 0;
+    
+    // Legge la penale dall'Excel (se non la trova, usa 40 di default)
+    const percentualePenale = parseInt(config.penale_annullamento) || 40;
+    const penalty = Math.floor(currentXP * (percentualePenale / 100)); 
+
+    // Conferma
+    const msgAlert = `⚠️ ATTENZIONE:\nSe annulli "${title}" subirai una PENALE del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere e avvisare l'Admin?`;
+    if (!confirm(msgAlert)) return; 
+
+    // 1. TAGLIAMO I PUNTI SU FIREBASE
+    try {
+        if (penalty > 0) {
+            await db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(-penalty) }, { merge: true });
+            if (cachedXPData) cachedXPData.xp -= penalty;
+        }
+    } catch(e) { console.error("Errore decurtazione", e); }
+
+    // 2. DIAMO L'ORDINE AL POSTINO DI ELIMINARE LA RIGA
+    const payload = {
+        action: "cancelBooking",
+        titolo: title,
+        wildKey: wildUserKey
+    };
+    try {
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+        });
+    } catch(e) {}
+
+    // 3. APRIAMO WHATSAPP
+    const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey}*.`;
+    const phone = WILD_ASSETS['numero_admin'] || '393931326733';
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msgWa)}`, '_blank');
+
+    showToast("Prenotazione annullata. Penale applicata.");
+    setTimeout(fetchInitData, 1500);
+}
 
     function parseItalianDate(dStr) {
         if(!dStr) return new Date();
@@ -981,8 +1008,18 @@ async function sendCustomBooking() {
             closeCustomBooking();
             showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
             
-            // Forza l'aggiornamento silenzioso dello Smart Calendar per far apparire la prenotazione
-            setTimeout(fetchInitData, 1000); 
+            // --- DOPAMINA: ASSEGNAZIONE PUNTI IMMEDIATA ---
+            const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
+            if (earnedXP > 0) {
+                // Scrive su Firebase all'istante
+                db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(earnedXP) }, { merge: true });
+                if (cachedXPData) cachedXPData.xp += earnedXP;
+                // Lancia l'animazione della vittoria sullo schermo
+                setTimeout(() => showReward(earnedXP), 600);
+            }
+
+            // Forza l'aggiornamento silenzioso dello Smart Calendar
+            setTimeout(fetchInitData, 1500); 
         } else {
             throw new Error(result.message || "Errore sconosciuto dal server");
         }
@@ -1281,6 +1318,7 @@ async function sendCustomBooking() {
     
 </body>
 </html>
+
 
 
 
