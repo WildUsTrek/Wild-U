@@ -1147,10 +1147,8 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
             mapContainer.style.display = "none";
         }
 
-        // Gestione Tasto Iscriviti (RIUTILIZZA IL POP-UP DEI VIAGGI!)
+        // Gestione Tasto Iscriviti (DIROTTATO SUL NUOVO PASSAPORTO)
         const bookBtn = document.getElementById('od-modal-book');
-        const openDayFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeOP7YNod8RPe8Dl8elZ8Q13T5VxeGOecDt7O5omwbaC1c8mQ/viewform?usp=sharing&ouid=110836671267215438086";
-        
         
         bookBtn.onclick = function() {
             if (!wildUserKey) { 
@@ -1159,24 +1157,27 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
                 return; 
             }
 
-            // Recupero dati dall'evento e dall'utente (Cache)
-            const t = od["Titolo"] || "";
-            const d = od["Data Inizio"] || "";
-            const k = wildUserKey;
-            const p = cachedXPData ? cachedXPData.telefono : ""; 
+            // 1. Chiudiamo la finestra dei dettagli dell'Open Day
+            document.getElementById('od-details-modal').style.display = 'none';
 
-            // Costruzione URL con i tuoi ID REALI recuperati dal link precompilato
-            const baseUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeOP7YNod8RPe8Dl8elZ8Q13T5VxeGOecDt7O5omwbaC1c8mQ/viewform?usp=pp_url";
-            const finalUrl = baseUrl + 
-                "&entry.1122751126=" + encodeURIComponent(t) + 
-                "&entry.931759730=" + encodeURIComponent(d) +  
-                "&entry.551102529=" + encodeURIComponent(k) +
-                "&entry.2136667673=" + encodeURIComponent(p);
+            // 2. Inseriamo i dati nel nuovo modulo Passaporto
+            document.getElementById('cb-titolo').innerText = od["Titolo"] || "Open Day Event";
+            document.getElementById('cb-data').innerText = od["Data Inizio"] || "";
+            document.getElementById('cb-prezzo').innerText = "GRATUITO"; // È un Open Day!
+            
+            // 3. Etichetta nascosta per dire al Postino dove scrivere!
+            document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
+            document.getElementById('cb-xp').value = "0"; // Nessun prime XP per i free
 
-            // Esecuzione: chiude il pop-up dettagli e apre l'Iframe con il modulo pronto
-            document.getElementById('od-details-modal').style.display = 'none'; 
-            document.getElementById('booking-iframe').src = finalUrl;
-            document.getElementById('iframe-modal').style.display = 'flex';
+            // 4. Peschiamo Nome e Telefono dal profilo
+            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+            
+            document.getElementById('cb-nome').value = nomeSalvato;
+            document.getElementById('cb-telefono').value = telefonoSalvato;
+
+            // 5. Apriamo la magia scura
+            document.getElementById('custom-booking-modal').style.display = 'flex';
         };
 
         // MOSTRA IL POP-UP (Questa riga è fondamentale per far apparire la finestra!)
@@ -1220,6 +1221,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
