@@ -336,13 +336,14 @@ async function saveProfileData() {
     const newPhone = document.getElementById('user-phone-input').value;
 
     try {
-        const userRef = doc(db, "users", wildUserKey);
-        await setDoc(userRef, {
+        // Usiamo la sintassi corretta per il tuo database (v8 compat)
+        // Nota: ho usato "utenti" per essere coerente con la tua fetchXP
+        await db.collection("utenti").doc(wildUserKey).set({
             nome: newName,
             telefono: newPhone
         }, { merge: true });
 
-        // Aggiorniamo la cache locale così l'app non deve ricaricare tutto
+        // Aggiorniamo la cache locale per riflettere i cambiamenti subito
         if (cachedXPData) {
             cachedXPData.nome = newName;
             cachedXPData.telefono = newPhone;
@@ -355,7 +356,6 @@ async function saveProfileData() {
         alert("❌ Errore durante il salvataggio. Riprova.");
     }
 }
-
     
     // ==========================================
     // IL MOTORE DEL BIVIO (TELEGRAM VS GOOGLE)
@@ -1171,6 +1171,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
