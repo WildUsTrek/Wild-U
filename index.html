@@ -937,6 +937,9 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
         document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
         document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+        // Micro-fix Regione nel Pop-up
+        const regVal = od["Regione"] || od["regione"] || "";
+        document.getElementById('od-modal-region-display').innerText = regVal ? "🗺️ Area: " + regVal : "";
         document.getElementById('od-modal-place').innerText = od["Luogo Nome"] || "Luogo da definire";
         
         document.getElementById('od-modal-km').innerText = od["KM"] ? `🥾 ${od["KM"]} km` : "";
@@ -1023,6 +1026,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
             
             <h3 style="color:#00aaff; border-bottom:1px solid #333; padding-bottom:10px;">🎒 Nello Zaino</h3>
             <ul id="od-modal-gear" style="list-style:none; padding:0; color:#ddd; font-size:15px;"></ul>
+            <div id="od-modal-region-display" style="color: #00aaff; font-size: 14px; font-weight: 900; margin-top: 25px; text-transform: uppercase; letter-spacing: 1px;"></div>
             
             <div id="od-map-container" style="width:100%; height:180px; border-radius:10px; overflow:hidden; margin-top:25px; display:none; border:2px solid #333;">
                 <iframe id="od-map-iframe" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
@@ -1037,6 +1041,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
