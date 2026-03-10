@@ -662,81 +662,79 @@ let myBookedTitles = [];
 
 function evaluateBookings() {
     if(!wildUserKey) return;
-    myBookedTitles = []; // Reset dello zaino per i duplicati
+    myBookedTitles = [];
     
-    // 1. Identifichiamo le TUE prenotazioni (Logica testata e funzionante)
+    // Funzione "pulisci-testo" per far combaciare i dati anche se hanno spazi diversi
+    const clean = (s) => s ? s.toString().toLowerCase().trim() : "";
+
     const myB = allBookings.filter(b => {
         let rowContent = JSON.stringify(b).toLowerCase();
         return rowContent.includes(wildUserKey.toLowerCase().trim());
     });
 
     const today = new Date(); today.setHours(0,0,0,0);
-    let activeCount = 0; 
-    let activeHtml = '';
+    let activeCount = 0; let activeHtml = '';
 
     for(let b of myB) {
-        // Recuperiamo i dati usando le intestazioni REALI dei tuoi fogli
+        // Usiamo le testate reali dei tuoi fogli Excel
         const title = b["Viaggio Scelto (non modificare)"] || "";
         const dateStr = b["Data Inizio (non modificare)"] || "";
-        
         if(!title) continue;
 
         const bDate = parseItalianDate(dateStr);
-
-        // Mostriamo solo i viaggi da oggi in poi
         if(bDate >= today) {
             activeCount++;
-            
-            // Alimentiamo la memoria per il blocco duplicati (quella che ha superato il test)
-            myBookedTitles.push(title.toLowerCase().trim());
+            myBookedTitles.push(clean(title));
 
-            // --- REVERSE ENGINEERING: Cerchiamo l'originale per recuperare i dettagli ---
             let infoBtn = "";
 
-            // A. Cerchiamo se è un Viaggio (per il Link del sito)
-            const tripOrig = allTrips.find(t => t.Titolo === title && t["Data inizio"] === dateStr);
+            // --- REVERSE ENGINEERING (IL PONTE TRA PRENOTAZIONE E CALENDARIO) ---
             
-            // B. Cerchiamo se è un Open Day (per riaprire il Modal Info)
-            const odOrig = allOpenDays.find(od => od.Titolo === title && od["Data Inizio"] === dateStr);
+            // 1. Cerchiamo nei Viaggi (allTrips) pulendo i testi per il confronto
+            const tripOrig = allTrips.find(t => 
+                clean(t.Titolo) === clean(title) && 
+                clean(t["Data inizio"]) === clean(dateStr)
+            );
+            
+            // 2. Cerchiamo negli Open Day (allOpenDays)
+            const odOrig = allOpenDays.find(od => 
+                clean(od.Titolo) === clean(title) && 
+                clean(od["Data Inizio"]) === clean(dateStr)
+            );
 
             if (tripOrig && tripOrig.Link) {
-                infoBtn = `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 12px;">LINK SITO</button>`;
+                // Tasto per i Viaggi
+                infoBtn = `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">LINK SITO</button>`;
             } else if (odOrig) {
+                // Tasto per gli Open Day (ID univoco)
                 const odId = odOrig["ID Evento (Super-Key)"];
-                infoBtn = `<button onclick="showODDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 12px;">INFO</button>`;
+                infoBtn = `<button onclick="showOpenDayDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
             }
 
             activeHtml += `
             <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
                 <div style="margin-bottom: 12px;">
-                    <div style="font-weight: bold; color: #fff; font-size: 15px; text-transform: uppercase;">${title}</div>
-                    <div style="font-size: 13px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr}</div>
+                    <div style="font-weight: bold; color: #fff; font-size: 14px; text-transform: uppercase;">${title}</div>
+                    <div style="font-size: 12px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr}</div>
                 </div>
-                <div style="display: flex; justify-content: flex-end; align-items: center;">
+                <div style="display: flex; justify-content: flex-end;">
                     ${infoBtn}
-                    <button onclick="requestCancel('${title.replace(/'/g, "\\'")}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px;">ANNULLA</button>
+                    <button onclick="requestCancel('${title.replace(/'/g, "\\'")}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
                 </div>
             </div>`;
         }
     }
 
-    // Aggiornamento interfaccia
-    const listContainer = document.getElementById('my-bookings-list');
-    if (listContainer) {
-        listContainer.innerHTML = (activeCount === 0) 
-            ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto. Nessuna avventura in attesa! 🎒</p>' 
-            : activeHtml;
-    }
+    document.getElementById('my-bookings-list').innerHTML = (activeCount === 0) ? 
+        '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' : activeHtml;
 
-    // Aggiornamento dei limiti globali (per i tasti Prenota)
     const max = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && activeCount < max;
     
     if(isBanned) banReason = "ACCOUNT SOSPESO";
     else if (activeCount >= max) banReason = `ZAINO PIENO (${activeCount}/${max})`;
     else banReason = "";
-    
-    // Notifichiamo ai tasti "Iscriviti" di aggiornarsi
+
     filterTrips(); 
     if (typeof renderOpenDays === "function") renderOpenDays();
 }
@@ -1260,12 +1258,16 @@ async function sendCustomBooking() {
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); }); }
 
 
-    // 2. APRI IL POP-UP E DECODIFICA IL JSON (VERSIONE INTEGRATA CON XP RANDOM E BLOCCO DUPLICATI)
+    // 2. APRI IL POP-UP E DECODIFICA IL JSON (VERSIONE UNIVERSALE)
 function showOpenDayDetails(id) {
+    // Cerchiamo l'evento usando sia la chiave primaria che quella secondaria per sicurezza
     const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
-    if(!od) return;
+    if(!od) {
+        showToast("⚠️ Dettagli non trovati nel calendario.");
+        return;
+    }
 
-    // --- PARTE ESTETICA (INALTERATA) ---
+    // --- PARTE ESTETICA (INALTERATA - IL TUO LAVORO PREZIOSO) ---
     document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
     document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
     document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
@@ -1313,52 +1315,51 @@ function showOpenDayDetails(id) {
         mapContainer.style.display = "none";
     }
 
-    // --- IL NUOVO CERVELLO DEL TASTO ISCRIVITI ---
+    // --- IL CERVELLO DEL TASTO ISCRIVITI (CON LOGICA ANTI-DOPPIONI) ---
     const bookBtn = document.getElementById('od-modal-book');
-    
-    bookBtn.onclick = function() {
-        if (!wildUserKey) { 
+    const t = od["Titolo"] || "Open Day";
+    const d = od["Data Inizio"] || "";
+    const safeFingerprint = (t + "|" + d).toLowerCase().trim();
+
+    // SE L'UTENTE È GIÀ ISCRITTO (Lo zaino lo sa), NASCONDIAMO IL TASTO PRENOTA
+    // Questo succede quando apri il modal dal Profilo/Zaino
+    if (myBookedTitles.includes(t.toLowerCase().trim())) {
+        bookBtn.style.display = "none";
+    } else {
+        bookBtn.style.display = "block";
+        bookBtn.onclick = function() {
+            if (!wildUserKey) { 
+                document.getElementById('od-details-modal').style.display = 'none';
+                show('profile'); return; 
+            }
+            if (!canBook) {
+                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
+                return;
+            }
+
+            // Preparazione Modulo Passaporto
             document.getElementById('od-details-modal').style.display = 'none';
-            show('profile'); return; 
-        }
+            document.getElementById('cb-titolo').innerText = t;
+            document.getElementById('cb-data').innerText = d;
+            document.getElementById('cb-prezzo').innerText = "GRATUITO";
+            document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
 
-        if (!canBook) {
-            showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite di prenotazioni in attesa."));
-            return;
-        }
+            const min = parseInt(config.od_xp_min) || 4;
+            const max = parseInt(config.od_xp_max) || 12;
+            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+            document.getElementById('cb-xp').value = randomXP;
 
-        const t = od["Titolo"] || "Open Day";
-        const safeTitolo = t.toString().toLowerCase().trim();
+            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+            document.getElementById('cb-nome').value = nomeSalvato;
+            document.getElementById('cb-telefono').value = telefonoSalvato;
 
-        // 1. CONTROLLO ZAINO INVISIBILE
-        if (myBookedTitles.includes(safeTitolo)) {
-            showToast("⚠️ Sei già iscritto a questo Open Day!");
-            return;
-        }
+            document.getElementById('custom-booking-modal').style.display = 'flex';
+        };
+    }
 
-        // 2. PREPARAZIONE PASSAPORTO E XP RANDOM
-        document.getElementById('od-details-modal').style.display = 'none';
-        document.getElementById('cb-titolo').innerText = t;
-        // ... (il resto rimane identico: data, prezzo GRATUITO, dopamina, ecc.)
-        document.getElementById('cb-data').innerText = od["Data Inizio"] || "";
-        document.getElementById('cb-prezzo').innerText = "GRATUITO";
-        document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
-
-        const min = parseInt(config.od_xp_min) || 4;
-        const max = parseInt(config.od_xp_max) || 12;
-        const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
-        document.getElementById('cb-xp').value = randomXP;
-
-        const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
-        const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
-        document.getElementById('cb-nome').value = nomeSalvato;
-        document.getElementById('cb-telefono').value = telefonoSalvato;
-
-        document.getElementById('custom-booking-modal').style.display = 'flex';
-    };
-
-    // MOSTRA IL POP-UP (La riga vitale che mancava!)
-    document.getElementById('od-details-modal').style.display = 'block';
+    // MOSTRA IL POP-UP
+    document.getElementById('od-details-modal').style.display = 'flex';
 }
     
     init();
@@ -1397,6 +1398,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
