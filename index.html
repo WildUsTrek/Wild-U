@@ -1033,6 +1033,15 @@ async function sendCustomBooking() {
         if (result.status === "success") {
             closeCustomBooking();
             showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
+
+            // --- INIEZIONE MEMORIA ISTANTANEA (Anti-Latenza) ---
+            // Infiliamo subito il viaggio nella lista locale prima che Google risponda!
+            allBookings.push({
+                "Key": wildUserKey,
+                "Titolo": payload.titolo,
+                "Data": payload.data
+            });
+
             
             // --- DOPAMINA: ASSEGNAZIONE PUNTI IMMEDIATA ---
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
@@ -1274,6 +1283,13 @@ function showOpenDayDetails(id) {
             show('profile'); return; 
         }
 
+
+        // IL BUTTAFUORI: Controllo limite globale zaino
+            if (!canBook) {
+                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite di prenotazioni in attesa."));
+                return;
+            }
+        
         const t = od["Titolo"] || "Open Day";
         const d = od["Data Inizio"] || "";
 
@@ -1358,6 +1374,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
