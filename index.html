@@ -294,16 +294,8 @@
     const db = firebase.firestore();
     const auth = firebase.auth(); 
 
-    // LA NUOVA SINTASSI MODERNA PER IL DATABASE OFFLINE
-    try {
-        db.settings({
-            localCache: firebase.firestore.persistentLocalCache({
-                tabManager: firebase.firestore.persistentMultipleTabManager()
-            })
-        });
-    } catch (e) {
-        console.log("Offline non disponibile o già inizializzato", e);
-    }
+    // Torna alla versione stabile: il warning giallo è normale e innocuo
+    db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
 
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = [];    let wildUserKey = localStorage.getItem('wildUserKey');
@@ -670,66 +662,69 @@ let myBookedTitles = [];
 
 function evaluateBookings() {
     if(!wildUserKey) return;
+    myBookedTitles = []; // Reset dello zaino
     
-    // Svuotiamo lo zaino invisibile a ogni refresh per ricalcolarlo pulito
-    myBookedTitles = [];
-    
-    // 1. Ricerca Utente
-    const myB = allBookings.filter(b => {
-        let found = false;
-        for (let colName in b) {
-            let cleanColName = colName.toLowerCase();
-            if (cleanColName.includes("utente") || cleanColName.includes("key")) {
-                if (b[colName]) {
-                    let rawCellValue = b[colName].toString().split('|')[0].trim().toLowerCase();
-                    let currentUserKey = wildUserKey.toString().trim().toLowerCase();
-                    if (rawCellValue === currentUserKey) { found = true; break; }
+    const currentUser = wildUserKey.toString().trim().toLowerCase();
+    const today = new Date(); today.setHours(0,0,0,0);
+    let activeCount = 0; 
+    let activeHtml = '';
+
+    // LO SCANNER AGNOSTICO: Cerca te in ogni riga, ignorando i nomi delle colonne
+    allBookings.forEach(row => {
+        // Trasforma tutta la riga (colonne e valori) in un unico testo minuscolo
+        let rowContent = JSON.stringify(row).toLowerCase();
+        
+        // Se la riga contiene la tua Wild-Key (es. la tua email)
+        if (rowContent.includes(currentUser)) {
+            let foundTitle = "";
+            let foundDate = "";
+
+            // Recupera Titolo e Data cercando parole chiave nelle chiavi dell'oggetto
+            for (let key in row) {
+                let k = key.toLowerCase();
+                if (k.includes("viaggio") || k.includes("titolo") || k.includes("evento") || k.includes("scelto")) {
+                    foundTitle = row[key];
+                }
+                if (k.includes("data")) {
+                    foundDate = row[key];
+                }
+            }
+
+            if (foundTitle) {
+                const bDate = parseItalianDate(foundDate);
+                
+                // Se il viaggio deve ancora avvenire
+                if (bDate >= today) {
+                    activeCount++;
+                    myBookedTitles.push(foundTitle.toString().toLowerCase().trim());
+
+                    activeHtml += `
+                    <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
+                        <div>
+                            <div style="font-weight: bold; color: #fff;">${foundTitle}</div>
+                            <div style="font-size: 13px; color: var(--w-gold);">📅 ${foundDate}</div>
+                        </div>
+                        <button onclick="requestCancel('${foundTitle.replace(/'/g, "\\'")}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer;">Annulla</button>
+                    </div>`;
                 }
             }
         }
-        return found;
     });
 
-    const today = new Date(); today.setHours(0,0,0,0);
-    let activeCount = 0; let activeHtml = '';
-
-    // 2. Controllo Viaggi Futuri e riempimento dello Zaino Invisibile
-    for(let b of myB) {
-        let title = "Viaggio Misterioso";
-        for (let colName in b) {
-            if (colName.toLowerCase().includes("viaggio") || colName.toLowerCase().includes("titolo")) {
-                title = b[colName]; break;
-            }
-        }
-
-        const dateStr = b["Data"] || b["data"] || b["Data Inizio"] || b["Data inizio"] || "";
-        const bDate = parseItalianDate(dateStr);
-
-        if(bDate >= today) {
-            activeCount++;
-            
-            // IL SEGRETO: Memorizziamo il titolo in minuscolo per controlli futuri istantanei
-            myBookedTitles.push(title.toLowerCase().trim());
-
-            activeHtml += `
-            <div style="background: #222; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--w-gold);">
-                <div><div style="font-weight: bold; color: #fff;">${title}</div><div style="font-size: 13px; color: var(--w-gold);">📅 ${dateStr}</div></div>
-                <button onclick="requestCancel('${title}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer;">Annulla</button>
-            </div>`;
-        }
-    }
-
+    // Aggiorna la lista visiva nel profilo
     if(activeCount === 0) activeHtml = '<p style="color:#aaa; font-size: 14px;">Nessuna avventura in attesa. Lo zaino piange!</p>';
     document.getElementById('my-bookings-list').innerHTML = activeHtml;
 
-    // 3. IL LIMITE VARIABILE DAL FOGLIO (Default 3 se non lo compili)
+    // Gestione dei limiti di prenotazione
     const maxPrenotazioni = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && activeCount < maxPrenotazioni;
     
     if(isBanned) banReason = "ACCOUNT SOSPESO";
-    else if (activeCount >= maxPrenotazioni) banReason = `LIMITE ATTESE (${maxPrenotazioni}/${maxPrenotazioni})`;
+    else if (activeCount >= maxPrenotazioni) banReason = `ZAINO PIENO (${activeCount}/${maxPrenotazioni})`;
+    else banReason = "";
     
-    filterTrips(); 
+    filterTrips(); // Nasconde o mostra i tasti Prenota nei Viaggi
+    if (typeof renderOpenDays === "function") renderOpenDays(); // Fa lo stesso per gli Open Day
 }
 
     async function awardTripXP(tripId, xpVal) {
@@ -1020,15 +1015,18 @@ async function sendCustomBooking() {
         return;
     }
 
-    // Effetto visivo caricamento
-    btn.innerText = "SPEDIZIONE... 🌲";
-    btn.disabled = true;
-    btn.style.opacity = "0.7";
+
 
     // --- L'INIEZIONE NELLO ZAINO INVISIBILE (Il vero Anti-Latenza) ---
     // Inseriamo subito il titolo nella lista per bloccare i doppi click
     const titoloInPartenza = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
     myBookedTitles.push(titoloInPartenza);
+    
+    // Effetto visivo caricamento
+    btn.innerText = "SPEDIZIONE... 🌲";
+    btn.disabled = true;
+    btn.style.opacity = "0.7";
+
 
     // Impacchettiamo tutti i dati del modulo
     const payload = {
@@ -1386,6 +1384,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
