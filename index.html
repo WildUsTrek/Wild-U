@@ -819,11 +819,129 @@
 
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); }); }
 
+
+// 1. DISEGNA LA VETRINA DEGLI OPEN DAY
+    function renderOpenDays() {
+        // Cerca il contenitore dove vuoi mostrare gli Open Day (Assicurati di avere un <div id="openday-list"></div> nel tab degli Open Day)
+        const container = document.getElementById('openday-list'); 
+        if(!container) return; 
+
+        if(!allOpenDays || allOpenDays.length === 0) {
+            container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Zaino vuoto! Nessun Open Day in programma al momento.</p>';
+            return;
+        }
+
+        let html = '';
+        for(let od of allOpenDays) {
+            const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
+            const titolo = od["Titolo"] || "Evento Speciale";
+            const dataInizio = od["Data Inizio"] || "";
+            const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+            const luogo = od["Luogo Nome"] || "Luogo da definire";
+            const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
+            const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
+
+            // Design azzurro per gli Open Day (per distinguerli dai viaggi dorati)
+            html += `
+            <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
+                <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
+                <p style="color: #00aaff; font-weight: bold; margin: 0 0 12px 0; font-size: 15px;">📅 ${dataInizio} <span style="color:#777; font-weight:normal;">| 🕒 ${orario}</span></p>
+                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogo}</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
+                    ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
+                </div>
+                <button onclick="showOpenDayDetails('${id}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+            </div>`;
+        }
+        container.innerHTML = html;
+    }
+
+    // 2. APRI IL POP-UP E DECODIFICA IL JSON
+    function showOpenDayDetails(id) {
+        const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
+        if(!od) return;
+
+        document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
+        document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
+        document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+        document.getElementById('od-modal-place').innerText = od["Luogo Nome"] || "Luogo da definire";
+        
+        document.getElementById('od-modal-km').innerText = od["KM"] ? `🥾 ${od["KM"]} km` : "";
+        document.getElementById('od-modal-km').style.display = od["KM"] ? "inline-block" : "none";
+        
+        document.getElementById('od-modal-dsl').innerText = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
+        document.getElementById('od-modal-dsl').style.display = od["Dislivello"] ? "inline-block" : "none";
+
+        // Mantiene gli a capo della descrizione originale (sostituisce \n con <br>)
+        let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
+        document.getElementById('od-modal-desc').innerHTML = desc.replace(/\n/g, '<br>');
+
+        // IL TRUCCO MAGICO: Decodifica l'Attrezzatura JSON in una lista bellissima!
+        let gearHtml = '';
+        try {
+            const gearArr = JSON.parse(od["Attrezzatura (JSON)"] || "[]");
+            if(gearArr.length > 0) {
+                for(let g of gearArr) {
+                    gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
+                }
+            } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
+        } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
+        document.getElementById('od-modal-gear').innerHTML = gearHtml;
+
+        // Gestione Tasto Mappe
+        const mapsBtn = document.getElementById('od-modal-maps');
+        if(od["Luogo Link Maps"]) {
+            mapsBtn.href = od["Luogo Link Maps"];
+            mapsBtn.style.display = "block";
+        } else { mapsBtn.style.display = "none"; }
+
+        // Gestione Tasto Iscriviti (RIUTILIZZA IL POP-UP DEI VIAGGI!)
+        const bookBtn = document.getElementById('od-modal-book');
+        const openDayFormUrl = "https://docs.google.com/forms/d/e/1FAIpQLSeOP7YNod8RPe8Dl8elZ8Q13T5VxeGOecDt7O5omwbaC1c8mQ/viewform?usp=sharing&ouid=110836671267215438086";
+        
+        bookBtn.onclick = function() {
+            document.getElementById('od-details-modal').style.display = 'none'; // Chiude i dettagli
+            openBook(openDayFormUrl); // Apre l'Iframe Pop-up dei Viaggi per non uscire dall'App!
+        };
+
+        // Mostra il Pop-up
+        document.getElementById('od-details-modal').style.display = 'block';
+    }
+
+    
     init();
 
 </script>
+
+<div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
+        <div style="background:#1a1a1a; max-width:600px; margin:40px auto; border-radius:15px; border:2px solid #00aaff; padding:25px; position:relative; box-shadow: 0 0 20px rgba(0, 170, 255, 0.2);">
+            <button onclick="document.getElementById('od-details-modal').style.display='none'" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">X</button>
+            
+            <h2 id="od-modal-title" style="color:#00aaff; margin-top:0; font-size: 24px;">Titolo</h2>
+            <p style="color:#aaa; font-size:15px; margin-bottom: 5px;"><span id="od-modal-date"></span> <span style="color:#555;">|</span> <span id="od-modal-time"></span></p>
+            <p style="color:#ddd; font-size:15px; margin-top:0;">📍 <span id="od-modal-place"></span></p>
+            
+            <div style="display:flex; gap:10px; margin:20px 0;">
+                <span id="od-modal-km" style="background:#333; padding:6px 12px; border-radius:6px; font-size:14px; font-weight:bold;"></span>
+                <span id="od-modal-dsl" style="background:#333; padding:6px 12px; border-radius:6px; font-size:14px; font-weight:bold;"></span>
+            </div>
+            
+            <p id="od-modal-desc" style="color:#eee; line-height:1.6; font-size:16px; margin-bottom:25px;"></p>
+            
+            <h3 style="color:#00aaff; border-bottom:1px solid #333; padding-bottom:10px;">🎒 Nello Zaino</h3>
+            <ul id="od-modal-gear" style="list-style:none; padding:0; color:#ddd; font-size:15px;"></ul>
+            
+            <div style="margin-top:30px; display:flex; gap:15px; flex-direction:column;">
+                <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 APRI IL NAVIGATORE</a>
+                <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
+            </div>
+        </div>
+    </div>
+    
 </body>
 </html>
+
 
 
 
