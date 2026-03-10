@@ -154,24 +154,48 @@
         </div>
 
         <div id="profile-data" class="hidden">
-            <div class="card" style="text-align:center;">
-                <div id="prof-main-icon" style="font-size: 60px; margin-bottom: 10px;">🌲</div>
-                <h2 id="prof-grado" style="color:var(--w-gold); margin:0; font-size: 32px; text-transform: uppercase;">...</h2>
-                <div id="prof-key" style="font-size:12px; opacity:0.4; margin-bottom: 20px;"></div>
-                <div class="xp-bar"><div class="xp-text-inside" id="xp-percentage">0%</div><div id="xp-fill" class="xp-fill"></div></div>
-                <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;"><span id="prof-xp">0 XP</span><span id="prof-missing" style="color:var(--w-gold);"></span></div>
-                <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 25px;"></div>
-                <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Ricarica / Scollega Account</button>
-                <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
+    <div class="card" style="text-align:center;">
+        <div id="prof-main-icon" style="font-size: 60px; margin-bottom: 10px;">🌲</div>
+        <h2 id="prof-grado" style="color:var(--w-gold); margin:0; font-size: 32px; text-transform: uppercase;">...</h2>
+        <div id="prof-key" style="font-size:12px; opacity:0.4; margin-bottom: 20px;"></div>
+        
+        <div class="xp-bar">
+            <div class="xp-text-inside" id="xp-percentage">0%</div>
+            <div id="xp-fill" class="xp-fill"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;">
+            <span id="prof-xp">0 XP</span>
+            <span id="prof-missing" style="color:var(--w-gold);"></span>
+        </div>
+
+        <div class="profile-info-container" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-top: 25px; text-align: left;">
+            <div style="margin-bottom: 15px;">
+                <label style="color: #888; font-size: 11px; display: block; margin-bottom: 2px; letter-spacing: 1px;">NOME E COGNOME</label>
+                <input type="text" id="user-name-input" class="wild-input-profile" placeholder="Clicca modifica per inserire" readonly>
             </div>
-            
-            <div class="card" style="border-left-color: #0088cc;">
-                <h3 style="margin-top:0;">Le Mie Prenotazioni</h3>
-                <p style="font-size:12px; color:#aaa; margin-bottom:15px;">Max 3 avventure attive. Gli XP vengono aggiunti il giorno dopo il viaggio!</p>
-                <div id="my-bookings-list"></div>
+            <div style="margin-bottom: 15px;">
+                <label style="color: #888; font-size: 11px; display: block; margin-bottom: 2px; letter-spacing: 1px;">TELEFONO / TELEGRAM</label>
+                <input type="text" id="user-phone-input" class="wild-input-profile" placeholder="Clicca modifica per inserire" readonly>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 5px;">
+                <button id="edit-profile-btn" onclick="toggleProfileEdit(true)" class="btn-profile-edit">✏️ Modifica</button>
+                <button id="save-profile-btn" onclick="saveProfileData()" class="btn-profile-save" style="display: none;">✅ Salva</button>
+                <button id="cancel-profile-btn" onclick="toggleProfileEdit(false)" class="btn-profile-cancel" style="display: none;">✖️</button>
             </div>
         </div>
+
+        <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 25px;"></div>
+        
+        <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Ricarica / Scollega Account</button>
+        <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
     </div>
+    
+    <div class="card" style="border-left-color: #0088cc;">
+        <h3 style="margin-top:0;">Le Mie Prenotazioni</h3>
+        <p style="font-size:12px; color:#aaa; margin-bottom:15px;">Max 3 avventure attive. Gli XP vengono aggiunti il giorno dopo il viaggio!</p>
+        <div id="my-bookings-list"></div>
+    </div>
+</div>
 
     <div id="sec-groups" class="hidden">
         <div class="card">
@@ -273,6 +297,66 @@
     document.addEventListener('touchstart', startAudioMixer);
     document.addEventListener('click', startAudioMixer);
 
+
+
+    // 1. Funzione per attivare/disattivare la modalità modifica
+function toggleProfileEdit(isEditing) {
+    const nameInput = document.getElementById('user-name-input');
+    const phoneInput = document.getElementById('user-phone-input');
+    const editBtn = document.getElementById('edit-profile-btn');
+    const saveBtn = document.getElementById('save-profile-btn');
+    const cancelBtn = document.getElementById('cancel-profile-btn');
+
+    if (isEditing) {
+        nameInput.removeAttribute('readonly');
+        phoneInput.removeAttribute('readonly');
+        nameInput.focus();
+        editBtn.style.display = 'none';
+        saveBtn.style.display = 'block';
+        cancelBtn.style.display = 'block';
+    } else {
+        // Se annulla, ricarichiamo i dati originali dalla cache
+        nameInput.setAttribute('readonly', true);
+        phoneInput.setAttribute('readonly', true);
+        if (cachedXPData) {
+            nameInput.value = cachedXPData.nome || "";
+            phoneInput.value = cachedXPData.telefono || "";
+        }
+        editBtn.style.display = 'block';
+        saveBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
+    }
+}
+
+// 2. Funzione per salvare su Firebase
+async function saveProfileData() {
+    if (!wildUserKey) return;
+
+    const newName = document.getElementById('user-name-input').value;
+    const newPhone = document.getElementById('user-phone-input').value;
+
+    try {
+        const userRef = doc(db, "users", wildUserKey);
+        await setDoc(userRef, {
+            nome: newName,
+            telefono: newPhone
+        }, { merge: true });
+
+        // Aggiorniamo la cache locale così l'app non deve ricaricare tutto
+        if (cachedXPData) {
+            cachedXPData.nome = newName;
+            cachedXPData.telefono = newPhone;
+        }
+
+        alert("✅ Profilo aggiornato con successo!");
+        toggleProfileEdit(false);
+    } catch (e) {
+        console.error("Errore salvataggio profilo:", e);
+        alert("❌ Errore durante il salvataggio. Riprova.");
+    }
+}
+
+    
     // ==========================================
     // IL MOTORE DEL BIVIO (TELEGRAM VS GOOGLE)
     // ==========================================
@@ -486,41 +570,50 @@
     // LOGICA XP E CONTROLLO TIME-TRAVEL
     // ==========================================
     async function fetchXP() {
-        if (!wildUserKey || isLockedXP || isAnimatingXP) return;
-        try {
-            const docSnap = await db.collection("utenti").doc(wildUserKey).get();
-            lastFetchTime = Date.now(); 
-            
-            if (!docSnap.exists) return; 
-            
-            const data = docSnap.data();
-            isBanned = data.bannato === true;
-            viaggiRiscattati = data.viaggi_riscattati || [];
-            
-           const userData = { 
-        xp: data.xp || 0, 
-        grado: data.grado || "Socio Novizio", 
-        telefono: data.telefono || "", // <--- Questo è il pezzo fondamentale!
-        config: config 
+    if (!wildUserKey || isLockedXP || isAnimatingXP) return;
+    try {
+        const docSnap = await db.collection("utenti").doc(wildUserKey).get();
+        lastFetchTime = Date.now(); 
+        
+        if (!docSnap.exists) return; 
+        
+        const data = docSnap.data();
+        isBanned = data.bannato === true;
+        viaggiRiscattati = data.viaggi_riscattati || [];
+        
+        const userData = { 
+            xp: data.xp || 0, 
+            grado: data.grado || "Socio Novizio", 
+            nome: data.nome || "",       // <--- AGGIUNGI QUESTO: Recupera il nome
+            telefono: data.telefono || "", // <--- Questo l'avevi messo, ottimo!
+            config: config 
         };
-            cachedXPData = userData; 
-            
-            evaluateBookings();
+        cachedXPData = userData; 
 
-            if (userData.xp < lastVXP) { 
-                lastVXP = userData.xp; lastCelXP = userData.xp; 
-                localStorage.setItem('lastViewedXP', userData.xp); localStorage.setItem('lastCelebratedXP', userData.xp); 
-                renderProfile(userData); return; 
-            }
-            if (userData.xp > lastCelXP && lastCelXP > 0) {
-                let delta = userData.xp - lastCelXP; lastCelXP = userData.xp; localStorage.setItem('lastCelebratedXP', lastCelXP);
-                if (!isPageActive) xpCelebrationBuffer += delta;
-                else { showReward(delta); if (currentTab === 'profile') renderProfile(userData); }
-            } else if (currentTab === 'profile') {
-                renderProfile(userData);
-            }
-        } catch(e) { console.error("Errore FetchXP:", e); }
-    }
+        // --- IL PEZZO MANCANTE: SCRIVI I DATI NELLE CASELLE DEL PROFILO ---
+        const nameInput = document.getElementById('user-name-input');
+        const phoneInput = document.getElementById('user-phone-input');
+        if (nameInput) nameInput.value = userData.nome;
+        if (phoneInput) phoneInput.value = userData.telefono;
+        // ----------------------------------------------------------------
+
+        evaluateBookings();
+
+        if (userData.xp < lastVXP) { 
+            lastVXP = userData.xp; lastCelXP = userData.xp; 
+            localStorage.setItem('lastViewedXP', userData.xp); localStorage.setItem('lastCelebratedXP', userData.xp); 
+            renderProfile(userData); return; 
+        }
+        
+        if (userData.xp > lastCelXP && lastCelXP > 0) {
+            let delta = userData.xp - lastCelXP; lastCelXP = userData.xp; localStorage.setItem('lastCelebratedXP', lastCelXP);
+            if (!isPageActive) xpCelebrationBuffer += delta;
+            else { showReward(delta); if (currentTab === 'profile') renderProfile(userData); }
+        } else if (currentTab === 'profile') {
+            renderProfile(userData);
+        }
+    } catch(e) { console.error("Errore FetchXP:", e); }
+}
 
     function evaluateBookings() {
         if(!wildUserKey) return;
@@ -1078,6 +1171,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 </body>
 </html>
+
 
 
 
