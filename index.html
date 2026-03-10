@@ -936,29 +936,55 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     }
 
     
-    // IL NUOVO MOTORE DI PRENOTAZIONE (CUSTOM FORM)
-    function openBook(titolo, data, prezzo, xp) {
-        if (!wildUserKey) { show('profile'); return; }
-        
-        // 1. Inseriamo i dati "fissi" nel modulo
-        document.getElementById('cb-titolo').innerText = titolo;
-        document.getElementById('cb-data').innerText = data;
-        document.getElementById('cb-prezzo').innerText = prezzo + "€";
-        
-        // 2. Registriamo i dati nascosti
-        document.getElementById('cb-tipo-evento').value = "APP"; 
-        document.getElementById('cb-xp').value = xp;
+   // IL NUOVO MOTORE DI PRENOTAZIONE (CON CONTROLLO DUPLICATI E SICUREZZA)
+function openBook(titolo, data, prezzo, xp) {
+    if (!wildUserKey) { show('profile'); return; }
 
-        // 3. Peschiamo Nome e Telefono dal profilo
-        const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
-        const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+    // --- 1. POSTO DI BLOCCO: CONTROLLO DUPLICATI ---
+    // Verifichiamo se l'utente è già presente in allBookings per questo titolo e questa data
+    const giaPrenotato = allBookings.some(b => {
+        let bKey = "";
+        // Cerchiamo la colonna della chiave (come fatto in evaluateBookings)
+        for (let k in b) {
+            if (k.toLowerCase().includes("utente") || k.toLowerCase().includes("key")) {
+                bKey = b[k] ? b[k].toString().split('|')[0].trim().toLowerCase() : "";
+                break;
+            }
+        }
         
-        document.getElementById('cb-nome').value = nomeSalvato;
-        document.getElementById('cb-telefono').value = telefonoSalvato;
+        // Cerchiamo il titolo e la data nelle colonne (supportando diverse varianti di nome colonna)
+        let bTitle = b["Titolo"] || b["Viaggio Scelto"] || b["Viaggio scelto"] || "";
+        let bDate = b["Data"] || b["Data inizio"] || b["Data Inizio"] || "";
+        
+        return bKey === wildUserKey.toLowerCase() && bTitle === titolo && bDate === data;
+    });
 
-        // 4. Mostriamo la magia
-        document.getElementById('custom-booking-modal').style.display = 'flex';
+    if (giaPrenotato) {
+        showToast("⚠️ Sei già in lista per questa avventura!");
+        return; // Fermiamo tutto qui, il paradosso è evitato.
     }
+    
+    // --- 2. PROCEDURA STANDARD (I tuoi dati originali, intatti) ---
+    
+    // Inseriamo i dati "fissi" nel modulo
+    document.getElementById('cb-titolo').innerText = titolo;
+    document.getElementById('cb-data').innerText = data;
+    document.getElementById('cb-prezzo').innerText = prezzo + "€";
+    
+    // Registriamo i dati nascosti
+    document.getElementById('cb-tipo-evento').value = "APP"; 
+    document.getElementById('cb-xp').value = xp;
+
+    // Peschiamo Nome e Telefono dal profilo
+    const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+    const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+    
+    document.getElementById('cb-nome').value = nomeSalvato;
+    document.getElementById('cb-telefono').value = telefonoSalvato;
+
+    // Mostriamo la magia
+    document.getElementById('custom-booking-modal').style.display = 'flex';
+}
 
     // Funzione per chiudere il modulo
     function closeCustomBooking() {
@@ -1186,101 +1212,115 @@ async function sendCustomBooking() {
     if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); }); }
 
 
-    // 2. APRI IL POP-UP E DECODIFICA IL JSON
-    function showOpenDayDetails(id) {
-        const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
-        if(!od) return;
+    // 2. APRI IL POP-UP E DECODIFICA IL JSON (VERSIONE INTEGRATA CON XP RANDOM E BLOCCO DUPLICATI)
+function showOpenDayDetails(id) {
+    const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
+    if(!od) return;
 
-        document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
-        document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
-        document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
-        // Micro-fix Regione nel Pop-up
-        const regVal = od["Regione"] || od["regione"] || "";
-        document.getElementById('od-modal-region-display').innerText = regVal ? "🗺️ Area: " + regVal : "";
-        document.getElementById('od-modal-place').innerText = od["Luogo Nome"] || "Luogo da definire";
-        
-        document.getElementById('od-modal-km').innerText = od["KM"] ? `🥾 ${od["KM"]} km` : "";
-        document.getElementById('od-modal-km').style.display = od["KM"] ? "inline-block" : "none";
-        
-        document.getElementById('od-modal-dsl').innerText = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
-        document.getElementById('od-modal-dsl').style.display = od["Dislivello"] ? "inline-block" : "none";
+    // --- PARTE ESTETICA (INALTERATA) ---
+    document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
+    document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
+    document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+    
+    const regVal = od["Regione"] || od["regione"] || "";
+    document.getElementById('od-modal-region-display').innerText = regVal ? "🗺️ Area: " + regVal : "";
+    document.getElementById('od-modal-place').innerText = od["Luogo Nome"] || "Luogo da definire";
+    
+    document.getElementById('od-modal-km').innerText = od["KM"] ? `🥾 ${od["KM"]} km` : "";
+    document.getElementById('od-modal-km').style.display = od["KM"] ? "inline-block" : "none";
+    
+    document.getElementById('od-modal-dsl').innerText = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
+    document.getElementById('od-modal-dsl').style.display = od["Dislivello"] ? "inline-block" : "none";
 
-        // Mantiene gli a capo della descrizione originale (sostituisce \n con <br>)
-        let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
-        document.getElementById('od-modal-desc').innerHTML = desc.replace(/\n/g, '<br>');
+    let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
+    document.getElementById('od-modal-desc').innerHTML = desc.replace(/\n/g, '<br>');
 
-        // IL TRUCCO MAGICO: Decodifica l'Attrezzatura JSON in una lista bellissima!
-        let gearHtml = '';
-        try {
-            const gearArr = JSON.parse(od["Attrezzatura (JSON)"] || "[]");
-            if(gearArr.length > 0) {
-                for(let g of gearArr) {
-                    gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
-                }
-            } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
-        } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
-        document.getElementById('od-modal-gear').innerHTML = gearHtml;
-
-        // Gestione Tasto Mappe e Iframe Anteprima
-        const mapsBtn = document.getElementById('od-modal-maps');
-        const mapContainer = document.getElementById('od-map-container');
-        const mapIframe = document.getElementById('od-map-iframe');
-        
-        const linkStr = od["Luogo Link Maps"] || od["Luogo Link"];
-        const nomeLuogo = od["Luogo Nome"];
-
-        if(linkStr || nomeLuogo) {
-            mapsBtn.style.display = "block";
-            mapContainer.style.display = "block";
-            
-            // Per il tasto usiamo il link (se c'è), altrimenti creiamo una ricerca testuale
-            mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(nomeLuogo + ", Italy");
-            
-            // Per l'Iframe, creiamo l'embed interattivo
-            const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
-            mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
-        } else { 
-            mapsBtn.style.display = "none"; 
-            mapContainer.style.display = "none";
-        }
-
-        // Gestione Tasto Iscriviti (DIROTTATO SUL NUOVO PASSAPORTO)
-        const bookBtn = document.getElementById('od-modal-book');
-        
-        bookBtn.onclick = function() {
-            if (!wildUserKey) { 
-                document.getElementById('od-details-modal').style.display = 'none';
-                show('profile'); 
-                return; 
+    // Decodifica Attrezzatura JSON
+    let gearHtml = '';
+    try {
+        const gearArr = JSON.parse(od["Attrezzatura (JSON)"] || "[]");
+        if(gearArr.length > 0) {
+            for(let g of gearArr) {
+                gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
             }
+        } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
+    } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
+    document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
-            // 1. Chiudiamo la finestra dei dettagli dell'Open Day
-            document.getElementById('od-details-modal').style.display = 'none';
+    // Gestione Mappe e Iframe
+    const mapsBtn = document.getElementById('od-modal-maps');
+    const mapContainer = document.getElementById('od-map-container');
+    const mapIframe = document.getElementById('od-map-iframe');
+    const linkStr = od["Luogo Link Maps"] || od["Luogo Link"];
+    const nomeLuogo = od["Luogo Nome"];
 
-            // 2. Inseriamo i dati nel nuovo modulo Passaporto
-            document.getElementById('cb-titolo').innerText = od["Titolo"] || "Open Day Event";
-            document.getElementById('cb-data').innerText = od["Data Inizio"] || "";
-            document.getElementById('cb-prezzo').innerText = "GRATUITO"; // È un Open Day!
-            
-            // 3. Etichetta nascosta per dire al Postino dove scrivere!
-            document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
-            document.getElementById('cb-xp').value = "0"; // Nessun prime XP per i free
-
-            // 4. Peschiamo Nome e Telefono dal profilo
-            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
-            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
-            
-            document.getElementById('cb-nome').value = nomeSalvato;
-            document.getElementById('cb-telefono').value = telefonoSalvato;
-
-            // 5. Apriamo la magia scura
-            document.getElementById('custom-booking-modal').style.display = 'flex';
-        };
-
-        // MOSTRA IL POP-UP (Questa riga è fondamentale per far apparire la finestra!)
-        document.getElementById('od-details-modal').style.display = 'block';
+    if(linkStr || nomeLuogo) {
+        mapsBtn.style.display = "block";
+        mapContainer.style.display = "block";
+        mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/" + encodeURIComponent(nomeLuogo + ", Italy");
+        const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
+        mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+    } else { 
+        mapsBtn.style.display = "none"; 
+        mapContainer.style.display = "none";
     }
 
+    // --- IL NUOVO CERVELLO DEL TASTO ISCRIVITI ---
+    const bookBtn = document.getElementById('od-modal-book');
+    
+    bookBtn.onclick = function() {
+        if (!wildUserKey) { 
+            document.getElementById('od-details-modal').style.display = 'none';
+            show('profile'); return; 
+        }
+
+        const t = od["Titolo"] || "Open Day";
+        const d = od["Data Inizio"] || "";
+
+        // 1. BLOCCO DUPLICATI (Cerca se sei già in lista)
+        const giaPrenotato = allBookings.some(b => {
+            let bKey = "";
+            for (let k in b) {
+                if (k.toLowerCase().includes("utente") || k.toLowerCase().includes("key")) {
+                    bKey = b[k] ? b[k].toString().split('|')[0].trim().toLowerCase() : "";
+                    break;
+                }
+            }
+            let bTitle = b["Titolo"] || b["Viaggio Scelto"] || "";
+            let bDate = b["Data"] || b["Data Inizio"] || b["Data inizio"] || "";
+            return bKey === wildUserKey.toLowerCase() && bTitle === t && bDate === d;
+        });
+
+        if (giaPrenotato) {
+            showToast("⚠️ Sei già iscritto a questo Open Day!");
+            return;
+        }
+
+        // 2. PREPARAZIONE PASSAPORTO
+        document.getElementById('od-details-modal').style.display = 'none';
+        document.getElementById('cb-titolo').innerText = t;
+        document.getElementById('cb-data').innerText = d;
+        document.getElementById('cb-prezzo').innerText = "GRATUITO";
+        document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
+
+        // 3. GENERATORE XP RANDOM (Fallback 4-12)
+        const min = parseInt(config.od_xp_min) || 4;
+        const max = parseInt(config.od_xp_max) || 12;
+        const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+        document.getElementById('cb-xp').value = randomXP;
+
+        // 4. DATI PROFILO
+        const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+        const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+        document.getElementById('cb-nome').value = nomeSalvato;
+        document.getElementById('cb-telefono').value = telefonoSalvato;
+
+        document.getElementById('custom-booking-modal').style.display = 'flex';
+    };
+
+    // MOSTRA IL POP-UP
+    document.getElementById('od-details-modal').style.display = 'block';
+}
     
     init();
 
@@ -1318,6 +1358,7 @@ async function sendCustomBooking() {
     
 </body>
 </html>
+
 
 
 
