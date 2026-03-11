@@ -269,12 +269,23 @@
     </div>
 </div>
 
+
+ <div id="penalty-overlay" onclick="executePenaltyRedirect()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(25,0,0,0.96); flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px; cursor:pointer;">
+    <div style="font-size:80px; margin-bottom:10px; filter: drop-shadow(0 0 10px #ff4444);">⚠️</div>
+    <h2 style="color:#ff4444; margin:0; font-size: 28px; text-transform: uppercase;">Zaino Svuotato</h2>
+    <p id="penalty-msg" style="font-size:48px; font-weight:900; color:#fff; margin: 15px 0; text-shadow: 0 0 20px #ff4444;">-0 XP</p>
+    <p style="opacity:0.8; font-size:16px; font-style:italic; color:#ccc;">Gli Spiriti hanno riscosso il tributo.</p>
+    <div style="margin-top: 40px; background: #ff4444; color: #fff; padding: 15px 25px; border-radius: 12px; font-weight: bold; font-size: 16px; box-shadow: 0 0 15px rgba(255, 68, 68, 0.6); animation: pulse 1.5s infinite;">TOCCA PER APRIRE WHATSAPP ➔</div>
+    <style>@keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }</style>
+</div>   
 <div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
 <div id="levelup-overlay" onclick="this.style.display='none'"><img id="lv-img" src="" class="levelup-img"><h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2><p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p><p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p></div>
 <div id="social-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3><button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS['link_facebook'], '_blank')"><span>Facebook</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS['link_instagram'], '_blank')"><span>Instagram</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS['link_youtube'], '_blank')"><span>YouTube</span> <span>➔</span></button><button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button></div></div>
 <div id="group-action-modal" class="modal-overlay"><div class="modal-card"><h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3><button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button><button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button><button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="download-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3><button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')"><span>📦 Android (.APK)</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')"><span>▶️ Google Play Store</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')"><span>🍏 Apple App Store</span> <span>➔</span></button><button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="toast-msg"></div>
+
+
     
 <script>
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
@@ -776,42 +787,32 @@ function evaluateBookings() {
         } catch(e) { console.error("Errore Reward Time-Travel", e); }
     }
 
-    // IL MANGANELLO CON SCUDO ANTI-DOPPIO CLICK (Semaforo di Memoria)
+    // --- VARIABILE PER SALVARE IL LINK WHATSAPP DURANTE LA PENALE ---
+let pendingWaLink = "";
+
+// IL MANGANELLO CON SCUDO E OVERLAY DRAMMATICO
 async function requestCancel(title, btnElement) {
-    // --- 1. IL SEMAFORO INVISIBILE: Blocca i click fantasma ---
     if (isCancellingInProgress) return;
-    isCancellingInProgress = true; // Accendiamo il semaforo rosso!
+    isCancellingInProgress = true; 
 
     const currentXP = cachedXPData ? parseInt(cachedXPData.xp) : 0;
-    
-    // Legge la penale dall'Excel (se non la trova, usa 40 di default)
     const percentualePenale = parseInt(config.penale_annullamento) || 40;
     const penalty = Math.floor(currentXP * (percentualePenale / 100)); 
 
-    // Conferma
     const msgAlert = `⚠️ ATTENZIONE:\nSe annulli "${title}" subirai una PENALE del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere e avvisare l'Admin?`;
     
     if (!confirm(msgAlert)) {
-        // Se l'utente clicca su "Annulla" nell'alert, sblocchiamo il semaforo per il futuro
         isCancellingInProgress = false;
         return; 
     }
 
-    // --- LA QUARANTENA: INSERIAMO IL VIAGGIO NELLA LISTA NERA ---
+    // LA QUARANTENA
     const safeTitle = title.toLowerCase().trim();
     if (!pendingCancels.includes(safeTitle)) pendingCancels.push(safeTitle);
-
-    // Diciamo allo zaino di ricalcolarsi ORA (la card sparirà istantaneamente)
     evaluateBookings();
+    setTimeout(() => { pendingCancels = pendingCancels.filter(t => t !== safeTitle); }, 15000);
 
-    // Rilasciamo la quarantena dopo 15 secondi (quando Google avrà sicuramente aggiornato l'Excel)
-    setTimeout(() => {
-        pendingCancels = pendingCancels.filter(t => t !== safeTitle);
-    }, 15000);
-
-    // ... (IL RESTO DELLA FUNZIONE PROCEDE CON FIREBASE, FETCH ECC.) ...
-
-    // --- 2. LO SCUDO GRAFICO: BLOCCIAMO IL TASTO ALL'ISTANTE ---
+    // SCUDO GRAFICO
     if (btnElement) {
         btnElement.disabled = true;
         btnElement.innerText = "ELIMINO...";
@@ -820,60 +821,62 @@ async function requestCancel(title, btnElement) {
     }
 
     try {
-        // 1. TAGLIAMO I PUNTI SU FIREBASE E SULLO SCHERMO (Il dolore in diretta)
+        // TAGLIO PUNTI (Immediato)
         if (penalty > 0) {
             await db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(-penalty) }, { merge: true });
             
             if (cachedXPData) {
                 cachedXPData.xp -= penalty;
-                
-                // Aggiorniamo le memorie per evitare disallineamenti
                 lastCelXP = cachedXPData.xp;
                 lastVXP = cachedXPData.xp;
                 localStorage.setItem('lastCelebratedXP', lastCelXP);
                 localStorage.setItem('lastViewedXP', lastVXP);
-                
-                // Ricalcolo grafico istantaneo
                 if (currentTab === 'profile') renderProfile(cachedXPData);
             }
         }
         
-        // 2. DIAMO L'ORDINE AL POSTINO DI ELIMINARE LA RIGA
-        const payload = {
-            action: "cancelBooking",
-            titolo: title,
-            wildKey: wildUserKey
-        };
-        
-        // Spediamo la richiesta
-        fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        });
+        // ORDINE AL POSTINO
+        const payload = { action: "cancelBooking", titolo: title, wildKey: wildUserKey };
+        fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
 
-        // 3. APRIAMO WHATSAPP CON IL BIVIO INTELLIGENTE
+        // CREAZIONE LINK WHATSAPP
         const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey}*.`;
         const phone = WILD_ASSETS['numero_admin'] || '393931326733';
-        
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const waLink = isMobile 
+        
+        pendingWaLink = isMobile 
             ? `whatsapp://send?phone=${phone}&text=${encodeURIComponent(msgWa)}` 
             : `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msgWa)}`;
 
-        window.open(waLink, '_blank');
-
-        showToast("Prenotazione annullata. Penale applicata.");
+        // ===============================================
+        // INVECE DI APRIRE WA, MOSTRIAMO LO SCHERMO ROSSO
+        // ===============================================
+        document.getElementById('penalty-msg').innerText = "-" + penalty + " XP";
+        document.getElementById('penalty-overlay').style.display = 'flex';
         
-        // Aggiorniamo i dati in background
-        setTimeout(fetchInitData, 1500);
+        // Nota importante: Non mettiamo `isCancellingInProgress = false;` qui. 
+        // L'app rimane "bloccata" finché l'utente non guarda in faccia la penale.
 
     } catch(e) { 
         console.error("Errore decurtazione", e); 
-    } finally {
-        // --- 3. RIPRISTINO SEMAFORO ---
-        isCancellingInProgress = false;
-    }
+        isCancellingInProgress = false; // Sblocca in caso di errore di rete grave
+    } 
+}
+
+// IL "PLAY" PER CONTINUARE DOPO LA PENALE
+function executePenaltyRedirect() {
+    // 1. Nascondi l'avviso
+    document.getElementById('penalty-overlay').style.display = 'none';
+    
+    // 2. Apri WhatsApp (Totalmente sicuro perché lanciato dal dito dell'utente!)
+    if (pendingWaLink) window.open(pendingWaLink, '_blank');
+    
+    // 3. Aggiorna lo stato in background
+    showToast("Prenotazione annullata. Penale applicata.");
+    setTimeout(fetchInitData, 1500);
+    
+    // 4. Ridiamo il via libera all'App
+    isCancellingInProgress = false;
 }
     function parseItalianDate(dStr) {
         if(!dStr) return new Date();
@@ -1502,6 +1505,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
