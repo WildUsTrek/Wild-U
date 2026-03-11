@@ -911,7 +911,27 @@ function executePenaltyRedirect() {
     }
 
     function filterTrips() {
-        const filtered = allTrips.filter(t => (activeFilters.month === 'Tutti' || (t["Data inizio"] && t["Data inizio"].split('/')[1] === activeFilters.month)) && (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region));
+        // Creiamo la linea del tempo di "Oggi" (a mezzanotte esatta)
+        const today = new Date(); 
+        today.setHours(0,0,0,0);
+
+        const filtered = allTrips.filter(t => {
+            // 1. LO SCUDO TEMPORALE: Ricomponiamo la data completa e la valutiamo
+            const annoScelto = t.Anno || today.getFullYear();
+            const dataStringa = t["Data inizio"] ? `${t["Data inizio"]}/${annoScelto}` : "";
+            const dataViaggio = parseItalianDate(dataStringa);
+            
+            // Se la data matematica del viaggio è minore di oggi, il viaggio è "scaduto"
+            const isScaduto = dataViaggio < today;
+
+            // 2. I TUOI FILTRI ORIGINALI (Mese e Regione)
+            const passMonth = (activeFilters.month === 'Tutti' || (t["Data inizio"] && t["Data inizio"].split('/')[1] === activeFilters.month));
+            const passRegion = (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region);
+
+            // Tieni il viaggio SOLO SE: non è scaduto E passa il mese E passa la regione
+            return !isScaduto && passMonth && passRegion;
+        });
+
         document.getElementById('trip-count-badge').innerText = filtered.length + " Viaggi in Vetrina";
         renderTrips(filtered, 'event-list');
     }
@@ -1505,6 +1525,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
