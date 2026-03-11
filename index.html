@@ -925,8 +925,8 @@ async function requestCancel(title, btnElement) {
             
             let actionBtn = "";
             
-            // 1. PRIMO CONTROLLO: Il viaggio è già nello zaino?
-            if (myBookedTitles.includes(safeTitleForCheck)) {
+            // 1. PRIMO CONTROLLO: Il viaggio è già nello zaino o in quarantena (appena prenotato)?
+            if (myBookedTitles.includes(safeTitleForCheck) || pendingBookings.includes(safeTitleForCheck)) {
                 actionBtn = `<button disabled style="background: #444; color: #888; border: 1px solid #555; cursor: not-allowed; flex: 2; padding: 16px; border-radius: 12px; font-weight: bold; font-size: 15px;">🎒 GIÀ IN ZAINO</button>`;
             } 
             // 2. SECONDO CONTROLLO: Zaino pieno o utente bannato?
@@ -1502,6 +1502,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
