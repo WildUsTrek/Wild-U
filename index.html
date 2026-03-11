@@ -661,17 +661,30 @@ if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.l
 
     // --- VARIABILE GLOBALE DELLO ZAINO INVISIBILE ---
 let myBookedTitles = []; 
+let pendingBookings = []; // Viaggi in fase di conferma
+let pendingCancels = [];  // Viaggi in fase di eliminazione
 
 function evaluateBookings() {
     if(!wildUserKey) return;
-    myBookedTitles = [];
     
-    // Funzione "pulisci-testo" per far combaciare i dati anche se hanno spazi diversi
+    // 1. INIZIALIZZIAMO LO ZAINO CON LA QUARANTENA
+    // Così, anche se Google è lento, noi sappiamo che l'hai appena prenotato
+    myBookedTitles = [...pendingBookings];
+    
+    // Funzione "pulisci-testo" per far combaciare i dati
     const clean = (s) => s ? s.toString().toLowerCase().trim() : "";
 
+    // 2. FILTRO SCHIZOFRENIA: Ignoriamo i viaggi che hai appena annullato
     const myB = allBookings.filter(b => {
         let rowContent = JSON.stringify(b).toLowerCase();
-        return rowContent.includes(wildUserKey.toLowerCase().trim());
+        let isMyRow = rowContent.includes(wildUserKey.toLowerCase().trim());
+        
+        // Uso l'OR (|| "") per evitare crash se il campo è vuoto
+        let titleRaw = b["Viaggio Scelto (non modificare)"] || "";
+        let safeTitle = clean(titleRaw);
+        let isBeingCancelled = pendingCancels.includes(safeTitle);
+        
+        return isMyRow && !isBeingCancelled; 
     });
 
     const today = new Date(); today.setHours(0,0,0,0);
@@ -686,7 +699,12 @@ function evaluateBookings() {
         const bDate = parseItalianDate(dateStr);
         if(bDate >= today) {
             activeCount++;
-            myBookedTitles.push(clean(title));
+            
+            // Aggiungiamo i titoli confermati da Google per bloccare i doppi click
+            const safeTitleForZaino = clean(title);
+            if (!myBookedTitles.includes(safeTitleForZaino)) {
+                myBookedTitles.push(safeTitleForZaino);
+            }
 
             let infoBtn = "";
 
@@ -695,7 +713,6 @@ function evaluateBookings() {
             // 1. VIAGGI (Qui c'è il trucco: la data del calendario è più corta!)
             const tripOrig = allTrips.find(t => {
                 const titoloMatch = clean(t.Titolo) === clean(title);
-                // Usiamo startsWith: "14/03/2026" inizia con "14/03"? SÌ.
                 const dataMatch = clean(dateStr).startsWith(clean(t["Data inizio"]));
                 return titoloMatch && dataMatch;
             });
@@ -715,6 +732,7 @@ function evaluateBookings() {
                 infoBtn = `<button onclick="showOpenDayDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
             }
 
+            // Nota: Ho aggiunto 'this' nel tasto ANNULLA per lo scudo grafico
             activeHtml += `
             <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
                 <div style="margin-bottom: 12px;">
@@ -723,7 +741,7 @@ function evaluateBookings() {
                 </div>
                 <div style="display: flex; justify-content: flex-end;">
                     ${infoBtn}
-                    <button onclick="requestCancel('${title.replace(/'/g, "\\'")}')" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
+                    <button onclick="requestCancel('${title.replace(/'/g, "\\'")}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
                 </div>
             </div>`;
         }
@@ -732,11 +750,15 @@ function evaluateBookings() {
     document.getElementById('my-bookings-list').innerHTML = (activeCount === 0) ? 
         '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' : activeHtml;
 
+    // La Quarantena conta come spazio occupato nello zaino!
+    // Se hai prenotato un viaggio, ma Google non ce lo ha ancora confermato, occupi comunque un posto.
+    const realActiveCount = activeCount + pendingBookings.length;
+    
     const max = parseInt(config.limite_prenotazioni) || 3;
-    canBook = !isBanned && activeCount < max;
+    canBook = !isBanned && realActiveCount < max;
     
     if(isBanned) banReason = "ACCOUNT SOSPESO";
-    else if (activeCount >= max) banReason = `ZAINO PIENO (${activeCount}/${max})`;
+    else if (realActiveCount >= max) banReason = `ZAINO PIENO (${realActiveCount}/${max})`;
     else banReason = "";
 
     filterTrips(); 
@@ -774,6 +796,20 @@ async function requestCancel(title, btnElement) {
         isCancellingInProgress = false;
         return; 
     }
+
+    // --- LA QUARANTENA: INSERIAMO IL VIAGGIO NELLA LISTA NERA ---
+    const safeTitle = title.toLowerCase().trim();
+    if (!pendingCancels.includes(safeTitle)) pendingCancels.push(safeTitle);
+
+    // Diciamo allo zaino di ricalcolarsi ORA (la card sparirà istantaneamente)
+    evaluateBookings();
+
+    // Rilasciamo la quarantena dopo 15 secondi (quando Google avrà sicuramente aggiornato l'Excel)
+    setTimeout(() => {
+        pendingCancels = pendingCancels.filter(t => t !== safeTitle);
+    }, 15000);
+
+    // ... (IL RESTO DELLA FUNZIONE PROCEDE CON FIREBASE, FETCH ECC.) ...
 
     // --- 2. LO SCUDO GRAFICO: BLOCCIAMO IL TASTO ALL'ISTANTE ---
     if (btnElement) {
@@ -974,7 +1010,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         processedList = processedList.filter(od => {
             const passMonth = (activeODFilters.month === 'Tutti' || (od["Data Inizio"] && od["Data Inizio"].split('/')[1] === activeODFilters.month));
             // Cerca il dato in entrambe le varianti di scrittura
-            const rVal = od["Regione"] || od["regione"] || "";["Regione"] || "";
+            const rVal = od["Regione"] || od["regione"] || "";
             const passRegion = (activeODFilters.region === 'Tutte' || rVal.toLowerCase() === activeODFilters.region.toLowerCase());
             return passMonth && passRegion;
         });
@@ -1069,6 +1105,16 @@ async function sendCustomBooking() {
     // L'INIEZIONE NELLO ZAINO INVISIBILE (Il vero Anti-Latenza)
     const titoloInPartenza = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
     myBookedTitles.push(titoloInPartenza);
+
+    // --- LA QUARANTENA: BLOCCIAMO IL VIAGGIO LOCALMENTE ---
+    const safeTitolo = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
+    if (!pendingBookings.includes(safeTitolo)) pendingBookings.push(safeTitolo);
+    
+    // Rilasciamo la quarantena dopo 15 secondi
+    setTimeout(() => {
+        pendingBookings = pendingBookings.filter(t => t !== safeTitolo);
+    }, 15000);
+
     
     // Effetto visivo caricamento
     btn.innerText = "SPEDIZIONE... 🌲";
@@ -1379,9 +1425,9 @@ function showOpenDayDetails(id) {
     const d = od["Data Inizio"] || "";
     const safeFingerprint = (t + "|" + d).toLowerCase().trim();
 
-    // SE L'UTENTE È GIÀ ISCRITTO (Lo zaino lo sa), NASCONDIAMO IL TASTO PRENOTA
-    // Questo succede quando apri il modal dal Profilo/Zaino
-    if (myBookedTitles.includes(t.toLowerCase().trim())) {
+    // SE L'UTENTE È GIÀ ISCRITTO O IN FASE DI ISCRIZIONE, NASCONDIAMO IL TASTO PRENOTA
+    const safeT = t.toLowerCase().trim();
+    if (myBookedTitles.includes(safeT) || pendingBookings.includes(safeT)) {
         bookBtn.style.display = "none";
     } else {
         bookBtn.style.display = "block";
@@ -1456,6 +1502,7 @@ function showOpenDayDetails(id) {
     
 </body>
 </html>
+
 
 
 
