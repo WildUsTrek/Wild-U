@@ -106,7 +106,7 @@
     </div>
 </div>
     
-<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub 2</h1></div>
+<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U HOME 3</h1></div>
 
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
@@ -508,12 +508,21 @@ auth.onAuthStateChanged(async (user) => {
 });
 
 // ==========================================
-// LOGIN GOOGLE (PWA SAFE)
+// LOGIN GOOGLE (CROSS-SITE FIX / POPUP SAFE)
 // ==========================================
 
 function loginWithGoogle() {
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithRedirect(provider);
+    // Utilizziamo signInWithPopup per prevenire il blocco del sessionStorage 
+    // causato dallo Storage Partitioning su iOS Safari e Android Chrome.
+    auth.signInWithPopup(provider).catch((error) => {
+        console.error("Errore login Google:", error);
+        if (error.code === 'auth/popup-blocked') {
+             showToast("Popup bloccato. Per favore, consenti i popup o usa il browser predefinito.");
+        } else {
+             showToast("Errore di accesso: " + error.message);
+        }
+    });
 }
 
 // ==========================================
@@ -605,9 +614,9 @@ function updateProfileUI() {
     } 
 }
 
-    // ==========================================
-    // INIZIALIZZAZIONE
-    // ==========================================
+// ==========================================
+// INIZIALIZZAZIONE
+// ==========================================
 async function init() {
     if (window.Telegram && window.Telegram.WebApp) { 
         window.Telegram.WebApp.ready(); 
@@ -622,70 +631,70 @@ async function init() {
     }, 50);
 }
 
-    async function fetchInitData() {
-        // TRUCCO VELOCITÀ: Leggiamo subito la cache
-        const cachedData = localStorage.getItem('wildCache');
-        if (cachedData) {
-            try {
-                const data = JSON.parse(cachedData);
-                allTrips = data.events || [];
-                allBookings = data.bookings || [];
-                allOpenDays = data.opendays || []; // <--- AGGIUNTO PONTE OPEN DAY
-                config = data.config || {};
-                if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
-                
-                buildFilters(); filterTrips();
-                buildODFilters(); // <--- AGGIUNGI QUESTA
-                if (wildUserKey) evaluateBookings();
-                renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
-            } catch(e) {}
-        }
-
+async function fetchInitData() {
+    // TRUCCO VELOCITÀ: Leggiamo subito la cache
+    const cachedData = localStorage.getItem('wildCache');
+    if (cachedData) {
         try {
-            // Scarichiamo i dati freschi da Google
-            const res = await fetch(SCRIPT_URL + "?action=getInitData&nocache=" + Date.now());
-            const data = await res.json();
-            
-            localStorage.setItem('wildCache', JSON.stringify(data));
-            
-            WILD_ASSETS = data.assets || {};
-            config = data.config || {};
-            if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+            const data = JSON.parse(cachedData);
             allTrips = data.events || [];
             allBookings = data.bookings || [];
             allOpenDays = data.opendays || []; // <--- AGGIUNTO PONTE OPEN DAY
+            config = data.config || {};
+            if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
             
-            FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
-            FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
-
-            sXP.src = formatAssetLink(WILD_ASSETS.audio_xp); sXP.volume = 0.5;
-            sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
-            sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
-            sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
-            sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
-            
-            let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-if(linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
-
-let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
-
-            if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
-            if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
-            if (WILD_ASSETS['istruzioni_apple']) document.getElementById('apple-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_apple']);
-            if (WILD_ASSETS['titolo_android']) document.getElementById('android-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_android']);
-            if (WILD_ASSETS['sottotitolo_android']) document.getElementById('android-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_android']);
-            if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
-            if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
-
             buildFilters(); filterTrips();
             buildODFilters(); // <--- AGGIUNGI QUESTA
             if (wildUserKey) evaluateBookings();
             renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
-            
-        } catch(e) { console.error("Errore Mega-Pacchetto:", e); }
+        } catch(e) {}
     }
 
+    try {
+        // Scarichiamo i dati freschi da Google
+        const res = await fetch(SCRIPT_URL + "?action=getInitData&nocache=" + Date.now());
+        const data = await res.json();
+        
+        localStorage.setItem('wildCache', JSON.stringify(data));
+        
+        WILD_ASSETS = data.assets || {};
+        config = data.config || {};
+        if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+        allTrips = data.events || [];
+        allBookings = data.bookings || [];
+        allOpenDays = data.opendays || []; // <--- AGGIUNTO PONTE OPEN DAY
+        
+        FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
+        FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
+
+        sXP.src = formatAssetLink(WILD_ASSETS.audio_xp); sXP.volume = 0.5;
+        sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
+        sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
+        sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
+        sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
+        
+        let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
+        if(linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+
+        let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
+        if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+
+        if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
+        if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
+        if (WILD_ASSETS['istruzioni_apple']) document.getElementById('apple-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_apple']);
+        if (WILD_ASSETS['titolo_android']) document.getElementById('android-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_android']);
+        if (WILD_ASSETS['sottotitolo_android']) document.getElementById('android-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_android']);
+        if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
+        if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+
+        buildFilters(); filterTrips();
+        buildODFilters(); // <--- AGGIUNGI QUESTA
+        if (wildUserKey) evaluateBookings();
+        renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
+        
+    } catch(e) { console.error("Errore Mega-Pacchetto:", e); }
+}
+    
     // ==========================================
     // LOGICA XP E CONTROLLO TIME-TRAVEL
     // ==========================================
