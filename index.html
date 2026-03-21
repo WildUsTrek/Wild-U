@@ -106,7 +106,7 @@
     </div>
 </div>
     
-<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub 1</h1></div>
+<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U Hub 2</h1></div>
 
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
@@ -303,7 +303,21 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    const auth = firebase.auth(); 
+    const auth = firebase.auth();
+
+    // ✅ 3. QUI METTI getRedirectResult (QUESTO TI MANCAVA)
+auth.getRedirectResult()
+  .then((result) => {
+    if (result.user) {
+      console.log("Login redirect OK", result.user);
+      // NON fare troppo qui, ci pensa onAuthStateChanged
+    }
+  })
+  .catch((error) => {
+    console.error("Errore redirect:", error);
+    showToast("Errore login Google");
+  });
+
 
     // Torna alla versione stabile: il warning giallo è normale e innocuo
     db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
@@ -412,146 +426,201 @@ async function saveProfileData() {
     }
 }
     
-    // ==========================================
-    // IL MOTORE DEL BIVIO (TELEGRAM VS GOOGLE)
-    // ==========================================
-    function checkAuthEnvironment() {
-        const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-        
-        if (tgUser) {
-            document.getElementById('login-method-google').classList.add('hidden');
-            document.getElementById('login-method-telegram').classList.remove('hidden');
-            document.getElementById('login-desc').innerText = "Accesso automatico protetto da Telegram.";
-            handleTelegramAuth(tgUser);
-        } else {
-            document.getElementById('login-method-telegram').classList.add('hidden');
-            document.getElementById('login-method-google').classList.remove('hidden');
-        }
-    }
+// ==========================================
+// IL MOTORE DEL BIVIO (TELEGRAM VS GOOGLE)
+// ==========================================
 
-    async function handleTelegramAuth(tgUser) {
-        const tgId = "TG-" + tgUser.id; 
+function checkAuthEnvironment() {
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const isTelegram = tgUser && tgUser.id;
+    
+    if (isTelegram) {
+        document.getElementById('login-method-google').classList.add('hidden');
+        document.getElementById('login-method-telegram').classList.remove('hidden');
+        document.getElementById('login-desc').innerText = "Accesso automatico protetto da Telegram.";
+        handleTelegramAuth(tgUser);
+    } else {
+        document.getElementById('login-method-telegram').classList.add('hidden');
+        document.getElementById('login-method-google').classList.remove('hidden');
+    }
+}
+
+// ==========================================
+// LOGIN TELEGRAM
+// ==========================================
+
+async function handleTelegramAuth(tgUser) {
+    const tgId = "TG-" + tgUser.id; 
+    try {
+        const docSnap = await db.collection("utenti").doc(tgId).get();
+        if (docSnap.exists) {
+            wildUserKey = tgId;
+            localStorage.setItem('wildUserKey', wildUserKey);
+            updateProfileUI();
+        } else {
+            tempTelegramUser = tgUser;
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('complete-profile-screen').classList.remove('hidden');
+        }
+    } catch(e) {
+        console.error("Errore Login Telegram:", e);
+        showToast("Errore Telegram: " + e.message);
+    }
+}
+
+// ==========================================
+// LISTENER AUTH GOOGLE (POST-REDIRECT SAFE)
+// ==========================================
+
+auth.onAuthStateChanged(async (user) => {
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const isTelegram = tgUser && tgUser.id;
+
+    // Se siamo dentro Telegram, ignoriamo completamente Google
+    if (isTelegram) return; 
+
+    if (user) {
+        tempGoogleUser = user;
         try {
-            const docSnap = await db.collection("utenti").doc(tgId).get();
+            const docSnap = await db.collection("utenti").doc(user.email).get();
+            
             if (docSnap.exists) {
-                wildUserKey = tgId;
+                wildUserKey = user.email;
                 localStorage.setItem('wildUserKey', wildUserKey);
+                
+                document.getElementById('complete-profile-screen').classList.add('hidden');
                 updateProfileUI();
             } else {
-                tempTelegramUser = tgUser;
                 document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('profile-data').classList.add('hidden');
                 document.getElementById('complete-profile-screen').classList.remove('hidden');
             }
-        } catch(e) {
-            console.error("Errore Login Telegram", e);
-            showToast("Errore di connessione a Telegram.");
+
+        } catch(e) { 
+            console.error("Firestore error:", e);
+            showToast("Errore: " + e.message); 
         }
+    } else {
+        wildUserKey = null;
+        localStorage.removeItem('wildUserKey');
+        updateProfileUI();
     }
+});
 
-    auth.onAuthStateChanged(async (user) => {
-        if (window.Telegram?.WebApp?.initDataUnsafe?.user) return; 
+// ==========================================
+// LOGIN GOOGLE (PWA SAFE)
+// ==========================================
 
-        if (user) {
-            tempGoogleUser = user;
-            try {
-                const docSnap = await db.collection("utenti").doc(user.email).get();
-                if (docSnap.exists) {
-                    wildUserKey = user.email;
-                    localStorage.setItem('wildUserKey', wildUserKey);
-                    document.getElementById('complete-profile-screen').classList.add('hidden');
-                    updateProfileUI();
-                } else {
-                    document.getElementById('login-screen').classList.add('hidden');
-                    document.getElementById('profile-data').classList.add('hidden');
-                    document.getElementById('complete-profile-screen').classList.remove('hidden');
-                }
-            } catch(e) { showToast("Errore di connessione."); }
-        } else {
-            wildUserKey = null;
-            localStorage.removeItem('wildUserKey');
-            updateProfileUI();
-        }
-    });
-
-    function loginWithGoogle() {
+function loginWithGoogle() {
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithRedirect(provider);
 }
-    async function completeRegistration() {
-        const phone = document.getElementById('reg-phone').value.trim();
-        if(phone.length < 8) { showToast("Inserisci un numero valido per le prenotazioni."); return; }
 
-        try {
-            let userId, userEmail, userName;
-            
-            if (tempTelegramUser) {
-                userId = "TG-" + tempTelegramUser.id;
-                userName = tempTelegramUser.first_name || "Esploratore TG";
-                userEmail = "Utente Telegram"; 
-            } else if (tempGoogleUser) {
-                userId = tempGoogleUser.email;
-                userName = tempGoogleUser.displayName || "Esploratore Web";
-                userEmail = tempGoogleUser.email;
-            } else {
-                return showToast("Errore di sessione. Ricarica l'app.");
-            }
+// ==========================================
+// COMPLETAMENTO REGISTRAZIONE
+// ==========================================
 
-            const newUserData = {
-                xp: 0,
-                grado: "Socio Novizio",
-                registratoIl: firebase.firestore.FieldValue.serverTimestamp(),
-                email: userEmail,
-                nome: userName,
-                telefono: phone,
-                bannato: false
-            };
-            
-            await db.collection("utenti").doc(userId).set(newUserData);
-            
-            wildUserKey = userId;
-            localStorage.setItem('wildUserKey', wildUserKey);
-            
-            document.getElementById('complete-profile-screen').classList.add('hidden');
-            updateProfileUI();
-            showToast("Avventura iniziata! Benvenuto.");
-        } catch(e) {
-            console.error(e);
-            showToast("Errore durante la registrazione. Riprova.");
-        }
+async function completeRegistration() {
+    const phone = document.getElementById('reg-phone').value.trim();
+    if(phone.length < 8) { 
+        showToast("Inserisci un numero valido per le prenotazioni."); 
+        return; 
     }
 
-    function logout() { 
-        if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
-            localStorage.clear(); location.reload(); 
-        } else {
-            auth.signOut().then(() => { localStorage.clear(); location.reload(); }); 
-        }
-    }
-
-    function updateProfileUI() { 
-        if (wildUserKey) { 
-            document.getElementById('login-screen').classList.add('hidden'); 
-            document.getElementById('complete-profile-screen').classList.add('hidden');
-            document.getElementById('profile-data').classList.remove('hidden'); 
-            fetchXP(); 
-        } else { 
-            document.getElementById('login-screen').classList.remove('hidden'); 
-            document.getElementById('complete-profile-screen').classList.add('hidden');
-            document.getElementById('profile-data').classList.add('hidden'); 
+    try {
+        let userId, userEmail, userName;
+        
+        if (tempTelegramUser) {
+            userId = "TG-" + tempTelegramUser.id;
+            userName = tempTelegramUser.first_name || "Esploratore TG";
+            userEmail = "Utente Telegram"; 
         } 
+        else if (tempGoogleUser) {
+            userId = tempGoogleUser.email;
+            userName = tempGoogleUser.displayName || "Esploratore Web";
+            userEmail = tempGoogleUser.email;
+        } 
+        else {
+            return showToast("Errore di sessione. Ricarica l'app.");
+        }
+
+        const newUserData = {
+            xp: 0,
+            grado: "Socio Novizio",
+            registratoIl: firebase.firestore.FieldValue.serverTimestamp(),
+            email: userEmail,
+            nome: userName,
+            telefono: phone,
+            bannato: false
+        };
+        
+        await db.collection("utenti").doc(userId).set(newUserData);
+        
+        wildUserKey = userId;
+        localStorage.setItem('wildUserKey', wildUserKey);
+        
+        document.getElementById('complete-profile-screen').classList.add('hidden');
+        updateProfileUI();
+        showToast("Avventura iniziata! Benvenuto.");
+
+    } catch(e) {
+        console.error("Errore registrazione:", e);
+        showToast("Errore durante la registrazione. Riprova.");
     }
+}
+
+// ==========================================
+// LOGOUT
+// ==========================================
+
+function logout() { 
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const isTelegram = tgUser && tgUser.id;
+
+    if (isTelegram) {
+        localStorage.clear(); 
+        location.reload(); 
+    } else {
+        auth.signOut().then(() => { 
+            localStorage.clear(); 
+            location.reload(); 
+        }); 
+    }
+}
+
+// ==========================================
+// UI PROFILE
+// ==========================================
+
+function updateProfileUI() { 
+    if (wildUserKey) { 
+        document.getElementById('login-screen').classList.add('hidden'); 
+        document.getElementById('complete-profile-screen').classList.add('hidden');
+        document.getElementById('profile-data').classList.remove('hidden'); 
+        fetchXP(); 
+    } else { 
+        document.getElementById('login-screen').classList.remove('hidden'); 
+        document.getElementById('complete-profile-screen').classList.add('hidden');
+        document.getElementById('profile-data').classList.add('hidden'); 
+    } 
+}
 
     // ==========================================
     // INIZIALIZZAZIONE
     // ==========================================
-    async function init() {
-        if (window.Telegram && window.Telegram.WebApp) { 
-            window.Telegram.WebApp.ready(); 
-            window.Telegram.WebApp.expand(); 
-        }
-        await fetchInitData(); 
-        checkAuthEnvironment(); 
+async function init() {
+    if (window.Telegram && window.Telegram.WebApp) { 
+        window.Telegram.WebApp.ready(); 
+        window.Telegram.WebApp.expand(); 
     }
+
+    checkAuthEnvironment(); 
+    
+    // piccolo delay per sicurezza
+    setTimeout(async () => {
+        await fetchInitData(); 
+    }, 50);
+}
 
     async function fetchInitData() {
         // TRUCCO VELOCITÀ: Leggiamo subito la cache
