@@ -4,7 +4,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Wild-U Hub - Master Edition 🌲</title>
+    <title>Wild-U Hub - Master Edition 1 🌲</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#121212">
@@ -474,13 +474,9 @@ async function saveProfileData() {
     });
 
     function loginWithGoogle() {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        // Usiamo Popup invece di Redirect! La pagina non si ricarica e la musica continua.
-        auth.signInWithPopup(provider).catch(error => {
-            console.error("Errore Popup:", error);
-            showToast("Login annullato o errore di rete.");
-        }); 
-    }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithRedirect(provider);
+}
     async function completeRegistration() {
         const phone = document.getElementById('reg-phone').value.trim();
         if(phone.length < 8) { showToast("Inserisci un numero valido per le prenotazioni."); return; }
