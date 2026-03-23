@@ -105,7 +105,7 @@
     </div>
 </div>
     
-<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U bussola 7</h1></div>
+<div id="main-hero" class="hero-header"><div class="hero-overlay"></div><h1 class="hero-title">Wild-U bussola 8</h1></div>
 
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
@@ -1431,7 +1431,14 @@ async function sendCustomBooking() {
         });
         
         if(document.getElementById('sec-' + id)) document.getElementById('sec-' + id).classList.remove('hidden');
-        if(document.getElementById('btn-' + id)) document.getElementById('btn-' + id).classList.add('active');
+        
+        // 2. ATTIVA IL BOTTONE E LO CENTRA VISIVAMENTE
+        const activeBtn = document.getElementById('btn-' + id);
+        if(activeBtn) {
+            activeBtn.classList.add('active');
+            // IL TRUCCO UX: Centra il bottone cliccato nella barra orizzontale in modo fluido
+            activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        }
         
         const m = document.getElementById('module-container'); 
         if(m && !m.classList.contains('hidden')){ 
@@ -1450,7 +1457,7 @@ async function sendCustomBooking() {
             else if (wildUserKey) fetchXP(); 
         }
     }
-
+    
     function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
     async function openModule(f, a, i, r) { if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); const m = document.getElementById('module-container'); m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; m.classList.remove('hidden'); handleModuleAudio(a); if (i) document.querySelector('.nav').style.display = 'none'; try { const res = await fetch(f + '?nocache=' + Date.now()); m.innerHTML = await res.text(); m.querySelectorAll('script').forEach(s => { const n = document.createElement('script'); n.text = s.text; document.body.appendChild(n).parentNode.removeChild(n); }); } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } }
     function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
