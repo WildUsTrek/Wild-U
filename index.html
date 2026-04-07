@@ -661,16 +661,28 @@ async function fetchInitData() {
     if (cachedData) {
         try {
             const data = JSON.parse(cachedData);
-            allTrips = data.events || [];
-            allBookings = data.bookings || [];
-            allOpenDays = data.opendays || []; // <--- AGGIUNTO PONTE OPEN DAY
+            
+            // 🟢 RECUPERO ASSET & CONFIGURAZIONI (Impedisce crash offline sui Social)
+            WILD_ASSETS = data.assets || {};
             config = data.config || {};
             if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
             
+            // 🟢 RIPRISTINO AUDIO & GRAFICA OFFLINE
+            FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
+            FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
+            if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+
+            allTrips = data.events || [];
+            allBookings = data.bookings || [];
+            allOpenDays = data.opendays || [];
+            
+            // 🟢 RENDERING IMMEDIATO DEI PREMI DA CACHE
+            if (data.resources) renderDynamicResources(data.resources);
+            
             buildFilters(); filterTrips();
-            buildODFilters(); // <--- AGGIUNGI QUESTA
+            buildODFilters();
             if (wildUserKey) evaluateBookings();
-            renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
+            renderOpenDays();
         } catch(e) {}
     }
 
