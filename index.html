@@ -143,15 +143,8 @@
             <h3 style="margin-top:0; font-size:26px; color: #fff;">Area Premi & Giochi</h3>
             <p style="font-size:14px; color:#aaa; margin-bottom:0;">Sfrutta i tuoi XP: esplora le tue ricompense e il materiale sbloccato.</p>
         </div>
-        <div class="resource-item" onclick="openModule('rifugio.html', WILD_ASSETS['audio_rifugio'], true, WILD_ASSETS['grado_rifugio'])"><div class="resource-info"><span class="resource-icon">🏕️</span><span class="resource-name">Costruisci il tuo rifugio</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('sconti.html', WILD_ASSETS['audio_sconti'], false, WILD_ASSETS['grado_sconti'])"><div class="resource-info"><span class="resource-icon">🎟️</span><span class="resource-name">Codici sconto vinti</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('wildwall.html', WILD_ASSETS['audio_wildwall'], false, WILD_ASSETS['grado_wildwall'])"><div class="resource-info"><span class="resource-icon">📸</span><span class="resource-name">Wild Wall (Photo)</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('radio.html', WILD_ASSETS['audio_radio'], false, WILD_ASSETS['grado_radio'])"><div class="resource-info"><span class="resource-icon">📻</span><span class="resource-name">Radio Natura</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('mappa.html', WILD_ASSETS['audio_mappa'], false, WILD_ASSETS['grado_mappa'])"><div class="resource-info"><span class="resource-icon">🗺️</span><span class="resource-name">Mappa dei Tesori</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('guide.html', WILD_ASSETS['audio_guide'], false, WILD_ASSETS['grado_guide'])"><div class="resource-info"><span class="resource-icon">📖</span><span class="resource-name">Guide e Manuali</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('gpx.html', WILD_ASSETS['audio_gpx'], false, WILD_ASSETS['grado_gpx'])"><div class="resource-info"><span class="resource-icon">📍</span><span class="resource-name">GPX</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="openModule('libri.html', WILD_ASSETS['audio_libri'], false, WILD_ASSETS['grado_libri'])"><div class="resource-info"><span class="resource-icon">📚</span><span class="resource-name">Libri</span></div><span style="color:var(--w-sub)">➔</span></div>
-        <div class="resource-item" onclick="document.getElementById('social-action-modal').style.display='flex'" style="margin-top: 25px; border-left-color: #0088cc;"><div class="resource-info"><span class="resource-icon">🌐</span><span class="resource-name">Social Network</span></div><span style="color:var(--w-sub)">➔</span></div>
+            <div id="dynamic-resources-list"></div>
+            <div class="resource-item" onclick="document.getElementById('social-action-modal').style.display='flex'" style="margin-top: 25px; border-left-color: #0088cc;"><div class="resource-info"><span class="resource-icon">🌐</span><span class="resource-name">Social Network</span></div><span style="color:var(--w-sub)">➔</span></div>
     </div>
 
     <div id="sec-wheel" class="hidden" style="text-align:center;">
@@ -286,7 +279,19 @@
 </div>   
 <div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
 <div id="levelup-overlay" onclick="this.style.display='none'"><img id="lv-img" src="" class="levelup-img"><h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2><p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p><p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p></div>
-<div id="social-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3><button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS['link_facebook'], '_blank')"><span>Facebook</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS['link_instagram'], '_blank')"><span>Instagram</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS['link_youtube'], '_blank')"><span>YouTube</span> <span>➔</span></button><button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button></div></div>
+
+<div id="social-action-modal" class="modal-overlay" onclick="this.style.display='none'">
+    <div class="modal-card" onclick="event.stopPropagation()">
+        <h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">I Nostri Social</h3>
+        <button class="btn-action-group wa" onclick="window.open(WILD_ASSETS.link_whatsapp, '_blank')"><span>Gruppo WhatsApp</span> <span>➔</span></button>
+        <button class="btn-action-group tg" onclick="window.open(WILD_ASSETS.link_telegram, '_blank')"><span>Canale Telegram</span> <span>➔</span></button>
+        <button class="btn-action-group" style="border-left-color: #E1306C;" onclick="window.open(WILD_ASSETS.link_instagram, '_blank')"><span>Instagram</span> <span>➔</span></button>
+        <button class="btn-action-group" style="border-left-color: #FF0000;" onclick="window.open(WILD_ASSETS.link_youtube, '_blank')"><span>YouTube</span> <span>➔</span></button>
+        <button class="btn-action-group" style="border-left-color: #1877F2;" onclick="window.open(WILD_ASSETS.link_facebook, '_blank')"><span>Facebook</span> <span>➔</span></button>
+        <button onclick="document.getElementById('social-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Chiudi</button>
+    </div>
+</div>    
+    
 <div id="group-action-modal" class="modal-overlay"><div class="modal-card"><h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3><button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button><button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button><button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="download-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3><button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')"><span>📦 Android (.APK)</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')"><span>▶️ Google Play Store</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')"><span>🍏 Apple App Store</span> <span>➔</span></button><button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="toast-msg"></div>
@@ -715,10 +720,13 @@ async function fetchInitData() {
         if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
         if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
+        // 🟢 INNESTO RISORSE DINAMICHE
+        if (data.resources) renderDynamicResources(data.resources);
+
         buildFilters(); filterTrips();
-        buildODFilters(); // <--- AGGIUNGI QUESTA
+        buildODFilters();
         if (wildUserKey) evaluateBookings();
-        renderOpenDays(); // <--- AGGIUNTO STAMPA OPEN DAY
+        renderOpenDays();
         
     } catch(e) { console.error("Errore Mega-Pacchetto:", e); }
 }
@@ -1484,7 +1492,53 @@ async function sendCustomBooking() {
     }
     
     function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
-    async function openModule(f, a, i, r) { if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); const m = document.getElementById('module-container'); m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; m.classList.remove('hidden'); handleModuleAudio(a); if (i) document.querySelector('.nav').style.display = 'none'; try { const res = await fetch(f + '?nocache=' + Date.now()); m.innerHTML = await res.text(); m.querySelectorAll('script').forEach(s => { const n = document.createElement('script'); n.text = s.text; document.body.appendChild(n).parentNode.removeChild(n); }); } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } }
+    
+    // 🟢 MOTORE DI RENDERING PREMI
+    function renderDynamicResources(resources) {
+        const container = document.getElementById('dynamic-resources-list');
+        if (!container) return;
+        container.innerHTML = resources.map(res => {
+            const safeLinks = btoa(JSON.stringify(res.link_interni || []));
+            const audioKey = res.Audio || "STOP";
+            const grado = res.Grado_Minimo || "";
+            return `
+                <div class="resource-item" onclick="openModule('${res.Link_Risorsa}', '${audioKey}', false, '${grado}', '${safeLinks}')">
+                    <div class="resource-info">
+                        <span class="resource-icon">${res.Categoria}</span>
+                        <div style="display:flex; flex-direction:column;">
+                            <span class="resource-name">${res.Titolo}</span>
+                            <span style="font-size:11px; color:#666;">${res.Descrizione}</span>
+                        </div>
+                    </div>
+                    <span style="color:var(--w-sub)">➔</span>
+                </div>`;
+        }).join('');
+    }
+
+    // 🟢 OPEN MODULE CON LINK INTERNI (VERSIONE 2026)
+    async function openModule(f, a, i, r, encodedLinks) { 
+        if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } 
+        
+        // Salviamo i link per il modulo figlio
+        window.currentInternalLinks = encodedLinks ? JSON.parse(atob(encodedLinks)) : [];
+
+        ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); 
+        const m = document.getElementById('module-container'); 
+        m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; 
+        m.classList.remove('hidden'); 
+        handleModuleAudio(a); 
+        if (i) document.querySelector('.nav').style.display = 'none'; 
+        try { 
+            const res = await fetch(f + '?nocache=' + Date.now()); 
+            m.innerHTML = await res.text(); 
+            m.querySelectorAll('script').forEach(s => { 
+                const n = document.createElement('script'); 
+                n.text = s.text; 
+                document.body.appendChild(n).parentNode.removeChild(n); 
+            }); 
+        } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } 
+    }
+    
     function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
     
     function startAudioMixer() { 
