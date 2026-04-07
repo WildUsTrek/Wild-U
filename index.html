@@ -415,7 +415,8 @@ async function saveProfileData() {
         // Nota: ho usato "utenti" per essere coerente con la tua fetchXP
         await db.collection("utenti").doc(wildUserKey).set({
             nome: newName,
-            telefono: newPhone
+            telefono: newPhone,
+            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
         }, { merge: true });
 
         // Aggiorniamo la cache locale per riflettere i cambiamenti subito
@@ -576,7 +577,8 @@ async function completeRegistration() {
             email: userEmail,
             nome: userName,
             telefono: phone,
-            bannato: false
+            bannato: false,
+            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
         };
         
         await db.collection("utenti").doc(userId).set(newUserData);
@@ -870,7 +872,8 @@ function evaluateBookings() {
             const userRef = db.collection("utenti").doc(wildUserKey);
             await userRef.set({
                 xp: firebase.firestore.FieldValue.increment(xpVal),
-                viaggi_riscattati: firebase.firestore.FieldValue.arrayUnion(tripId)
+                viaggi_riscattati: firebase.firestore.FieldValue.arrayUnion(tripId),
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
             }, { merge: true });
             viaggiRiscattati.push(tripId);
             setTimeout(fetchXP, 600); 
@@ -913,7 +916,10 @@ async function requestCancel(title, btnElement) {
     try {
         // TAGLIO PUNTI (Immediato)
         if (penalty > 0) {
-            await db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(-penalty) }, { merge: true });
+            await db.collection("utenti").doc(wildUserKey).set({ 
+                xp: firebase.firestore.FieldValue.increment(-penalty),
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
+            }, { merge: true });
             
             if (cachedXPData) {
                 cachedXPData.xp -= penalty;
@@ -1264,7 +1270,10 @@ async function sendCustomBooking() {
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
             if (earnedXP > 0) {
                 // 1. Scrive su Firebase all'istante
-                db.collection("utenti").doc(wildUserKey).set({ xp: firebase.firestore.FieldValue.increment(earnedXP) }, { merge: true });
+                db.collection("utenti").doc(wildUserKey).set({ 
+                    xp: firebase.firestore.FieldValue.increment(earnedXP),
+                    ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
+                }, { merge: true });
                 
                 // 2. Aggiorna la cache locale e BLOCCA IL LOOP FANTASMA
                 if (cachedXPData) cachedXPData.xp += earnedXP;
@@ -1385,7 +1394,10 @@ async function sendCustomBooking() {
             const winAmount = Math.random() > 0.8 ? 5 : 0;
             if (winAmount > 0) {
                 const userRef = db.collection("utenti").doc(wildUserKey);
-                await userRef.set({ xp: firebase.firestore.FieldValue.increment(winAmount) }, { merge: true });
+                await userRef.set({ 
+                    xp: firebase.firestore.FieldValue.increment(winAmount),
+                    ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
+                }, { merge: true });
                 if (cachedXPData) cachedXPData.xp += winAmount;
             }
 
