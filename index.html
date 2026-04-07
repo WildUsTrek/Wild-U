@@ -294,7 +294,7 @@
 
     
 <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwiDM9JL_JDVQpJyFyVQ8r5bifWwiVzVlUwA-8keNRpfhdPybVapqFHOhM0pJadmlW1XQ/exec";
+    const MOTORE_API_URL = "https://wildu-gateway-959006418837.europe-west1.run.app/api/gateway";
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
 
     // --- FIREBASE SETUP CON LA TUA CHIAVE ESATTA ---
@@ -492,10 +492,10 @@ auth.onAuthStateChanged(async (user) => {
     if (user) {
         tempGoogleUser = user;
         try {
-            const docSnap = await db.collection("utenti").doc(user.email).get();
+            const docSnap = await db.collection("utenti").doc(user.uid).get(); // 🟢 IDENTITÀ TRAMITE UID
             
             if (docSnap.exists) {
-                wildUserKey = user.email;
+                wildUserKey = user.uid; // 🟢 IDENTITÀ TRAMITE UID
                 localStorage.setItem('wildUserKey', wildUserKey);
                 
                 document.getElementById('complete-profile-screen').classList.add('hidden');
@@ -562,10 +562,10 @@ async function completeRegistration() {
             userEmail = "Utente Telegram"; 
         } 
         else if (tempGoogleUser) {
-            userId = tempGoogleUser.email;
+            userId = tempGoogleUser.uid; // 🟢 IDENTITÀ TRAMITE UID
             userName = tempGoogleUser.displayName || "Esploratore Web";
-            userEmail = tempGoogleUser.email;
-        } 
+            userEmail = tempGoogleUser.email; // (Teniamo la mail solo come dato anagrafico nel documento)
+        }
         else {
             return showToast("Errore di sessione. Ricarica l'app.");
         }
@@ -670,8 +670,17 @@ async function fetchInitData() {
     }
 
     try {
-        // Scarichiamo i dati freschi da Google
-        const res = await fetch(SCRIPT_URL + "?action=getInitData&nocache=" + Date.now());
+        // Scarichiamo i dati freschi dal Gateway Cloud Run
+        let token = "GUEST";
+        if (wildUserKey && auth.currentUser) {
+            token = await auth.currentUser.getIdToken();
+        }
+
+        const res = await fetch(MOTORE_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getInitData', token: token, nocache: Date.now() })
+        });
         const data = await res.json();
         
         localStorage.setItem('wildCache', JSON.stringify(data));
@@ -932,9 +941,10 @@ async function requestCancel(title, btnElement) {
             }
         }
         
-        // ORDINE AL POSTINO
-        const payload = { action: "cancelBooking", titolo: title, wildKey: wildUserKey };
-        fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+        // ORDINE AL POSTINO GATEWAY
+        const safeToken = await auth.currentUser.getIdToken(); // 🟢 IDENTITÀ CERTIFICATA
+        const payload = { action: "cancelBooking", token: safeToken, titolo: title, wildKey: wildUserKey };
+        fetch(MOTORE_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 
         // CREAZIONE LINK WHATSAPP
         const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey}*.`;
@@ -1242,8 +1252,10 @@ async function sendCustomBooking() {
     btn.style.opacity = "0.7";
 
     // Impacchettiamo tutti i dati del modulo
+    const safeToken = await auth.currentUser.getIdToken(); // 🟢 IDENTITÀ CERTIFICATA
     const payload = {
         action: "bookCustom",
+        token: safeToken,
         tipo: document.getElementById('cb-tipo-evento').value, // "APP" o "OPENDAY"
         titolo: document.getElementById('cb-titolo').innerText,
         data: document.getElementById('cb-data').innerText,
@@ -1254,10 +1266,10 @@ async function sendCustomBooking() {
     };
 
     try {
-        // Chiamata diretta (POST) al tuo script Google
-        const response = await fetch(SCRIPT_URL, {
+        // Chiamata diretta (POST) al Gateway Cloud Run
+        const response = await fetch(MOTORE_API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
