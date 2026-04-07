@@ -1493,16 +1493,27 @@ async function sendCustomBooking() {
     
     function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
     
-    // 🟢 MOTORE DI RENDERING PREMI
+    // 🟢 MOTORE DI RENDERING PREMI (ANTI-PARADOSSO AUDIO)
     function renderDynamicResources(resources) {
         const container = document.getElementById('dynamic-resources-list');
         if (!container) return;
+
         container.innerHTML = resources.map(res => {
             const safeLinks = btoa(JSON.stringify(res.link_interni || []));
-            const audioKey = res.Audio || "STOP";
             const grado = res.Grado_Minimo || "";
+            
+            // 🛡️ RISOLUZIONE DIPENDENZA AUDIO
+            // Determiniamo come passare il parametro audio al click
+            let audioParam = "''"; // Default: stringa vuota (la musica continua)
+            if (res.Audio === "STOP") {
+                audioParam = "'STOP'"; // Comando testuale di spegnimento
+            } else if (res.Audio) {
+                // Passa il RIFERIMENTO ALL'OGGETTO, non la stringa testuale!
+                audioParam = `WILD_ASSETS['${res.Audio}']`; 
+            }
+
             return `
-                <div class="resource-item" onclick="openModule('${res.Link_Risorsa}', '${audioKey}', false, '${grado}', '${safeLinks}')">
+                <div class="resource-item" onclick="openModule('${res.Link_Risorsa}', ${audioParam}, false, '${grado}', '${safeLinks}')">
                     <div class="resource-info">
                         <span class="resource-icon">${res.Categoria}</span>
                         <div style="display:flex; flex-direction:column;">
