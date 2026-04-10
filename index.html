@@ -2376,23 +2376,23 @@ async function sendCustomBooking() {
 function showOpenDayDetails(id) {
     // Cerchiamo l'evento usando sia la chiave primaria che quella secondaria per sicurezza
     const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
-    if(!od) {
+    if (!od) {
         showToast("⚠️ Dettagli non trovati nel calendario.");
         return;
     }
 
-    // --- PARTE ESTETICA (INALTERATA - IL TUO LAVORO PREZIOSO) ---
+    // --- PARTE ESTETICA ---
     document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
     document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
     document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
-    
+
     const regVal = od["Regione"] || od["regione"] || "";
     document.getElementById('od-modal-region-display').innerText = regVal ? "🗺️ Area: " + regVal : "";
     document.getElementById('od-modal-place').innerText = od["Luogo Nome"] || "Luogo da definire";
-    
+
     document.getElementById('od-modal-km').innerText = od["KM"] ? `🥾 ${od["KM"]} km` : "";
     document.getElementById('od-modal-km').style.display = od["KM"] ? "inline-block" : "none";
-    
+
     document.getElementById('od-modal-dsl').innerText = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
     document.getElementById('od-modal-dsl').style.display = od["Dislivello"] ? "inline-block" : "none";
 
@@ -2403,12 +2403,16 @@ function showOpenDayDetails(id) {
     let gearHtml = '';
     try {
         const gearArr = JSON.parse(od["Attrezzatura (JSON)"] || "[]");
-        if(gearArr.length > 0) {
-            for(let g of gearArr) {
+        if (gearArr.length > 0) {
+            for (let g of gearArr) {
                 gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
             }
-        } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
-    } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
+        } else {
+            gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>';
+        }
+    } catch (e) {
+        gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>';
+    }
     document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
     // Gestione Mappe e Iframe
@@ -2418,84 +2422,88 @@ function showOpenDayDetails(id) {
     const linkStr = od["Luogo Link Maps"] || od["Luogo Link"];
     const nomeLuogo = od["Luogo Nome"];
 
-    if(linkStr || nomeLuogo) {
+    if (linkStr || nomeLuogo) {
         mapsBtn.style.display = "block";
         mapContainer.style.display = "block";
         mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/" + encodeURIComponent(nomeLuogo + ", Italy");
         const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
         mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
-    } else { 
-        mapsBtn.style.display = "none"; 
+    } else {
+        mapsBtn.style.display = "none";
         mapContainer.style.display = "none";
     }
 
-    // --- IL CERVELLO DEL TASTO ISCRIVITI (CON LOGICA ANTI-DOPPIONI) ---
-const bookBtn = document.getElementById('od-modal-book');
-const t = od["Titolo"] || "Open Day";
-const d = od["Data Inizio"] || "";
-const odBookingId = od.bookingId || "";
-const odCollection = od.collection || "";
-const odEventDocId = od.eventDocId || "";
+    // --- IL CERVELLO DEL TASTO ISCRIVITI ---
+    const bookBtn = document.getElementById('od-modal-book');
+    const t = od["Titolo"] || "Open Day";
+    const d = od["Data Inizio"] || "";
+    const odBookingId = od.bookingId || "";
+    const odCollection = od.collection || "";
+    const odEventDocId = od.eventDocId || "";
 
-const bookingKey = buildClientBookingKey({
-    bookingId: odBookingId,
-    titolo: t,
-    data: d
-});
+    const bookingKey = buildClientBookingKey({
+        bookingId: odBookingId,
+        titolo: t,
+        data: d
+    });
 
-if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
-    bookBtn.style.display = "block";
-    bookBtn.disabled = true;
-    bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
-    bookBtn.style.background = "#444";
-    bookBtn.style.color = "#888";
-    bookBtn.style.border = "1px solid #555";
-    bookBtn.style.cursor = "not-allowed";
-    bookBtn.onclick = null;
-} else {
-    bookBtn.style.display = "block";
-    bookBtn.disabled = false;
-    bookBtn.innerText = "ISCRIVITI GRATIS ORA";
-    bookBtn.style.background = "#00aaff";
-    bookBtn.style.color = "#000";
-    bookBtn.style.border = "none";
-    bookBtn.style.cursor = "pointer";
-    bookBtn.onclick = function() {
-        if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
+    if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+        bookBtn.style.display = "block";
+        bookBtn.disabled = true;
+        bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
+        bookBtn.style.background = "#444";
+        bookBtn.style.color = "#888";
+        bookBtn.style.border = "1px solid #555";
+        bookBtn.style.cursor = "not-allowed";
+        bookBtn.onclick = null;
+    } else {
+        bookBtn.style.display = "block";
+        bookBtn.disabled = false;
+        bookBtn.innerText = "ISCRIVITI GRATIS ORA";
+        bookBtn.style.background = "#00aaff";
+        bookBtn.style.color = "#000";
+        bookBtn.style.border = "none";
+        bookBtn.style.cursor = "pointer";
+        bookBtn.onclick = function () {
+            if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
 
-        if (!canBook) {
-            showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
-            return;
-        }
+            if (!canBook) {
+                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
+                return;
+            }
 
-        document.getElementById('od-details-modal').style.display = 'none';
+            document.getElementById('od-details-modal').style.display = 'none';
 
-        const min = parseInt(config.od_xp_min) || 4;
-        const max = parseInt(config.od_xp_max) || 12;
-        const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+            const min = parseInt(config.od_xp_min) || 4;
+            const max = parseInt(config.od_xp_max) || 12;
+            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
 
-        setCurrentBookingDraft({
-            titolo: t,
-            data: d,
-            prezzo: "GRATUITO",
-            bookingId: odBookingId,
-            collection: odCollection,
-            eventDocId: odEventDocId
-        });
+            setCurrentBookingDraft({
+                titolo: t,
+                data: d,
+                prezzo: "GRATUITO",
+                bookingId: odBookingId,
+                collection: odCollection,
+                eventDocId: odEventDocId
+            });
 
-        document.getElementById('cb-titolo').innerText = t;
-        document.getElementById('cb-data').innerText = d;
-        document.getElementById('cb-prezzo').innerText = "GRATUITO";
-        document.getElementById('cb-tipo-evento').value = "OPENDAY";
-        document.getElementById('cb-xp').value = randomXP;
+            document.getElementById('cb-titolo').innerText = t;
+            document.getElementById('cb-data').innerText = d;
+            document.getElementById('cb-prezzo').innerText = "GRATUITO";
+            document.getElementById('cb-tipo-evento').value = "OPENDAY";
+            document.getElementById('cb-xp').value = randomXP;
 
-        const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
-        const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
-        document.getElementById('cb-nome').value = nomeSalvato;
-        document.getElementById('cb-telefono').value = telefonoSalvato;
+            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+            document.getElementById('cb-nome').value = nomeSalvato;
+            document.getElementById('cb-telefono').value = telefonoSalvato;
 
-        document.getElementById('custom-booking-modal').style.display = 'flex';
-    };
+            document.getElementById('custom-booking-modal').style.display = 'flex';
+        };
+    }
+
+    // MOSTRA IL MODAL DETTAGLI
+    document.getElementById('od-details-modal').style.display = 'block';
 }
     
     init();
