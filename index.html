@@ -1658,10 +1658,15 @@ function executePenaltyRedirect() {
         renderTrips(filtered, 'event-list');
     }
 
-    function renderTrips(trips, targetId) {
+function renderTrips(trips, targetId) {
         document.getElementById(targetId).innerHTML = trips.map(ev => {
             const dataPura = ev["Data inizio"] + "/" + ev.Anno;
-            const xpReward = Math.floor(parseInt(ev["Prezzo Prime"]) / (config.euro_punto_ratio || 5)) || 0;
+            
+            // LOGICA BIVIO PREZZI: Se l'offerta è attiva, il prezzo di riferimento diventa l'Early Booking
+            const hasOfferta = ev["Offerta Attiva"] === true;
+            const prezzoFinale = hasOfferta ? ev["Prezzo Early"] : ev["Prezzo Prime"];
+            
+            const xpReward = Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
             const linkBtn = ev.Link ? "<a href='" + ev.Link + "' target='_blank' class='btn-link'>Info</a>" : "";
             const safeTitle = ev.Titolo.replace(/'/g, "\\'");
             
@@ -1680,7 +1685,22 @@ function executePenaltyRedirect() {
             } 
             // 3. TUTTO LIBERO: Tasto prenota attivo
             else {
-                actionBtn = `<button class="btn-book btn-prenota" onclick="openBook('${safeTitle}', '${dataPura}', '${ev["Prezzo Prime"]}', '${xpReward}')">Prenota</button>`;
+                // Passiamo il 'prezzoFinale' (Prime o Early a seconda dell'offerta)
+                actionBtn = `<button class="btn-book btn-prenota" onclick="openBook('${safeTitle}', '${dataPura}', '${prezzoFinale}', '${xpReward}')">Prenota</button>`;
+            }
+
+            // GRAFICA PREZZO: Costruiamo il blocco visuale in base all'offerta
+            let priceHtml = '';
+            if (hasOfferta) {
+                priceHtml = `
+                    <div style="color: #ffaa00; font-size: 11px; font-weight: 900; letter-spacing: 1px; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
+                    <div class="price-prime" style="border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);">
+                        <span class="prime-val" style="color: #ffaa00;">${ev["Prezzo Early"]}€</span>
+                    </div>
+                    <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${ev["Prezzo Prime"]}€</div>
+                `;
+            } else {
+                priceHtml = `<div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div>`;
             }
             
             return `<div class="card">
@@ -1690,7 +1710,7 @@ function executePenaltyRedirect() {
                     <div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div>
                     <div class="price-prime-wrapper">
                         <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
-                        <div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div>
+                        ${priceHtml}
                     </div>
                 </div>
                 <div class="btn-group">${linkBtn} ${actionBtn}</div>
