@@ -370,6 +370,11 @@ auth.getRedirectResult()
     let tempTelegramUser = null;
     let lastFetchTime = 0;
 
+    // Bootstrap / anti-doppio-fetch
+    let initDataPromise = null;
+    let initBootCompleted = false;
+    let authRefreshLock = false;
+
     // ==========================================
     // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
     // ==========================================
@@ -746,17 +751,45 @@ function checkAuthEnvironment() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
     const fallbackBtn = document.getElementById('login-method-google-fallback');
-    
+    const googleBox = document.getElementById('login-method-google');
+    const telegramBox = document.getElementById('login-method-telegram');
+    const loginDesc = document.getElementById('login-desc');
+
     if (isTelegram) {
-        document.getElementById('login-method-google').classList.add('hidden');
+        tempGoogleUser = null;
+
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'TELEGRAM',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('TELEGRAM')
+        };
+
+        if (googleBox) googleBox.classList.add('hidden');
         if (fallbackBtn) fallbackBtn.classList.add('hidden');
-        document.getElementById('login-method-telegram').classList.remove('hidden');
-        document.getElementById('login-desc').innerText = "Accesso automatico protetto da Telegram.";
+        if (telegramBox) telegramBox.classList.remove('hidden');
+        if (loginDesc) {
+            loginDesc.innerText = "Modalità ospite Telegram attiva. I contenuti pubblici sono disponibili, l’accesso completo passa dal browser.";
+        }
+
         handleTelegramAuth(tgUser);
-    } else {
-        document.getElementById('login-method-telegram').classList.add('hidden');
-        document.getElementById('login-method-google').classList.remove('hidden');
-        if (fallbackBtn) fallbackBtn.classList.remove('hidden');
+        return;
+    }
+
+    tempTelegramUser = null;
+
+    clientSession = {
+        authState: 'GUEST',
+        channel: 'WEB',
+        tokenStatus: clientSession.tokenStatus === 'VALID' ? 'VALID' : 'NONE',
+        capabilities: getDefaultClientCapabilities('WEB')
+    };
+
+    if (telegramBox) telegramBox.classList.add('hidden');
+    if (googleBox) googleBox.classList.remove('hidden');
+    if (fallbackBtn) fallbackBtn.classList.remove('hidden');
+    if (loginDesc) {
+        loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
     }
 }
 
@@ -829,7 +862,7 @@ auth.onAuthStateChanged(async (user) => {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
-    // Se siamo dentro Telegram, Google non è la fonte di verità in questo contesto
+    // Se siamo dentro Telegram, Google non governa questo contesto
     if (isTelegram) {
         clientSession = {
             authState: 'GUEST',
@@ -840,6 +873,8 @@ auth.onAuthStateChanged(async (user) => {
         reconcileProfileShellWithClientSession();
         return;
     }
+
+    if (authRefreshLock) return;
 
     if (user) {
         tempGoogleUser = user;
@@ -852,9 +887,13 @@ auth.onAuthStateChanged(async (user) => {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('complete-profile-screen').classList.add('hidden');
 
-                // NON fissiamo qui wildUserKey come fonte di verità:
-                // lasciamo che sia getInitData identity-aware a dichiarare LOGGED.
-                await fetchInitData();
+                authRefreshLock = true;
+                try {
+                    await fetchInitData({ reason: 'AUTH_STATE', force: true });
+                } finally {
+                    authRefreshLock = false;
+                }
+
                 updateProfileUI();
             } else {
                 clientSession = {
@@ -870,6 +909,7 @@ auth.onAuthStateChanged(async (user) => {
             }
 
         } catch (e) {
+            authRefreshLock = false;
             console.error("Firestore error:", e);
             showToast("Errore: " + e.message);
         }
@@ -1004,18 +1044,48 @@ async function completeRegistration() {
 // LOGOUT
 // ==========================================
 
-function logout() { 
+function logout() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
+    const cleanClientState = () => {
+        tempGoogleUser = null;
+        tempTelegramUser = null;
+        cachedXPData = null;
+        wildUserKey = null;
+        allBookings = [];
+        myBookedTitles = [];
+        pendingBookings = [];
+        pendingCancels = [];
+        regCtaSessionShown = false;
+        regCtaCurrentReason = null;
+        initDataPromise = null;
+        authRefreshLock = false;
+
+        clientSession = {
+            authState: 'GUEST',
+            channel: isTelegram ? 'TELEGRAM' : 'WEB',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities(isTelegram ? 'TELEGRAM' : 'WEB')
+        };
+
+        localStorage.removeItem('wildUserKey');
+        localStorage.removeItem('wildCachePublic');
+        localStorage.removeItem('lastViewedXP');
+        localStorage.removeItem('lastCelebratedXP');
+    };
+
     if (isTelegram) {
-        localStorage.clear(); 
-        location.reload(); 
+        cleanClientState();
+        location.reload();
     } else {
-        auth.signOut().then(() => { 
-            localStorage.clear(); 
-            location.reload(); 
-        }); 
+        auth.signOut().then(() => {
+            cleanClientState();
+            location.reload();
+        }).catch(() => {
+            cleanClientState();
+            location.reload();
+        });
     }
 }
 
@@ -1048,167 +1118,194 @@ function updateProfileUI() {
 // INIZIALIZZAZIONE
 // ==========================================
 async function init() {
-    if (window.Telegram && window.Telegram.WebApp) { 
-        window.Telegram.WebApp.ready(); 
-        window.Telegram.WebApp.expand(); 
+    if (initBootCompleted) return;
+    initBootCompleted = true;
+
+    if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
     }
 
-    checkAuthEnvironment(); 
-    
-    // piccolo delay per sicurezza
+    checkAuthEnvironment();
+
+    // Primo bootstrap controllato
     setTimeout(async () => {
-        await fetchInitData(); 
+        try {
+            await fetchInitData({ reason: 'BOOT', force: true });
+        } catch (e) {
+            console.error('Init bootstrap error:', e);
+        }
     }, 50);
 }
 
-async function fetchInitData() {
+async function fetchInitData(options = {}) {
     const CACHE_KEY = 'wildCachePublic';
+    const force = options.force === true;
 
-    // 1. CACHE PUBBLICA: render veloce, senza overlay utente
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    if (cachedData) {
+    if (initDataPromise && !force) {
+        return initDataPromise;
+    }
+
+    initDataPromise = (async () => {
+        // 1. CACHE PUBBLICA: render veloce, senza overlay utente
+        const cachedData = localStorage.getItem(CACHE_KEY);
+        if (cachedData) {
+            try {
+                const data = JSON.parse(cachedData);
+
+                syncClientSessionFromInitData(data);
+
+                WILD_ASSETS = data.assets || {};
+                config = data.config || {};
+                if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+
+                FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
+                FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
+
+                if (WILD_ASSETS['img_header']) {
+                    document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+                }
+
+                allTrips = data.events || [];
+                allOpenDays = data.opendays || [];
+                allBookings = [];
+
+                if (data.resources) renderDynamicResources(data.resources);
+
+                buildFilters();
+                filterTrips();
+                buildODFilters();
+                renderOpenDays();
+                reconcileProfileShellWithClientSession();
+            } catch (e) {
+                console.warn("Cache pubblica corrotta, ignorata.", e);
+            }
+        }
+
+        // 2. FETCH FRESCO IDENTITY-AWARE
         try {
-            const data = JSON.parse(cachedData);
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-WILDU-CHANNEL': isTelegramContext() ? 'TELEGRAM' : 'WEB'
+            };
+
+            if (auth.currentUser) {
+                try {
+                    const token = await auth.currentUser.getIdToken();
+                    if (token) headers.Authorization = `Bearer ${token}`;
+                } catch (e) {
+                    console.warn("Token non disponibile per getInitData, continuo come guest.", e);
+                }
+            }
+
+            const res = await fetch(MOTORE_API_URL, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    action: 'getInitData',
+                    clientContext: {
+                        channel: isTelegramContext() ? 'TELEGRAM' : 'WEB'
+                    },
+                    nocache: Date.now()
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || data?.success === false) {
+                throw new Error(data?.error || data?.message || "Errore getInitData");
+            }
 
             syncClientSessionFromInitData(data);
+
+            // Salviamo SOLO il payload pubblico
+            const publicCachePayload = {
+                authState: data.authState || 'GUEST',
+                channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+                tokenStatus: data.tokenStatus || 'NONE',
+                capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+                assets: data.assets || {},
+                config: data.config || {},
+                resources: data.resources || [],
+                events: data.events || [],
+                opendays: data.opendays || []
+            };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(publicCachePayload));
 
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
             if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
+            allTrips = data.events || [];
+            allOpenDays = data.opendays || [];
+            allBookings = Array.isArray(data.bookings)
+                ? data.bookings
+                : (data.userOverlay?.bookings || []);
+
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
 
-            if (WILD_ASSETS['img_header']) {
-                document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
-            }
+            sXP.src = formatAssetLink(WILD_ASSETS.audio_xp); sXP.volume = 0.5;
+            sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
+            sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
+            sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
+            sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
 
-            allTrips = data.events || [];
-            allOpenDays = data.opendays || [];
-            allBookings = [];
+            let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
+            if (linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+
+            let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
+            if (linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+
+            if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
+            if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
+            if (WILD_ASSETS['istruzioni_apple']) document.getElementById('apple-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_apple']);
+            if (WILD_ASSETS['titolo_android']) document.getElementById('android-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_android']);
+            if (WILD_ASSETS['sottotitolo_android']) document.getElementById('android-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_android']);
+            if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
+            if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
             if (data.resources) renderDynamicResources(data.resources);
 
             buildFilters();
             filterTrips();
             buildODFilters();
+
+            if (isClientLogged() && wildUserKey) {
+                evaluateBookings();
+            } else {
+                allBookings = [];
+                myBookedTitles = [];
+            }
+
             renderOpenDays();
             reconcileProfileShellWithClientSession();
-        } catch (e) {
-            console.warn("Cache pubblica corrotta, ignorata.", e);
-        }
-    }
 
-    // 2. FETCH FRESCO IDENTITY-AWARE
-    try {
-        const headers = {
-            'Content-Type': 'application/json',
-            'X-WILDU-CHANNEL': isTelegramContext() ? 'TELEGRAM' : 'WEB'
-        };
-
-        if (auth.currentUser) {
-            try {
-                const token = await auth.currentUser.getIdToken();
-                if (token) headers.Authorization = `Bearer ${token}`;
-            } catch (e) {
-                console.warn("Token non disponibile per getInitData, continuo come guest.", e);
+            if (!regCtaSessionShown) {
+                setTimeout(() => {
+                    maybeShowStartupRegistrationCTA();
+                }, 700);
             }
+
+            return data;
+
+        } catch (e) {
+            console.error("Errore Mega-Pacchetto:", e);
+            reconcileProfileShellWithClientSession();
+
+            if (!regCtaSessionShown) {
+                setTimeout(() => {
+                    maybeShowStartupRegistrationCTA();
+                }, 700);
+            }
+
+            throw e;
+        } finally {
+            initDataPromise = null;
         }
+    })();
 
-        const res = await fetch(MOTORE_API_URL, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                action: 'getInitData',
-                clientContext: {
-                    channel: isTelegramContext() ? 'TELEGRAM' : 'WEB'
-                },
-                nocache: Date.now()
-            })
-        });
-
-        const data = await res.json();
-
-        if (!res.ok || data?.success === false) {
-            throw new Error(data?.error || data?.message || "Errore getInitData");
-        }
-
-        syncClientSessionFromInitData(data);
-
-        // Salviamo SOLO il payload pubblico
-        const publicCachePayload = {
-            authState: data.authState || 'GUEST',
-            channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-            tokenStatus: data.tokenStatus || 'NONE',
-            capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-            assets: data.assets || {},
-            config: data.config || {},
-            resources: data.resources || [],
-            events: data.events || [],
-            opendays: data.opendays || []
-        };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(publicCachePayload));
-
-        WILD_ASSETS = data.assets || {};
-        config = data.config || {};
-        if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
-
-        allTrips = data.events || [];
-        allOpenDays = data.opendays || [];
-        allBookings = Array.isArray(data.bookings)
-            ? data.bookings
-            : (data.userOverlay?.bookings || []);
-
-        FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
-        FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
-
-        sXP.src = formatAssetLink(WILD_ASSETS.audio_xp); sXP.volume = 0.5;
-        sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
-        sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
-        sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
-        sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
-
-        let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-        if (linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
-
-        let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-        if (linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
-
-        if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
-        if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
-        if (WILD_ASSETS['istruzioni_apple']) document.getElementById('apple-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_apple']);
-        if (WILD_ASSETS['titolo_android']) document.getElementById('android-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_android']);
-        if (WILD_ASSETS['sottotitolo_android']) document.getElementById('android-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_android']);
-        if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
-        if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
-
-        if (data.resources) renderDynamicResources(data.resources);
-
-        buildFilters();
-        filterTrips();
-        buildODFilters();
-
-        if (isClientLogged() && wildUserKey) {
-            evaluateBookings();
-        } else {
-            allBookings = [];
-        }
-
-        renderOpenDays();
-        reconcileProfileShellWithClientSession();
-
-        setTimeout(() => {
-            maybeShowStartupRegistrationCTA();
-        }, 700);
-
-    } catch (e) {
-        console.error("Errore Mega-Pacchetto:", e);
-        reconcileProfileShellWithClientSession();
-
-        setTimeout(() => {
-            maybeShowStartupRegistrationCTA();
-        }, 700);
-    }
+    return initDataPromise;
 }
     
     // ==========================================
