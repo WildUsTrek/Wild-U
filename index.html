@@ -97,6 +97,9 @@
 
         <input type="hidden" id="cb-tipo-evento">
         <input type="hidden" id="cb-xp">
+        <input type="hidden" id="cb-booking-id">
+        <input type="hidden" id="cb-booking-collection">
+        <input type="hidden" id="cb-booking-eventdocid">
 
         <div style="display: flex; gap: 10px;">
             <button onclick="closeCustomBooking()" style="flex: 1; padding: 12px; border-radius: 8px; background: #333; color: white; border: none; font-weight: bold; cursor: pointer;">Indietro</button>
@@ -1365,79 +1368,136 @@ async function fetchInitData(options = {}) {
 }
 
     // --- VARIABILE GLOBALE DELLO ZAINO INVISIBILE ---
-let myBookedTitles = []; 
-let pendingBookings = []; // Viaggi in fase di conferma
-let pendingCancels = [];  // Viaggi in fase di eliminazione
+let myBookedTitles = [];
+let pendingBookings = [];
+let pendingCancels = [];
+let currentBookingDraft = null;
 
+function normalizeBookingText(v) {
+    return String(v || "").toLowerCase().trim();
+}
+
+function buildClientBookingKey(payload = {}) {
+    const bookingId = String(payload.bookingId || "").trim();
+    if (bookingId) return bookingId;
+
+    const titolo = normalizeBookingText(
+        payload.titolo ||
+        payload.title ||
+        payload["Viaggio Scelto (non modificare)"] ||
+        payload["Titolo"] ||
+        ""
+    );
+
+    const data = String(
+        payload.data ||
+        payload["Data Inizio (non modificare)"] ||
+        payload["Data Inizio"] ||
+        ""
+    ).trim();
+
+    if (titolo && data) return `${titolo}__${data}`;
+    return titolo || "";
+}
+
+function setCurrentBookingDraft(payload = {}) {
+    currentBookingDraft = {
+        titolo: String(payload.titolo || "").trim(),
+        data: String(payload.data || "").trim(),
+        prezzo: String(payload.prezzo || "").trim(),
+        bookingId: String(payload.bookingId || "").trim(),
+        collection: String(payload.collection || "").trim(),
+        eventDocId: String(payload.eventDocId || "").trim()
+    };
+
+    const bookingIdEl = document.getElementById('cb-booking-id');
+    const bookingCollectionEl = document.getElementById('cb-booking-collection');
+    const bookingEventDocIdEl = document.getElementById('cb-booking-eventdocid');
+
+    if (bookingIdEl) bookingIdEl.value = currentBookingDraft.bookingId;
+    if (bookingCollectionEl) bookingCollectionEl.value = currentBookingDraft.collection;
+    if (bookingEventDocIdEl) bookingEventDocIdEl.value = currentBookingDraft.eventDocId;
+}
+    
 function evaluateBookings() {
-    if(!wildUserKey) return;
-    
-    // 1. INIZIALIZZIAMO LO ZAINO CON LA QUARANTENA
-    // Così, anche se Google è lento, noi sappiamo che l'hai appena prenotato
-    myBookedTitles = [...pendingBookings];
-    
-    // Funzione "pulisci-testo" per far combaciare i dati
-    const clean = (s) => s ? s.toString().toLowerCase().trim() : "";
+    if (!wildUserKey) return;
 
-    // 2. FILTRO SCHIZOFRENIA: Ignoriamo i viaggi che hai appena annullato
+    myBookedTitles = [...pendingBookings];
+
     const myB = allBookings.filter(b => {
-        let rowContent = JSON.stringify(b).toLowerCase();
-        let isMyRow = rowContent.includes(wildUserKey.toLowerCase().trim());
-        
-        // Uso l'OR (|| "") per evitare crash se il campo è vuoto
-        let titleRaw = b["Viaggio Scelto (non modificare)"] || "";
-        let safeTitle = clean(titleRaw);
-        let isBeingCancelled = pendingCancels.includes(safeTitle);
-        
-        return isMyRow && !isBeingCancelled; 
+        const owner = String(b["WILD KEY"] || b["UTENTE"] || "").trim();
+
+        const bookingKey = buildClientBookingKey({
+            bookingId: b.bookingId || "",
+            titolo: b["Viaggio Scelto (non modificare)"] || "",
+            data: b["Data Inizio (non modificare)"] || ""
+        });
+
+        const isBeingCancelled = bookingKey && pendingCancels.includes(bookingKey);
+
+        return owner === String(wildUserKey).trim() && !isBeingCancelled;
     });
 
-    const today = new Date(); today.setHours(0,0,0,0);
-    let activeCount = 0; let activeHtml = '';
+    const today = new Date();
+    today.setHours(0,0,0,0);
 
-    for(let b of myB) {
-        // Usiamo le testate reali dei tuoi fogli Excel
+    let activeCount = 0;
+    let activeHtml = '';
+
+    for (let b of myB) {
         const title = b["Viaggio Scelto (non modificare)"] || "";
         const dateStr = b["Data Inizio (non modificare)"] || "";
-        if(!title) continue;
+        if (!title) continue;
+
+        const bookingKey = buildClientBookingKey({
+            bookingId: b.bookingId || "",
+            titolo: title,
+            data: dateStr
+        });
 
         const bDate = parseItalianDate(dateStr);
-        if(bDate >= today) {
+        if (bDate >= today) {
             activeCount++;
-            
-            // Aggiungiamo i titoli confermati da Google per bloccare i doppi click
-            const safeTitleForZaino = clean(title);
-            if (!myBookedTitles.includes(safeTitleForZaino)) {
-                myBookedTitles.push(safeTitleForZaino);
+
+            if (bookingKey && !myBookedTitles.includes(bookingKey)) {
+                myBookedTitles.push(bookingKey);
             }
 
             let infoBtn = "";
 
-            // --- REVERSE ENGINEERING (IL PONTE TRA PRENOTAZIONE E CALENDARIO) ---
-            
-            // 1. VIAGGI (Qui c'è il trucco: la data del calendario è più corta!)
             const tripOrig = allTrips.find(t => {
-                const titoloMatch = clean(t.Titolo) === clean(title);
-                const dataMatch = clean(dateStr).startsWith(clean(t["Data inizio"]));
-                return titoloMatch && dataMatch;
+                const tripKey = buildClientBookingKey({
+                    bookingId: t.bookingId || "",
+                    titolo: t.Titolo || "",
+                    data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""
+                });
+                return tripKey === bookingKey;
             });
-            
-            // 2. Cerchiamo negli Open Day (allOpenDays)
-            const odOrig = allOpenDays.find(od => 
-                clean(od.Titolo) === clean(title) && 
-                clean(od["Data Inizio"]) === clean(dateStr)
-            );
+
+            const odOrig = allOpenDays.find(od => {
+                const odKey = buildClientBookingKey({
+                    bookingId: od.bookingId || "",
+                    titolo: od["Titolo"] || "",
+                    data: od["Data Inizio"] || ""
+                });
+                return odKey === bookingKey;
+            });
 
             if (tripOrig && tripOrig.Link) {
-                // Tasto per i Viaggi
                 infoBtn = `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">LINK SITO</button>`;
             } else if (odOrig) {
-                // Tasto per gli Open Day (ID univoco)
                 const odId = odOrig["ID Evento (Super-Key)"];
                 infoBtn = `<button onclick="showOpenDayDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
             }
 
-            // Nota: Ho aggiunto 'this' nel tasto ANNULLA per lo scudo grafico
+            const cancelPayload = encodeURIComponent(JSON.stringify({
+                titolo: title,
+                data: dateStr,
+                bookingId: b.bookingId || "",
+                collection: b.collection || "",
+                eventDocId: b.eventDocId || ""
+            }));
+
             activeHtml += `
             <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
                 <div style="margin-bottom: 12px;">
@@ -1446,29 +1506,30 @@ function evaluateBookings() {
                 </div>
                 <div style="display: flex; justify-content: flex-end;">
                     ${infoBtn}
-                    <button onclick="requestCancel('${title.replace(/'/g, "\\'")}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
+                    <button onclick="requestCancel('${cancelPayload}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
                 </div>
             </div>`;
         }
     }
 
-    document.getElementById('my-bookings-list').innerHTML = (activeCount === 0) ? 
-        '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' : activeHtml;
+    document.getElementById('my-bookings-list').innerHTML = (activeCount === 0)
+        ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>'
+        : activeHtml;
 
-    // La Quarantena conta come spazio occupato nello zaino!
-    // Se hai prenotato un viaggio, ma Google non ce lo ha ancora confermato, occupi comunque un posto.
     const realActiveCount = activeCount + pendingBookings.length;
-    
     const max = parseInt(config.limite_prenotazioni) || 3;
+
     canBook = !isBanned && realActiveCount < max;
-    
-    if(isBanned) banReason = "ACCOUNT SOSPESO";
+
+    if (isBanned) banReason = "ACCOUNT SOSPESO";
     else if (realActiveCount >= max) banReason = `ZAINO PIENO (${realActiveCount}/${max})`;
     else banReason = "";
 
-    filterTrips(); 
+    filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
 }
+
+    
     async function awardTripXP(tripId, xpVal) {
         try {
             const userRef = db.collection("utenti").doc(wildUserKey);
@@ -1486,29 +1547,48 @@ function evaluateBookings() {
 let pendingWaLink = "";
 
 // IL MANGANELLO CON SCUDO E OVERLAY DRAMMATICO
-async function requestCancel(title, btnElement) {
+async function requestCancel(encodedBookingPayload, btnElement) {
     if (!requireLoggedAccess('CANCEL_ATTEMPT')) return;
     if (isCancellingInProgress) return;
 
-    isCancellingInProgress = true;
+    let bookingIdentity = null;
 
-    const currentXP = cachedXPData ? parseInt(cachedXPData.xp) : 0;
-    const percentualePenale = parseInt(config.penale_annullamento) || 40;
-    const penalty = Math.floor(currentXP * (percentualePenale / 100));
-
-    const msgAlert = `⚠️ ATTENZIONE:\nSe annulli "${title}" subirai una PENALE del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere e avvisare l'Admin?`;
-
-    if (!confirm(msgAlert)) {
-        isCancellingInProgress = false;
+    try {
+        bookingIdentity = JSON.parse(decodeURIComponent(encodedBookingPayload || ""));
+    } catch (e) {
+        console.error("Payload annullamento non valido:", e);
+        showToast("⚠️ Prenotazione non riconosciuta.");
         return;
     }
 
-    const safeTitle = title.toLowerCase().trim();
-    if (!pendingCancels.includes(safeTitle)) pendingCancels.push(safeTitle);
+    const titolo = String(bookingIdentity.titolo || "").trim();
+    const data = String(bookingIdentity.data || "").trim();
+    const bookingId = String(bookingIdentity.bookingId || "").trim();
+    const collection = String(bookingIdentity.collection || "").trim();
+    const eventDocId = String(bookingIdentity.eventDocId || "").trim();
+
+    const bookingKey = buildClientBookingKey({
+        bookingId,
+        titolo,
+        data
+    });
+
+    const currentXP = cachedXPData ? parseInt(cachedXPData.xp || 0, 10) : 0;
+    const percentualePenale = parseInt(config.penale_annullamento) || 40;
+    const penalty = Math.max(0, Math.floor(currentXP * (percentualePenale / 100)));
+
+    const confirmMsg = data
+        ? `⚠️ ATTENZIONE:\nSe annulli "${titolo}" del ${data} subirai una penale del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere?`
+        : `⚠️ ATTENZIONE:\nSe annulli "${titolo}" subirai una penale del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    isCancellingInProgress = true;
+
+    if (bookingKey && !pendingCancels.includes(bookingKey)) {
+        pendingCancels.push(bookingKey);
+    }
     evaluateBookings();
-    setTimeout(() => {
-        pendingCancels = pendingCancels.filter(t => t !== safeTitle);
-    }, 15000);
 
     if (btnElement) {
         btnElement.disabled = true;
@@ -1517,36 +1597,24 @@ async function requestCancel(title, btnElement) {
         btnElement.style.cursor = "not-allowed";
     }
 
+    let cancelCompleted = false;
+
     try {
         const safeToken = await getVerifiedClientToken();
 
-        // TAGLIO PUNTI (Immediato, lato client legacy)
-        if (penalty > 0 && wildUserKey) {
-            await db.collection("utenti").doc(wildUserKey).set({
-                xp: firebase.firestore.FieldValue.increment(-penalty),
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            if (cachedXPData) {
-                cachedXPData.xp -= penalty;
-                lastCelXP = cachedXPData.xp;
-                lastVXP = cachedXPData.xp;
-                localStorage.setItem('lastCelebratedXP', lastCelXP);
-                localStorage.setItem('lastViewedXP', lastVXP);
-                if (currentTab === 'profile') renderProfile(cachedXPData);
-            }
-        }
-
         const payload = {
             action: "cancelBooking",
-            titolo: title,
-            wildKey: wildUserKey,
+            titolo: titolo,
+            data: data,
+            bookingId: bookingId,
+            collection: collection,
+            eventDocId: eventDocId,
             clientContext: {
                 channel: clientSession.channel
             }
         };
 
-        fetch(MOTORE_API_URL, {
+        const response = await fetch(MOTORE_API_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1556,7 +1624,36 @@ async function requestCancel(title, btnElement) {
             body: JSON.stringify(payload)
         });
 
-        const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey || 'N/D'}*.`;
+        const result = await response.json();
+
+        if (!response.ok || result.status !== "success") {
+            throw new Error(result.message || result.error || "Errore sconosciuto in annullamento");
+        }
+
+        cancelCompleted = true;
+
+        if (penalty > 0 && wildUserKey) {
+            await db.collection("utenti").doc(wildUserKey).set({
+                xp: firebase.firestore.FieldValue.increment(-penalty),
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            if (cachedXPData) {
+                cachedXPData.xp = Math.max(0, (parseInt(cachedXPData.xp || 0, 10) - penalty));
+                lastCelXP = cachedXPData.xp;
+                lastVXP = cachedXPData.xp;
+                localStorage.setItem('lastCelebratedXP', lastCelXP);
+                localStorage.setItem('lastViewedXP', lastVXP);
+
+                if (currentTab === 'profile') {
+                    renderProfile(cachedXPData);
+                }
+            }
+        }
+
+        const warningSuffix = result.warning ? ` Nota sistema: ${result.warning}` : "";
+        const msgWa = `Ciao Admin, ho annullato la mia presenza a *${titolo}*${data ? ` del *${data}*` : ""}. La prenotazione è stata rimossa dall'app e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata.${warningSuffix} Wild-Key: *${wildUserKey || 'N/D'}*.`;
+
         const phone = WILD_ASSETS['numero_admin'] || '393931326733';
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
@@ -1567,39 +1664,54 @@ async function requestCancel(title, btnElement) {
         document.getElementById('penalty-msg').innerText = "-" + penalty + " XP";
         document.getElementById('penalty-overlay').style.display = 'flex';
 
+        if (bookingKey) {
+            setTimeout(() => {
+                pendingCancels = pendingCancels.filter(k => k !== bookingKey);
+            }, 15000);
+        }
+
     } catch (e) {
-        console.error("Errore decurtazione", e);
+        console.error("Errore annullamento:", e);
+
+        if (bookingKey) {
+            pendingCancels = pendingCancels.filter(k => k !== bookingKey);
+        }
+
+        evaluateBookings();
 
         if (e.message === 'AUTH_REQUIRED') {
-            if (btnElement) {
-                btnElement.disabled = false;
-                btnElement.innerText = "ANNULLA";
-                btnElement.style.opacity = "1";
-                btnElement.style.cursor = "pointer";
-            }
-            isCancellingInProgress = false;
             return;
         }
 
-        isCancellingInProgress = false;
+        alert("❌ Impossibile annullare la prenotazione adesso. Riprova tra un attimo.");
+    } finally {
+        if (btnElement) {
+            btnElement.disabled = false;
+            btnElement.innerText = "ANNULLA";
+            btnElement.style.opacity = "1";
+            btnElement.style.cursor = "pointer";
+        }
+
+        if (!cancelCompleted) {
+            isCancellingInProgress = false;
+        }
     }
 }
 
 // IL "PLAY" PER CONTINUARE DOPO LA PENALE
 function executePenaltyRedirect() {
-    // 1. Nascondi l'avviso
     document.getElementById('penalty-overlay').style.display = 'none';
-    
-    // 2. Apri WhatsApp (Totalmente sicuro perché lanciato dal dito dell'utente!)
+
     if (pendingWaLink) window.open(pendingWaLink, '_blank');
-    
-    // 3. Aggiorna lo stato in background
+    pendingWaLink = "";
+
     showToast("Prenotazione annullata. Penale applicata.");
-    setTimeout(fetchInitData, 1500);
-    
-    // 4. Ridiamo il via libera all'App
+    setTimeout(() => show('profile'), 500);
+    setTimeout(() => fetchInitData({ force: true }), 1200);
+
     isCancellingInProgress = false;
 }
+    
     function parseItalianDate(dStr) {
         if(!dStr) return new Date();
         let p = dStr.split('/');
@@ -1659,64 +1771,65 @@ function executePenaltyRedirect() {
     }
 
 function renderTrips(trips, targetId) {
-        document.getElementById(targetId).innerHTML = trips.map(ev => {
-            const dataPura = ev["Data inizio"] + "/" + ev.Anno;
-            
-            // LOGICA BIVIO PREZZI: Se l'offerta è attiva, il prezzo di riferimento diventa l'Early Booking
-            const hasOfferta = ev["Offerta Attiva"] === true;
-            const prezzoFinale = hasOfferta ? ev["Prezzo Early"] : ev["Prezzo Prime"];
-            
-            const xpReward = Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
-            const linkBtn = ev.Link ? "<a href='" + ev.Link + "' target='_blank' class='btn-link'>Info</a>" : "";
-            const safeTitle = ev.Titolo.replace(/'/g, "\\'");
-            
-            // Pulisce il titolo per il confronto con lo zaino (minuscolo e senza spazi extra)
-            const safeTitleForCheck = ev.Titolo ? ev.Titolo.toString().toLowerCase().trim() : "";
-            
-            let actionBtn = "";
-            
-            // 1. PRIMO CONTROLLO: Il viaggio è già nello zaino o in quarantena (appena prenotato)?
-            if (myBookedTitles.includes(safeTitleForCheck) || pendingBookings.includes(safeTitleForCheck)) {
-                actionBtn = `<button disabled style="background: #444; color: #888; border: 1px solid #555; cursor: not-allowed; flex: 2; padding: 16px; border-radius: 12px; font-weight: bold; font-size: 15px;">🎒 GIÀ IN ZAINO</button>`;
-            } 
-            // 2. SECONDO CONTROLLO: Zaino pieno o utente bannato?
-            else if (!canBook) {
-                actionBtn = `<button disabled style="background: #222; color: #555; border: 1px solid #333; flex: 2; padding: 16px; border-radius: 12px; font-weight: bold; font-size: 15px;">${banReason}</button>`;
-            } 
-            // 3. TUTTO LIBERO: Tasto prenota attivo
-            else {
-                // Passiamo il 'prezzoFinale' (Prime o Early a seconda dell'offerta)
-                actionBtn = `<button class="btn-book btn-prenota" onclick="openBook('${safeTitle}', '${dataPura}', '${prezzoFinale}', '${xpReward}')">Prenota</button>`;
-            }
+    document.getElementById(targetId).innerHTML = trips.map(ev => {
+        const dataPura = ev["Data inizio"] + "/" + ev.Anno;
 
-            // GRAFICA PREZZO: Costruiamo il blocco visuale in base all'offerta
-            let priceHtml = '';
-            if (hasOfferta) {
-                priceHtml = `
-                    <div style="color: #ffaa00; font-size: 11px; font-weight: 900; letter-spacing: 1px; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
-                    <div class="price-prime" style="border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);">
-                        <span class="prime-val" style="color: #ffaa00;">${ev["Prezzo Early"]}€</span>
-                    </div>
-                    <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${ev["Prezzo Prime"]}€</div>
-                `;
-            } else {
-                priceHtml = `<div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div>`;
-            }
-            
-            return `<div class="card">
-                <span class="card-title">${ev.Titolo}</span>
-                <div style="font-size:15px; color:#aaa;">📅 dal <b>${dataPura}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div>
-                <div class="price-box">
-                    <div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div>
-                    <div class="price-prime-wrapper">
-                        <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
-                        ${priceHtml}
-                    </div>
+        const bookingKey = buildClientBookingKey({
+            bookingId: ev.bookingId || "",
+            titolo: ev.Titolo || "",
+            data: dataPura
+        });
+
+        const hasOfferta = ev["Offerta Attiva"] === true;
+        const prezzoFinale = hasOfferta ? ev["Prezzo Early"] : ev["Prezzo Prime"];
+
+        const xpReward = Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
+        const linkBtn = ev.Link ? "<a href='" + ev.Link + "' target='_blank' class='btn-link'>Info</a>" : "";
+
+        const safeTitle = String(ev.Titolo || "").replace(/'/g, "\\'");
+        const safeBookingId = String(ev.bookingId || "").replace(/'/g, "\\'");
+        const safeCollection = String(ev.collection || "").replace(/'/g, "\\'");
+        const safeEventDocId = String(ev.eventDocId || "").replace(/'/g, "\\'");
+
+        let actionBtn = "";
+
+        if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+            actionBtn = `<button disabled style="background: #444; color: #888; border: 1px solid #555; cursor: not-allowed; flex: 2; padding: 16px; border-radius: 12px; font-weight: bold; font-size: 15px;">🎒 GIÀ IN ZAINO</button>`;
+        }
+        else if (!canBook) {
+            actionBtn = `<button disabled style="background: #222; color: #555; border: 1px solid #333; flex: 2; padding: 16px; border-radius: 12px; font-weight: bold; font-size: 15px;">${banReason}</button>`;
+        }
+        else {
+            actionBtn = `<button class="btn-book btn-prenota" onclick="openBook('${safeTitle}', '${dataPura}', '${prezzoFinale}', '${xpReward}', '${safeBookingId}', '${safeCollection}', '${safeEventDocId}')">Prenota</button>`;
+        }
+
+        let priceHtml = '';
+        if (hasOfferta) {
+            priceHtml = `
+                <div style="color: #ffaa00; font-size: 11px; font-weight: 900; letter-spacing: 1px; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
+                <div class="price-prime" style="border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);">
+                    <span class="prime-val" style="color: #ffaa00;">${ev["Prezzo Early"]}€</span>
                 </div>
-                <div class="btn-group">${linkBtn} ${actionBtn}</div>
-            </div>`;
-        }).join('');
-    }
+                <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${ev["Prezzo Prime"]}€</div>
+            `;
+        } else {
+            priceHtml = `<div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div>`;
+        }
+
+        return `<div class="card">
+            <span class="card-title">${ev.Titolo}</span>
+            <div style="font-size:15px; color:#aaa;">📅 dal <b>${dataPura}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div>
+            <div class="price-box">
+                <div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div>
+                <div class="price-prime-wrapper">
+                    <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
+                    ${priceHtml}
+                </div>
+            </div>
+            <div class="btn-group">${linkBtn} ${actionBtn}</div>
+        </div>`;
+    }).join('');
+}
 
 
     // ==========================================
@@ -1820,24 +1933,34 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
 
     
 // IL NUOVO MOTORE DI PRENOTAZIONE (Controllo Zaino Invisibile)
-function openBook(titolo, data, prezzo, xp) {
+function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId) {
     if (!requireLoggedAccess('BOOKING_ATTEMPT')) return;
 
-    const safeTitolo = titolo.toString().toLowerCase().trim();
+    const bookingKey = buildClientBookingKey({
+        bookingId: bookingId || "",
+        titolo: titolo,
+        data: data
+    });
 
-    // 1. CONTROLLO ZAINO INVISIBILE
-    if (myBookedTitles.includes(safeTitolo)) {
+    if (myBookedTitles.includes(bookingKey)) {
         showToast("⚠️ Sei già in lista per questa avventura!");
         return;
     }
 
-    // 2. CONTROLLO BAN / ZAINO PIENO
     if (!canBook) {
         showToast("🎒 " + (banReason || "Prenotazione non disponibile."));
         return;
     }
 
-    // 3. PROCEDURA STANDARD
+    setCurrentBookingDraft({
+        titolo: titolo,
+        data: data,
+        prezzo: prezzo,
+        bookingId: bookingId || "",
+        collection: collection || "",
+        eventDocId: eventDocId || ""
+    });
+
     document.getElementById('cb-titolo').innerText = titolo;
     document.getElementById('cb-data').innerText = data;
     document.getElementById('cb-prezzo').innerText = prezzo + "€";
@@ -1853,15 +1976,24 @@ function openBook(titolo, data, prezzo, xp) {
 }
 
     // Funzione per chiudere il modulo
-    function closeCustomBooking() {
-        document.getElementById('custom-booking-modal').style.display = 'none';
-    }
+function closeCustomBooking() {
+    currentBookingDraft = null;
 
+    const bookingIdEl = document.getElementById('cb-booking-id');
+    const bookingCollectionEl = document.getElementById('cb-booking-collection');
+    const bookingEventDocIdEl = document.getElementById('cb-booking-eventdocid');
+
+    if (bookingIdEl) bookingIdEl.value = "";
+    if (bookingCollectionEl) bookingCollectionEl.value = "";
+    if (bookingEventDocIdEl) bookingEventDocIdEl.value = "";
+
+    document.getElementById('custom-booking-modal').style.display = 'none';
+}
+    
  // IL POSTINO CHE SPEDISCE I DATI ALLO SCRIPT E BLOCCA I DOPPI CLICK
 async function sendCustomBooking() {
     if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'custom-booking-modal' })) return;
 
-    // --- LO SCUDO INVISIBILE (Semaforo Rosso) ---
     if (isBookingInProgress) return;
     isBookingInProgress = true;
 
@@ -1875,23 +2007,33 @@ async function sendCustomBooking() {
         return;
     }
 
-    // L'INIEZIONE NELLO ZAINO INVISIBILE
-    const titoloInPartenza = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
-    if (!myBookedTitles.includes(titoloInPartenza)) {
-        myBookedTitles.push(titoloInPartenza);
+    const titoloRaw = document.getElementById('cb-titolo').innerText;
+    const dataRaw = document.getElementById('cb-data').innerText;
+    const prezzoRaw = document.getElementById('cb-prezzo').innerText;
+    const nomeRaw = document.getElementById('cb-nome').value;
+
+    const bookingIdRaw = (document.getElementById('cb-booking-id').value || currentBookingDraft?.bookingId || "").trim();
+    const bookingCollectionRaw = (document.getElementById('cb-booking-collection').value || currentBookingDraft?.collection || "").trim();
+    const bookingEventDocIdRaw = (document.getElementById('cb-booking-eventdocid').value || currentBookingDraft?.eventDocId || "").trim();
+
+    const bookingKey = buildClientBookingKey({
+        bookingId: bookingIdRaw,
+        titolo: titoloRaw,
+        data: dataRaw
+    });
+
+    if (bookingKey && !myBookedTitles.includes(bookingKey)) {
+        myBookedTitles.push(bookingKey);
     }
-
-    // --- LA QUARANTENA ---
-    const safeTitolo = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
-    if (!pendingBookings.includes(safeTitolo)) pendingBookings.push(safeTitolo);
-
-    setTimeout(() => {
-        pendingBookings = pendingBookings.filter(t => t !== safeTitolo);
-    }, 15000);
+    if (bookingKey && !pendingBookings.includes(bookingKey)) {
+        pendingBookings.push(bookingKey);
+    }
 
     btn.innerText = "SPEDIZIONE... 🌲";
     btn.disabled = true;
     btn.style.opacity = "0.7";
+
+    let bookingCompleted = false;
 
     try {
         const safeToken = await getVerifiedClientToken();
@@ -1899,12 +2041,15 @@ async function sendCustomBooking() {
         const payload = {
             action: "bookCustom",
             tipo: document.getElementById('cb-tipo-evento').value,
-            titolo: document.getElementById('cb-titolo').innerText,
-            data: document.getElementById('cb-data').innerText,
-            prezzo: document.getElementById('cb-prezzo').innerText,
-            nome: document.getElementById('cb-nome').value,
+            titolo: titoloRaw,
+            data: dataRaw,
+            prezzo: prezzoRaw,
+            nome: nomeRaw,
             telefono: telefono,
             wildKey: wildUserKey,
+            bookingId: bookingIdRaw,
+            collection: bookingCollectionRaw,
+            eventDocId: bookingEventDocIdRaw,
             clientContext: {
                 channel: clientSession.channel
             }
@@ -1926,36 +2071,49 @@ async function sendCustomBooking() {
             throw new Error(result.message || result.error || "Errore sconosciuto dal server");
         }
 
+        bookingCompleted = true;
+
         closeCustomBooking();
-        showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
 
-        // --- DOPAMINA: ASSEGNAZIONE PUNTI E TELETRASPORTO ---
-        const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
-        if (earnedXP > 0 && wildUserKey) {
-            db.collection("utenti").doc(wildUserKey).set({
-                xp: firebase.firestore.FieldValue.increment(earnedXP),
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            if (cachedXPData) cachedXPData.xp += earnedXP;
-            lastCelXP += earnedXP;
-            localStorage.setItem('lastCelebratedXP', lastCelXP);
-
-            setTimeout(() => {
-                showReward(earnedXP);
-                setTimeout(() => {
-                    document.getElementById('reward-overlay').style.display = 'none';
-                    show('profile');
-                }, 2000);
-            }, 600);
+        if (result.alreadyBooked === true) {
+            showToast("🎒 Sei già iscritto a questa avventura!");
+            setTimeout(() => show('profile'), 700);
+            setTimeout(() => fetchInitData({ force: true }), 1200);
         } else {
-            setTimeout(() => show('profile'), 1000);
-        }
+            showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
 
-        setTimeout(fetchInitData, 1500);
+            const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
+            if (earnedXP > 0 && wildUserKey) {
+                await db.collection("utenti").doc(wildUserKey).set({
+                    xp: firebase.firestore.FieldValue.increment(earnedXP),
+                    ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                if (cachedXPData) cachedXPData.xp += earnedXP;
+                lastCelXP += earnedXP;
+                localStorage.setItem('lastCelebratedXP', lastCelXP);
+
+                setTimeout(() => {
+                    showReward(earnedXP);
+                    setTimeout(() => {
+                        document.getElementById('reward-overlay').style.display = 'none';
+                        show('profile');
+                    }, 2000);
+                }, 600);
+            } else {
+                setTimeout(() => show('profile'), 1000);
+            }
+
+            setTimeout(() => fetchInitData({ force: true }), 1500);
+        }
 
     } catch (error) {
         console.error("Errore di spedizione:", error);
+
+        if (bookingKey) {
+            pendingBookings = pendingBookings.filter(k => k !== bookingKey);
+            myBookedTitles = myBookedTitles.filter(k => k !== bookingKey);
+        }
 
         if (error.message === 'AUTH_REQUIRED') {
             return;
@@ -1963,6 +2121,12 @@ async function sendCustomBooking() {
 
         alert("❌ I server degli spiriti sono occupati. Riprova tra un attimo.");
     } finally {
+        if (bookingCompleted && bookingKey) {
+            setTimeout(() => {
+                pendingBookings = pendingBookings.filter(k => k !== bookingKey);
+            }, 15000);
+        }
+
         isBookingInProgress = false;
         btn.innerText = originalText;
         btn.disabled = false;
@@ -2266,61 +2430,72 @@ function showOpenDayDetails(id) {
     }
 
     // --- IL CERVELLO DEL TASTO ISCRIVITI (CON LOGICA ANTI-DOPPIONI) ---
-    const bookBtn = document.getElementById('od-modal-book');
-    const t = od["Titolo"] || "Open Day";
-    const d = od["Data Inizio"] || "";
+const bookBtn = document.getElementById('od-modal-book');
+const t = od["Titolo"] || "Open Day";
+const d = od["Data Inizio"] || "";
+const odBookingId = od.bookingId || "";
+const odCollection = od.collection || "";
+const odEventDocId = od.eventDocId || "";
 
-    // SE L'UTENTE È GIÀ ISCRITTO O IN FASE DI ISCRIZIONE, DISATTIVIAMO IL TASTO
-    const safeT = t.toLowerCase().trim();
-    if (myBookedTitles.includes(safeT) || pendingBookings.includes(safeT)) {
-        bookBtn.style.display = "block";
-        bookBtn.disabled = true;
-        bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
-        bookBtn.style.background = "#444";
-        bookBtn.style.color = "#888";
-        bookBtn.style.border = "1px solid #555";
-        bookBtn.style.cursor = "not-allowed";
-        bookBtn.onclick = null;
-    } else {
-        // TASTO ATTIVO E PRONTO ALLA PRENOTAZIONE
-        bookBtn.style.display = "block";
-        bookBtn.disabled = false;
-        bookBtn.innerText = "ISCRIVITI GRATIS ORA";
-        bookBtn.style.background = "#00aaff";
-        bookBtn.style.color = "#000";
-        bookBtn.style.border = "none";
-        bookBtn.style.cursor = "pointer";
-        bookBtn.onclick = function() {
-            if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
+const bookingKey = buildClientBookingKey({
+    bookingId: odBookingId,
+    titolo: t,
+    data: d
+});
 
-            if (!canBook) {
-                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
-                return;
-            }
+if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+    bookBtn.style.display = "block";
+    bookBtn.disabled = true;
+    bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
+    bookBtn.style.background = "#444";
+    bookBtn.style.color = "#888";
+    bookBtn.style.border = "1px solid #555";
+    bookBtn.style.cursor = "not-allowed";
+    bookBtn.onclick = null;
+} else {
+    bookBtn.style.display = "block";
+    bookBtn.disabled = false;
+    bookBtn.innerText = "ISCRIVITI GRATIS ORA";
+    bookBtn.style.background = "#00aaff";
+    bookBtn.style.color = "#000";
+    bookBtn.style.border = "none";
+    bookBtn.style.cursor = "pointer";
+    bookBtn.onclick = function() {
+        if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
 
-            // Preparazione Modulo Passaporto
-            document.getElementById('od-details-modal').style.display = 'none';
-            document.getElementById('cb-titolo').innerText = t;
-            document.getElementById('cb-data').innerText = d;
-            document.getElementById('cb-prezzo').innerText = "GRATUITO";
-            document.getElementById('cb-tipo-evento').value = "OPENDAY";
+        if (!canBook) {
+            showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
+            return;
+        }
 
-            const min = parseInt(config.od_xp_min) || 4;
-            const max = parseInt(config.od_xp_max) || 12;
-            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
-            document.getElementById('cb-xp').value = randomXP;
+        document.getElementById('od-details-modal').style.display = 'none';
 
-            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
-            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
-            document.getElementById('cb-nome').value = nomeSalvato;
-            document.getElementById('cb-telefono').value = telefonoSalvato;
+        const min = parseInt(config.od_xp_min) || 4;
+        const max = parseInt(config.od_xp_max) || 12;
+        const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
 
-            document.getElementById('custom-booking-modal').style.display = 'flex';
-        };
-    }
+        setCurrentBookingDraft({
+            titolo: t,
+            data: d,
+            prezzo: "GRATUITO",
+            bookingId: odBookingId,
+            collection: odCollection,
+            eventDocId: odEventDocId
+        });
 
-// MOSTRA IL POP-UP
-    document.getElementById('od-details-modal').style.display = 'block';
+        document.getElementById('cb-titolo').innerText = t;
+        document.getElementById('cb-data').innerText = d;
+        document.getElementById('cb-prezzo').innerText = "GRATUITO";
+        document.getElementById('cb-tipo-evento').value = "OPENDAY";
+        document.getElementById('cb-xp').value = randomXP;
+
+        const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+        const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+        document.getElementById('cb-nome').value = nomeSalvato;
+        document.getElementById('cb-telefono').value = telefonoSalvato;
+
+        document.getElementById('custom-booking-modal').style.display = 'flex';
+    };
 }
     
     init();
