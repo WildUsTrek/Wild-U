@@ -2146,18 +2146,45 @@ async function sendCustomBooking() {
     }
 }
 
+
+    async function syncGradeToFirestoreIfNeeded(finalXP, soglie) {
+    if (!wildUserKey) return;
+    if (!Array.isArray(soglie) || soglie.length === 0) return;
+    if (!cachedXPData) return;
+
+    const computedLevel = soglie.filter(s => s.punti <= finalXP).pop() || soglie[0];
+    const computedGrade = computedLevel.nome || "Socio Novizio";
+    const currentStoredGrade = String(cachedXPData.grado || "Socio Novizio").trim();
+
+    if (currentStoredGrade === computedGrade) return;
+
+    try {
+        await db.collection("utenti").doc(wildUserKey).set({
+            grado: computedGrade,
+            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        cachedXPData.grado = computedGrade;
+    } catch (e) {
+        console.error("Errore sync grado:", e);
+    }
+}
+
+    
     // ==========================================
     // GRAFICA PROFILO E RUOTA
     // ==========================================
     async function renderProfile(data) {
         if (isAnimatingXP || !data) return;
         
-        const currentConfig = data.config || config || {};
-        const finalXP = parseInt(data.xp || 0);
-        const soglie = (currentConfig && currentConfig.soglie) ? currentConfig.soglie : [
-            {nome: "Socio Novizio", punti: 0}, {nome: "Esploratore", punti: 100}, {nome: "Sentinella", punti: 300},
-            {nome: "Veterano", punti: 900}, {nome: "Leggenda", punti: 1800}, {nome: "Divinità", punti: 3600}
-        ];
+const currentConfig = data.config || config || {};
+const finalXP = parseInt(data.xp || 0);
+const soglie = (currentConfig && currentConfig.soglie) ? currentConfig.soglie : [
+    {nome: "Socio Novizio", punti: 0}, {nome: "Esploratore", punti: 100}, {nome: "Sentinella", punti: 300},
+    {nome: "Veterano", punti: 900}, {nome: "Leggenda", punti: 1800}, {nome: "Divinità", punti: 3600}
+];
+
+syncGradeToFirestoreIfNeeded(finalXP, soglie);
 
         const xpFill = document.getElementById('xp-fill'); const profGrado = document.getElementById('prof-grado');
         const profIcon = document.getElementById('prof-main-icon'); const profXPText = document.getElementById('prof-xp');
