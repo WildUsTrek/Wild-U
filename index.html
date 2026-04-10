@@ -1932,6 +1932,7 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     }
 
     
+    
 // IL NUOVO MOTORE DI PRENOTAZIONE (Controllo Zaino Invisibile)
 function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId) {
     if (!requireLoggedAccess('BOOKING_ATTEMPT')) return;
@@ -1966,6 +1967,10 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId) {
     document.getElementById('cb-prezzo').innerText = prezzo + "€";
     document.getElementById('cb-tipo-evento').value = "APP";
     document.getElementById('cb-xp').value = xp;
+
+    document.getElementById('cb-booking-id').value = bookingId || "";
+    document.getElementById('cb-booking-collection').value = collection || "";
+    document.getElementById('cb-booking-eventdocid').value = eventDocId || "";
 
     const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
     const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
@@ -2083,23 +2088,29 @@ async function sendCustomBooking() {
             showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
 
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
+
             if (earnedXP > 0 && wildUserKey) {
-                await db.collection("utenti").doc(wildUserKey).set({
-                    xp: firebase.firestore.FieldValue.increment(earnedXP),
-                    ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
+                try {
+                    await db.collection("utenti").doc(wildUserKey).set({
+                        xp: firebase.firestore.FieldValue.increment(earnedXP),
+                        ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
 
-                if (cachedXPData) cachedXPData.xp += earnedXP;
-                lastCelXP += earnedXP;
-                localStorage.setItem('lastCelebratedXP', lastCelXP);
+                    if (cachedXPData) cachedXPData.xp += earnedXP;
+                    lastCelXP += earnedXP;
+                    localStorage.setItem('lastCelebratedXP', lastCelXP);
 
-                setTimeout(() => {
-                    showReward(earnedXP);
                     setTimeout(() => {
-                        document.getElementById('reward-overlay').style.display = 'none';
-                        show('profile');
-                    }, 2000);
-                }, 600);
+                        showReward(earnedXP);
+                        setTimeout(() => {
+                            document.getElementById('reward-overlay').style.display = 'none';
+                            show('profile');
+                        }, 2000);
+                    }, 600);
+                } catch (xpErr) {
+                    console.error("Prenotazione OK ma scrittura XP fallita:", xpErr);
+                    setTimeout(() => show('profile'), 800);
+                }
             } else {
                 setTimeout(() => show('profile'), 1000);
             }
@@ -2492,6 +2503,10 @@ function showOpenDayDetails(id) {
             document.getElementById('cb-prezzo').innerText = "GRATUITO";
             document.getElementById('cb-tipo-evento').value = "OPENDAY";
             document.getElementById('cb-xp').value = randomXP;
+
+            document.getElementById('cb-booking-id').value = odBookingId || "";
+            document.getElementById('cb-booking-collection').value = odCollection || "";
+            document.getElementById('cb-booking-eventdocid').value = odEventDocId || "";
 
             const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
             const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
