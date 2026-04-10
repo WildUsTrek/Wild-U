@@ -294,6 +294,28 @@
     
 <div id="group-action-modal" class="modal-overlay"><div class="modal-card"><h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3><button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button><button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button><button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="download-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3><button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')"><span>📦 Android (.APK)</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')"><span>▶️ Google Play Store</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')"><span>🍏 Apple App Store</span> <span>➔</span></button><button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
+
+<div id="registration-cta-modal" class="modal-overlay" style="display:none; z-index:9500;" onclick="closeRegistrationCTA(true)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="border-color: var(--w-gold); max-width: 430px;">
+        <h3 id="registration-cta-title" style="color:var(--w-gold); margin-top:0; font-size:24px;">Sblocca tutto con il tuo account</h3>
+        <p id="registration-cta-text" style="font-size:15px; color:#ddd; line-height:1.6; margin-bottom:22px;">
+            Esplora Wild-U da ospite, poi accedi per prenotare, salvare i tuoi progressi e vedere contenuti dedicati.
+        </p>
+
+        <button id="registration-cta-primary" class="btn-book btn-action-glow" style="width:100%; margin-bottom:12px;">
+            Accedi / Registrati
+        </button>
+
+        <button id="registration-cta-secondary" class="btn-book" style="width:100%; background:#333; color:#fff; border:1px solid #444;">
+            Continua da ospite
+        </button>
+
+        <button onclick="closeRegistrationCTA(true)" style="background:none; border:none; color:#666; margin-top:18px; font-size:13px; font-weight:bold; text-transform:uppercase;">
+            Chiudi
+        </button>
+    </div>
+</div>   
+    
 <div id="toast-msg"></div>
 
 
@@ -346,7 +368,285 @@ auth.getRedirectResult()
     // LO SCUDO E L'IDENTITA'
     let tempGoogleUser = null;
     let tempTelegramUser = null;
-    let lastFetchTime = 0; 
+    let lastFetchTime = 0;
+
+    // ==========================================
+    // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
+    // ==========================================
+    let clientSession = {
+        authState: 'GUEST',
+        channel: 'WEB',
+        tokenStatus: 'NONE',
+        capabilities: null
+    };
+
+    const REG_CTA_STORAGE_KEY = 'wildRegCtaState';
+    let regCtaSessionShown = false;
+    let regCtaCurrentReason = null;
+
+    function isTelegramContext() {
+        return !!window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    }
+
+    function getDefaultClientCapabilities(channel = 'WEB') {
+        const isTelegramGuest = channel === 'TELEGRAM';
+        return {
+            canBrowsePublic: true,
+            canSeeRegisteredContent: false,
+            canSeeGradeContent: false,
+            canBook: false,
+            canUseBackpack: false,
+            canAuthenticateHere: !isTelegramGuest,
+            shouldOpenBrowserForAuth: isTelegramGuest
+        };
+    }
+
+    function syncClientSessionFromInitData(data) {
+        const channel = String(data?.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB')).toUpperCase() === 'TELEGRAM'
+            ? 'TELEGRAM'
+            : 'WEB';
+
+        const authState = data?.authState === 'LOGGED' ? 'LOGGED' : 'GUEST';
+        const tokenStatus = data?.tokenStatus || 'NONE';
+        const defaultCaps = getDefaultClientCapabilities(channel);
+
+        clientSession = {
+            authState,
+            channel,
+            tokenStatus,
+            capabilities: {
+                ...defaultCaps,
+                ...(data?.capabilities || {})
+            }
+        };
+
+        // Fonte di verità lato client: solo il backend può dichiarare LOGGED
+        if (authState === 'LOGGED' && data?.userOverlay?.profile?.uid) {
+            wildUserKey = data.userOverlay.profile.uid;
+            localStorage.setItem('wildUserKey', wildUserKey);
+        } else {
+            wildUserKey = null;
+            localStorage.removeItem('wildUserKey');
+        }
+    }
+
+    function reconcileProfileShellWithClientSession() {
+        const loginScreen = document.getElementById('login-screen');
+        const completeScreen = document.getElementById('complete-profile-screen');
+        const profileData = document.getElementById('profile-data');
+        if (!loginScreen || !completeScreen || !profileData) return;
+
+        if (clientSession.authState === 'LOGGED') {
+            loginScreen.classList.add('hidden');
+            completeScreen.classList.add('hidden');
+            profileData.classList.remove('hidden');
+            return;
+        }
+
+        profileData.classList.add('hidden');
+
+        // Se l'utente è nel flusso di completamento registrazione, non lo interrompiamo
+        if (tempGoogleUser || tempTelegramUser) {
+            loginScreen.classList.add('hidden');
+            completeScreen.classList.remove('hidden');
+        } else {
+            completeScreen.classList.add('hidden');
+            loginScreen.classList.remove('hidden');
+        }
+    }
+
+    function isClientLogged() {
+        return clientSession.authState === 'LOGGED';
+    }
+
+    function closeModalById(id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+
+    function readRegCtaState() {
+        try {
+            return JSON.parse(localStorage.getItem(REG_CTA_STORAGE_KEY) || '{}');
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function writeRegCtaState(patch) {
+        const next = { ...readRegCtaState(), ...patch };
+        localStorage.setItem(REG_CTA_STORAGE_KEY, JSON.stringify(next));
+        return next;
+    }
+
+    function canShowRegistrationCTA(reason, options = {}) {
+        if (isClientLogged()) return false;
+        if (options.force) return true;
+
+        const state = readRegCtaState();
+        const now = Date.now();
+        const startupCooldown = 24 * 60 * 60 * 1000; // 24h
+        const softCooldown = 3 * 60 * 1000; // 3 min
+
+        if (reason === 'APP_START') {
+            if (regCtaSessionShown) return false;
+            if (state.lastDismissedAt && (now - state.lastDismissedAt < startupCooldown)) return false;
+            return true;
+        }
+
+        if (state.lastDismissedAt && (now - state.lastDismissedAt < softCooldown)) return false;
+        return true;
+    }
+
+    function getRegistrationCTACopy(reason) {
+        const isTelegramFallback =
+            clientSession.channel === 'TELEGRAM' &&
+            clientSession.capabilities?.shouldOpenBrowserForAuth;
+
+        if (isTelegramFallback) {
+            return {
+                title: 'Sei entrato da Telegram',
+                text: 'Puoi esplorare i contenuti pubblici da qui. Per completare accesso o registrazione senza problemi, apri Wild-U nel browser.',
+                primaryText: 'Continua nel browser',
+                primaryAction: 'BROWSER',
+                secondaryText: 'Più tardi'
+            };
+        }
+
+        if (reason === 'BOOKING_ATTEMPT') {
+            return {
+                title: 'Per prenotare serve il tuo account',
+                text: 'Accedi o completa la registrazione per confermare il viaggio e gestire il tuo zaino.',
+                primaryText: 'Accedi / Registrati',
+                primaryAction: 'PROFILE',
+                secondaryText: 'Continua da ospite'
+            };
+        }
+
+        if (reason === 'CANCEL_ATTEMPT') {
+            return {
+                title: 'Per gestire lo zaino serve il tuo account',
+                text: 'Accedi o completa la registrazione per annullare o gestire le tue prenotazioni in sicurezza.',
+                primaryText: 'Accedi / Registrati',
+                primaryAction: 'PROFILE',
+                secondaryText: 'Più tardi'
+            };
+        }
+
+        if (reason === 'AUTH_FALLBACK') {
+            return {
+                title: 'Accesso richiesto',
+                text: 'La tua sessione non è più valida oppure non è disponibile in questo contesto. Rientra per continuare.',
+                primaryText: 'Vai al Profilo',
+                primaryAction: 'PROFILE',
+                secondaryText: 'Più tardi'
+            };
+        }
+
+        return {
+            title: 'Sblocca tutto con il tuo account',
+            text: 'Esplora Wild-U da ospite, poi accedi per prenotare, salvare i tuoi progressi e vedere contenuti dedicati.',
+            primaryText: 'Accedi / Registrati',
+            primaryAction: 'PROFILE',
+            secondaryText: 'Continua da ospite'
+        };
+    }
+
+    function openTelegramBrowserFallback() {
+        const targetUrl = window.location.href;
+        try {
+            if (window.Telegram?.WebApp?.openLink) {
+                window.Telegram.WebApp.openLink(targetUrl);
+            } else {
+                window.open(targetUrl, '_blank');
+            }
+        } catch (e) {
+            window.open(targetUrl, '_blank');
+        }
+    }
+
+    function closeRegistrationCTA(markDismissed = true) {
+        const modal = document.getElementById('registration-cta-modal');
+        if (modal) modal.style.display = 'none';
+
+        if (markDismissed) {
+            const prev = readRegCtaState();
+            writeRegCtaState({
+                lastDismissedAt: Date.now(),
+                dismissCount: (prev.dismissCount || 0) + 1,
+                lastReason: regCtaCurrentReason || 'UNKNOWN'
+            });
+        }
+    }
+
+    function openRegistrationCTA(reason, options = {}) {
+        if (isClientLogged()) return true;
+        if (!canShowRegistrationCTA(reason, options)) return false;
+
+        const modal = document.getElementById('registration-cta-modal');
+        const titleEl = document.getElementById('registration-cta-title');
+        const textEl = document.getElementById('registration-cta-text');
+        const primaryBtn = document.getElementById('registration-cta-primary');
+        const secondaryBtn = document.getElementById('registration-cta-secondary');
+
+        if (!modal || !titleEl || !textEl || !primaryBtn || !secondaryBtn) {
+            return false;
+        }
+
+        const copy = getRegistrationCTACopy(reason);
+        regCtaCurrentReason = reason;
+        regCtaSessionShown = true;
+
+        titleEl.textContent = copy.title;
+        textEl.textContent = copy.text;
+        primaryBtn.textContent = copy.primaryText;
+        secondaryBtn.textContent = copy.secondaryText;
+
+        primaryBtn.onclick = function () {
+            closeRegistrationCTA(false);
+            if (copy.primaryAction === 'BROWSER') {
+                openTelegramBrowserFallback();
+            } else {
+                show('profile');
+            }
+        };
+
+        secondaryBtn.onclick = function () {
+            closeRegistrationCTA(true);
+        };
+
+        modal.style.display = 'flex';
+
+        writeRegCtaState({
+            lastShownAt: Date.now(),
+            lastReason: reason
+        });
+
+        return false;
+    }
+
+    function maybeShowStartupRegistrationCTA() {
+        if (isClientLogged()) return;
+        openRegistrationCTA('APP_START', { force: false });
+    }
+
+    function requireLoggedAccess(reason, options = {}) {
+        if (isClientLogged()) return true;
+
+        if (options.closeModalId) {
+            closeModalById(options.closeModalId);
+        }
+
+        openRegistrationCTA(reason, { force: true });
+        return false;
+    }
+
+    async function getVerifiedClientToken() {
+        if (!isClientLogged() || !auth.currentUser) {
+            openRegistrationCTA('AUTH_FALLBACK', { force: true });
+            throw new Error('AUTH_REQUIRED');
+        }
+        return await auth.currentUser.getIdToken();
+    }
 
     // --- AUDIO NATIVO SENZA BLOCCHI GITHUB ---
     const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
@@ -465,21 +765,59 @@ function checkAuthEnvironment() {
 // ==========================================
 
 async function handleTelegramAuth(tgUser) {
-    const tgId = "TG-" + tgUser.id; 
+    tempTelegramUser = tgUser || null;
+
+    clientSession = {
+        authState: 'GUEST',
+        channel: 'TELEGRAM',
+        tokenStatus: 'NONE',
+        capabilities: getDefaultClientCapabilities('TELEGRAM')
+    };
+
+    const tgBox = document.getElementById('login-method-telegram');
+    const loginDesc = document.getElementById('login-desc');
+
+    if (loginDesc) {
+        loginDesc.innerText = "Sei entrato da Telegram. Puoi esplorare i contenuti pubblici qui, ma per prenotazioni e area personale completa l'accesso nel browser.";
+    }
+
+    if (tgBox) {
+        tgBox.classList.remove('hidden');
+        tgBox.innerHTML = `
+            <div style="text-align:center;">
+                <p style="color:var(--w-gold); font-weight:bold; margin-bottom:12px;">
+                    Modalità ospite Telegram attiva 🌲
+                </p>
+                <p style="font-size:13px; color:#bbb; line-height:1.5; margin-bottom:16px;">
+                    In mini-app puoi esplorare il catalogo pubblico. Per sbloccare prenotazioni e profilo completo, apri Wild-U nel browser.
+                </p>
+                <button onclick="openRegistrationCTA('AUTH_FALLBACK', { force: true })" class="btn-book btn-action-glow" style="width:100%;">
+                    APRI ACCESSO
+                </button>
+            </div>
+        `;
+    }
+
     try {
+        const tgId = "TG-" + tgUser.id;
         const docSnap = await db.collection("utenti").doc(tgId).get();
+
+        // Se esiste già un profilo Telegram, usiamolo solo come prefill leggero
+        // ma NON promuoviamo l'utente a LOGGED lato client.
         if (docSnap.exists) {
-            wildUserKey = tgId;
-            localStorage.setItem('wildUserKey', wildUserKey);
-            updateProfileUI();
-        } else {
-            tempTelegramUser = tgUser;
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('complete-profile-screen').classList.remove('hidden');
+            const data = docSnap.data() || {};
+            cachedXPData = {
+                ...(cachedXPData || {}),
+                nome: data.nome || (cachedXPData ? cachedXPData.nome : "") || "",
+                telefono: data.telefono || (cachedXPData ? cachedXPData.telefono : "") || ""
+            };
         }
-    } catch(e) {
+
+        reconcileProfileShellWithClientSession();
+    } catch (e) {
         console.error("Errore Login Telegram:", e);
         showToast("Errore Telegram: " + e.message);
+        reconcileProfileShellWithClientSession();
     }
 }
 
@@ -491,34 +829,63 @@ auth.onAuthStateChanged(async (user) => {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
-    // Se siamo dentro Telegram, ignoriamo completamente Google
-    if (isTelegram) return; 
+    // Se siamo dentro Telegram, Google non è la fonte di verità in questo contesto
+    if (isTelegram) {
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'TELEGRAM',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('TELEGRAM')
+        };
+        reconcileProfileShellWithClientSession();
+        return;
+    }
 
     if (user) {
         tempGoogleUser = user;
+        tempTelegramUser = null;
+
         try {
-            const docSnap = await db.collection("utenti").doc(user.uid).get(); // 🟢 IDENTITÀ TRAMITE UID
-            
+            const docSnap = await db.collection("utenti").doc(user.uid).get();
+
             if (docSnap.exists) {
-                wildUserKey = user.uid; // 🟢 IDENTITÀ TRAMITE UID
-                localStorage.setItem('wildUserKey', wildUserKey);
-                
+                document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('complete-profile-screen').classList.add('hidden');
+
+                // NON fissiamo qui wildUserKey come fonte di verità:
+                // lasciamo che sia getInitData identity-aware a dichiarare LOGGED.
+                await fetchInitData();
                 updateProfileUI();
             } else {
+                clientSession = {
+                    authState: 'GUEST',
+                    channel: 'WEB',
+                    tokenStatus: 'VALID',
+                    capabilities: getDefaultClientCapabilities('WEB')
+                };
+
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('profile-data').classList.add('hidden');
                 document.getElementById('complete-profile-screen').classList.remove('hidden');
             }
 
-        } catch(e) { 
+        } catch (e) {
             console.error("Firestore error:", e);
-            showToast("Errore: " + e.message); 
+            showToast("Errore: " + e.message);
         }
     } else {
+        tempGoogleUser = null;
+
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'WEB',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('WEB')
+        };
+
         wildUserKey = null;
         localStorage.removeItem('wildUserKey');
-        updateProfileUI();
+        reconcileProfileShellWithClientSession();
     }
 });
 
@@ -553,23 +920,26 @@ function loginWithGoogleRedirect() {
 
 async function completeRegistration() {
     const phone = document.getElementById('reg-phone').value.trim();
-    if(phone.length < 8) { 
-        showToast("Inserisci un numero valido per le prenotazioni."); 
-        return; 
+    if (phone.length < 8) {
+        showToast("Inserisci un numero valido per le prenotazioni.");
+        return;
     }
 
     try {
         let userId, userEmail, userName;
-        
+        let mode = 'WEB';
+
         if (tempTelegramUser) {
+            mode = 'TELEGRAM';
             userId = "TG-" + tempTelegramUser.id;
             userName = tempTelegramUser.first_name || "Esploratore TG";
-            userEmail = "Utente Telegram"; 
-        } 
+            userEmail = "Utente Telegram";
+        }
         else if (tempGoogleUser) {
-            userId = tempGoogleUser.uid; // 🟢 IDENTITÀ TRAMITE UID
+            mode = 'WEB';
+            userId = tempGoogleUser.uid;
             userName = tempGoogleUser.displayName || "Esploratore Web";
-            userEmail = tempGoogleUser.email; // (Teniamo la mail solo come dato anagrafico nel documento)
+            userEmail = tempGoogleUser.email;
         }
         else {
             return showToast("Errore di sessione. Ricarica l'app.");
@@ -583,20 +953,48 @@ async function completeRegistration() {
             nome: userName,
             telefono: phone,
             bannato: false,
-            zaino: [], // 🟢 NUOVO: Inventario pronto all'uso
-            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
+            zaino: [],
+            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
         };
-        
-        await db.collection("utenti").doc(userId).set(newUserData);
-        
-        wildUserKey = userId;
-        localStorage.setItem('wildUserKey', wildUserKey);
-        
-        document.getElementById('complete-profile-screen').classList.add('hidden');
-        updateProfileUI();
-        showToast("Avventura iniziata! Benvenuto.");
 
-    } catch(e) {
+        await db.collection("utenti").doc(userId).set(newUserData, { merge: true });
+
+        document.getElementById('complete-profile-screen').classList.add('hidden');
+
+        if (mode === 'WEB') {
+            // Google/Firebase può diventare davvero LOGGED tramite backend identity-aware
+            tempTelegramUser = null;
+            await fetchInitData();
+            updateProfileUI();
+            showToast("Avventura iniziata! Benvenuto.");
+            return;
+        }
+
+        // TELEGRAM: salviamo il contatto/profilo leggero ma NON fingiamo login pieno
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'TELEGRAM',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('TELEGRAM')
+        };
+
+        wildUserKey = null;
+        localStorage.removeItem('wildUserKey');
+
+        cachedXPData = {
+            ...(cachedXPData || {}),
+            nome: userName,
+            telefono: phone
+        };
+
+        reconcileProfileShellWithClientSession();
+        showToast("Contatto salvato. Per sbloccare prenotazioni apri Wild-U nel browser.");
+
+        setTimeout(() => {
+            openRegistrationCTA('AUTH_FALLBACK', { force: true });
+        }, 500);
+
+    } catch (e) {
         console.error("Errore registrazione:", e);
         showToast("Errore durante la registrazione. Riprova.");
     }
@@ -625,17 +1023,25 @@ function logout() {
 // UI PROFILE
 // ==========================================
 
-function updateProfileUI() { 
-    if (wildUserKey) { 
-        document.getElementById('login-screen').classList.add('hidden'); 
-        document.getElementById('complete-profile-screen').classList.add('hidden');
-        document.getElementById('profile-data').classList.remove('hidden'); 
-        fetchXP(); 
-    } else { 
-        document.getElementById('login-screen').classList.remove('hidden'); 
-        document.getElementById('complete-profile-screen').classList.add('hidden');
-        document.getElementById('profile-data').classList.add('hidden'); 
-    } 
+function updateProfileUI() {
+    reconcileProfileShellWithClientSession();
+
+    // Se l'utente è davvero loggato secondo il backend, possiamo caricare il profilo
+    if (isClientLogged() && wildUserKey) {
+        fetchXP();
+        return;
+    }
+
+    // Se siamo nel flusso di completamento registrazione, non facciamo altro
+    if (tempGoogleUser || tempTelegramUser) {
+        return;
+    }
+
+    // In stato guest puliamo la UI profilo in modo conservativo
+    const bookingsBox = document.getElementById('my-bookings-list');
+    if (bookingsBox) {
+        bookingsBox.innerHTML = '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Accedi per vedere il tuo zaino 🎒</p>';
+    }
 }
 
 // ==========================================
@@ -656,59 +1062,103 @@ async function init() {
 }
 
 async function fetchInitData() {
-    // TRUCCO VELOCITÀ: Leggiamo subito la cache
-    const cachedData = localStorage.getItem('wildCache');
+    const CACHE_KEY = 'wildCachePublic';
+
+    // 1. CACHE PUBBLICA: render veloce, senza overlay utente
+    const cachedData = localStorage.getItem(CACHE_KEY);
     if (cachedData) {
         try {
             const data = JSON.parse(cachedData);
-            
-            // 🟢 RECUPERO ASSET & CONFIGURAZIONI (Impedisce crash offline sui Social)
+
+            syncClientSessionFromInitData(data);
+
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
-            if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
-            
-            // 🟢 RIPRISTINO AUDIO & GRAFICA OFFLINE
+            if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
-            if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+
+            if (WILD_ASSETS['img_header']) {
+                document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+            }
 
             allTrips = data.events || [];
-            allBookings = data.bookings || [];
             allOpenDays = data.opendays || [];
-            
-            // 🟢 RENDERING IMMEDIATO DEI PREMI DA CACHE
+            allBookings = [];
+
             if (data.resources) renderDynamicResources(data.resources);
-            
-            buildFilters(); filterTrips();
+
+            buildFilters();
+            filterTrips();
             buildODFilters();
-            if (wildUserKey) evaluateBookings();
             renderOpenDays();
-        } catch(e) {}
+            reconcileProfileShellWithClientSession();
+        } catch (e) {
+            console.warn("Cache pubblica corrotta, ignorata.", e);
+        }
     }
 
+    // 2. FETCH FRESCO IDENTITY-AWARE
     try {
-        // Scarichiamo i dati freschi dal Gateway Cloud Run
-        let token = "GUEST";
-        if (wildUserKey && auth.currentUser) {
-            token = await auth.currentUser.getIdToken();
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-WILDU-CHANNEL': isTelegramContext() ? 'TELEGRAM' : 'WEB'
+        };
+
+        if (auth.currentUser) {
+            try {
+                const token = await auth.currentUser.getIdToken();
+                if (token) headers.Authorization = `Bearer ${token}`;
+            } catch (e) {
+                console.warn("Token non disponibile per getInitData, continuo come guest.", e);
+            }
         }
 
         const res = await fetch(MOTORE_API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'getInitData', token: token, nocache: Date.now() })
+            headers,
+            body: JSON.stringify({
+                action: 'getInitData',
+                clientContext: {
+                    channel: isTelegramContext() ? 'TELEGRAM' : 'WEB'
+                },
+                nocache: Date.now()
+            })
         });
+
         const data = await res.json();
-        
-        localStorage.setItem('wildCache', JSON.stringify(data));
-        
+
+        if (!res.ok || data?.success === false) {
+            throw new Error(data?.error || data?.message || "Errore getInitData");
+        }
+
+        syncClientSessionFromInitData(data);
+
+        // Salviamo SOLO il payload pubblico
+        const publicCachePayload = {
+            authState: data.authState || 'GUEST',
+            channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+            tokenStatus: data.tokenStatus || 'NONE',
+            capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+            assets: data.assets || {},
+            config: data.config || {},
+            resources: data.resources || [],
+            events: data.events || [],
+            opendays: data.opendays || []
+        };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(publicCachePayload));
+
         WILD_ASSETS = data.assets || {};
         config = data.config || {};
-        if(!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+        if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+
         allTrips = data.events || [];
-        allBookings = data.bookings || [];
-        allOpenDays = data.opendays || []; // <--- AGGIUNTO PONTE OPEN DAY
-        
+        allOpenDays = data.opendays || [];
+        allBookings = Array.isArray(data.bookings)
+            ? data.bookings
+            : (data.userOverlay?.bookings || []);
+
         FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
         FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
 
@@ -717,12 +1167,12 @@ async function fetchInitData() {
         sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
         sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
         sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
-        
+
         let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-        if(linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+        if (linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
 
         let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-        if(linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+        if (linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
 
         if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
         if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
@@ -732,15 +1182,33 @@ async function fetchInitData() {
         if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
         if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
-        // 🟢 INNESTO RISORSE DINAMICHE
         if (data.resources) renderDynamicResources(data.resources);
 
-        buildFilters(); filterTrips();
+        buildFilters();
+        filterTrips();
         buildODFilters();
-        if (wildUserKey) evaluateBookings();
+
+        if (isClientLogged() && wildUserKey) {
+            evaluateBookings();
+        } else {
+            allBookings = [];
+        }
+
         renderOpenDays();
-        
-    } catch(e) { console.error("Errore Mega-Pacchetto:", e); }
+        reconcileProfileShellWithClientSession();
+
+        setTimeout(() => {
+            maybeShowStartupRegistrationCTA();
+        }, 700);
+
+    } catch (e) {
+        console.error("Errore Mega-Pacchetto:", e);
+        reconcileProfileShellWithClientSession();
+
+        setTimeout(() => {
+            maybeShowStartupRegistrationCTA();
+        }, 700);
+    }
 }
     
     // ==========================================
@@ -915,27 +1383,29 @@ let pendingWaLink = "";
 
 // IL MANGANELLO CON SCUDO E OVERLAY DRAMMATICO
 async function requestCancel(title, btnElement) {
+    if (!requireLoggedAccess('CANCEL_ATTEMPT')) return;
     if (isCancellingInProgress) return;
-    isCancellingInProgress = true; 
+
+    isCancellingInProgress = true;
 
     const currentXP = cachedXPData ? parseInt(cachedXPData.xp) : 0;
     const percentualePenale = parseInt(config.penale_annullamento) || 40;
-    const penalty = Math.floor(currentXP * (percentualePenale / 100)); 
+    const penalty = Math.floor(currentXP * (percentualePenale / 100));
 
     const msgAlert = `⚠️ ATTENZIONE:\nSe annulli "${title}" subirai una PENALE del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere e avvisare l'Admin?`;
-    
+
     if (!confirm(msgAlert)) {
         isCancellingInProgress = false;
-        return; 
+        return;
     }
 
-    // LA QUARANTENA
     const safeTitle = title.toLowerCase().trim();
     if (!pendingCancels.includes(safeTitle)) pendingCancels.push(safeTitle);
     evaluateBookings();
-    setTimeout(() => { pendingCancels = pendingCancels.filter(t => t !== safeTitle); }, 15000);
+    setTimeout(() => {
+        pendingCancels = pendingCancels.filter(t => t !== safeTitle);
+    }, 15000);
 
-    // SCUDO GRAFICO
     if (btnElement) {
         btnElement.disabled = true;
         btnElement.innerText = "ELIMINO...";
@@ -944,13 +1414,15 @@ async function requestCancel(title, btnElement) {
     }
 
     try {
-        // TAGLIO PUNTI (Immediato)
-        if (penalty > 0) {
-            await db.collection("utenti").doc(wildUserKey).set({ 
+        const safeToken = await getVerifiedClientToken();
+
+        // TAGLIO PUNTI (Immediato, lato client legacy)
+        if (penalty > 0 && wildUserKey) {
+            await db.collection("utenti").doc(wildUserKey).set({
                 xp: firebase.firestore.FieldValue.increment(-penalty),
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
-            
+
             if (cachedXPData) {
                 cachedXPData.xp -= penalty;
                 lastCelXP = cachedXPData.xp;
@@ -960,34 +1432,53 @@ async function requestCancel(title, btnElement) {
                 if (currentTab === 'profile') renderProfile(cachedXPData);
             }
         }
-        
-        // ORDINE AL POSTINO GATEWAY
-        const safeToken = await auth.currentUser.getIdToken(); // 🟢 IDENTITÀ CERTIFICATA
-        const payload = { action: "cancelBooking", token: safeToken, titolo: title, wildKey: wildUserKey };
-        fetch(MOTORE_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 
-        // CREAZIONE LINK WHATSAPP
-        const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey}*.`;
+        const payload = {
+            action: "cancelBooking",
+            titolo: title,
+            wildKey: wildUserKey,
+            clientContext: {
+                channel: clientSession.channel
+            }
+        };
+
+        fetch(MOTORE_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${safeToken}`,
+                'X-WILDU-CHANNEL': clientSession.channel
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const msgWa = `Ciao Admin, ho annullato la mia presenza a *${title}*. La riga è stata rimossa dall'Excel e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata in automatico. Wild-Key: *${wildUserKey || 'N/D'}*.`;
         const phone = WILD_ASSETS['numero_admin'] || '393931326733';
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
-        pendingWaLink = isMobile 
-            ? `whatsapp://send?phone=${phone}&text=${encodeURIComponent(msgWa)}` 
+
+        pendingWaLink = isMobile
+            ? `whatsapp://send?phone=${phone}&text=${encodeURIComponent(msgWa)}`
             : `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msgWa)}`;
 
-        // ===============================================
-        // INVECE DI APRIRE WA, MOSTRIAMO LO SCHERMO ROSSO
-        // ===============================================
         document.getElementById('penalty-msg').innerText = "-" + penalty + " XP";
         document.getElementById('penalty-overlay').style.display = 'flex';
-        
-        // Nota importante: Non mettiamo `isCancellingInProgress = false;` qui. 
-        // L'app rimane "bloccata" finché l'utente non guarda in faccia la penale.
 
-    } catch(e) { 
-        console.error("Errore decurtazione", e); 
-        isCancellingInProgress = false; // Sblocca in caso di errore di rete grave
-    } 
+    } catch (e) {
+        console.error("Errore decurtazione", e);
+
+        if (e.message === 'AUTH_REQUIRED') {
+            if (btnElement) {
+                btnElement.disabled = false;
+                btnElement.innerText = "ANNULLA";
+                btnElement.style.opacity = "1";
+                btnElement.style.cursor = "pointer";
+            }
+            isCancellingInProgress = false;
+            return;
+        }
+
+        isCancellingInProgress = false;
+    }
 }
 
 // IL "PLAY" PER CONTINUARE DOPO LA PENALE
@@ -1206,21 +1697,27 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
     
 // IL NUOVO MOTORE DI PRENOTAZIONE (Controllo Zaino Invisibile)
 function openBook(titolo, data, prezzo, xp) {
-    if (!wildUserKey) { show('profile'); return; }
+    if (!requireLoggedAccess('BOOKING_ATTEMPT')) return;
 
     const safeTitolo = titolo.toString().toLowerCase().trim();
 
     // 1. CONTROLLO ZAINO INVISIBILE
     if (myBookedTitles.includes(safeTitolo)) {
         showToast("⚠️ Sei già in lista per questa avventura!");
-        return; 
+        return;
     }
-    
-    // 2. PROCEDURA STANDARD
+
+    // 2. CONTROLLO BAN / ZAINO PIENO
+    if (!canBook) {
+        showToast("🎒 " + (banReason || "Prenotazione non disponibile."));
+        return;
+    }
+
+    // 3. PROCEDURA STANDARD
     document.getElementById('cb-titolo').innerText = titolo;
     document.getElementById('cb-data').innerText = data;
     document.getElementById('cb-prezzo').innerText = prezzo + "€";
-    document.getElementById('cb-tipo-evento').value = "APP"; 
+    document.getElementById('cb-tipo-evento').value = "APP";
     document.getElementById('cb-xp').value = xp;
 
     const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
@@ -1238,108 +1735,111 @@ function openBook(titolo, data, prezzo, xp) {
 
  // IL POSTINO CHE SPEDISCE I DATI ALLO SCRIPT E BLOCCA I DOPPI CLICK
 async function sendCustomBooking() {
+    if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'custom-booking-modal' })) return;
+
     // --- LO SCUDO INVISIBILE (Semaforo Rosso) ---
-    if (isBookingInProgress) return; 
-    isBookingInProgress = true; 
+    if (isBookingInProgress) return;
+    isBookingInProgress = true;
 
     const btn = document.querySelector('#custom-booking-modal button[onclick="sendCustomBooking()"]');
     const originalText = btn.innerText;
-    
+
     const telefono = document.getElementById('cb-telefono').value.trim();
     if (telefono.length < 8) {
         alert("⚠️ Inserisci un numero di telefono valido per essere contattato in caso di necessità.");
-        isBookingInProgress = false; // Rilasciamo il blocco se c'è un errore
+        isBookingInProgress = false;
         return;
     }
 
-    // L'INIEZIONE NELLO ZAINO INVISIBILE (Il vero Anti-Latenza)
+    // L'INIEZIONE NELLO ZAINO INVISIBILE
     const titoloInPartenza = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
-    myBookedTitles.push(titoloInPartenza);
+    if (!myBookedTitles.includes(titoloInPartenza)) {
+        myBookedTitles.push(titoloInPartenza);
+    }
 
-    // --- LA QUARANTENA: BLOCCIAMO IL VIAGGIO LOCALMENTE ---
+    // --- LA QUARANTENA ---
     const safeTitolo = document.getElementById('cb-titolo').innerText.toLowerCase().trim();
     if (!pendingBookings.includes(safeTitolo)) pendingBookings.push(safeTitolo);
-    
-    // Rilasciamo la quarantena dopo 15 secondi
+
     setTimeout(() => {
         pendingBookings = pendingBookings.filter(t => t !== safeTitolo);
     }, 15000);
 
-    
-    // Effetto visivo caricamento
     btn.innerText = "SPEDIZIONE... 🌲";
     btn.disabled = true;
     btn.style.opacity = "0.7";
 
-    // Impacchettiamo tutti i dati del modulo
-    const safeToken = await auth.currentUser.getIdToken(); // 🟢 IDENTITÀ CERTIFICATA
-    const payload = {
-        action: "bookCustom",
-        token: safeToken,
-        tipo: document.getElementById('cb-tipo-evento').value, // "APP" o "OPENDAY"
-        titolo: document.getElementById('cb-titolo').innerText,
-        data: document.getElementById('cb-data').innerText,
-        prezzo: document.getElementById('cb-prezzo').innerText,
-        nome: document.getElementById('cb-nome').value,
-        telefono: telefono,
-        wildKey: wildUserKey
-    };
-
     try {
-        // Chiamata diretta (POST) al Gateway Cloud Run
+        const safeToken = await getVerifiedClientToken();
+
+        const payload = {
+            action: "bookCustom",
+            tipo: document.getElementById('cb-tipo-evento').value,
+            titolo: document.getElementById('cb-titolo').innerText,
+            data: document.getElementById('cb-data').innerText,
+            prezzo: document.getElementById('cb-prezzo').innerText,
+            nome: document.getElementById('cb-nome').value,
+            telefono: telefono,
+            wildKey: wildUserKey,
+            clientContext: {
+                channel: clientSession.channel
+            }
+        };
+
         const response = await fetch(MOTORE_API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${safeToken}`,
+                'X-WILDU-CHANNEL': clientSession.channel
+            },
             body: JSON.stringify(payload)
         });
 
         const result = await response.json();
-        
-        if (result.status === "success") {
-            closeCustomBooking();
-            showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
 
-            // --- DOPAMINA: ASSEGNAZIONE PUNTI E TELETRASPORTO ---
-            const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
-            if (earnedXP > 0) {
-                // 1. Scrive su Firebase all'istante
-                db.collection("utenti").doc(wildUserKey).set({ 
-                    xp: firebase.firestore.FieldValue.increment(earnedXP),
-                    ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
-                }, { merge: true });
-                
-                // 2. Aggiorna la cache locale e BLOCCA IL LOOP FANTASMA
-                if (cachedXPData) cachedXPData.xp += earnedXP;
-                lastCelXP += earnedXP; 
-                localStorage.setItem('lastCelebratedXP', lastCelXP);
-
-                // 3. Lancia l'animazione e ti porta a vedere la barra che sale
-                setTimeout(() => {
-                    showReward(earnedXP);
-                    setTimeout(() => { 
-                        document.getElementById('reward-overlay').style.display = 'none'; 
-                        show('profile'); 
-                    }, 2000);
-                }, 600);
-            } else {
-                // Se i punti sono zero, ti porta comunque al profilo
-                setTimeout(() => show('profile'), 1000);
-            }
-
-            // Forza l'aggiornamento silenzioso dello Smart Calendar
-            setTimeout(fetchInitData, 1500); 
-        } else {
-            throw new Error(result.message || "Errore sconosciuto dal server");
+        if (!response.ok || result.status !== "success") {
+            throw new Error(result.message || result.error || "Errore sconosciuto dal server");
         }
+
+        closeCustomBooking();
+        showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
+
+        // --- DOPAMINA: ASSEGNAZIONE PUNTI E TELETRASPORTO ---
+        const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
+        if (earnedXP > 0 && wildUserKey) {
+            db.collection("utenti").doc(wildUserKey).set({
+                xp: firebase.firestore.FieldValue.increment(earnedXP),
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            if (cachedXPData) cachedXPData.xp += earnedXP;
+            lastCelXP += earnedXP;
+            localStorage.setItem('lastCelebratedXP', lastCelXP);
+
+            setTimeout(() => {
+                showReward(earnedXP);
+                setTimeout(() => {
+                    document.getElementById('reward-overlay').style.display = 'none';
+                    show('profile');
+                }, 2000);
+            }, 600);
+        } else {
+            setTimeout(() => show('profile'), 1000);
+        }
+
+        setTimeout(fetchInitData, 1500);
+
     } catch (error) {
         console.error("Errore di spedizione:", error);
+
+        if (error.message === 'AUTH_REQUIRED') {
+            return;
+        }
+
         alert("❌ I server degli spiriti sono occupati. Riprova tra un attimo.");
     } finally {
-        // --- RIPRISTINO SCUDO (Semaforo Verde) ---
-        // Che vada bene o vada male, sblocchiamo il sistema per il futuro
-        isBookingInProgress = false; 
-
-        // Ripristino tasto
+        isBookingInProgress = false;
         btn.innerText = originalText;
         btn.disabled = false;
         btn.style.opacity = "1";
@@ -1667,10 +2167,8 @@ function showOpenDayDetails(id) {
         bookBtn.style.border = "none";
         bookBtn.style.cursor = "pointer";
         bookBtn.onclick = function() {
-            if (!wildUserKey) { 
-                document.getElementById('od-details-modal').style.display = 'none';
-                show('profile'); return; 
-            }
+            if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
+
             if (!canBook) {
                 showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
                 return;
@@ -1681,7 +2179,7 @@ function showOpenDayDetails(id) {
             document.getElementById('cb-titolo').innerText = t;
             document.getElementById('cb-data').innerText = d;
             document.getElementById('cb-prezzo').innerText = "GRATUITO";
-            document.getElementById('cb-tipo-evento').value = "OPENDAY"; 
+            document.getElementById('cb-tipo-evento').value = "OPENDAY";
 
             const min = parseInt(config.od_xp_min) || 4;
             const max = parseInt(config.od_xp_max) || 12;
