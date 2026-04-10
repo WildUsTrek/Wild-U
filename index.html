@@ -859,74 +859,81 @@ async function handleTelegramAuth(tgUser) {
 // ==========================================
 
 auth.onAuthStateChanged(async (user) => {
-    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-    const isTelegram = tgUser && tgUser.id;
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const isTelegram = tgUser && tgUser.id;
 
-    // Se siamo dentro Telegram, Google non governa questo contesto
-    if (isTelegram) {
-        clientSession = {
-            authState: 'GUEST',
-            channel: 'TELEGRAM',
-            tokenStatus: 'NONE',
-            capabilities: getDefaultClientCapabilities('TELEGRAM')
-        };
-        reconcileProfileShellWithClientSession();
-        return;
-    }
+    // Se siamo dentro Telegram, Google non governa questo contesto
+    if (isTelegram) {
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'TELEGRAM',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('TELEGRAM')
+        };
+        reconcileProfileShellWithClientSession();
+        return;
+    }
 
-    if (authRefreshLock) return;
+    if (authRefreshLock) return;
 
-    if (user) {
-        tempGoogleUser = user;
-        tempTelegramUser = null;
+    if (user) {
+        tempGoogleUser = user;
+        tempTelegramUser = null;
 
-        try {
-            const docSnap = await db.collection("utenti").doc(user.uid).get();
+        // 🛡️ MOSTRA CARICAMENTO: Blocca il flash visivo in cui chiede il numero per sbaglio
+        const loginDesc = document.getElementById('login-desc');
+        if (loginDesc) loginDesc.innerText = "Verifica identità in corso... 🌲";
 
-            if (docSnap.exists) {
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('complete-profile-screen').classList.add('hidden');
+        try {
+            const docSnap = await db.collection("utenti").doc(user.uid).get();
 
-                authRefreshLock = true;
-                try {
-                    await fetchInitData({ reason: 'AUTH_STATE', force: true });
-                } finally {
-                    authRefreshLock = false;
-                }
+            if (docSnap.exists) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('complete-profile-screen').classList.add('hidden');
 
-                updateProfileUI();
-            } else {
-                clientSession = {
-                    authState: 'GUEST',
-                    channel: 'WEB',
-                    tokenStatus: 'VALID',
-                    capabilities: getDefaultClientCapabilities('WEB')
-                };
+                authRefreshLock = true;
+                try {
+                    await fetchInitData({ reason: 'AUTH_STATE', force: true });
+                } finally {
+                    authRefreshLock = false;
+                }
 
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('profile-data').classList.add('hidden');
-                document.getElementById('complete-profile-screen').classList.remove('hidden');
-            }
+                updateProfileUI();
+            } else {
+                clientSession = {
+                    authState: 'GUEST',
+                    channel: 'WEB',
+                    tokenStatus: 'VALID',
+                    capabilities: getDefaultClientCapabilities('WEB')
+                };
 
-        } catch (e) {
-            authRefreshLock = false;
-            console.error("Firestore error:", e);
-            showToast("Errore: " + e.message);
-        }
-    } else {
-        tempGoogleUser = null;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('profile-data').classList.add('hidden');
+                document.getElementById('complete-profile-screen').classList.remove('hidden');
+            }
 
-        clientSession = {
-            authState: 'GUEST',
-            channel: 'WEB',
-            tokenStatus: 'NONE',
-            capabilities: getDefaultClientCapabilities('WEB')
-        };
+        } catch (e) {
+            authRefreshLock = false;
+            console.error("Firestore error:", e);
+            showToast("Errore: " + e.message);
+        }
+    } else {
+        tempGoogleUser = null;
 
-        wildUserKey = null;
-        localStorage.removeItem('wildUserKey');
-        reconcileProfileShellWithClientSession();
-    }
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'WEB',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('WEB')
+        };
+
+        wildUserKey = null;
+        localStorage.removeItem('wildUserKey');
+        reconcileProfileShellWithClientSession();
+        
+        const loginDesc = document.getElementById('login-desc');
+        if(loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
+    }
 });
 
 // ==========================================
