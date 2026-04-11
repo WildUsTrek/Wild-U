@@ -44,7 +44,40 @@
         .hidden { display: none !important; } 
         input { width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444; background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; text-align: center; font-size: 18px; -webkit-user-select: text; user-select: text; }
         #reward-overlay, #levelup-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px; }
-        .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center; justify-content:center; z-index:3000; } .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; box-sizing: border-box; text-align: center; border: 2px solid var(--w-green); } .levelup-img { width: 100%; max-width: 300px; height: auto; aspect-ratio: 4/3; border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold); }        .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); } .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; } .guide-summary::-webkit-details-marker { display: none; } .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; } .guide-accordion[open] .acc-icon { transform: rotate(180deg); } .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; } .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
+
+ .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); } .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; } .guide-summary::-webkit-details-marker { display: none; } .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; } .guide-accordion[open] .acc-icon { transform: rotate(180deg); } .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; } .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
+
+        /* --- WILDU AMAZON FOOTER SLIDER --- */
+        #amazon-footer-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(10px); border-top: 1px solid rgba(255,255,255,0.1); z-index: 1040; display: none; overflow: hidden; box-shadow: 0 -10px 25px rgba(0,0,0,0.5); }
+        .amazon-slider { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; height: 100%; align-items: center; padding: 0 10px; scroll-snap-stop: always; }
+        .amazon-slider::-webkit-scrollbar { display: none; } 
+        .amazon-card { flex: 0 0 85%; max-width: 320px; height: 80px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; margin-right: 12px; scroll-snap-align: center; display: flex; align-items: center; padding: 8px; text-decoration: none !important; transition: transform 0.2s; cursor: pointer; }
+        .amazon-card:active { transform: scale(0.97); }
+        .amazon-card img { width: 64px; height: 64px; object-fit: contain; background: white; border-radius: 8px; margin-right: 12px; }
+        .amazon-info { flex: 1; min-width: 0; text-align: left; line-height: normal; }
+        .amazon-title { color: white; font-size: 13px; font-weight: 800; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+        .amazon-desc { color: #aaa; font-size: 11px; line-height: 1.2; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .amazon-price { color: #FF9900; font-weight: 800; font-size: 14px; }
+        .amazon-tag { font-size: 10px; background: #FF9900; color: black; padding: 1px 5px; border-radius: 4px; font-weight: bold; margin-left: 5px; vertical-align: middle; }
+
+        /* --- WILDU AMAZON QUICK VIEW (Modale) --- */
+        #amazon-detail-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); z-index: 20000; display: flex; justify-content: center; align-items: center; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; padding: 20px; box-sizing: border-box; }
+        #amazon-detail-overlay.amazon-overlay-visible { opacity: 1; visibility: visible; }
+        .amazon-detail-card { background: #1a1a1a; border: 2px solid rgba(255, 153, 0, 0.3); border-radius: 20px; width: 100%; max-width: 400px; padding: 25px; box-sizing: border-box; box-shadow: 0 15px 50px rgba(0,0,0,0.8); transform: scale(0.9); transition: transform 0.3s ease; text-align: center; }
+        #amazon-detail-overlay.amazon-overlay-visible .amazon-detail-card { transform: scale(1); }
+        .amazon-det-img { width: 100%; max-width: 180px; height: 180px; object-fit: contain; background: white; border-radius: 16px; padding: 15px; margin-bottom: 20px; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+        .amazon-det-title { color: white; font-size: 18px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
+        .amazon-det-desc { color: #ccc; font-size: 14px; line-height: 1.4; margin-bottom: 15px; }
+        .amazon-det-price-row { margin-bottom: 20px; }
+        .amazon-det-price { color: #FF9900; font-size: 24px; font-weight: 800; }
+        .amazon-detail-actions { display: flex; gap: 10px; }
+        .btn-amazon-back, .btn-amazon-go { flex: 1; padding: 12px; border-radius: 10px; font-weight: bold; font-size: 14px; border: none; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; transition: background 0.2s; box-sizing: border-box; }
+        .btn-amazon-back { background: #333; color: white; }
+        .btn-amazon-back:active { background: #444; }
+        .btn-amazon-go { background: #FF9900; color: black; }
+        .btn-amazon-go:active { background: #ffaa33; }
+    </style>       
+    
     </style>
 </head>
 <body>
@@ -1010,32 +1043,58 @@ async function completeRegistration() {
             return showToast("Errore di sessione. Ricarica l'app.");
         }
 
-        const newUserData = {
-            xp: 0,
-            grado: "Socio Novizio",
-            registratoIl: firebase.firestore.FieldValue.serverTimestamp(),
-            email: userEmail,
-            nome: userName,
-            telefono: phone,
-            bannato: false,
-            zaino: [],
-            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-        };
+        const userRef = db.collection("utenti").doc(userId);
+        const existingSnap = await userRef.get();
+        const existingData = existingSnap.exists ? (existingSnap.data() || {}) : {};
 
-        await db.collection("utenti").doc(userId).set(newUserData, { merge: true });
+        let payload;
+
+        if (existingSnap.exists) {
+            // PROFILO GIÀ ESISTENTE: non toccare mai progressi, ban, zaino, grado, xp
+            payload = {
+                email: userEmail,
+                nome: userName,
+                telefono: phone,
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+            };
+        } else {
+            // PRIMA NASCITA REALE
+            payload = {
+                xp: 0,
+                grado: "Socio Novizio",
+                registratoIl: firebase.firestore.FieldValue.serverTimestamp(),
+                email: userEmail,
+                nome: userName,
+                telefono: phone,
+                bannato: false,
+                zaino: [],
+                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+            };
+        }
+
+        await userRef.set(payload, { merge: true });
 
         document.getElementById('complete-profile-screen').classList.add('hidden');
 
+        if (existingSnap.exists) {
+            cachedXPData = {
+                ...(cachedXPData || {}),
+                xp: parseInt(existingData.xp || 0, 10),
+                grado: existingData.grado || "Socio Novizio",
+                nome: userName,
+                telefono: phone,
+                config: config
+            };
+        }
+
         if (mode === 'WEB') {
-            // Google/Firebase può diventare davvero LOGGED tramite backend identity-aware
             tempTelegramUser = null;
-            await fetchInitData();
+            await fetchInitData({ force: true });
             updateProfileUI();
-            showToast("Avventura iniziata! Benvenuto.");
+            showToast(existingSnap.exists ? "Profilo completato senza toccare i progressi." : "Avventura iniziata! Benvenuto.");
             return;
         }
 
-        // TELEGRAM: salviamo il contatto/profilo leggero ma NON fingiamo login pieno
         clientSession = {
             authState: 'GUEST',
             channel: 'TELEGRAM',
@@ -1048,8 +1107,11 @@ async function completeRegistration() {
 
         cachedXPData = {
             ...(cachedXPData || {}),
+            xp: parseInt(existingData.xp || 0, 10),
+            grado: existingData.grado || "Socio Novizio",
             nome: userName,
-            telefono: phone
+            telefono: phone,
+            config: config
         };
 
         reconcileProfileShellWithClientSession();
@@ -1343,52 +1405,120 @@ reconcileProfileShellWithClientSession();
     // ==========================================
     // LOGICA XP E CONTROLLO TIME-TRAVEL
     // ==========================================
-    async function fetchXP() {
+async function fetchXP() {
     if (!wildUserKey || isLockedXP || isAnimatingXP) return;
+
+    const backupKey = 'wildLastSafeProfile_' + wildUserKey;
+
     try {
         const docSnap = await db.collection("utenti").doc(wildUserKey).get();
-        lastFetchTime = Date.now(); 
-        
-        if (!docSnap.exists) return; 
-        
-        const data = docSnap.data();
+        lastFetchTime = Date.now();
+
+        if (!docSnap.exists) {
+            const backupRaw = localStorage.getItem(backupKey);
+
+            if (backupRaw) {
+                try {
+                    const backup = JSON.parse(backupRaw);
+
+                    cachedXPData = {
+                        xp: parseInt(backup.xp || 0, 10),
+                        grado: backup.grado || "Socio Novizio",
+                        nome: backup.nome || "",
+                        telefono: backup.telefono || "",
+                        config: config
+                    };
+
+                    const nameInput = document.getElementById('user-name-input');
+                    const phoneInput = document.getElementById('user-phone-input');
+                    if (nameInput) nameInput.value = cachedXPData.nome;
+                    if (phoneInput) phoneInput.value = cachedXPData.telefono;
+
+                    if (currentTab === 'profile') renderProfile(cachedXPData);
+                    showToast("Profilo server non trovato. Mostro l’ultimo stato salvato su questo dispositivo.");
+                } catch (backupErr) {
+                    console.error("Backup XP locale corrotto:", backupErr);
+                    showToast("Profilo XP non trovato.");
+                }
+            } else {
+                showToast("Profilo XP non trovato.");
+            }
+
+            return;
+        }
+
+        const data = docSnap.data() || {};
         isBanned = data.bannato === true;
         viaggiRiscattati = data.viaggi_riscattati || [];
-        
-        const userData = { 
-            xp: data.xp || 0, 
-            grado: data.grado || "Socio Novizio", 
-            nome: data.nome || "",       // <--- AGGIUNGI QUESTO: Recupera il nome
-            telefono: data.telefono || "", // <--- Questo l'avevi messo, ottimo!
-            config: config 
-        };
-        cachedXPData = userData; 
 
-        // --- IL PEZZO MANCANTE: SCRIVI I DATI NELLE CASELLE DEL PROFILO ---
+        const userData = {
+            xp: parseInt(data.xp || 0, 10),
+            grado: data.grado || "Socio Novizio",
+            nome: data.nome || "",
+            telefono: data.telefono || "",
+            config: config
+        };
+
+        cachedXPData = userData;
+
+        localStorage.setItem(backupKey, JSON.stringify({
+            xp: userData.xp,
+            grado: userData.grado,
+            nome: userData.nome,
+            telefono: userData.telefono,
+            savedAt: Date.now()
+        }));
+
         const nameInput = document.getElementById('user-name-input');
         const phoneInput = document.getElementById('user-phone-input');
         if (nameInput) nameInput.value = userData.nome;
         if (phoneInput) phoneInput.value = userData.telefono;
-        // ----------------------------------------------------------------
 
         evaluateBookings();
 
-        if (userData.xp < lastVXP) { 
-            lastVXP = userData.xp; lastCelXP = userData.xp; 
-            localStorage.setItem('lastViewedXP', userData.xp); localStorage.setItem('lastCelebratedXP', userData.xp); 
-            renderProfile(userData); return; 
+        if (userData.xp < lastVXP) {
+            lastVXP = userData.xp;
+            lastCelXP = userData.xp;
+            localStorage.setItem('lastViewedXP', userData.xp);
+            localStorage.setItem('lastCelebratedXP', userData.xp);
+            renderProfile(userData);
+            return;
         }
-        
+
         if (userData.xp > lastCelXP && lastCelXP > 0) {
-            let delta = userData.xp - lastCelXP; lastCelXP = userData.xp; localStorage.setItem('lastCelebratedXP', lastCelXP);
-            if (!isPageActive) xpCelebrationBuffer += delta;
-            else { showReward(delta); if (currentTab === 'profile') renderProfile(userData); }
+            let delta = userData.xp - lastCelXP;
+            lastCelXP = userData.xp;
+            localStorage.setItem('lastCelebratedXP', lastCelXP);
+
+            if (!isPageActive) {
+                xpCelebrationBuffer += delta;
+            } else {
+                showReward(delta);
+                if (currentTab === 'profile') renderProfile(userData);
+            }
         } else if (currentTab === 'profile') {
             renderProfile(userData);
         }
-    } catch(e) { console.error("Errore FetchXP:", e); }
-}
+    } catch (e) {
+        console.error("Errore FetchXP:", e);
 
+        const backupRaw = localStorage.getItem(backupKey);
+        if (backupRaw) {
+            try {
+                const backup = JSON.parse(backupRaw);
+                cachedXPData = {
+                    xp: parseInt(backup.xp || 0, 10),
+                    grado: backup.grado || "Socio Novizio",
+                    nome: backup.nome || "",
+                    telefono: backup.telefono || "",
+                    config: config
+                };
+                if (currentTab === 'profile') renderProfile(cachedXPData);
+                showToast("Errore rete sugli XP. Mostro l’ultimo stato locale salvato.");
+            } catch (_) {}
+        }
+    }
+}
     // --- VARIABILE GLOBALE DELLO ZAINO INVISIBILE ---
 let myBookedTitles = [];
 let pendingBookings = [];
@@ -2805,8 +2935,116 @@ function showPayDayDetails(id) {
     document.getElementById('od-details-modal').style.display = 'block';
 }    
     
-    init(); //prima stava sotto showOpenDayDetails(id) poi è apparsa nuova showpayday
+// --- MOTORE AMAZON SPONSOR SLIDER CON QUICK VIEW ---
+let amazonAutoScrollTimer = null;
+let amazonResumeTimer = null;
+let currentAmazonProducts = []; 
 
+async function initAmazonSponsors() {
+    const slider = document.getElementById('amazon-slider-engine');
+    const wrapper = document.getElementById('amazon-footer-wrapper');
+    if (!slider) return;
+
+    try {
+        const docSnap = await db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu').get();
+        if (!docSnap.exists) return;
+
+        const data = docSnap.data();
+        currentAmazonProducts = data.amazon_links || []; 
+        currentAmazonProducts.sort(() => Math.random() - 0.5);
+
+        let html = "";
+        currentAmazonProducts.forEach((p, index) => {
+            if (p.active !== true) return;
+            html += `
+                <div class="amazon-card" onclick="openAmazonDetail(${index})">
+                    <img src="${p.img_url}" alt="${p.title}">
+                    <div class="amazon-info">
+                        <p class="amazon-title">${p.title}</p>
+                        <p class="amazon-desc">${p.description}</p>
+                        <span class="amazon-price">€${p.price}</span>
+                        <span class="amazon-tag">AMAZON</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        slider.innerHTML = html;
+        if(html !== "") wrapper.style.display = 'block';
+
+        startAmazonAutoScroll();
+
+        slider.addEventListener('touchstart', pauseAmazonAutoScroll, {passive: true});
+        slider.addEventListener('mousedown', pauseAmazonAutoScroll);
+
+        slider.addEventListener('scroll', () => {
+            const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1;
+            if (isEnd) {
+                setTimeout(() => {
+                    if (slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1) {
+                        slider.scrollTo({ left: 0, behavior: 'smooth' });
+                    }
+                }, 400); 
+            }
+        });
+    } catch (e) { console.error("Errore Amazon:", e); }
+}
+
+function openAmazonDetail(index) {
+    const p = currentAmazonProducts[index];
+    if (!p) return;
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+
+    const content = document.getElementById('amazon-detail-content');
+    const linkBtn = document.getElementById('amazon-detail-link');
+
+    content.innerHTML = `
+        <img src="${p.img_url}" class="amazon-det-img" alt="${p.title}">
+        <p class="amazon-det-title">${p.title}</p>
+        <p class="amazon-det-desc">${p.description}</p>
+        <div class="amazon-det-price-row">
+            <span class="amazon-det-price">€${p.price}</span>
+        </div>
+    `;
+    linkBtn.href = p.affiliate_url;
+    document.getElementById('amazon-detail-overlay').classList.add('amazon-overlay-visible');
+}
+
+function closeAmazonDetail() {
+    document.getElementById('amazon-detail-overlay').classList.remove('amazon-overlay-visible');
+    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 5000);
+}
+
+function startAmazonAutoScroll() {
+    const slider = document.getElementById('amazon-slider-engine');
+    if (!slider) return;
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+
+    amazonAutoScrollTimer = setInterval(() => {
+        const firstCard = slider.querySelector('.amazon-card');
+        if (!firstCard) return;
+        const cardWidth = firstCard.offsetWidth + 12;
+        const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 10;
+        if (isEnd) slider.scrollTo({ left: 0, behavior: 'smooth' });
+        else slider.scrollBy({ left: cardWidth, behavior: 'smooth' });
+    }, 4500);
+}
+
+function pauseAmazonAutoScroll() {
+    if(document.getElementById('amazon-detail-overlay').classList.contains('amazon-overlay-visible')) return;
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 12000); 
+}
+
+
+    
+    
+    init(); // Inizializzazione App originale
+    initAmazonSponsors(); // Inizializzazione motore Amazon
+
+    
 </script>
 
 <div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
@@ -2831,14 +3069,34 @@ function showPayDayDetails(id) {
             <div id="od-map-container" style="width:100%; height:180px; border-radius:10px; overflow:hidden; margin-top:25px; display:none; border:2px solid #333;">
                 <iframe id="od-map-iframe" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
             </div>
+
             
-            <div style="margin-top:25px; display:flex; gap:15px; flex-direction:column;">
-                <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 START POINT SU MAPS</a>
-                <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
-            </div>
-        </div>
-    </div>
-    
+                <div style="margin-top:25px; display:flex; gap:15px; flex-direction:column;">
+                <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 START POINT SU MAPS</a>
+                <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
+            </div>
+        </div>
+    </div>
+
+        <div id="amazon-detail-overlay" class="amazon-overlay-hidden">
+        <div class="amazon-detail-card">
+            <div id="amazon-detail-content"></div>
+            <div class="amazon-detail-actions">
+                <button onclick="closeAmazonDetail()" class="btn-amazon-back">
+                    ⬅️ INDIETRO
+                </button>
+                <a id="amazon-detail-link" href="#" target="_blank" class="btn-amazon-go">
+                    VEDI SU AMAZON 🛒
+                </a>
+            </div>
+        </div>
+    </div>  
+
+        <div id="amazon-footer-wrapper">
+        <div class="amazon-slider" id="amazon-slider-engine">
+        </div>
+    </div>
+
 </body>
 </html>
 
