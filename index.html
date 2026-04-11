@@ -72,47 +72,55 @@
     bottom: 0;
     width: 100%;
     display: none;
-    padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
+    align-items: center;
+    padding: 4px 0 calc(4px + env(safe-area-inset-bottom, 0px));
     background: rgba(18, 18, 18, 0.95);
     backdrop-filter: blur(10px);
     border-top: 1px solid rgba(255,255,255,0.1);
     z-index: 1040;
-    overflow: hidden;
+    overflow: visible;
     box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
 }
 
 .amazon-slider {
+    width: 100%;
     display: flex;
-    align-items: center;
+    align-items: center !important;
     overflow-x: auto;
+    overflow-y: visible;
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
-    min-height: 78px;
     padding: 0 10px;
+    min-height: 72px;
+    box-sizing: border-box;
     scroll-snap-stop: always;
 }
+
 
 .amazon-slider::-webkit-scrollbar {
     display: none;
 }
-
+        
 .amazon-card {
     flex: 0 0 85%;
     max-width: 320px;
-    height: 78px;
+    height: 72px !important;
+    margin: 0 12px 0 0;
+    padding: 6px 8px;
+    box-sizing: border-box;
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
-    margin: 0 12px 0 0;
     scroll-snap-align: center;
     display: flex;
-    align-items: center;
-    padding: 8px;
+    align-items: center !important;
+    align-self: center !important;
     text-decoration: none !important;
     transition: transform 0.2s;
     cursor: pointer;
 }
+
         
 .amazon-card:active {
     transform: scale(0.97);
@@ -3139,7 +3147,7 @@ function initAmazonSponsors() {
 slider.innerHTML = html;
         
         if (html !== "") {
-            wrapper.style.display = 'block';
+            wrapper.style.display = 'flex';
             
             // 🚀 FIX IMMAGINI FANTASMA: Pre-caricamento segreto (Preloading)
             // Crea oggetti Immagine invisibili in memoria per forzare il download immediato
