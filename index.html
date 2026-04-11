@@ -3,7 +3,7 @@
 <head>
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Wild-U Hub - Master Edition 1 🌲</title>
     
     <link rel="manifest" href="manifest.json">
@@ -54,6 +54,11 @@
         .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); } .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; } .guide-summary::-webkit-details-marker { display: none; } .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; } .guide-accordion[open] .acc-icon { transform: rotate(180deg); } .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; } .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
 
 /* --- WILDU AMAZON FOOTER SLIDER --- */
+:root {
+    --amazon-footer-base-height: 100px;
+    --amazon-footer-offset: 0px;
+}
+
 #amazon-footer-wrapper,
 #amazon-footer-wrapper * {
     box-sizing: border-box;
@@ -63,9 +68,10 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: var(--amazon-footer-offset);
     width: 100%;
-    height: calc(100px + env(safe-area-inset-bottom, 0px));
+    min-height: calc(var(--amazon-footer-base-height) + env(safe-area-inset-bottom, 0px));
+    height: auto;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: rgba(18, 18, 18, 0.95);
     backdrop-filter: blur(10px);
@@ -82,9 +88,9 @@
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
-    height: 100px;
+    min-height: var(--amazon-footer-base-height);
     align-items: center;
-    padding: 0 10px;
+    padding: 8px 10px;
     scroll-snap-stop: always;
 }
 
@@ -108,13 +114,66 @@
     transition: transform 0.2s;
     cursor: pointer;
 }
-        .amazon-card:active { transform: scale(0.97); }
-        .amazon-card img { width: 64px; height: 64px; flex-shrink: 0; object-fit: contain; background: white; border-radius: 8px; margin-right: 12px; }
-        .amazon-info { flex: 1; min-width: 0; text-align: left; line-height: normal; }
-        .amazon-title { color: white; font-size: 0.75rem; font-weight: 800; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
-        .amazon-desc { color: #aaa; font-size: 0.65rem; line-height: 1.2; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .amazon-price { color: #FF9900; font-weight: 800; font-size: 0.8rem; }
-        .amazon-tag { font-size: 0.55rem; background: #FF9900; color: black; padding: 1px 5px; border-radius: 4px; font-weight: bold; margin-left: 5px; vertical-align: middle; }
+
+.amazon-card:active {
+    transform: scale(0.97);
+}
+
+.amazon-card img {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    object-fit: contain;
+    background: white;
+    border-radius: 8px;
+    margin-right: 12px;
+}
+
+.amazon-info {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    line-height: normal;
+}
+
+.amazon-title {
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 800;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+}
+
+.amazon-desc {
+    color: #aaa;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    margin: 2px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.amazon-price {
+    color: #FF9900;
+    font-weight: 800;
+    font-size: 0.8rem;
+}
+
+.amazon-tag {
+    font-size: 0.55rem;
+    background: #FF9900;
+    color: black;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: bold;
+    margin-left: 5px;
+    vertical-align: middle;
+}
 
         /* --- WILDU AMAZON QUICK VIEW (Modale Originale) --- */
         #amazon-detail-overlay, #amazon-detail-overlay * { box-sizing: border-box; }
@@ -3123,11 +3182,37 @@ function pauseAmazonAutoScroll() {
 }
 
 
+
+function syncAmazonFooterViewportOffset() {
+    try {
+        const vv = window.visualViewport;
+        let offset = 0;
+
+        if (vv) {
+            const delta = window.innerHeight - vv.height - vv.offsetTop;
+            offset = delta > 0 ? delta : 0;
+        }
+
+        document.documentElement.style.setProperty('--amazon-footer-offset', offset + 'px');
+    } catch (e) {
+        document.documentElement.style.setProperty('--amazon-footer-offset', '0px');
+    }
+}
+
+window.addEventListener('resize', syncAmazonFooterViewportOffset);
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncAmazonFooterViewportOffset);
+    window.visualViewport.addEventListener('scroll', syncAmazonFooterViewportOffset);
+}
+
+
     
     
 document.addEventListener('DOMContentLoaded', () => {
-    init();                 // Inizializzazione App originale
-    initAmazonSponsors();   // Inizializzazione motore Amazon
+    syncAmazonFooterViewportOffset();
+    init();
+    initAmazonSponsors();
 });
 
     
