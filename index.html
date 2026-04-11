@@ -114,6 +114,7 @@
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
     <button id="btn-free" onclick="show('free')">Open Day</button>
+    <button id="btn-paid" onclick="show('paid')">Hike</button>
     <button id="btn-wheel" onclick="show('wheel')">Ruota del destino</button>
     <button id="btn-rewards" onclick="show('rewards')">Premi e Giochi</button>
     <button id="btn-profile" onclick="show('profile')">Profilo</button>
@@ -142,6 +143,19 @@
         <div id="openday-list"></div>
     </div>
 
+<div id="sec-paid" class="hidden">
+    <div class="filter-header">
+        <button class="btn-reset" onclick="resetPDFilters()" style="margin:0;">Reset Filtri</button>
+        <div id="payday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Hike...</div>
+    </div>
+    <div class="filter-section-dropdowns">
+        <select id="filter-pd-months-select" class="pill-select"></select>
+        <select id="filter-pd-regions-select" class="pill-select"></select>
+    </div>
+    <div id="payday-list"></div>
+</div>
+
+    
    <div id="sec-rewards" class="hidden">
         <div style="margin-bottom: 25px; padding-left: 5px;">
             <h3 style="margin-top:0; font-size:26px; color: #fff;">Area Premi & Giochi</h3>
@@ -360,7 +374,7 @@ auth.getRedirectResult()
     db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
 
     // --- VARIABILI GLOBALI ---
-    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = [];    let wildUserKey = localStorage.getItem('wildUserKey');
+    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
     let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
     let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
     let isLockedXP = false; let isAnimatingXP = false; let isPageActive = true; let currentTab = 'events';
@@ -1177,17 +1191,20 @@ async function fetchInitData(options = {}) {
                     document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
                 }
 
-                allTrips = data.events || [];
-                allOpenDays = data.opendays || [];
-                allBookings = [];
+allTrips = data.events || [];
+allOpenDays = data.opendays || [];
+allPayDays = data.paydays || [];
+allBookings = [];
 
-                if (data.resources) renderDynamicResources(data.resources);
+if (data.resources) renderDynamicResources(data.resources);
 
-                buildFilters();
-                filterTrips();
-                buildODFilters();
-                renderOpenDays();
-                reconcileProfileShellWithClientSession();
+buildFilters();
+filterTrips();
+buildODFilters();
+renderOpenDays();
+buildPDFilters();
+renderPayDays();
+reconcileProfileShellWithClientSession();
             } catch (e) {
                 console.warn("Cache pubblica corrotta, ignorata.", e);
             }
@@ -1231,16 +1248,17 @@ async function fetchInitData(options = {}) {
 
             // Salviamo SOLO il payload pubblico
             const publicCachePayload = {
-                authState: data.authState || 'GUEST',
-                channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-                tokenStatus: data.tokenStatus || 'NONE',
-                capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-                assets: data.assets || {},
-                config: data.config || {},
-                resources: data.resources || [],
-                events: data.events || [],
-                opendays: data.opendays || []
-            };
+    authState: data.authState || 'GUEST',
+    channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+    tokenStatus: data.tokenStatus || 'NONE',
+    capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+    assets: data.assets || {},
+    config: data.config || {},
+    resources: data.resources || [],
+    events: data.events || [],
+    opendays: data.opendays || [],
+    paydays: data.paydays || []
+};
             localStorage.setItem(CACHE_KEY, JSON.stringify(publicCachePayload));
 
             WILD_ASSETS = data.assets || {};
@@ -1248,10 +1266,11 @@ async function fetchInitData(options = {}) {
             if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
             allTrips = data.events || [];
-            allOpenDays = data.opendays || [];
-            allBookings = Array.isArray(data.bookings)
-                ? data.bookings
-                : (data.userOverlay?.bookings || []);
+allOpenDays = data.opendays || [];
+allPayDays = data.paydays || [];
+allBookings = Array.isArray(data.bookings)
+    ? data.bookings
+    : (data.userOverlay?.bookings || []);
 
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
@@ -1278,19 +1297,21 @@ async function fetchInitData(options = {}) {
 
             if (data.resources) renderDynamicResources(data.resources);
 
-            buildFilters();
-            filterTrips();
-            buildODFilters();
+           buildFilters();
+filterTrips();
+buildODFilters();
+buildPDFilters();
 
-            if (isClientLogged() && wildUserKey) {
-                evaluateBookings();
-            } else {
-                allBookings = [];
-                myBookedTitles = [];
-            }
+if (isClientLogged() && wildUserKey) {
+    evaluateBookings();
+} else {
+    allBookings = [];
+    myBookedTitles = [];
+}
 
-            renderOpenDays();
-            reconcileProfileShellWithClientSession();
+renderOpenDays();
+renderPayDays();
+reconcileProfileShellWithClientSession();
 
             if (!regCtaSessionShown) {
                 setTimeout(() => {
@@ -1932,6 +1953,97 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         container.innerHTML = html;
     }
 
+
+let activePDFilters = { month: 'Tutti', region: 'Tutte' };
+
+function buildPDFilters() {
+    const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    const futuri = allPayDays.filter(pd => !pd["Data Inizio"] || parseItalianDate(pd["Data Inizio"]) >= today);
+
+    const monthsRaw = [...new Set(futuri.map(t => t["Data Inizio"] ? t["Data Inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+    const mSel = document.getElementById('filter-pd-months-select');
+    if (mSel) {
+        mSel.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + monthsRaw.map(m => `<option value="${m}">${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
+        mSel.onchange = (e) => { activePDFilters.month = e.target.value; renderPayDays(); };
+    }
+
+    const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].filter(x => x && x.trim() !== "").sort();
+    const rSel = document.getElementById('filter-pd-regions-select');
+    if (rSel) {
+        rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
+        rSel.onchange = (e) => { activePDFilters.region = e.target.value; renderPayDays(); };
+    }
+}
+
+function resetPDFilters() {
+    activePDFilters.month = 'Tutti';
+    activePDFilters.region = 'Tutte';
+    if(document.getElementById('filter-pd-months-select')) document.getElementById('filter-pd-months-select').value = 'Tutti';
+    if(document.getElementById('filter-pd-regions-select')) document.getElementById('filter-pd-regions-select').value = 'Tutte';
+    renderPayDays();
+}
+
+function renderPayDays() {
+    const container = document.getElementById('payday-list');
+    const badge = document.getElementById('payday-count-badge');
+    if(!container) return;
+
+    const today = new Date(); today.setHours(0,0,0,0);
+
+    let processedList = allPayDays.filter(pd => {
+        if (!pd["Data Inizio"]) return true;
+        return parseItalianDate(pd["Data Inizio"]) >= today;
+    }).sort((a, b) => {
+        return parseItalianDate(a["Data Inizio"]) - parseItalianDate(b["Data Inizio"]);
+    });
+
+    processedList = processedList.filter(pd => {
+        const passMonth = (activePDFilters.month === 'Tutti' || (pd["Data Inizio"] && pd["Data Inizio"].split('/')[1] === activePDFilters.month));
+        const rVal = pd["Regione"] || pd["regione"] || "";
+        const passRegion = (activePDFilters.region === 'Tutte' || rVal.toLowerCase() === activePDFilters.region.toLowerCase());
+        return passMonth && passRegion;
+    });
+
+    if(!processedList || processedList.length === 0) {
+        if(badge) badge.innerText = "Nessun evento";
+        container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Nessun Pay Day trovato con questi filtri.</p>';
+        return;
+    }
+
+    if(badge) badge.innerText = processedList.length + " Pay Day";
+
+    let html = '';
+    for(let pd of processedList) {
+        const id = pd["ID Evento (Super-Key)"] || pd["ID Evento"];
+        const titolo = pd["Titolo"] || "Evento Speciale";
+        const dataInizio = pd["Data Inizio"] || "";
+        const orario = (pd["Orario Inizio"] || "") + " - " + (pd["Orario Fine"] || "");
+        const prezzo = pd["Prezzo"] || "0";
+        const nomeRegione = pd["Regione"] ? `${pd["Regione"]} - ` : "";
+        const luogo = pd["Luogo Nome"] || "Luogo da definire";
+        const luogoCompleto = `${nomeRegione}${luogo}`;
+        const km = pd["KM"] ? `🥾 ${pd["KM"]} km` : "";
+        const dsl = pd["Dislivello"] ? `⛰️ ${pd["Dislivello"]} m` : "";
+
+        html += `
+        <div style="background: #111; border-left: 4px solid #d4af37; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
+            <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
+            <p style="color: #d4af37; font-weight: bold; margin: 0 0 12px 0; font-size: 15px;">📅 ${dataInizio} <span style="color:#777; font-weight:normal;">| 🕒 ${orario}</span></p>
+            <p style="color: #ccc; margin: 0 0 10px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+            <p style="color: #d4af37; margin: 0 0 15px 0; font-size: 15px; font-weight: bold;">💳 ${prezzo}€</p>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
+                ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
+            </div>
+            <button onclick="showPayDayDetails('${id}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+        </div>`;
+    }
+
+    container.innerHTML = html;
+}
+    
     
     
 // IL NUOVO MOTORE DI PRENOTAZIONE (Controllo Zaino Invisibile)
@@ -2297,10 +2409,10 @@ syncGradeToFirestoreIfNeeded(finalXP, soglie);
         // 1. FORZA LO SCROLL IN ALTO (Il "Mirino" per la barra XP)
         window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { 
-            if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); 
-            if(document.getElementById('btn-' + s)) document.getElementById('btn-' + s).classList.remove('active'); 
-        });
+        ['events', 'free', 'paid', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { 
+    if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); 
+    if(document.getElementById('btn-' + s)) document.getElementById('btn-' + s).classList.remove('active'); 
+});
         
         if(document.getElementById('sec-' + id)) document.getElementById('sec-' + id).classList.remove('hidden');
         
@@ -2372,7 +2484,7 @@ syncGradeToFirestoreIfNeeded(finalXP, soglie);
         // Salviamo i link per il modulo figlio
         window.currentInternalLinks = encodedLinks ? JSON.parse(atob(encodedLinks)) : [];
 
-        ['events', 'free', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); 
+        ['events', 'free', 'paid', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); 
         const m = document.getElementById('module-container'); 
         m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; 
         m.classList.remove('hidden'); 
@@ -2548,8 +2660,135 @@ function showOpenDayDetails(id) {
     // MOSTRA IL MODAL DETTAGLI
     document.getElementById('od-details-modal').style.display = 'block';
 }
+
+
+
+function showPayDayDetails(id) {
+    const pd = allPayDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
+    if(!pd) {
+        showToast("⚠️ Dettagli non trovati nel calendario.");
+        return;
+    }
+
+    document.getElementById('od-modal-title').innerText = pd["Titolo"] || "Evento";
+    document.getElementById('od-modal-date').innerText = "📅 " + (pd["Data Inizio"] || "");
+    document.getElementById('od-modal-time').innerText = "🕒 " + (pd["Orario Inizio"] || "") + " - " + (pd["Orario Fine"] || "");
+
+    const regVal = pd["Regione"] || pd["regione"] || "";
+    document.getElementById('od-modal-region-display').innerText = regVal ? "🗺️ Area: " + regVal : "";
+    document.getElementById('od-modal-place').innerText = pd["Luogo Nome"] || "Luogo da definire";
+
+    document.getElementById('od-modal-km').innerText = pd["KM"] ? `🥾 ${pd["KM"]} km` : "";
+    document.getElementById('od-modal-km').style.display = pd["KM"] ? "inline-block" : "none";
+
+    document.getElementById('od-modal-dsl').innerText = pd["Dislivello"] ? `⛰️ ${pd["Dislivello"]} m` : "";
+    document.getElementById('od-modal-dsl').style.display = pd["Dislivello"] ? "inline-block" : "none";
+
+    let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
+    const prezzo = pd["Prezzo"] || "0";
+    document.getElementById('od-modal-desc').innerHTML = (`💳 Prezzo: <b>${prezzo}€</b><br><br>` + desc).replace(/\n/g, '<br>');
+
+    let gearHtml = '';
+    try {
+        const gearArr = JSON.parse(pd["Attrezzatura (JSON)"] || "[]");
+        if(gearArr.length > 0) {
+            for(let g of gearArr) {
+                gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
+            }
+        } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
+    } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
+    document.getElementById('od-modal-gear').innerHTML = gearHtml;
+
+    const mapsBtn = document.getElementById('od-modal-maps');
+    const mapContainer = document.getElementById('od-map-container');
+    const mapIframe = document.getElementById('od-map-iframe');
+    const linkStr = pd["Luogo Link Maps"] || pd["Luogo Link"];
+    const nomeLuogo = pd["Luogo Nome"];
+
+    if(linkStr || nomeLuogo) {
+        mapsBtn.style.display = "block";
+        mapContainer.style.display = "block";
+        mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/" + encodeURIComponent(nomeLuogo + ", Italy");
+        const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
+        mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+    } else {
+        mapsBtn.style.display = "none";
+        mapContainer.style.display = "none";
+    }
+
+    const bookBtn = document.getElementById('od-modal-book');
+    const t = pd["Titolo"] || "Pay Day";
+    const d = pd["Data Inizio"] || "";
+    const pdBookingId = pd.bookingId || "";
+    const pdCollection = pd.collection || "";
+    const pdEventDocId = pd.eventDocId || "";
+
+    const bookingKey = buildClientBookingKey({
+        bookingId: pdBookingId,
+        titolo: t,
+        data: d
+    });
+
+    if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+        bookBtn.style.display = "block";
+        bookBtn.disabled = true;
+        bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
+        bookBtn.style.background = "#444";
+        bookBtn.style.color = "#888";
+        bookBtn.style.border = "1px solid #555";
+        bookBtn.style.cursor = "not-allowed";
+        bookBtn.onclick = null;
+    } else {
+        bookBtn.style.display = "block";
+        bookBtn.disabled = false;
+        bookBtn.innerText = "PRENOTA ORA";
+        bookBtn.style.background = "#d4af37";
+        bookBtn.style.color = "#000";
+        bookBtn.style.border = "none";
+        bookBtn.style.cursor = "pointer";
+        bookBtn.onclick = function() {
+            if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
+
+            if (!canBook) {
+                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
+                return;
+            }
+
+            document.getElementById('od-details-modal').style.display = 'none';
+
+            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
+
+            setCurrentBookingDraft({
+                titolo: t,
+                data: d,
+                prezzo: prezzo,
+                bookingId: pdBookingId,
+                collection: pdCollection,
+                eventDocId: pdEventDocId
+            });
+
+            document.getElementById('cb-titolo').innerText = t;
+            document.getElementById('cb-data').innerText = d;
+            document.getElementById('cb-prezzo').innerText = prezzo + "€";
+            document.getElementById('cb-tipo-evento').value = "PAID";
+            document.getElementById('cb-xp').value = earnedXP;
+            document.getElementById('cb-booking-id').value = pdBookingId;
+            document.getElementById('cb-booking-collection').value = pdCollection;
+            document.getElementById('cb-booking-eventdocid').value = pdEventDocId;
+
+            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+            document.getElementById('cb-nome').value = nomeSalvato;
+            document.getElementById('cb-telefono').value = telefonoSalvato;
+
+            document.getElementById('custom-booking-modal').style.display = 'flex';
+        };
+    }
+
+    document.getElementById('od-details-modal').style.display = 'block';
+}    
     
-    init();
+    init(); //prima stava sotto showOpenDayDetails(id) poi è apparsa nuova showpayday
 
 </script>
 
