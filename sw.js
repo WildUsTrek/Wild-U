@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wildu-cache-v2';
+const CACHE_NAME = 'wildu-cache-v3';
 
 self.addEventListener('install', (e) => {
     self.skipWaiting();
@@ -9,15 +9,21 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-    // Lascia passare il login di Google e il database Firebase senza intromettersi!
-    if (e.request.url.includes('firestore.googleapis.com') || 
-        e.request.url.includes('identitytoolkit') || 
-        e.request.url.includes('google.com') ||
-        e.request.method !== 'GET') {
-        return; 
-    }
+    const url = new URL(e.request.url);
+
+    // Mai toccare richieste non-GET
+    if (e.request.method !== 'GET') return;
+
+    // Intercetta solo richieste della tua stessa origin
+    // Tutto il resto passa diretto al browser:
+    // Firebase, Google Auth, Telegram, GitHub raw, mp3 esterni, API esterne, ecc.
+    if (url.origin !== self.location.origin) return;
 
     e.respondWith(
-        fetch(e.request).catch(() => caches.match(e.request))
+        fetch(e.request, { signal: e.request.signal })
+            .catch(async () => {
+                const cached = await caches.match(e.request);
+                return cached || Response.error();
+            })
     );
 });
