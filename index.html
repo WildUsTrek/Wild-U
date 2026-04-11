@@ -12,6 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
@@ -50,32 +51,34 @@
         .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); } .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; } .guide-summary::-webkit-details-marker { display: none; } .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; } .guide-accordion[open] .acc-icon { transform: rotate(180deg); } .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; } .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
 
 /* --- WILDU AMAZON FOOTER SLIDER --- */
-        #amazon-footer-wrapper, #amazon-footer-wrapper * { box-sizing: border-box; } /* 🟢 VACCINO: Protegge le card dall'esplosione */
+        #amazon-footer-wrapper, #amazon-footer-wrapper * { box-sizing: border-box; } 
         #amazon-footer-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; background: rgba(18, 18, 18, 0.95); backdrop-filter: blur(10px); border-top: 1px solid rgba(255,255,255,0.1); z-index: 1040; display: none; overflow: hidden; box-shadow: 0 -10px 25px rgba(0,0,0,0.5); }
-        .amazon-slider { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; height: 100%; align-items: flex-start; padding: 10px 10px 0 10px; scroll-snap-stop: always; }
+        .amazon-slider { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; height: 100%; align-items: center; padding: 0 10px; scroll-snap-stop: always; }
         .amazon-slider::-webkit-scrollbar { display: none; } 
         .amazon-card { flex: 0 0 85%; max-width: 320px; height: 80px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; margin-right: 12px; scroll-snap-align: center; display: flex; align-items: center; padding: 8px; text-decoration: none !important; transition: transform 0.2s; cursor: pointer; }
         .amazon-card:active { transform: scale(0.97); }
         .amazon-card img { width: 64px; height: 64px; object-fit: contain; background: white; border-radius: 8px; margin-right: 12px; }
         .amazon-info { flex: 1; min-width: 0; text-align: left; line-height: normal; }
-        .amazon-title { color: white; font-size: 13px; font-weight: 800; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
-        .amazon-desc { color: #aaa; font-size: 11px; line-height: 1.2; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .amazon-price { color: #FF9900; font-weight: 800; font-size: 14px; }
-        .amazon-tag { font-size: 10px; background: #FF9900; color: black; padding: 1px 5px; border-radius: 4px; font-weight: bold; margin-left: 5px; vertical-align: middle; }
+        .amazon-title { color: white; font-size: 0.75rem; font-weight: 800; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+        .amazon-desc { color: #aaa; font-size: 0.65rem; line-height: 1.2; margin: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .amazon-price { color: #FF9900; font-weight: 800; font-size: 0.8rem; }
+        .amazon-tag { font-size: 0.55rem; background: #FF9900; color: black; padding: 1px 5px; border-radius: 4px; font-weight: bold; margin-left: 5px; vertical-align: middle; }
 
-        /* --- WILDU AMAZON QUICK VIEW (Modale) --- */
-        #amazon-detail-overlay, #amazon-detail-overlay * { box-sizing: border-box; } /* 🟢 VACCINO MODALE */
+        /* --- WILDU AMAZON QUICK VIEW (Modale Originale) --- */
+        #amazon-detail-overlay, #amazon-detail-overlay * { box-sizing: border-box; }
         #amazon-detail-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); z-index: 20000; display: flex; justify-content: center; align-items: center; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; padding: 20px; }
         #amazon-detail-overlay.amazon-overlay-visible { opacity: 1; visibility: visible; }
         .amazon-detail-card { background: #1a1a1a; border: 2px solid rgba(255, 153, 0, 0.3); border-radius: 20px; width: 100%; max-width: 400px; padding: 25px; box-shadow: 0 15px 50px rgba(0,0,0,0.8); transform: scale(0.9); transition: transform 0.3s ease; text-align: center; }
         #amazon-detail-overlay.amazon-overlay-visible .amazon-detail-card { transform: scale(1); }
-        .amazon-det-img { width: 100%; max-width: 180px; height: 180px; object-fit: contain; background: white; border-radius: 16px; padding: 15px; margin: 0 auto 20px auto; display: block; box-shadow: 0 8px 20px rgba(0,0,0,0.3); } /* 🟢 FIX IMMAGINE: margin 0 auto e block per forzare centratura */
-        .amazon-det-title { color: white; font-size: 18px; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
-        .amazon-det-desc { color: #ccc; font-size: 14px; line-height: 1.4; margin-bottom: 15px; }
+        .amazon-det-img { width: 100%; max-width: 180px; height: 180px; object-fit: contain; background: white; border-radius: 16px; padding: 15px; margin: 0 auto 20px auto; display: block; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+        .amazon-det-title { color: white; font-size: 1.1rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
+        .amazon-det-desc { color: #ccc; font-size: 0.85rem; line-height: 1.4; margin-bottom: 15px; }
         .amazon-det-price-row { margin-bottom: 20px; }
-        .amazon-det-price { color: #FF9900; font-size: 24px; font-weight: 800; }
+        .amazon-det-price { color: #FF9900; font-size: 1.5rem; font-weight: 800; }
         .amazon-detail-actions { display: flex; gap: 10px; }
-        .btn-amazon-back, .btn-amazon-go { flex: 1; padding: 12px; border-radius: 10px; font-weight: bold; font-size: 14px; border: none; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; transition: background 0.2s; }
+        
+        /* I bottoni belli originali */
+        .btn-amazon-back, .btn-amazon-go { flex: 1; padding: 12px; border-radius: 10px; font-weight: bold; font-size: 0.8rem; border: none; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; transition: background 0.2s; }
         .btn-amazon-back { background: #333; color: white; }
         .btn-amazon-back:active { background: #444; }
         .btn-amazon-go { background: #FF9900; color: black; }
@@ -3109,19 +3112,19 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
     </div>
 
-        <div id="amazon-detail-overlay" class="amazon-overlay-hidden">
-        <div class="amazon-detail-card">
-            <div id="amazon-detail-content"></div>
-            <div class="amazon-detail-actions">
-                <button onclick="closeAmazonDetail()" class="btn-amazon-back">
-                    ⬅️ INDIETRO
-                </button>
-                <a id="amazon-detail-link" href="#" target="_blank" class="btn-amazon-go">
-                    VEDI SU AMAZON 🛒
-                </a>
-            </div>
-        </div>
-    </div>  
+<div id="amazon-detail-overlay" class="amazon-overlay-hidden">
+        <div class="amazon-detail-card">
+            <div id="amazon-detail-content"></div>
+            <div class="amazon-detail-actions">
+                <button onclick="closeAmazonDetail()" class="btn-amazon-back">
+                    <i class="fas fa-arrow-left"></i> INDIETRO
+                </button>
+                <a id="amazon-detail-link" href="#" target="_blank" class="btn-amazon-go">
+                    VEDI SU AMAZON <i class="fas fa-shopping-cart"></i>
+                </a>
+            </div>
+        </div>
+    </div>
 
         <div id="amazon-footer-wrapper">
         <div class="amazon-slider" id="amazon-slider-engine">
