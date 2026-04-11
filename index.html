@@ -1485,7 +1485,7 @@ function evaluateBookings() {
                 myBookedTitles.push(bookingKey);
             }
 
-            let infoBtn = "";
+                        let infoBtn = "";
 
             const tripOrig = allTrips.find(t => {
                 const tripKey = buildClientBookingKey({
@@ -1505,11 +1505,27 @@ function evaluateBookings() {
                 return odKey === bookingKey;
             });
 
+            const hikeList =
+                (typeof allHikes !== 'undefined' && Array.isArray(allHikes)) ? allHikes :
+                ((typeof allPayDays !== 'undefined' && Array.isArray(allPayDays)) ? allPayDays : []);
+
+            const hikeOrig = hikeList.find(h => {
+                const hikeKey = buildClientBookingKey({
+                    bookingId: h.bookingId || "",
+                    titolo: h["Titolo"] || "",
+                    data: h["Data Inizio"] || ""
+                });
+                return hikeKey === bookingKey;
+            });
+
             if (tripOrig && tripOrig.Link) {
                 infoBtn = `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">LINK SITO</button>`;
             } else if (odOrig) {
-                const odId = odOrig["ID Evento (Super-Key)"];
+                const odId = odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"];
                 infoBtn = `<button onclick="showOpenDayDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+            } else if (hikeOrig) {
+                const hikeId = hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"];
+                infoBtn = `<button onclick="showHikeDetails('${hikeId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
             }
 
             const cancelPayload = encodeURIComponent(JSON.stringify({
@@ -2008,11 +2024,11 @@ function renderPayDays() {
 
     if(!processedList || processedList.length === 0) {
         if(badge) badge.innerText = "Nessun evento";
-        container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Nessun Pay Day trovato con questi filtri.</p>';
+        container.innerHTML = '<p style="color:#aaa; text-align:center; margin-top:30px;">Nessun Hike trovato con questi filtri.</p>';
         return;
     }
 
-    if(badge) badge.innerText = processedList.length + " Pay Day";
+    if(badge) badge.innerText = processedList.length + " Hike";
 
     let html = '';
     for(let pd of processedList) {
@@ -2717,7 +2733,7 @@ function showPayDayDetails(id) {
     }
 
     const bookBtn = document.getElementById('od-modal-book');
-    const t = pd["Titolo"] || "Pay Day";
+    const t = pd["Titolo"] || "Hike";
     const d = pd["Data Inizio"] || "";
     const pdBookingId = pd.bookingId || "";
     const pdCollection = pd.collection || "";
