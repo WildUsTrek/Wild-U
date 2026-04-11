@@ -2943,34 +2943,24 @@ let amazonAutoScrollTimer = null;
 let amazonResumeTimer = null;
 let currentAmazonProducts = []; 
 
-async function initAmazonSponsors() {
+function initAmazonSponsors() {
     const slider = document.getElementById('amazon-slider-engine');
     const wrapper = document.getElementById('amazon-footer-wrapper');
     if (!slider) return;
 
-    try {
-        console.log("🛒 [AMAZON] Tento di scaricare i prodotti da Firestore...");
-        
-        const docSnap = await db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu').get();
-        if (!docSnap.exists) {
-            console.warn("🛒 [AMAZON] Documento 'prodotti_wildu' NON trovato!");
-            return;
-        }
+    // 🚀 FIX: Usiamo .onSnapshot per bypassare il blocco della cache offline!
+    db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu').onSnapshot((docSnap) => {
+        if (!docSnap.exists) return;
 
         const data = docSnap.data();
         currentAmazonProducts = data.amazon_links || []; 
-        console.log(`🛒 [AMAZON] Trovati ${currentAmazonProducts.length} prodotti totali nel DB.`);
-
         currentAmazonProducts.sort(() => Math.random() - 0.5);
 
         let html = "";
-        let prodottiAggiunti = 0;
-
         currentAmazonProducts.forEach((p, index) => {
-            // 🎯 RILASSIAMO IL FILTRO: saltiamo il prodotto SOLO se è esplicitamente disattivato (false)
-            if (p.active === false || p.active === "false") return; 
-
-            prodottiAggiunti++;
+            // Il tuo filtro originale, intatto e infallibile
+            if (p.active !== true) return; 
+            
             html += `
                 <div class="amazon-card" onclick="openAmazonDetail(${index})">
                     <img src="${p.img_url}" alt="${p.title}">
@@ -2984,15 +2974,13 @@ async function initAmazonSponsors() {
             `;
         });
 
-        console.log(`🛒 [AMAZON] Generato HTML per ${prodottiAggiunti} prodotti attivi.`);
-
         slider.innerHTML = html;
         
-        // Se c'è almeno un prodotto, accendiamo il footer!
-        if(html !== "") {
+        if (html !== "") {
             wrapper.style.display = 'block';
             startAmazonAutoScroll();
 
+            // Sensori anti-conflitto per lo scroll manuale
             slider.addEventListener('touchstart', pauseAmazonAutoScroll, {passive: true});
             slider.addEventListener('mousedown', pauseAmazonAutoScroll);
 
@@ -3006,10 +2994,13 @@ async function initAmazonSponsors() {
                     }, 400); 
                 }
             });
+        } else {
+            // Se non ci sono prodotti (es. tutti disattivati), nascondi il footer
+            wrapper.style.display = 'none';
         }
-    } catch (e) { 
-        console.error("🚨 🛒 [AMAZON] ERRORE CRITICO:", e.message); 
-    }
+    }, (error) => {
+        console.error("Errore Lettura Prodotti Amazon:", error);
+    });
 }
 
 function openAmazonDetail(index) {
