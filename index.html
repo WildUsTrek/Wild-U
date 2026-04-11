@@ -2944,53 +2944,72 @@ let amazonResumeTimer = null;
 let currentAmazonProducts = []; 
 
 async function initAmazonSponsors() {
-    const slider = document.getElementById('amazon-slider-engine');
-    const wrapper = document.getElementById('amazon-footer-wrapper');
-    if (!slider) return;
+    const slider = document.getElementById('amazon-slider-engine');
+    const wrapper = document.getElementById('amazon-footer-wrapper');
+    if (!slider) return;
 
-    try {
-        const docSnap = await db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu').get();
-        if (!docSnap.exists) return;
+    try {
+        console.log("🛒 [AMAZON] Tento di scaricare i prodotti da Firestore...");
+        
+        const docSnap = await db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu').get();
+        if (!docSnap.exists) {
+            console.warn("🛒 [AMAZON] Documento 'prodotti_wildu' NON trovato!");
+            return;
+        }
 
-        const data = docSnap.data();
-        currentAmazonProducts = data.amazon_links || []; 
-        currentAmazonProducts.sort(() => Math.random() - 0.5);
+        const data = docSnap.data();
+        currentAmazonProducts = data.amazon_links || []; 
+        console.log(`🛒 [AMAZON] Trovati ${currentAmazonProducts.length} prodotti totali nel DB.`);
 
-        let html = "";
-        currentAmazonProducts.forEach((p, index) => {
-            if (p.active !== true) return;
-            html += `
-                <div class="amazon-card" onclick="openAmazonDetail(${index})">
-                    <img src="${p.img_url}" alt="${p.title}">
-                    <div class="amazon-info">
-                        <p class="amazon-title">${p.title}</p>
-                        <p class="amazon-desc">${p.description}</p>
-                        <span class="amazon-price">€${p.price}</span>
-                        <span class="amazon-tag">AMAZON</span>
-                    </div>
-                </div>
-            `;
-        });
+        currentAmazonProducts.sort(() => Math.random() - 0.5);
 
-        slider.innerHTML = html;
-        if(html !== "") wrapper.style.display = 'block';
+        let html = "";
+        let prodottiAggiunti = 0;
 
-        startAmazonAutoScroll();
+        currentAmazonProducts.forEach((p, index) => {
+            // 🎯 RILASSIAMO IL FILTRO: saltiamo il prodotto SOLO se è esplicitamente disattivato (false)
+            if (p.active === false || p.active === "false") return; 
 
-        slider.addEventListener('touchstart', pauseAmazonAutoScroll, {passive: true});
-        slider.addEventListener('mousedown', pauseAmazonAutoScroll);
+            prodottiAggiunti++;
+            html += `
+                <div class="amazon-card" onclick="openAmazonDetail(${index})">
+                    <img src="${p.img_url}" alt="${p.title}">
+                    <div class="amazon-info">
+                        <p class="amazon-title">${p.title}</p>
+                        <p class="amazon-desc">${p.description}</p>
+                        <span class="amazon-price">€${p.price}</span>
+                        <span class="amazon-tag">AMAZON</span>
+                    </div>
+                </div>
+            `;
+        });
 
-        slider.addEventListener('scroll', () => {
-            const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1;
-            if (isEnd) {
-                setTimeout(() => {
-                    if (slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1) {
-                        slider.scrollTo({ left: 0, behavior: 'smooth' });
-                    }
-                }, 400); 
-            }
-        });
-    } catch (e) { console.error("Errore Amazon:", e); }
+        console.log(`🛒 [AMAZON] Generato HTML per ${prodottiAggiunti} prodotti attivi.`);
+
+        slider.innerHTML = html;
+        
+        // Se c'è almeno un prodotto, accendiamo il footer!
+        if(html !== "") {
+            wrapper.style.display = 'block';
+            startAmazonAutoScroll();
+
+            slider.addEventListener('touchstart', pauseAmazonAutoScroll, {passive: true});
+            slider.addEventListener('mousedown', pauseAmazonAutoScroll);
+
+            slider.addEventListener('scroll', () => {
+                const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1;
+                if (isEnd) {
+                    setTimeout(() => {
+                        if (slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1) {
+                            slider.scrollTo({ left: 0, behavior: 'smooth' });
+                        }
+                    }, 400); 
+                }
+            });
+        }
+    } catch (e) { 
+        console.error("🚨 🛒 [AMAZON] ERRORE CRITICO:", e.message); 
+    }
 }
 
 function openAmazonDetail(index) {
