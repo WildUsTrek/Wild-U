@@ -74,7 +74,7 @@
     display: none;
     justify-content: stretch;
     align-items: flex-start;
-    padding: 10px 0 calc(6px + env(safe-area-inset-bottom, 0px));
+    padding: 0;
     background: rgba(18, 18, 18, 0.95);
     backdrop-filter: blur(10px);
     border-top: 1px solid rgba(255,255,255,0.1);
@@ -95,7 +95,7 @@
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     min-height: 78px;
-    padding: 0 8px;
+    padding: 3px 4px 2px 4px;
     box-sizing: border-box;
     scroll-snap-stop: always;
 }
@@ -3204,18 +3204,36 @@ function closeAmazonDetail() {
 }
 
 function startAmazonAutoScroll() {
-    const slider = document.getElementById('amazon-slider-engine');
-    if (!slider) return;
-    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    const slider = document.getElementById('amazon-slider-engine');
+    if (!slider) return;
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
 
-    amazonAutoScrollTimer = setInterval(() => {
-        const firstCard = slider.querySelector('.amazon-card');
-        if (!firstCard) return;
-        const cardWidth = firstCard.offsetWidth + 12;
-        const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 10;
-        if (isEnd) slider.scrollTo({ left: 0, behavior: 'smooth' });
-        else slider.scrollBy({ left: cardWidth, behavior: 'smooth' });
-    }, 4500);
+    amazonAutoScrollTimer = setInterval(() => {
+        const cards = Array.from(slider.querySelectorAll('.amazon-card'));
+        if (!cards.length) return;
+
+        const sliderCenter = slider.scrollLeft + (slider.clientWidth / 2);
+
+        let nextCard = null;
+        for (const card of cards) {
+            const cardCenter = card.offsetLeft + (card.offsetWidth / 2);
+            if (cardCenter > sliderCenter + 8) {
+                nextCard = card;
+                break;
+            }
+        }
+
+        if (!nextCard) {
+            nextCard = cards[0];
+        }
+
+        const targetLeft = nextCard.offsetLeft - ((slider.clientWidth - nextCard.offsetWidth) / 2);
+
+        slider.scrollTo({
+            left: Math.max(0, targetLeft),
+            behavior: 'smooth'
+        });
+    }, 4500);
 }
 
 function pauseAmazonAutoScroll() {
