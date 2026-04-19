@@ -5,6 +5,31 @@ const SHELL_PREFIX = 'wildu-shell-';
 const VERSION_KEY = '__wildu_shell_version__';
 const FALLBACK_VERSION = 'bootstrap';
 
+const DEBUG_WILDU_SW = true;
+
+function swDebug(type, details) {
+    if (!DEBUG_WILDU_SW) return;
+
+    const payload = {
+        source: 'SW',
+        type,
+        details: details || {},
+        ts: new Date().toISOString()
+    };
+
+    try {
+        console.log('[WILDU SW]', type, details || {});
+    } catch (e) {}
+
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((clients) => {
+            clients.forEach((client) => {
+                client.postMessage({ __WILDU_DEBUG__: payload });
+            });
+        })
+        .catch(() => {});
+}
+
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', self.registration.scope).toString();
 const VERSION_URL = new URL('version.json', self.registration.scope).toString();
@@ -242,13 +267,45 @@ async function handleShellRequest(req, url) {
 
     try {
         const fresh = await fetch(req, { cache: 'no-store' });
+
         if (fresh && fresh.ok) {
             await shellCache.put(req, fresh.clone());
+
+            swDebug('SHELL_NETWORK_OK', {
+                request: req.url,
+                cacheName: getShellCacheName(version),
+                version: version
+            });
+        } else {
+            swDebug('SHELL_NETWORK_NON_OK', {
+                request: req.url,
+                status: fresh ? fresh.status : 'NO_RESPONSE',
+                cacheName: getShellCacheName(version),
+                version: version
+            });
         }
+
         return fresh;
     } catch (e) {
         const cached = await shellCache.match(req) || await shellCache.match(INDEX_URL);
-        return cached || Response.error();
+
+        if (cached) {
+            swDebug('SHELL_CACHE_FALLBACK', {
+                request: req.url,
+                cacheName: getShellCacheName(version),
+                version: version
+            });
+            return cached;
+        }
+
+        swDebug('SHELL_TOTAL_FAILURE', {
+            request: req.url,
+            cacheName: getShellCacheName(version),
+            version: version,
+            error: e && e.message ? e.message : 'unknown'
+        });
+
+        return Response.error();
     }
 }
 
@@ -257,6 +314,11 @@ async function handleModuleRequest(req) {
     const cached = await cache.match(req);
 
     if (cached) {
+        swDebug('MODULE_CACHE_HIT', {
+            request: req.url,
+            cacheName: MODULE_CACHE
+        });
+
         fetch(req).then(async (fresh) => {
             if (fresh && fresh.ok) {
                 await safeCachePut(
@@ -266,12 +328,32 @@ async function handleModuleRequest(req) {
                     MODULE_CACHE_MAX_ENTRIES,
                     MODULE_CACHE_TRIM_TO
                 );
+
+                swDebug('MODULE_CACHE_REFRESHED', {
+                    request: req.url,
+                    cacheName: MODULE_CACHE,
+                    status: fresh.status
+                });
+            } else {
+                swDebug('MODULE_NETWORK_NON_OK', {
+                    request: req.url,
+                    cacheName: MODULE_CACHE,
+                    status: fresh ? fresh.status : 'NO_RESPONSE'
+                });
             }
-        }).catch(() => {});
+        }).catch((e) => {
+            swDebug('MODULE_REFRESH_ERROR', {
+                request: req.url,
+                cacheName: MODULE_CACHE,
+                error: e && e.message ? e.message : 'unknown'
+            });
+        });
+
         return cached;
     }
 
     const fresh = await fetch(req);
+
     if (fresh && fresh.ok) {
         await safeCachePut(
             MODULE_CACHE,
@@ -280,7 +362,20 @@ async function handleModuleRequest(req) {
             MODULE_CACHE_MAX_ENTRIES,
             MODULE_CACHE_TRIM_TO
         );
+
+        swDebug('MODULE_NETWORK_OK', {
+            request: req.url,
+            cacheName: MODULE_CACHE,
+            status: fresh.status
+        });
+    } else {
+        swDebug('MODULE_NETWORK_NON_OK', {
+            request: req.url,
+            cacheName: MODULE_CACHE,
+            status: fresh ? fresh.status : 'NO_RESPONSE'
+        });
     }
+
     return fresh;
 }
 
@@ -298,12 +393,35 @@ async function handleAssetRequest(req) {
                     ASSET_CACHE_MAX_ENTRIES,
                     ASSET_CACHE_TRIM_TO
                 );
+
+                swDebug('ASSET_NETWORK_OK', {
+                    request: req.url,
+                    cacheName: ASSET_CACHE,
+                    status: fresh.status
+                });
+            } else {
+                swDebug('ASSET_NETWORK_NON_OK', {
+                    request: req.url,
+                    cacheName: ASSET_CACHE,
+                    status: fresh ? fresh.status : 'NO_RESPONSE'
+                });
             }
             return fresh;
         })
-        .catch(() => null);
+        .catch((e) => {
+            swDebug('ASSET_NETWORK_ERROR', {
+                request: req.url,
+                cacheName: ASSET_CACHE,
+                error: e && e.message ? e.message : 'unknown'
+            });
+            return null;
+        });
 
     if (cached) {
+        swDebug('ASSET_CACHE_HIT', {
+            request: req.url,
+            cacheName: ASSET_CACHE
+        });
         return cached;
     }
 
