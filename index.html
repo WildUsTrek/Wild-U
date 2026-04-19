@@ -1364,6 +1364,203 @@ function updateProfileUI() {
     }
 }
 
+
+const SHELL_VERSION_URL = 'version.json';
+const SHELL_META_KEY = 'wildShellMeta';
+const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
+const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
+
+function readShellMeta() {
+    try {
+        return JSON.parse(localStorage.getItem(SHELL_META_KEY) || '{}');
+    } catch (e) {
+        return {};
+    }
+}
+
+function writeShellMeta(patch) {
+    const next = { ...readShellMeta(), ...patch };
+    localStorage.setItem(SHELL_META_KEY, JSON.stringify(next));
+    return next;
+}
+
+function hasRecentShellReloadLock() {
+    const raw = sessionStorage.getItem(SHELL_RELOAD_LOCK_KEY);
+    if (!raw) return false;
+    const ts = parseInt(raw, 10);
+    if (!ts) return false;
+    return (Date.now() - ts) < SHELL_RELOAD_LOCK_MS;
+}
+
+function setShellReloadLock() {
+    sessionStorage.setItem(SHELL_RELOAD_LOCK_KEY, String(Date.now()));
+}
+
+async function fetchShellVersion() {
+    const res = await fetch(`${SHELL_VERSION_URL}?t=${Date.now()}`, {
+        cache: 'no-store'
+    });
+
+    if (!res.ok) {
+        throw new Error(`Version file non leggibile (${res.status})`);
+    }
+
+    const data = await res.json();
+    const version = String(data.version || '').trim();
+
+    if (!version) {
+        throw new Error('version.json senza campo version valido');
+    }
+
+    return version;
+}
+
+async function clearWilduShellCaches() {
+    if (!('caches' in window)) return;
+    const keys = await caches.keys();
+    await Promise.all(keys.map(key => caches.delete(key)));
+}
+
+async function ensureFreshShellVersion() {
+    const remoteVersion = await fetchShellVersion();
+    const meta = readShellMeta();
+
+    if (!meta.version) {
+        writeShellMeta({
+            version: remoteVersion,
+            lastCheckAt: Date.now()
+        });
+        return;
+    }
+
+    if (meta.version === remoteVersion) {
+        writeShellMeta({
+            version: remoteVersion,
+            lastCheckAt: Date.now()
+        });
+        return;
+    }
+
+    if (hasRecentShellReloadLock()) {
+        return;
+    }
+
+    setShellReloadLock();
+
+    await clearWilduShellCaches();
+
+    writeShellMeta({
+        version: remoteVersion,
+        lastCheckAt: Date.now(),
+        lastReloadAt: Date.now()
+    });
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('shellv', remoteVersion);
+
+    window.location.replace(nextUrl.toString());
+    throw new Error('SHELL_REFRESH_TRIGGERED');
+}    
+
+
+const PUBLIC_CACHE_KEY = 'wildCachePublic';
+const PUBLIC_CACHE_TTL_MS = 8 * 60 * 60 * 1000; // 8 ore
+const PUBLIC_CACHE_BYPASS_KEY = 'wildBypassPublicCacheOnce';
+const PUBLIC_CACHE_BYPASS_PIN = '8888'; // cambia qui se vuoi
+
+let publicCacheLongPressTimer = null;
+let publicCacheLongPressTriggered = false;
+
+function readPublicCacheEnvelope() {
+    try {
+        return JSON.parse(localStorage.getItem(PUBLIC_CACHE_KEY) || 'null');
+    } catch (e) {
+        return null;
+    }
+}
+
+function writePublicCacheEnvelope(payload) {
+    const envelope = {
+        savedAt: Date.now(),
+        payload: payload
+    };
+    localStorage.setItem(PUBLIC_CACHE_KEY, JSON.stringify(envelope));
+    return envelope;
+}
+
+function isPublicCacheStillValid(envelope) {
+    if (!envelope || !envelope.savedAt || !envelope.payload) return false;
+    return (Date.now() - envelope.savedAt) < PUBLIC_CACHE_TTL_MS;
+}
+
+function armPublicCacheBypassOnce() {
+    sessionStorage.setItem(PUBLIC_CACHE_BYPASS_KEY, String(Date.now()));
+}
+
+function consumePublicCacheBypassOnce() {
+    const raw = sessionStorage.getItem(PUBLIC_CACHE_BYPASS_KEY);
+    if (!raw) return false;
+    sessionStorage.removeItem(PUBLIC_CACHE_BYPASS_KEY);
+    return true;
+}
+
+function requestPublicCacheBypass() {
+    const pin = window.prompt('PIN refresh cache pubblica:');
+    if (pin === null) return;
+
+    if (pin === PUBLIC_CACHE_BYPASS_PIN) {
+        armPublicCacheBypassOnce();
+        showToast('Bypass cache pubblica attivato per il prossimo caricamento.');
+    } else {
+        showToast('PIN errato.');
+    }
+}
+
+function clearPublicCacheLongPressTimer() {
+    if (publicCacheLongPressTimer) {
+        clearTimeout(publicCacheLongPressTimer);
+        publicCacheLongPressTimer = null;
+    }
+}
+
+function startPublicCacheLongPress() {
+    clearPublicCacheLongPressTimer();
+    publicCacheLongPressTriggered = false;
+
+    publicCacheLongPressTimer = setTimeout(() => {
+        publicCacheLongPressTriggered = true;
+        requestPublicCacheBypass();
+    }, 1400);
+}
+
+function cancelPublicCacheLongPress() {
+    clearPublicCacheLongPressTimer();
+}
+
+function bindPublicCacheSecretTrigger() {
+    const secretTarget = document.querySelector('.hero-title');
+    if (!secretTarget || secretTarget.dataset.cacheBypassBound === '1') return;
+
+    secretTarget.dataset.cacheBypassBound = '1';
+
+    secretTarget.addEventListener('mousedown', startPublicCacheLongPress);
+    secretTarget.addEventListener('touchstart', startPublicCacheLongPress, { passive: true });
+
+    secretTarget.addEventListener('mouseup', cancelPublicCacheLongPress);
+    secretTarget.addEventListener('mouseleave', cancelPublicCacheLongPress);
+    secretTarget.addEventListener('touchend', cancelPublicCacheLongPress);
+    secretTarget.addEventListener('touchcancel', cancelPublicCacheLongPress);
+
+    secretTarget.addEventListener('click', function (e) {
+        if (publicCacheLongPressTriggered) {
+            e.preventDefault();
+            e.stopPropagation();
+            publicCacheLongPressTriggered = false;
+        }
+    });
+}  
+    
+    
 // ==========================================
 // INIZIALIZZAZIONE
 // ==========================================
@@ -1374,6 +1571,15 @@ async function init() {
     if (window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
+    }
+
+    try {
+        await ensureFreshShellVersion();
+    } catch (e) {
+        if (e.message === 'SHELL_REFRESH_TRIGGERED') {
+            return;
+        }
+        console.warn('Shell version check skipped:', e);
     }
 
     checkAuthEnvironment();
@@ -1389,7 +1595,6 @@ async function init() {
 }
 
 async function fetchInitData(options = {}) {
-    const CACHE_KEY = 'wildCachePublic';
     const force = options.force === true;
 
     if (initDataPromise && !force) {
@@ -1397,11 +1602,15 @@ async function fetchInitData(options = {}) {
     }
 
     initDataPromise = (async () => {
-        // 1. CACHE PUBBLICA: render veloce, senza overlay utente
-        const cachedData = localStorage.getItem(CACHE_KEY);
-        if (cachedData) {
+        const bypassPublicCache = !force && consumePublicCacheBypassOnce();
+        const publicCacheEnvelope = readPublicCacheEnvelope();
+        const hasValidPublicCache = !force && !bypassPublicCache && isPublicCacheStillValid(publicCacheEnvelope);
+        const cachedPublicData = publicCacheEnvelope && publicCacheEnvelope.payload ? publicCacheEnvelope.payload : null;
+
+        // 1. CACHE PUBBLICA: render veloce subito
+        if (cachedPublicData && !bypassPublicCache) {
             try {
-                const data = JSON.parse(cachedData);
+                const data = cachedPublicData;
 
                 syncClientSessionFromInitData(data);
 
@@ -1416,26 +1625,37 @@ async function fetchInitData(options = {}) {
                     document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
                 }
 
-allTrips = data.events || [];
-allOpenDays = data.opendays || [];
-allPayDays = data.paydays || [];
-allBookings = [];
+                allTrips = data.events || [];
+                allOpenDays = data.opendays || [];
+                allPayDays = data.paydays || [];
+                allBookings = [];
 
-if (data.resources) renderDynamicResources(data.resources);
+                if (data.resources) renderDynamicResources(data.resources);
 
-buildFilters();
-filterTrips();
-buildODFilters();
-renderOpenDays();
-buildPDFilters();
-renderPayDays();
-reconcileProfileShellWithClientSession();
+                buildFilters();
+                filterTrips();
+                buildODFilters();
+                renderOpenDays();
+                buildPDFilters();
+                renderPayDays();
+                reconcileProfileShellWithClientSession();
             } catch (e) {
                 console.warn("Cache pubblica corrotta, ignorata.", e);
             }
         }
 
-        // 2. FETCH FRESCO IDENTITY-AWARE
+        // 2. Se la cache pubblica è ancora valida e NON siamo in un flusso utente loggato,
+        // saltiamo completamente la chiamata remota.
+        if (hasValidPublicCache && !auth.currentUser) {
+            if (!regCtaSessionShown) {
+                setTimeout(() => {
+                    maybeShowStartupRegistrationCTA();
+                }, 700);
+            }
+            return cachedPublicData;
+        }
+
+        // 3. FETCH FRESCO IDENTITY-AWARE
         try {
             const headers = {
                 'Content-Type': 'application/json',
@@ -1471,31 +1691,31 @@ reconcileProfileShellWithClientSession();
 
             syncClientSessionFromInitData(data);
 
-            // Salviamo SOLO il payload pubblico
             const publicCachePayload = {
-    authState: data.authState || 'GUEST',
-    channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-    tokenStatus: data.tokenStatus || 'NONE',
-    capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-    assets: data.assets || {},
-    config: data.config || {},
-    resources: data.resources || [],
-    events: data.events || [],
-    opendays: data.opendays || [],
-    paydays: data.paydays || []
-};
-            localStorage.setItem(CACHE_KEY, JSON.stringify(publicCachePayload));
+                authState: data.authState || 'GUEST',
+                channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+                tokenStatus: data.tokenStatus || 'NONE',
+                capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
+                assets: data.assets || {},
+                config: data.config || {},
+                resources: data.resources || [],
+                events: data.events || [],
+                opendays: data.opendays || [],
+                paydays: data.paydays || []
+            };
+
+            writePublicCacheEnvelope(publicCachePayload);
 
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
             if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
             allTrips = data.events || [];
-allOpenDays = data.opendays || [];
-allPayDays = data.paydays || [];
-allBookings = Array.isArray(data.bookings)
-    ? data.bookings
-    : (data.userOverlay?.bookings || []);
+            allOpenDays = data.opendays || [];
+            allPayDays = data.paydays || [];
+            allBookings = Array.isArray(data.bookings)
+                ? data.bookings
+                : (data.userOverlay?.bookings || []);
 
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
@@ -1522,21 +1742,21 @@ allBookings = Array.isArray(data.bookings)
 
             if (data.resources) renderDynamicResources(data.resources);
 
-           buildFilters();
-filterTrips();
-buildODFilters();
-buildPDFilters();
+            buildFilters();
+            filterTrips();
+            buildODFilters();
+            buildPDFilters();
 
-if (isClientLogged() && wildUserKey) {
-    evaluateBookings();
-} else {
-    allBookings = [];
-    myBookedTitles = [];
-}
+            if (isClientLogged() && wildUserKey) {
+                evaluateBookings();
+            } else {
+                allBookings = [];
+                myBookedTitles = [];
+            }
 
-renderOpenDays();
-renderPayDays();
-reconcileProfileShellWithClientSession();
+            renderOpenDays();
+            renderPayDays();
+            reconcileProfileShellWithClientSession();
 
             if (!regCtaSessionShown) {
                 setTimeout(() => {
@@ -3274,6 +3494,7 @@ if (window.visualViewport) {
     
 document.addEventListener('DOMContentLoaded', () => {
     syncAmazonFooterViewportOffset();
+    bindPublicCacheSecretTrigger();
     init();
     initAmazonSponsors();
 });
