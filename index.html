@@ -1587,7 +1587,7 @@ async function init() {
     // Primo bootstrap controllato
     setTimeout(async () => {
         try {
-            await fetchInitData({ reason: 'BOOT', force: true });
+            await fetchInitData({ reason: 'BOOT', force: false });
         } catch (e) {
             console.error('Init bootstrap error:', e);
         }
@@ -2975,61 +2975,288 @@ syncGradeToFirestoreIfNeeded(finalXP, soglie);
     function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
     
     // 🟢 MOTORE DI RENDERING PREMI (ANTI-PARADOSSO AUDIO)
-    function renderDynamicResources(resources) {
-        const container = document.getElementById('dynamic-resources-list');
-        if (!container) return;
+const MODULE_CACHE_META_KEY = 'wildModuleMeta';
 
-        container.innerHTML = resources.map(res => {
-            const safeLinks = btoa(JSON.stringify(res.link_interni || []));
-            const grado = res.Grado_Minimo || "";
-            
-            // 🛡️ RISOLUZIONE DIPENDENZA AUDIO
-            // Determiniamo come passare il parametro audio al click
-            let audioParam = "''"; // Default: stringa vuota (la musica continua)
-            if (res.Audio === "STOP") {
-                audioParam = "'STOP'"; // Comando testuale di spegnimento
-            } else if (res.Audio) {
-                // Passa il RIFERIMENTO ALL'OGGETTO, non la stringa testuale!
-                audioParam = `WILD_ASSETS['${res.Audio}']`; 
+function readModuleCacheMeta() {
+    try {
+        return JSON.parse(localStorage.getItem(MODULE_CACHE_META_KEY) || '{}');
+    } catch (e) {
+        return {};
+    }
+}
+
+function writeModuleCacheMeta(nextMeta) {
+    localStorage.setItem(MODULE_CACHE_META_KEY, JSON.stringify(nextMeta || {}));
+}
+
+function isSkippableModuleUrl(rawUrl) {
+    const value = String(rawUrl || '').trim();
+    if (!value) return true;
+
+    const low = value.toLowerCase();
+
+    if (
+        low.startsWith('#') ||
+        low.startsWith('javascript:') ||
+        low.startsWith('mailto:') ||
+        low.startsWith('tel:') ||
+        low.startsWith('data:') ||
+        low.startsWith('blob:')
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function isSameOriginOrRelativeModuleUrl(rawUrl) {
+    const value = String(rawUrl || '').trim();
+    if (!value || isSkippableModuleUrl(value)) return false;
+
+    try {
+        const abs = new URL(value, window.location.href);
+        return abs.origin === window.location.origin;
+    } catch (e) {
+        return false;
+    }
+}
+
+function buildVersionedModuleUrl(rawUrl, moduleRev) {
+    const cleanUrl = String(rawUrl || '').trim();
+    const rev = Math.max(1, parseInt(moduleRev, 10) || 1);
+
+    if (!cleanUrl || isSkippableModuleUrl(cleanUrl)) return cleanUrl;
+    if (!isSameOriginOrRelativeModuleUrl(cleanUrl)) return cleanUrl;
+
+    try {
+        const abs = new URL(cleanUrl, window.location.href);
+        abs.searchParams.set('mr', String(rev));
+
+        if (abs.origin === window.location.origin) {
+            return abs.pathname + abs.search + abs.hash;
+        }
+
+        return abs.toString();
+    } catch (e) {
+        return cleanUrl;
+    }
+}
+
+function extractInternalLinkUrl(item) {
+    if (!item || typeof item !== 'object') return '';
+
+    return String(
+        item.Link_Risorsa ||
+        item.link_risorsa ||
+        item.Link ||
+        item.link ||
+        item.URL ||
+        item.url ||
+        item.Href ||
+        item.href ||
+        item.Src ||
+        item.src ||
+        item.File ||
+        item.file ||
+        item.Percorso ||
+        item.percorso ||
+        ''
+    ).trim();
+}
+
+function findInternalLinkItem(ref) {
+    const list = Array.isArray(window.currentInternalLinks) ? window.currentInternalLinks : [];
+
+    if (typeof ref === 'number' && list[ref]) {
+        return list[ref];
+    }
+
+    const needle = String(ref || '').trim().toLowerCase();
+    if (!needle) return null;
+
+    for (const item of list) {
+        const keysToCheck = [
+            item && item.Chiave,
+            item && item.chiave,
+            item && item.Key,
+            item && item.key,
+            item && item.Slug,
+            item && item.slug,
+            item && item.Titolo,
+            item && item.titolo,
+            item && item.Audio,
+            item && item.audio
+        ];
+
+        for (const candidate of keysToCheck) {
+            if (String(candidate || '').trim().toLowerCase() === needle) {
+                return item;
             }
+        }
+    }
 
-            return `
-                <div class="resource-item" onclick="openModule('${res.Link_Risorsa}', ${audioParam}, false, '${grado}', '${safeLinks}')">
-                    <div class="resource-info">
-                        <span class="resource-icon">${res.Categoria}</span>
-                        <div style="display:flex; flex-direction:column;">
-                            <span class="resource-name">${res.Titolo}</span>
-                            <span style="font-size:11px; color:#666;">${res.Descrizione}</span>
-                        </div>
+    return null;
+}
+
+function getModuleInternalLink(ref, fallbackUrl) {
+    const item = findInternalLinkItem(ref);
+    const rawUrl = item ? extractInternalLinkUrl(item) : String(fallbackUrl || '').trim();
+    return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
+}
+
+function rewriteModuleResourceUrls(root, moduleRev) {
+    if (!root) return;
+
+    const rules = [
+        ['img[src]', 'src'],
+        ['audio[src]', 'src'],
+        ['video[src]', 'src'],
+        ['source[src]', 'src'],
+        ['iframe[src]', 'src'],
+        ['embed[src]', 'src'],
+        ['object[data]', 'data'],
+        ['a[href]', 'href'],
+        ['link[href]', 'href'],
+        ['[data-src]', 'data-src'],
+        ['[data-href]', 'data-href']
+    ];
+
+    rules.forEach(([selector, attr]) => {
+        root.querySelectorAll(selector).forEach(el => {
+            const currentValue = el.getAttribute(attr);
+            if (!currentValue) return;
+            const nextValue = buildVersionedModuleUrl(currentValue, moduleRev);
+            if (nextValue && nextValue !== currentValue) {
+                el.setAttribute(attr, nextValue);
+            }
+        });
+    });
+}
+
+function exposeModuleRuntime(moduleRev) {
+    window.currentModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
+
+    window.WILDU_MODULE = {
+        rev: window.currentModuleRev,
+        links: Array.isArray(window.currentInternalLinks) ? window.currentInternalLinks : [],
+        getUrl: function (rawUrl) {
+            return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
+        },
+        getLink: function (ref, fallbackUrl) {
+            return getModuleInternalLink(ref, fallbackUrl);
+        },
+        rewriteRoot: function (root) {
+            rewriteModuleResourceUrls(root || document, window.currentModuleRev || 1);
+        }
+    };
+
+    window.getVersionedModuleUrl = function (rawUrl) {
+        return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
+    };
+
+    window.getModuleInternalLink = function (ref, fallbackUrl) {
+        return getModuleInternalLink(ref, fallbackUrl);
+    };
+}
+
+function renderDynamicResources(resources) {
+    const container = document.getElementById('dynamic-resources-list');
+    if (!container) return;
+
+    container.innerHTML = resources.map(res => {
+        const safeLinks = btoa(JSON.stringify(res.link_interni || []));
+        const grado = res.Grado_Minimo || "";
+
+        const moduleRevRaw =
+            res.module_rev ??
+            res.Module_Rev ??
+            res.modulerev ??
+            res.versione ??
+            res.Versione ??
+            1;
+
+        const moduleRev = Math.max(1, parseInt(moduleRevRaw, 10) || 1);
+
+        let audioParam = "''";
+        if (res.Audio === "STOP") {
+            audioParam = "'STOP'";
+        } else if (res.Audio) {
+            audioParam = `WILD_ASSETS['${res.Audio}']`;
+        }
+
+        const safeLinkRisorsa = String(res.Link_Risorsa || "").replace(/'/g, "\\'");
+        const safeGrado = String(grado || "").replace(/'/g, "\\'");
+
+        return `
+            <div class="resource-item" onclick="openModule('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev})">
+                <div class="resource-info">
+                    <span class="resource-icon">${res.Categoria}</span>
+                    <div style="display:flex; flex-direction:column;">
+                        <span class="resource-name">${res.Titolo}</span>
+                        <span style="font-size:11px; color:#666;">${res.Descrizione}</span>
                     </div>
-                    <span style="color:var(--w-sub)">➔</span>
-                </div>`;
-        }).join('');
+                </div>
+                <span style="color:var(--w-sub)">➔</span>
+            </div>`;
+    }).join('');
+}
+
+async function openModule(f, a, i, r, encodedLinks, moduleRev) {
+    if (!checkRankMet(r)) {
+        showToast("🔒 Grado richiesto: " + r.toUpperCase());
+        return;
     }
 
-    // 🟢 OPEN MODULE CON LINK INTERNI (VERSIONE 2026)
-    async function openModule(f, a, i, r, encodedLinks) { 
-        if (!checkRankMet(r)) { showToast("🔒 Grado richiesto: " + r.toUpperCase()); return; } 
-        
-        // Salviamo i link per il modulo figlio
-        window.currentInternalLinks = encodedLinks ? JSON.parse(atob(encodedLinks)) : [];
+    const resolvedModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
+    const versionedModuleUrl = buildVersionedModuleUrl(f, resolvedModuleRev);
 
-        ['events', 'free', 'paid', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); }); 
-        const m = document.getElementById('module-container'); 
-        m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>'; 
-        m.classList.remove('hidden'); 
-        handleModuleAudio(a); 
-        if (i) document.querySelector('.nav').style.display = 'none'; 
-        try { 
-            const res = await fetch(f + '?nocache=' + Date.now()); 
-            m.innerHTML = await res.text(); 
-            m.querySelectorAll('script').forEach(s => { 
-                const n = document.createElement('script'); 
-                n.text = s.text; 
-                document.body.appendChild(n).parentNode.removeChild(n); 
-            }); 
-        } catch(e) { m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>'; } 
+    window.currentInternalLinks = encodedLinks ? JSON.parse(atob(encodedLinks)) : [];
+    window.currentModuleRev = resolvedModuleRev;
+    window.currentModuleUrl = f;
+    window.currentModuleVersionedUrl = versionedModuleUrl;
+
+    const meta = readModuleCacheMeta();
+    meta[String(f)] = {
+        rev: resolvedModuleRev,
+        versionedUrl: versionedModuleUrl,
+        updatedAt: Date.now()
+    };
+    writeModuleCacheMeta(meta);
+
+    ['events', 'free', 'paid', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => {
+        if (document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden');
+    });
+
+    const m = document.getElementById('module-container');
+    m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>';
+    m.classList.remove('hidden');
+
+    handleModuleAudio(a);
+    if (i) document.querySelector('.nav').style.display = 'none';
+
+    try {
+        const res = await fetch(versionedModuleUrl);
+        const html = await res.text();
+
+        m.innerHTML = `
+            <div style="text-align:right; padding:8px 10px 0 10px; font-size:11px; color:#777; letter-spacing:0.5px;">
+                Modulo v${resolvedModuleRev}
+            </div>
+            ${html}
+        `;
+
+        exposeModuleRuntime(resolvedModuleRev);
+        rewriteModuleResourceUrls(m, resolvedModuleRev);
+
+        m.querySelectorAll('script').forEach(s => {
+            const n = document.createElement('script');
+            n.text = s.text;
+            document.body.appendChild(n).parentNode.removeChild(n);
+        });
+    } catch (e) {
+        m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>';
     }
+}
     
     function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
     
