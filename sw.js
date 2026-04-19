@@ -19,6 +19,12 @@ const SHELL_URLS = [
     VERSION_URL
 ];
 
+const MODULE_CACHE_MAX_ENTRIES = 40;
+const MODULE_CACHE_TRIM_TO = 24;
+
+const ASSET_CACHE_MAX_ENTRIES = 160;
+const ASSET_CACHE_TRIM_TO = 110;
+
 self.addEventListener('install', (e) => {
     self.skipWaiting();
 });
@@ -29,6 +35,7 @@ self.addEventListener('activate', (e) => {
         await saveActiveShellVersion(version);
         await warmShellCache(version);
         await cleanupOldCaches(version);
+        await trimRuntimeCaches();
         await clients.claim();
     })());
 });
@@ -175,6 +182,60 @@ async function cleanupOldCaches(activeVersion) {
     );
 }
 
+async function trimRuntimeCaches() {
+    await trimCacheByLimit(MODULE_CACHE, MODULE_CACHE_MAX_ENTRIES, MODULE_CACHE_TRIM_TO);
+    await trimCacheByLimit(ASSET_CACHE, ASSET_CACHE_MAX_ENTRIES, ASSET_CACHE_TRIM_TO);
+}
+
+async function trimCacheByLimit(cacheName, maxEntries, trimTo) {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+
+    if (keys.length <= maxEntries) return;
+
+    const deleteCount = Math.max(0, keys.length - trimTo);
+
+    for (let i = 0; i < deleteCount; i++) {
+        await cache.delete(keys[i]);
+    }
+}
+
+function isQuotaLikeError(err) {
+    const raw = String(
+        (err && err.name) ||
+        (err && err.message) ||
+        err ||
+        ''
+    ).toLowerCase();
+
+    return (
+        raw.includes('quota') ||
+        raw.includes('storage') ||
+        raw.includes('space') ||
+        raw.includes('exceeded')
+    );
+}
+
+async function safeCachePut(cacheName, req, response, maxEntries, trimTo) {
+    if (!response || !response.ok) return;
+
+    const cache = await caches.open(cacheName);
+
+    try {
+        await cache.put(req, response.clone());
+    } catch (err) {
+        if (!isQuotaLikeError(err)) return;
+
+        await trimCacheByLimit(cacheName, 0, trimTo);
+
+        try {
+            await cache.put(req, response.clone());
+        } catch (_) {
+            // fallback silenzioso: meglio servire la rete che rompere tutto
+        }
+    }
+}
+
 async function handleShellRequest(req, url) {
     const version = await getActiveShellVersion();
     const shellCache = await caches.open(getShellCacheName(version));
@@ -196,14 +257,30 @@ async function handleModuleRequest(req) {
     const cached = await cache.match(req);
 
     if (cached) {
-        fetch(req).then((fresh) => {
-            if (fresh && fresh.ok) cache.put(req, fresh.clone());
+        fetch(req).then(async (fresh) => {
+            if (fresh && fresh.ok) {
+                await safeCachePut(
+                    MODULE_CACHE,
+                    req,
+                    fresh,
+                    MODULE_CACHE_MAX_ENTRIES,
+                    MODULE_CACHE_TRIM_TO
+                );
+            }
         }).catch(() => {});
         return cached;
     }
 
     const fresh = await fetch(req);
-    if (fresh && fresh.ok) await cache.put(req, fresh.clone());
+    if (fresh && fresh.ok) {
+        await safeCachePut(
+            MODULE_CACHE,
+            req,
+            fresh,
+            MODULE_CACHE_MAX_ENTRIES,
+            MODULE_CACHE_TRIM_TO
+        );
+    }
     return fresh;
 }
 
@@ -214,18 +291,22 @@ async function handleAssetRequest(req) {
     const networkPromise = fetch(req)
         .then(async (fresh) => {
             if (fresh && fresh.ok) {
-                await cache.put(req, fresh.clone());
+                await safeCachePut(
+                    ASSET_CACHE,
+                    req,
+                    fresh,
+                    ASSET_CACHE_MAX_ENTRIES,
+                    ASSET_CACHE_TRIM_TO
+                );
             }
             return fresh;
         })
         .catch(() => null);
 
-    // Risposta immediata da cache se esiste
     if (cached) {
         return cached;
     }
 
-    // Primo caricamento: prova la rete
     const fresh = await networkPromise;
     return fresh || Response.error();
 }
