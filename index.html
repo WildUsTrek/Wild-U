@@ -1560,6 +1560,145 @@ function bindPublicCacheSecretTrigger() {
     });
 }  
     
+
+const MODULE_RUNTIME_CACHE_NAMES = ['wildu-module-v1', 'wildu-asset-v1'];
+const STORAGE_GUARD_KEY = 'wildStorageGuardAt';
+const STORAGE_GUARD_RATIO = 0.88;
+const STORAGE_GUARD_CRITICAL_RATIO = 0.94;
+const STORAGE_GUARD_COOLDOWN_MS = 5 * 60 * 1000;
+
+function isQuotaExceededStorageError(err) {
+    return !!err && (
+        err.name === 'QuotaExceededError' ||
+        err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        err.code === 22 ||
+        err.code === 1014
+    );
+}
+
+function canRunStorageGuardNow() {
+    try {
+        const last = parseInt(localStorage.getItem(STORAGE_GUARD_KEY) || '0', 10);
+        if (!last) return true;
+        return (Date.now() - last) > STORAGE_GUARD_COOLDOWN_MS;
+    } catch (e) {
+        return true;
+    }
+}
+
+async function getStorageEstimateSafe() {
+    if (!navigator.storage || typeof navigator.storage.estimate !== 'function') return null;
+
+    try {
+        const estimate = await navigator.storage.estimate();
+        const usage = Number(estimate.usage || 0);
+        const quota = Number(estimate.quota || 0);
+        return {
+            usage,
+            quota,
+            ratio: quota > 0 ? (usage / quota) : 0
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function pruneOldLocalProfileBackups() {
+    try {
+        const currentBackupKey = wildUserKey ? ('wildLastSafeProfile_' + wildUserKey) : null;
+        const toDelete = [];
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+
+            if (key.startsWith('wildLastSafeProfile_') && key !== currentBackupKey) {
+                toDelete.push(key);
+            }
+        }
+
+        toDelete.forEach(key => localStorage.removeItem(key));
+    } catch (e) {}
+}
+
+async function clearNonEssentialClientStorage(options = {}) {
+    const dropPublicCache = options.dropPublicCache === true;
+
+    try { localStorage.removeItem(MODULE_CACHE_META_KEY); } catch (e) {}
+    try { localStorage.removeItem(REG_CTA_STORAGE_KEY); } catch (e) {}
+
+    if (dropPublicCache) {
+        try { localStorage.removeItem(PUBLIC_CACHE_KEY); } catch (e) {}
+    }
+
+    pruneOldLocalProfileBackups();
+
+    if ('caches' in window) {
+        try {
+            const names = await caches.keys();
+            await Promise.all(
+                names
+                    .filter(name => MODULE_RUNTIME_CACHE_NAMES.includes(name))
+                    .map(name => caches.delete(name))
+            );
+        } catch (e) {}
+    }
+}
+
+async function maybeRunStorageGuard(options = {}) {
+    const aggressive = options.aggressive === true;
+    const snapshot = await getStorageEstimateSafe();
+    if (!snapshot || !snapshot.quota) return null;
+
+    if (!aggressive) {
+        if (snapshot.ratio < STORAGE_GUARD_RATIO) return snapshot;
+        if (!canRunStorageGuardNow()) return snapshot;
+    }
+
+    await clearNonEssentialClientStorage({
+        dropPublicCache: aggressive || snapshot.ratio >= STORAGE_GUARD_CRITICAL_RATIO
+    });
+
+    try {
+        localStorage.setItem(STORAGE_GUARD_KEY, String(Date.now()));
+    } catch (e) {}
+
+    return await getStorageEstimateSafe();
+}
+
+async function safeWritePublicCacheEnvelope(payload) {
+    const envelope = {
+        savedAt: Date.now(),
+        payload: payload
+    };
+
+    const raw = JSON.stringify(envelope);
+
+    try {
+        localStorage.setItem(PUBLIC_CACHE_KEY, raw);
+        return envelope;
+    } catch (e) {
+        if (!isQuotaExceededStorageError(e)) {
+            console.warn('Impossibile salvare wildCachePublic:', e);
+            return null;
+        }
+
+        console.warn('Storage quasi pieno: pulizia cache non essenziali e retry.');
+
+        await maybeRunStorageGuard({
+            aggressive: true
+        });
+
+        try {
+            localStorage.setItem(PUBLIC_CACHE_KEY, raw);
+            return envelope;
+        } catch (retryErr) {
+            console.warn('wildCachePublic non salvata dopo cleanup:', retryErr);
+            return null;
+        }
+    }
+}
+
     
 // ==========================================
 // INIZIALIZZAZIONE
@@ -1584,6 +1723,10 @@ async function init() {
 
     checkAuthEnvironment();
 
+        maybeRunStorageGuard({ aggressive: false }).catch((e) => {
+        console.warn('Storage guard skipped:', e);
+    });
+
     // Primo bootstrap controllato
     setTimeout(async () => {
         try {
@@ -1592,6 +1735,7 @@ async function init() {
             console.error('Init bootstrap error:', e);
         }
     }, 50);
+    
 }
 
 async function fetchInitData(options = {}) {
@@ -1707,7 +1851,7 @@ const publicCachePayload = {
     paydays: data.paydays || []
 };
 
-            writePublicCacheEnvelope(publicCachePayload);
+            await safeWritePublicCacheEnvelope(publicCachePayload);
 
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
