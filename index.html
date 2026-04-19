@@ -1610,13 +1610,13 @@ async function fetchInitData(options = {}) {
         // 1. CACHE PUBBLICA: render veloce subito
         if (cachedPublicData && !bypassPublicCache) {
             try {
-                const data = cachedPublicData;
+const data = cachedPublicData;
 
-                syncClientSessionFromInitData(data);
-
-                WILD_ASSETS = data.assets || {};
-                config = data.config || {};
-                if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+// La cache pubblica non deve mai governare la sessione utente.
+// Qui renderizziamo solo dati pubblici già noti.
+WILD_ASSETS = data.assets || {};
+config = data.config || {};
+if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
                 FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
                 FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
@@ -1625,20 +1625,27 @@ async function fetchInitData(options = {}) {
                     document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
                 }
 
-                allTrips = data.events || [];
-                allOpenDays = data.opendays || [];
-                allPayDays = data.paydays || [];
-                allBookings = [];
+allTrips = data.events || [];
+allOpenDays = data.opendays || [];
+allPayDays = data.paydays || [];
 
-                if (data.resources) renderDynamicResources(data.resources);
+// La cache pubblica non deve sporcare lo stato utente.
+// Se siamo guest, puliamo lo zaino runtime.
+// Se siamo loggati, lasciamo stare: arriverà il refresh fresco identity-aware.
+if (!isClientLogged()) {
+    allBookings = [];
+    myBookedTitles = [];
+}
 
-                buildFilters();
-                filterTrips();
-                buildODFilters();
-                renderOpenDays();
-                buildPDFilters();
-                renderPayDays();
-                reconcileProfileShellWithClientSession();
+if (data.resources) renderDynamicResources(data.resources);
+
+buildFilters();
+filterTrips();
+buildODFilters();
+renderOpenDays();
+buildPDFilters();
+renderPayDays();
+reconcileProfileShellWithClientSession();
             } catch (e) {
                 console.warn("Cache pubblica corrotta, ignorata.", e);
             }
@@ -1691,18 +1698,14 @@ async function fetchInitData(options = {}) {
 
             syncClientSessionFromInitData(data);
 
-            const publicCachePayload = {
-                authState: data.authState || 'GUEST',
-                channel: data.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-                tokenStatus: data.tokenStatus || 'NONE',
-                capabilities: data.capabilities || getDefaultClientCapabilities(isTelegramContext() ? 'TELEGRAM' : 'WEB'),
-                assets: data.assets || {},
-                config: data.config || {},
-                resources: data.resources || [],
-                events: data.events || [],
-                opendays: data.opendays || [],
-                paydays: data.paydays || []
-            };
+const publicCachePayload = {
+    assets: data.assets || {},
+    config: data.config || {},
+    resources: data.resources || [],
+    events: data.events || [],
+    opendays: data.opendays || [],
+    paydays: data.paydays || []
+};
 
             writePublicCacheEnvelope(publicCachePayload);
 
