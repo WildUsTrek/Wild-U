@@ -49,7 +49,7 @@ self.addEventListener('fetch', (e) => {
     }
 
     if (isShellRequest(req, url)) {
-        e.respondWith(handleShellRequest(req));
+        e.respondWith(handleShellRequest(req, url));
         return;
     }
 
@@ -58,7 +58,7 @@ self.addEventListener('fetch', (e) => {
         return;
     }
 
-    if (isAssetRequest(url)) {
+    if (isAssetRequest(req, url)) {
         e.respondWith(handleAssetRequest(req));
         return;
     }
@@ -72,20 +72,45 @@ self.addEventListener('fetch', (e) => {
 });
 
 function isShellRequest(req, url) {
-    return (
-        req.mode === 'navigate' ||
-        req.destination === 'document' ||
+    const path = url.pathname.toLowerCase();
+    const scopePath = SCOPE_URL.pathname.toLowerCase();
+
+    const isExactShellEntry =
         url.href === INDEX_URL ||
-        url.pathname === SCOPE_URL.pathname
-    );
+        path === scopePath ||
+        path === scopePath.replace(/\/$/, '') ||
+        path.endsWith('/index.html');
+
+    if (isExactShellEntry) return true;
+
+    // Shell solo per navigazioni "pulite" senza estensione file.
+    // Così PDF/MP3/immagini/documenti non vengono scambiati per index.
+    const hasFileExtension = /\.[a-z0-9]+$/i.test(path);
+
+    return req.mode === 'navigate' && !hasFileExtension;
 }
 
 function isModuleRequest(url) {
     return url.pathname.endsWith('.html') && url.href !== INDEX_URL;
 }
 
-function isAssetRequest(url) {
-    return /\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|mp3|wav|ogg)$/i.test(url.pathname);
+function isAssetRequest(req, url) {
+    const destination = req.destination || '';
+    const path = url.pathname.toLowerCase();
+
+    if ([
+        'style',
+        'script',
+        'image',
+        'font',
+        'audio',
+        'video',
+        'iframe'
+    ].includes(destination)) {
+        return true;
+    }
+
+    return /\.(css|js|mjs|json|png|jpg|jpeg|gif|svg|webp|ico|bmp|woff|woff2|ttf|eot|mp3|wav|ogg|m4a|aac|mp4|webm|pdf|txt|zip|rar|7z|doc|docx|xls|xlsx|ppt|pptx)$/i.test(path);
 }
 
 async function fetchShellVersion() {
@@ -150,7 +175,7 @@ async function cleanupOldCaches(activeVersion) {
     );
 }
 
-async function handleShellRequest(req) {
+async function handleShellRequest(req, url) {
     const version = await getActiveShellVersion();
     const shellCache = await caches.open(getShellCacheName(version));
 
@@ -185,9 +210,22 @@ async function handleModuleRequest(req) {
 async function handleAssetRequest(req) {
     const cache = await caches.open(ASSET_CACHE);
     const cached = await cache.match(req);
-    if (cached) return cached;
 
-    const fresh = await fetch(req);
-    if (fresh && fresh.ok) await cache.put(req, fresh.clone());
-    return fresh;
+    const networkPromise = fetch(req)
+        .then(async (fresh) => {
+            if (fresh && fresh.ok) {
+                await cache.put(req, fresh.clone());
+            }
+            return fresh;
+        })
+        .catch(() => null);
+
+    // Risposta immediata da cache se esiste
+    if (cached) {
+        return cached;
+    }
+
+    // Primo caricamento: prova la rete
+    const fresh = await networkPromise;
+    return fresh || Response.error();
 }
