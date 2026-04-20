@@ -1370,6 +1370,24 @@ const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
 
+const DEBUG_WILDU_PAGE = true;
+
+function pageDebug(type, details) {
+    if (!DEBUG_WILDU_PAGE) return;
+    console.log('[WILDU PAGE]', type, details || {});
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        const data = event && event.data;
+        if (!data || !data.__WILDU_DEBUG__) return;
+
+        const msg = data.__WILDU_DEBUG__;
+        console.log('[WILDU TRACE]', msg.type, msg.details || {}, msg.ts || '');
+    });
+}
+    
+
 function readShellMeta() {
     try {
         return JSON.parse(localStorage.getItem(SHELL_META_KEY) || '{}');
@@ -1425,10 +1443,19 @@ async function ensureFreshShellVersion() {
     const remoteVersion = await fetchShellVersion();
     const meta = readShellMeta();
 
+    pageDebug('SHELL_VERSION_CHECK', {
+        remoteVersion,
+        localVersion: meta.version || null
+    });
+
     if (!meta.version) {
         writeShellMeta({
             version: remoteVersion,
             lastCheckAt: Date.now()
+        });
+
+        pageDebug('SHELL_FIRST_SEEN', {
+            version: remoteVersion
         });
         return;
     }
@@ -1438,16 +1465,32 @@ async function ensureFreshShellVersion() {
             version: remoteVersion,
             lastCheckAt: Date.now()
         });
+
+        pageDebug('SHELL_ALREADY_CURRENT', {
+            version: remoteVersion
+        });
         return;
     }
 
     if (hasRecentShellReloadLock()) {
+        pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
+            oldVersion: meta.version,
+            newVersion: remoteVersion
+        });
         return;
     }
 
-    setShellReloadLock();
+    pageDebug('SHELL_VERSION_CHANGED', {
+        oldVersion: meta.version,
+        newVersion: remoteVersion
+    });
 
+    setShellReloadLock();
     await clearWilduShellCaches();
+
+    pageDebug('SHELL_CACHES_CLEARED', {
+        newVersion: remoteVersion
+    });
 
     writeShellMeta({
         version: remoteVersion,
@@ -1457,6 +1500,10 @@ async function ensureFreshShellVersion() {
 
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.set('shellv', remoteVersion);
+
+    pageDebug('SHELL_RELOAD_TRIGGERED', {
+        targetUrl: nextUrl.toString()
+    });
 
     window.location.replace(nextUrl.toString());
     throw new Error('SHELL_REFRESH_TRIGGERED');
@@ -1751,49 +1798,66 @@ async function fetchInitData(options = {}) {
         const hasValidPublicCache = !force && !bypassPublicCache && isPublicCacheStillValid(publicCacheEnvelope);
         const cachedPublicData = publicCacheEnvelope && publicCacheEnvelope.payload ? publicCacheEnvelope.payload : null;
 
+        pageDebug('PUBLIC_CACHE_STATE', {
+    force,
+    bypassPublicCache,
+    hasEnvelope: !!publicCacheEnvelope,
+    hasValidPublicCache,
+    hasAuthUser: !!auth.currentUser
+});
+
         // 1. CACHE PUBBLICA: render veloce subito
-        if (cachedPublicData && !bypassPublicCache) {
-            try {
-const data = cachedPublicData;
+if (cachedPublicData && !bypassPublicCache) {
+    try {
+        const data = cachedPublicData;
 
-// La cache pubblica non deve mai governare la sessione utente.
-// Qui renderizziamo solo dati pubblici già noti.
-WILD_ASSETS = data.assets || {};
-config = data.config || {};
-if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
-
-                FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
-                FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
-
-                if (WILD_ASSETS['img_header']) {
-                    document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
-                }
-
-allTrips = data.events || [];
-allOpenDays = data.opendays || [];
-allPayDays = data.paydays || [];
-
-// La cache pubblica non deve sporcare lo stato utente.
-// Se siamo guest, puliamo lo zaino runtime.
-// Se siamo loggati, lasciamo stare: arriverà il refresh fresco identity-aware.
-if (!isClientLogged()) {
-    allBookings = [];
-    myBookedTitles = [];
-}
-
-if (data.resources) renderDynamicResources(data.resources);
-
-buildFilters();
-filterTrips();
-buildODFilters();
-renderOpenDays();
-buildPDFilters();
-renderPayDays();
-reconcileProfileShellWithClientSession();
-            } catch (e) {
-                console.warn("Cache pubblica corrotta, ignorata.", e);
-            }
+        if (typeof pageDebug === 'function') {
+            pageDebug('PUBLIC_CACHE_RENDER', {
+                mode: 'CACHE_RENDER',
+                hasResources: Array.isArray(data.resources) ? data.resources.length : 0,
+                hasEvents: Array.isArray(data.events) ? data.events.length : 0
+            });
         }
+
+        // La cache pubblica non deve mai governare la sessione utente.
+        // Qui renderizziamo solo dati pubblici già noti.
+        WILD_ASSETS = data.assets || {};
+        config = data.config || {};
+        if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+
+        FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
+        FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
+
+        if (WILD_ASSETS['img_header']) {
+            document.getElementById('main-hero').style.backgroundImage =
+                "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
+        }
+
+        allTrips = data.events || [];
+        allOpenDays = data.opendays || [];
+        allPayDays = data.paydays || [];
+
+        // La cache pubblica non deve sporcare lo stato utente.
+        // Se siamo guest, puliamo lo zaino runtime.
+        // Se siamo loggati, lasciamo stare: arriverà il refresh fresco identity-aware.
+        if (!isClientLogged()) {
+            allBookings = [];
+            myBookedTitles = [];
+        }
+
+        if (data.resources) renderDynamicResources(data.resources);
+
+        buildFilters();
+        filterTrips();
+        buildODFilters();
+        renderOpenDays();
+        buildPDFilters();
+        renderPayDays();
+        reconcileProfileShellWithClientSession();
+    } catch (e) {
+        console.warn("Cache pubblica corrotta, ignorata.", e);
+    }
+}
 
         // 2. Se la cache pubblica è ancora valida e NON siamo in un flusso utente loggato,
         // saltiamo completamente la chiamata remota.
@@ -1803,6 +1867,11 @@ reconcileProfileShellWithClientSession();
                     maybeShowStartupRegistrationCTA();
                 }, 700);
             }
+
+            pageDebug('PUBLIC_CACHE_SHORT_CIRCUIT', {
+    mode: 'CACHE_ONLY_NO_REMOTE_FETCH'
+});
+            
             return cachedPublicData;
         }
 
@@ -1822,6 +1891,14 @@ reconcileProfileShellWithClientSession();
                 }
             }
 
+
+            
+            pageDebug('INITDATA_REMOTE_FETCH', {
+    mode: 'NETWORK_FETCH',
+    channel: isTelegramContext() ? 'TELEGRAM' : 'WEB',
+    hasAuthUser: !!auth.currentUser
+});
+            
             const res = await fetch(MOTORE_API_URL, {
                 method: 'POST',
                 headers,
@@ -1852,6 +1929,13 @@ const publicCachePayload = {
 };
 
             await safeWritePublicCacheEnvelope(publicCachePayload);
+
+            pageDebug('PUBLIC_CACHE_UPDATED', {
+    resources: publicCachePayload.resources.length,
+    events: publicCachePayload.events.length,
+    opendays: publicCachePayload.opendays.length,
+    paydays: publicCachePayload.paydays.length
+});
 
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
