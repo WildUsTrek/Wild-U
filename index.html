@@ -567,7 +567,20 @@ auth.getRedirectResult()
 
 
     // Torna alla versione stabile: il warning giallo è normale e innocuo
-    db.enablePersistence().catch(err => { console.log("Offline non disponibile", err); });
+    // Firestore: niente rumore quando sei offline, errori minimi quando sei online
+    firebase.firestore.setLogLevel(navigator.onLine ? 'error' : 'silent');
+
+    window.addEventListener('offline', () => {
+        firebase.firestore.setLogLevel('silent');
+    });
+
+    window.addEventListener('online', () => {
+        firebase.firestore.setLogLevel('error');
+    });
+
+    db.enablePersistence().catch(() => {
+        // niente console spam: l'app continua comunque a funzionare
+    });
 
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
