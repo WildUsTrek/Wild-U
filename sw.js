@@ -33,6 +33,7 @@ function swDebug(type, details) {
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', self.registration.scope).toString();
 const VERSION_URL = new URL('version.json', self.registration.scope).toString();
+const VERSION_PATHNAME = new URL(VERSION_URL).pathname.toLowerCase();
 
 const SHELL_URLS = [
     new URL('', self.registration.scope).toString(),
@@ -74,11 +75,15 @@ self.addEventListener('fetch', (e) => {
     // Non tocchiamo risorse esterne: Firebase, Google, Telegram, GitHub raw, Cloud Run esterno, ecc.
     if (url.origin !== self.location.origin) return;
 
-    // version.json deve arrivare sempre fresco
-    if (url.href === VERSION_URL) {
-        e.respondWith(fetch(req, { cache: 'no-store' }));
-        return;
-    }
+   // version.json deve arrivare sempre fresco anche con querystring (?t=..., ?bust=...)
+if (url.pathname.toLowerCase() === VERSION_PATHNAME) {
+    swDebug('VERSION_BYPASS_NO_STORE', {
+        request: req.url
+    });
+
+    e.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+}
 
     if (isShellRequest(req, url)) {
         e.respondWith(handleShellRequest(req, url));
