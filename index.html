@@ -662,30 +662,30 @@ auth.getRedirectResult()
         }
     }
 
-    function reconcileProfileShellWithClientSession() {
-        const loginScreen = document.getElementById('login-screen');
-        const completeScreen = document.getElementById('complete-profile-screen');
-        const profileData = document.getElementById('profile-data');
-        if (!loginScreen || !completeScreen || !profileData) return;
+function reconcileProfileShellWithClientSession() {
+    const loginScreen = document.getElementById('login-screen');
+    const completeScreen = document.getElementById('complete-profile-screen');
+    const profileData = document.getElementById('profile-data');
+    if (!loginScreen || !completeScreen || !profileData) return;
 
-        if (clientSession.authState === 'LOGGED') {
-            loginScreen.classList.add('hidden');
-            completeScreen.classList.add('hidden');
-            profileData.classList.remove('hidden');
-            return;
-        }
-
-        profileData.classList.add('hidden');
-
-        // Se l'utente è nel flusso di completamento registrazione, non lo interrompiamo
-        if (tempGoogleUser || tempTelegramUser) {
-            loginScreen.classList.add('hidden');
-            completeScreen.classList.remove('hidden');
-        } else {
-            completeScreen.classList.add('hidden');
-            loginScreen.classList.remove('hidden');
-        }
+    if (clientSession.authState === 'LOGGED' || clientSession.authState === 'OFFLINE') {
+        loginScreen.classList.add('hidden');
+        completeScreen.classList.add('hidden');
+        profileData.classList.remove('hidden');
+        return;
     }
+
+    profileData.classList.add('hidden');
+
+    // Se l'utente è nel flusso di completamento registrazione, non lo interrompiamo
+    if (tempGoogleUser || tempTelegramUser) {
+        loginScreen.classList.add('hidden');
+        completeScreen.classList.remove('hidden');
+    } else {
+        completeScreen.classList.add('hidden');
+        loginScreen.classList.remove('hidden');
+    }
+}
 
     function isClientLogged() {
         return clientSession.authState === 'LOGGED';
@@ -861,16 +861,22 @@ auth.getRedirectResult()
         openRegistrationCTA('APP_START', { force: false });
     }
 
-    function requireLoggedAccess(reason, options = {}) {
-        if (isClientLogged()) return true;
+function requireLoggedAccess(reason, options = {}) {
+    if (isClientLogged()) return true;
 
-        if (options.closeModalId) {
-            closeModalById(options.closeModalId);
-        }
+    if (options.closeModalId) {
+        closeModalById(options.closeModalId);
+    }
 
-        openRegistrationCTA(reason, { force: true });
+    if (clientSession.authState === 'OFFLINE' || !navigator.onLine) {
+        showToast("Sei offline. Questa funzione torna disponibile quando rientra la connessione.");
+        show('profile');
         return false;
     }
+
+    openRegistrationCTA(reason, { force: true });
+    return false;
+}
 
     async function getVerifiedClientToken() {
         if (!isClientLogged() || !auth.currentUser) {
@@ -1086,81 +1092,127 @@ async function handleTelegramAuth(tgUser) {
 // ==========================================
 
 auth.onAuthStateChanged(async (user) => {
-    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-    const isTelegram = tgUser && tgUser.id;
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    const isTelegram = tgUser && tgUser.id;
 
-    // Se siamo dentro Telegram, Google non governa questo contesto
-    if (isTelegram) {
-        clientSession = {
-            authState: 'GUEST',
-            channel: 'TELEGRAM',
-            tokenStatus: 'NONE',
-            capabilities: getDefaultClientCapabilities('TELEGRAM')
-        };
-        reconcileProfileShellWithClientSession();
-        return;
-    }
+    // Se siamo dentro Telegram, Google non governa questo contesto
+    if (isTelegram) {
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'TELEGRAM',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('TELEGRAM')
+        };
+        reconcileProfileShellWithClientSession();
+        return;
+    }
 
-    if (authRefreshLock) return;
+    if (authRefreshLock) return;
 
-    if (user) {
-        tempGoogleUser = user;
-        tempTelegramUser = null;
+    if (user) {
+        tempGoogleUser = user;
+        tempTelegramUser = null;
+        wildUserKey = user.uid;
+        localStorage.setItem('wildUserKey', wildUserKey);
 
-        // 🛡️ MOSTRA CARICAMENTO: Blocca il flash visivo in cui chiede il numero per sbaglio
-        const loginDesc = document.getElementById('login-desc');
-        if (loginDesc) loginDesc.innerText = "Verifica identità in corso... 🌲";
+        const loginDesc = document.getElementById('login-desc');
 
-        try {
-            const docSnap = await db.collection("utenti").doc(user.uid).get();
+        // OFFLINE: non proviamo a capire se è un nuovo utente.
+        // Niente complete-profile-screen, niente deduzioni sul DB.
+        if (!navigator.onLine) {
+            clientSession = {
+                authState: 'OFFLINE',
+                channel: 'WEB',
+                tokenStatus: 'OFFLINE',
+                capabilities: {
+                    ...getDefaultClientCapabilities('WEB'),
+                    canBook: false,
+                    canUseBackpack: false,
+                    canAuthenticateHere: false
+                }
+            };
 
-            if (docSnap.exists) {
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('complete-profile-screen').classList.add('hidden');
+            if (loginDesc) {
+                loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+            }
 
-                authRefreshLock = true;
-                try {
-                    await fetchInitData({ reason: 'AUTH_STATE', force: true });
-                } finally {
-                    authRefreshLock = false;
-                }
+            updateProfileUI();
+            return;
+        }
 
-                updateProfileUI();
-            } else {
-                clientSession = {
-                    authState: 'GUEST',
-                    channel: 'WEB',
-                    tokenStatus: 'VALID',
-                    capabilities: getDefaultClientCapabilities('WEB')
-                };
+        // 🛡️ MOSTRA CARICAMENTO: Blocca il flash visivo in cui chiede il numero per sbaglio
+        if (loginDesc) loginDesc.innerText = "Verifica identità in corso... 🌲";
 
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('profile-data').classList.add('hidden');
-                document.getElementById('complete-profile-screen').classList.remove('hidden');
-            }
+        try {
+            const docSnap = await db.collection("utenti").doc(user.uid).get();
 
-        } catch (e) {
-            authRefreshLock = false;
-            console.error("Firestore error:", e);
-            showToast("Errore: " + e.message);
-        }
-    } else {
-        tempGoogleUser = null;
+            if (docSnap.exists) {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('complete-profile-screen').classList.add('hidden');
 
-        clientSession = {
-            authState: 'GUEST',
-            channel: 'WEB',
-            tokenStatus: 'NONE',
-            capabilities: getDefaultClientCapabilities('WEB')
-        };
+                authRefreshLock = true;
+                try {
+                    await fetchInitData({ reason: 'AUTH_STATE', force: true });
+                } finally {
+                    authRefreshLock = false;
+                }
 
-        wildUserKey = null;
-        localStorage.removeItem('wildUserKey');
-        reconcileProfileShellWithClientSession();
-        
-        const loginDesc = document.getElementById('login-desc');
-        if(loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
-    }
+                updateProfileUI();
+            } else {
+                clientSession = {
+                    authState: 'GUEST',
+                    channel: 'WEB',
+                    tokenStatus: 'VALID',
+                    capabilities: getDefaultClientCapabilities('WEB')
+                };
+
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('profile-data').classList.add('hidden');
+                document.getElementById('complete-profile-screen').classList.remove('hidden');
+            }
+
+        } catch (e) {
+            authRefreshLock = false;
+            console.error("Firestore error:", e);
+
+            // Se il problema è che siamo finiti offline durante la verifica,
+            // trattiamo l'utente come OFFLINE_LIMITED e basta.
+            if (!navigator.onLine) {
+                clientSession = {
+                    authState: 'OFFLINE',
+                    channel: 'WEB',
+                    tokenStatus: 'OFFLINE',
+                    capabilities: {
+                        ...getDefaultClientCapabilities('WEB'),
+                        canBook: false,
+                        canUseBackpack: false,
+                        canAuthenticateHere: false
+                    }
+                };
+
+                updateProfileUI();
+                return;
+            }
+
+            showToast("Errore: " + e.message);
+        }
+    } else {
+        tempGoogleUser = null;
+
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'WEB',
+            tokenStatus: 'NONE',
+            capabilities: getDefaultClientCapabilities('WEB')
+        };
+
+        wildUserKey = null;
+        localStorage.removeItem('wildUserKey');
+        reconcileProfileShellWithClientSession();
+
+        const loginDesc = document.getElementById('login-desc');
+        if (loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
+    }
 });
 
 // ==========================================
@@ -1358,6 +1410,18 @@ function logout() {
 
 function updateProfileUI() {
     reconcileProfileShellWithClientSession();
+
+    if (clientSession.authState === 'OFFLINE') {
+        const bookingsBox = document.getElementById('my-bookings-list');
+        if (bookingsBox) {
+            bookingsBox.innerHTML = '<p style="color:#aaa; font-size:14px; text-align:center; padding:20px;">Sei offline. Zaino, prenotazioni e verifiche account torneranno disponibili appena rientra la connessione. 🌲</p>';
+        }
+
+        if (cachedXPData && currentTab === 'profile') {
+            renderProfile(cachedXPData);
+        }
+        return;
+    }
 
     // Se l'utente è davvero loggato secondo il backend, possiamo caricare il profilo
     if (isClientLogged() && wildUserKey) {
