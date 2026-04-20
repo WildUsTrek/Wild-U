@@ -3202,7 +3202,20 @@ syncGradeToFirestoreIfNeeded(finalXP, soglie);
         const xpPercentText = document.getElementById('xp-percentage'); const profMissing = document.getElementById('prof-missing');
         
         profXPText.innerText = finalXP + " XP TOTALI";
-        document.getElementById('prof-key').innerText = "WILD-KEY: " + wildUserKey;
+        const profKeyEl = document.getElementById('prof-key');
+if (profKeyEl) {
+    if (clientSession.authState === 'OFFLINE' || !navigator.onLine) {
+        profKeyEl.innerText = "⚠️ SEI OFFLINE — profilo in modalità lettura limitata";
+        profKeyEl.style.opacity = "1";
+        profKeyEl.style.color = "#ffaa00";
+        profKeyEl.style.fontWeight = "900";
+    } else {
+        profKeyEl.innerText = "WILD-KEY: " + wildUserKey;
+        profKeyEl.style.opacity = "0.4";
+        profKeyEl.style.color = "";
+        profKeyEl.style.fontWeight = "";
+    }
+}
         
         document.getElementById('legenda-container').innerHTML = soglie.map(s => {
             const isUnlocked = finalXP >= s.punti;
