@@ -75,13 +75,29 @@ self.addEventListener('fetch', (e) => {
     // Non tocchiamo risorse esterne: Firebase, Google, Telegram, GitHub raw, Cloud Run esterno, ecc.
     if (url.origin !== self.location.origin) return;
 
-   // version.json deve arrivare sempre fresco anche con querystring (?t=..., ?bust=...)
+
+// version.json deve arrivare sempre fresco anche con querystring (?t=..., ?bust=...)
+// ma offline non deve generare errore rumoroso in console
 if (url.pathname.toLowerCase() === VERSION_PATHNAME) {
     swDebug('VERSION_BYPASS_NO_STORE', {
         request: req.url
     });
 
-    e.respondWith(fetch(req, { cache: 'no-store' }));
+    e.respondWith(
+        fetch(req, { cache: 'no-store' }).catch(() => {
+            swDebug('VERSION_FETCH_OFFLINE', {
+                request: req.url
+            });
+
+            return new Response(
+                JSON.stringify({ offline: true, version: null }),
+                {
+                    status: 503,
+                    headers: { 'Content-Type': 'application/json' }
+                }
+            );
+        })
+    );
     return;
 }
 
