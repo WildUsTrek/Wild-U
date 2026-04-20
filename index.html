@@ -1119,26 +1119,36 @@ auth.onAuthStateChanged(async (user) => {
 
         // OFFLINE: non proviamo a capire se è un nuovo utente.
         // Niente complete-profile-screen, niente deduzioni sul DB.
-        if (!navigator.onLine) {
-            clientSession = {
-                authState: 'OFFLINE',
-                channel: 'WEB',
-                tokenStatus: 'OFFLINE',
-                capabilities: {
-                    ...getDefaultClientCapabilities('WEB'),
-                    canBook: false,
-                    canUseBackpack: false,
-                    canAuthenticateHere: false
-                }
-            };
+if (!navigator.onLine) {
+    tempGoogleUser = null;
+    tempTelegramUser = null;
+    wildUserKey = null;
+    localStorage.removeItem('wildUserKey');
 
-            if (loginDesc) {
-                loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
-            }
-
-            updateProfileUI();
-            return;
+    clientSession = {
+        authState: 'OFFLINE',
+        channel: 'WEB',
+        tokenStatus: 'OFFLINE',
+        capabilities: {
+            ...getDefaultClientCapabilities('WEB'),
+            canBook: false,
+            canUseBackpack: false,
+            canAuthenticateHere: false
         }
+    };
+
+    allBookings = [];
+    myBookedTitles = [];
+    pendingBookings = [];
+    pendingCancels = [];
+
+    if (loginDesc) {
+        loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+    }
+
+    updateProfileUI();
+    return;
+}
 
         // 🛡️ MOSTRA CARICAMENTO: Blocca il flash visivo in cui chiede il numero per sbaglio
         if (loginDesc) loginDesc.innerText = "Verifica identità in corso... 🌲";
@@ -1177,22 +1187,36 @@ auth.onAuthStateChanged(async (user) => {
 
             // Se il problema è che siamo finiti offline durante la verifica,
             // trattiamo l'utente come OFFLINE_LIMITED e basta.
-            if (!navigator.onLine) {
-                clientSession = {
-                    authState: 'OFFLINE',
-                    channel: 'WEB',
-                    tokenStatus: 'OFFLINE',
-                    capabilities: {
-                        ...getDefaultClientCapabilities('WEB'),
-                        canBook: false,
-                        canUseBackpack: false,
-                        canAuthenticateHere: false
-                    }
-                };
+           if (!navigator.onLine) {
+    tempGoogleUser = null;
+    tempTelegramUser = null;
+    wildUserKey = null;
+    localStorage.removeItem('wildUserKey');
 
-                updateProfileUI();
-                return;
-            }
+    clientSession = {
+        authState: 'OFFLINE',
+        channel: 'WEB',
+        tokenStatus: 'OFFLINE',
+        capabilities: {
+            ...getDefaultClientCapabilities('WEB'),
+            canBook: false,
+            canUseBackpack: false,
+            canAuthenticateHere: false
+        }
+    };
+
+    allBookings = [];
+    myBookedTitles = [];
+    pendingBookings = [];
+    pendingCancels = [];
+
+    if (loginDesc) {
+        loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+    }
+
+    updateProfileUI();
+    return;
+}
 
             showToast("Errore: " + e.message);
         }
