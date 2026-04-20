@@ -1402,16 +1402,29 @@ function writeShellMeta(patch) {
     return next;
 }
 
-function hasRecentShellReloadLock() {
-    const raw = sessionStorage.getItem(SHELL_RELOAD_LOCK_KEY);
-    if (!raw) return false;
-    const ts = parseInt(raw, 10);
-    if (!ts) return false;
-    return (Date.now() - ts) < SHELL_RELOAD_LOCK_MS;
+function readShellReloadLock() {
+    try {
+        return JSON.parse(sessionStorage.getItem(SHELL_RELOAD_LOCK_KEY) || 'null');
+    } catch (e) {
+        return null;
+    }
 }
 
-function setShellReloadLock() {
-    sessionStorage.setItem(SHELL_RELOAD_LOCK_KEY, String(Date.now()));
+function hasRecentShellReloadLock(targetVersion) {
+    const lock = readShellReloadLock();
+    if (!lock || !lock.ts || !lock.version) return false;
+
+    const isRecent = (Date.now() - Number(lock.ts)) < SHELL_RELOAD_LOCK_MS;
+    const isSameTargetVersion = String(lock.version) === String(targetVersion);
+
+    return isRecent && isSameTargetVersion;
+}
+
+function setShellReloadLock(targetVersion) {
+    sessionStorage.setItem(SHELL_RELOAD_LOCK_KEY, JSON.stringify({
+        ts: Date.now(),
+        version: String(targetVersion || '')
+    }));
 }
 
 async function fetchShellVersion() {
@@ -1472,20 +1485,20 @@ async function ensureFreshShellVersion() {
         return;
     }
 
-    if (hasRecentShellReloadLock()) {
-        pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
-            oldVersion: meta.version,
-            newVersion: remoteVersion
-        });
-        return;
-    }
-
-    pageDebug('SHELL_VERSION_CHANGED', {
+if (hasRecentShellReloadLock(remoteVersion)) {
+    pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
         oldVersion: meta.version,
         newVersion: remoteVersion
     });
+    return;
+}
 
-    setShellReloadLock();
+pageDebug('SHELL_VERSION_CHANGED', {
+    oldVersion: meta.version,
+    newVersion: remoteVersion
+});
+
+setShellReloadLock(remoteVersion);
     await clearWilduShellCaches();
 
     pageDebug('SHELL_CACHES_CLEARED', {
