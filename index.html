@@ -2075,13 +2075,61 @@ async function fetchXP() {
 
         cachedXPData = userData;
 
-        localStorage.setItem(backupKey, JSON.stringify({
-            xp: userData.xp,
-            grado: userData.grado,
-            nome: userData.nome,
-            telefono: userData.telefono,
-            savedAt: Date.now()
-        }));
+        try {
+            localStorage.setItem(backupKey, JSON.stringify({
+                xp: userData.xp,
+                grado: userData.grado,
+                nome: userData.nome,
+                telefono: userData.telefono,
+                savedAt: Date.now()
+            }));
+
+            if (typeof pageDebug === 'function') {
+                pageDebug('XP_BACKUP_SAVED', {
+                    backupKey,
+                    xp: userData.xp
+                });
+            }
+        } catch (storageErr) {
+            console.warn("Backup profilo locale non salvato:", storageErr);
+
+            if (typeof pageDebug === 'function') {
+                pageDebug('XP_BACKUP_SAVE_FAILED', {
+                    backupKey,
+                    errorName: storageErr?.name || 'UNKNOWN'
+                });
+            }
+
+            if (isQuotaExceededStorageError(storageErr)) {
+                try {
+                    await maybeRunStorageGuard({ aggressive: false });
+
+                    localStorage.setItem(backupKey, JSON.stringify({
+                        xp: userData.xp,
+                        grado: userData.grado,
+                        nome: userData.nome,
+                        telefono: userData.telefono,
+                        savedAt: Date.now()
+                    }));
+
+                    if (typeof pageDebug === 'function') {
+                        pageDebug('XP_BACKUP_SAVED_AFTER_GUARD', {
+                            backupKey,
+                            xp: userData.xp
+                        });
+                    }
+                } catch (retryErr) {
+                    console.warn("Backup profilo locale non salvato nemmeno dopo storage guard:", retryErr);
+
+                    if (typeof pageDebug === 'function') {
+                        pageDebug('XP_BACKUP_RETRY_FAILED', {
+                            backupKey,
+                            errorName: retryErr?.name || 'UNKNOWN'
+                        });
+                    }
+                }
+            }
+        }
 
         const nameInput = document.getElementById('user-name-input');
         const phoneInput = document.getElementById('user-phone-input');
