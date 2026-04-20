@@ -1149,12 +1149,64 @@ if (!navigator.onLine) {
     updateProfileUI();
     return;
 }
-
+        
         // 🛡️ MOSTRA CARICAMENTO: Blocca il flash visivo in cui chiede il numero per sbaglio
         if (loginDesc) loginDesc.innerText = "Verifica identità in corso... 🌲";
 
         try {
-            const docSnap = await db.collection("utenti").doc(user.uid).get();
+            let docSnap;
+
+            try {
+                // IMPORTANTE:
+                // l'esistenza del profilo va verificata SOLO dal server.
+                // Se siamo offline/non raggiungiamo Firestore, non dobbiamo mai dedurre "utente nuovo".
+                docSnap = await db.collection("utenti").doc(user.uid).get({ source: 'server' });
+            } catch (verifyErr) {
+                const errCode = String(verifyErr?.code || '').toLowerCase();
+                const errMsg = String(verifyErr?.message || '').toLowerCase();
+
+                const looksOffline =
+                    !navigator.onLine ||
+                    errCode.includes('unavailable') ||
+                    errCode.includes('deadline-exceeded') ||
+                    errCode.includes('failed-precondition') ||
+                    errMsg.includes('offline') ||
+                    errMsg.includes('network') ||
+                    errMsg.includes('client is offline');
+
+                if (looksOffline) {
+                    tempGoogleUser = null;
+                    tempTelegramUser = null;
+                    wildUserKey = null;
+                    localStorage.removeItem('wildUserKey');
+
+                    clientSession = {
+                        authState: 'OFFLINE',
+                        channel: 'WEB',
+                        tokenStatus: 'OFFLINE',
+                        capabilities: {
+                            ...getDefaultClientCapabilities('WEB'),
+                            canBook: false,
+                            canUseBackpack: false,
+                            canAuthenticateHere: false
+                        }
+                    };
+
+                    allBookings = [];
+                    myBookedTitles = [];
+                    pendingBookings = [];
+                    pendingCancels = [];
+
+                    if (loginDesc) {
+                        loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+                    }
+
+                    updateProfileUI();
+                    return;
+                }
+
+                throw verifyErr;
+            }
 
             if (docSnap.exists) {
                 document.getElementById('login-screen').classList.add('hidden');
@@ -1169,6 +1221,7 @@ if (!navigator.onLine) {
 
                 updateProfileUI();
             } else {
+                // Qui arriviamo SOLO se il server ha davvero confermato che il profilo non esiste.
                 clientSession = {
                     authState: 'GUEST',
                     channel: 'WEB',
@@ -1185,38 +1238,48 @@ if (!navigator.onLine) {
             authRefreshLock = false;
             console.error("Firestore error:", e);
 
-            // Se il problema è che siamo finiti offline durante la verifica,
-            // trattiamo l'utente come OFFLINE_LIMITED e basta.
-           if (!navigator.onLine) {
-    tempGoogleUser = null;
-    tempTelegramUser = null;
-    wildUserKey = null;
-    localStorage.removeItem('wildUserKey');
+            const errCode = String(e?.code || '').toLowerCase();
+            const errMsg = String(e?.message || '').toLowerCase();
 
-    clientSession = {
-        authState: 'OFFLINE',
-        channel: 'WEB',
-        tokenStatus: 'OFFLINE',
-        capabilities: {
-            ...getDefaultClientCapabilities('WEB'),
-            canBook: false,
-            canUseBackpack: false,
-            canAuthenticateHere: false
-        }
-    };
+            const looksOffline =
+                !navigator.onLine ||
+                errCode.includes('unavailable') ||
+                errCode.includes('deadline-exceeded') ||
+                errCode.includes('failed-precondition') ||
+                errMsg.includes('offline') ||
+                errMsg.includes('network') ||
+                errMsg.includes('client is offline');
 
-    allBookings = [];
-    myBookedTitles = [];
-    pendingBookings = [];
-    pendingCancels = [];
+            if (looksOffline) {
+                tempGoogleUser = null;
+                tempTelegramUser = null;
+                wildUserKey = null;
+                localStorage.removeItem('wildUserKey');
 
-    if (loginDesc) {
-        loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
-    }
+                clientSession = {
+                    authState: 'OFFLINE',
+                    channel: 'WEB',
+                    tokenStatus: 'OFFLINE',
+                    capabilities: {
+                        ...getDefaultClientCapabilities('WEB'),
+                        canBook: false,
+                        canUseBackpack: false,
+                        canAuthenticateHere: false
+                    }
+                };
 
-    updateProfileUI();
-    return;
-}
+                allBookings = [];
+                myBookedTitles = [];
+                pendingBookings = [];
+                pendingCancels = [];
+
+                if (loginDesc) {
+                    loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+                }
+
+                updateProfileUI();
+                return;
+            }
 
             showToast("Errore: " + e.message);
         }
