@@ -1478,7 +1478,12 @@ function loginWithGoogle() {
         return;
     }
 
+    auth.languageCode = 'it';
+
     const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({
+        prompt: 'select_account'
+    });
 
     auth.signInWithPopup(provider).catch((error) => {
         console.error("Errore login Google Popup:", error);
@@ -1511,6 +1516,7 @@ function loginWithGoogle() {
     });
 }
 
+
 // ==========================================
 // LOGIN GOOGLE ALTERNATIVO (REDIRECT SAFE)
 // ==========================================
@@ -1521,7 +1527,12 @@ function loginWithGoogleRedirect() {
         return;
     }
 
+    auth.languageCode = 'it';
+
     const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({
+        prompt: 'select_account'
+    });
 
     auth.signInWithRedirect(provider).catch((error) => {
         console.error("Errore login Google Redirect:", error);
