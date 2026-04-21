@@ -3594,11 +3594,11 @@ if (profKeyEl) {
         try {
             const winAmount = Math.random() > 0.8 ? 5 : 0;
             if (winAmount > 0) {
-                const userRef = db.collection("utenti").doc(wildUserKey);
-                await userRef.set({ 
-                    xp: firebase.firestore.FieldValue.increment(winAmount),
-                    ultimo_aggiornamento: FV.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
-                }, { merge: true });
+                await FS.setUtente(wildUserKey, {
+                    xp: FV.increment(winAmount),
+                    ultimo_aggiornamento: FV.serverTimestamp()
+                });
+
                 if (cachedXPData) cachedXPData.xp += winAmount;
             }
 
