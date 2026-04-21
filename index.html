@@ -4201,6 +4201,8 @@ function showPayDayDetails(id) {
 let amazonAutoScrollTimer = null;
 let amazonResumeTimer = null;
 let currentAmazonProducts = [];
+let lastAmazonRemoteFetchAt = 0;
+const AMAZON_REMOTE_MIN_GAP_MS = 60000;    
 
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 let amazonSliderEventsBound = false;
@@ -4351,18 +4353,24 @@ async function initAmazonSponsors(options = {}) {
         return;
     }
 
-    try {
-        const fetchedProducts = await fetchAmazonProductsRemote();
+if (allowRemote && (Date.now() - lastAmazonRemoteFetchAt) < AMAZON_REMOTE_MIN_GAP_MS) {
+    amazonInitInFlight = false;
+    return;
+}
+    
+try {
+    const fetchedProducts = await fetchAmazonProductsRemote();
 
-        if (Array.isArray(fetchedProducts)) {
-            writeAmazonProductsCache(fetchedProducts);
-            renderAmazonSponsors(fetchedProducts);
-        }
-    } catch (e) {
-        // silenzio operativo: il footer resta sulla cache locale
-    } finally {
-        amazonInitInFlight = false;
+    if (Array.isArray(fetchedProducts)) {
+        lastAmazonRemoteFetchAt = Date.now();
+        writeAmazonProductsCache(fetchedProducts);
+        renderAmazonSponsors(fetchedProducts);
     }
+} catch (e) {
+    // silenzio operativo: il footer resta sulla cache locale
+} finally {
+    amazonInitInFlight = false;
+}
 }
 
 function openAmazonDetail(index) {
