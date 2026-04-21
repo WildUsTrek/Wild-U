@@ -558,72 +558,116 @@
     const MOTORE_API_URL = "https://wildu-gateway-959006418837.europe-west1.run.app/api/gateway";
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
 
-    // --- FIREBASE SETUP CON LA TUA CHIAVE ESATTA ---
-    const firebaseConfig = { 
-        apiKey: "AIzaSyDIPgFA_caKIMHFgEa-enO4Jk0d7eTCFLI", 
-        authDomain: "wild-u-server.firebaseapp.com", 
-        projectId: "wild-u-server", 
-        storageBucket: "wild-u-server.firebasestorage.app", 
-        messagingSenderId: "959006418837", 
+    // --- FIREBASE BOOTSTRAP CENTRALIZZATO ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyDIPgFA_caKIMHFgEa-enO4Jk0d7eTCFLI",
+        authDomain: "wild-u-server.firebaseapp.com",
+        projectId: "wild-u-server",
+        storageBucket: "wild-u-server.firebasestorage.app",
+        messagingSenderId: "959006418837",
         appId: "1:959006418837:web:affce9510301b946e7389c",
         measurementId: "G-KC1R6VSMF5"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const auth = firebase.auth();
 
-    // ✅ 3. QUI METTI getRedirectResult (QUESTO TI MANCAVA)
-auth.getRedirectResult()
-  .then((result) => {
-    if (result.user) {
-      console.log("Login redirect OK", result.user);
-      // NON fare troppo qui, ci pensa onAuthStateChanged
-    }
-  })
-  .catch((error) => {
-    console.error("Errore redirect:", error);
+    const WILDU_FIREBASE = (() => {
+        const app = (firebase.apps && firebase.apps.length)
+            ? firebase.app()
+            : firebase.initializeApp(firebaseConfig);
 
-    const code = String(error?.code || '').toLowerCase();
-    const msg = String(error?.message || '').toLowerCase();
+        const db = firebase.firestore();
+        const auth = firebase.auth();
 
-    const looksOffline =
-      !navigator.onLine ||
-      code === 'auth/network-request-failed' ||
-      msg.includes('network') ||
-      msg.includes('offline');
+        let logLevelBound = false;
+        let persistenceAttempted = false;
+        let redirectHandled = false;
 
-    if (looksOffline) {
-      showToast("Sei offline. Per completare l'accesso serve la connessione.");
-      return;
-    }
+        // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
+        // FALSE = console più pulita, solo errori online
+        const FIREBASE_READ_WARNINGS = true;
 
-    showToast("Errore login Google");
-  });
+        function getFirestoreLogLevel() {
+            if (!navigator.onLine) return 'silent';
+            return FIREBASE_READ_WARNINGS ? 'debug' : 'error';
+        }
 
+        function setFirestoreLogLevelByConnectivity() {
+            firebase.firestore.setLogLevel(getFirestoreLogLevel());
+        }
 
-    // Torna alla versione stabile: il warning giallo è normale e innocuo
-    // Firestore: niente rumore quando sei offline, errori minimi quando sei online
-const FIREBASE_SHOW_DEPRECATIONS = true;
+        function bindFirestoreLogLevelEvents() {
+            if (logLevelBound) return;
+            logLevelBound = true;
 
-firebase.firestore.setLogLevel(
-  FIREBASE_SHOW_DEPRECATIONS ? 'debug' : (navigator.onLine ? 'error' : 'silent')
-);
+            window.addEventListener('offline', () => {
+                firebase.firestore.setLogLevel('silent');
+            });
 
-window.addEventListener('offline', () => {
-  firebase.firestore.setLogLevel(
-    FIREBASE_SHOW_DEPRECATIONS ? 'debug' : 'silent'
-  );
-});
+            window.addEventListener('online', () => {
+                firebase.firestore.setLogLevel('error');
+            });
+        }
 
-window.addEventListener('online', () => {
-  firebase.firestore.setLogLevel(
-    FIREBASE_SHOW_DEPRECATIONS ? 'debug' : 'error'
-  );
-});
+        function enablePersistenceSafe() {
+            if (persistenceAttempted) return;
+            persistenceAttempted = true;
 
-    db.enablePersistence().catch(() => {
-        // niente console spam: l'app continua comunque a funzionare
-    });
+            db.enablePersistence().catch(() => {
+                // niente console spam: l'app continua comunque a funzionare
+            });
+        }
+
+        function handleRedirectResultSafe() {
+            if (redirectHandled) return;
+            redirectHandled = true;
+
+            auth.getRedirectResult()
+                .then((result) => {
+                    if (result.user) {
+                        console.log("Login redirect OK", result.user);
+                        // NON fare troppo qui, ci pensa onAuthStateChanged
+                    }
+                })
+                .catch((error) => {
+                    console.error("Errore redirect:", error);
+
+                    const code = String(error?.code || '').toLowerCase();
+                    const msg = String(error?.message || '').toLowerCase();
+
+                    const looksOffline =
+                        !navigator.onLine ||
+                        code === 'auth/network-request-failed' ||
+                        msg.includes('network') ||
+                        msg.includes('offline');
+
+                    if (looksOffline) {
+                        showToast("Sei offline. Per completare l'accesso serve la connessione.");
+                        return;
+                    }
+
+                    showToast("Errore login Google");
+                });
+        }
+
+        function boot() {
+            setFirestoreLogLevelByConnectivity();
+            bindFirestoreLogLevelEvents();
+            enablePersistenceSafe();
+            handleRedirectResultSafe();
+        }
+
+        return {
+            app,
+            db,
+            auth,
+            boot,
+            setFirestoreLogLevelByConnectivity
+        };
+    })();
+
+    const db = WILDU_FIREBASE.db;
+    const auth = WILDU_FIREBASE.auth;
+
+    WILDU_FIREBASE.boot();
 
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
