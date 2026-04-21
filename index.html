@@ -574,13 +574,14 @@ const WILDU_FIREBASE = (() => {
         ? firebase.app()
         : firebase.initializeApp(firebaseConfig);
 
-    const db = firebase.firestore();
     const auth = firebase.auth();
-    const FieldValue = firebase.firestore.FieldValue;
 
     let logLevelBound = false;
-    let persistenceAttempted = false;
     let redirectHandled = false;
+
+    let firestoreReadyPromise = null;
+    let firestoreModuleRef = null;
+    let firestoreDbRef = null;
 
     // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
     // FALSE = console più pulita, solo errori online
@@ -591,8 +592,101 @@ const WILDU_FIREBASE = (() => {
         return FIREBASE_READ_WARNINGS ? 'debug' : 'error';
     }
 
-    function setFirestoreLogLevelByConnectivity() {
-        firebase.firestore.setLogLevel(getFirestoreLogLevel());
+    function getAppForModularFirestore() {
+        // Compat app -> modular app delegate
+        return app && app._delegate ? app._delegate : app;
+    }
+
+    function makeFieldValueMarker(type, payload = {}) {
+        return { __WILDU_FS_OP__: type, ...payload };
+    }
+
+    function isPlainObject(value) {
+        return Object.prototype.toString.call(value) === '[object Object]';
+    }
+
+    function normalizeForFirestore(value, fs) {
+        if (value === null || value === undefined) return value;
+
+        if (Array.isArray(value)) {
+            return value.map((item) => normalizeForFirestore(item, fs));
+        }
+
+        if (value instanceof Date) {
+            return value;
+        }
+
+        if (isPlainObject(value) && value.__WILDU_FS_OP__ === 'serverTimestamp') {
+            return fs.serverTimestamp();
+        }
+
+        if (isPlainObject(value) && value.__WILDU_FS_OP__ === 'increment') {
+            return fs.increment(Number(value.amount || 0));
+        }
+
+        if (isPlainObject(value) && value.__WILDU_FS_OP__ === 'arrayUnion') {
+            return fs.arrayUnion(...(Array.isArray(value.values) ? value.values : []));
+        }
+
+        if (!isPlainObject(value)) {
+            return value;
+        }
+
+        const out = {};
+        for (const [key, innerValue] of Object.entries(value)) {
+            out[key] = normalizeForFirestore(innerValue, fs);
+        }
+        return out;
+    }
+
+    function wrapDocSnapshot(snapshot) {
+        return {
+            id: snapshot.id,
+            exists: snapshot.exists(),
+            data() {
+                return snapshot.data() || {};
+            },
+            metadata: snapshot.metadata || null
+        };
+    }
+
+    async function ensureFirestoreReady() {
+        if (firestoreReadyPromise) return firestoreReadyPromise;
+
+        firestoreReadyPromise = (async () => {
+            const fs = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+            const modularApp = getAppForModularFirestore();
+
+            let db;
+
+            try {
+                db = fs.initializeFirestore(modularApp, {
+                    localCache: fs.persistentLocalCache({})
+                });
+            } catch (persistentErr) {
+                console.warn('Firestore persistent cache non disponibile, fallback a memory cache.', persistentErr);
+
+                db = fs.initializeFirestore(modularApp, {
+                    localCache: fs.memoryLocalCache()
+                });
+            }
+
+            firestoreModuleRef = fs;
+            firestoreDbRef = db;
+
+            return { fs, db };
+        })();
+
+        return firestoreReadyPromise;
+    }
+
+    async function setFirestoreLogLevelByConnectivity() {
+        try {
+            const { fs } = await ensureFirestoreReady();
+            fs.setLogLevel(getFirestoreLogLevel());
+        } catch (e) {
+            console.warn('Firestore log level non applicato:', e);
+        }
     }
 
     function bindFirestoreLogLevelEvents() {
@@ -600,20 +694,11 @@ const WILDU_FIREBASE = (() => {
         logLevelBound = true;
 
         window.addEventListener('offline', () => {
-            firebase.firestore.setLogLevel('silent');
+            setFirestoreLogLevelByConnectivity();
         });
 
         window.addEventListener('online', () => {
             setFirestoreLogLevelByConnectivity();
-        });
-    }
-
-    function enablePersistenceSafe() {
-        if (persistenceAttempted) return;
-        persistenceAttempted = true;
-
-        db.enablePersistence().catch(() => {
-            // niente console spam: l'app continua comunque a funzionare
         });
     }
 
@@ -649,6 +734,68 @@ const WILDU_FIREBASE = (() => {
             });
     }
 
+    const db = {
+        collection(collectionName) {
+            const safeCollectionName = String(collectionName || '').trim();
+
+            return {
+                doc(docId) {
+                    const safeDocId = String(docId || '').trim();
+
+                    return {
+                        async get(options = {}) {
+                            const { fs, db } = await ensureFirestoreReady();
+                            const ref = fs.doc(db, safeCollectionName, safeDocId);
+
+                            let snapshot;
+                            if (options.source === 'server') {
+                                snapshot = await fs.getDocFromServer(ref);
+                            } else if (options.source === 'cache') {
+                                snapshot = await fs.getDocFromCache(ref);
+                            } else {
+                                snapshot = await fs.getDoc(ref);
+                            }
+
+                            return wrapDocSnapshot(snapshot);
+                        },
+
+                        async set(payload, options = {}) {
+                            const { fs, db } = await ensureFirestoreReady();
+                            const ref = fs.doc(db, safeCollectionName, safeDocId);
+                            const merge = options.merge !== false;
+
+                            return await fs.setDoc(
+                                ref,
+                                normalizeForFirestore(payload, fs),
+                                { merge }
+                            );
+                        }
+                    };
+                }
+            };
+        }
+    };
+
+    const FieldValue = {
+        serverTimestamp() {
+            return makeFieldValueMarker('serverTimestamp');
+        },
+        increment(amount) {
+            return makeFieldValueMarker('increment', { amount: Number(amount || 0) });
+        },
+        arrayUnion(...values) {
+            return makeFieldValueMarker('arrayUnion', { values });
+        }
+    };
+
+    // Alias di compatibilità: così i pezzi legacy rimasti con
+    // firebase.firestore.FieldValue.* continuano a funzionare.
+    try {
+        if (firebase.firestore) {
+            firebase.firestore.FieldValue = FieldValue;
+        }
+    } catch (e) {}
+
     const store = {
         getUtenteRef(uid) {
             return db.collection("utenti").doc(String(uid || "").trim());
@@ -660,10 +807,7 @@ const WILDU_FIREBASE = (() => {
 
         async getUtente(uid, options = {}) {
             const ref = store.getUtenteRef(uid);
-            if (options.source === 'server' || options.source === 'cache') {
-                return await ref.get({ source: options.source });
-            }
-            return await ref.get();
+            return await ref.get(options);
         },
 
         async setUtente(uid, payload, options = {}) {
@@ -673,29 +817,18 @@ const WILDU_FIREBASE = (() => {
 
         async getAmazonProductsDoc(options = {}) {
             const ref = store.getAmazonProductsRef();
-            if (options.source === 'server' || options.source === 'cache') {
-                return await ref.get({ source: options.source });
-            }
-            return await ref.get();
+            return await ref.get(options);
         },
 
-        fieldValue: {
-            serverTimestamp() {
-                return FieldValue.serverTimestamp();
-            },
-            increment(amount) {
-                return FieldValue.increment(amount);
-            },
-            arrayUnion(...values) {
-                return FieldValue.arrayUnion(...values);
-            }
-        }
+        fieldValue: FieldValue
     };
 
     function boot() {
         setFirestoreLogLevelByConnectivity();
         bindFirestoreLogLevelEvents();
-        enablePersistenceSafe();
+        ensureFirestoreReady().catch((e) => {
+            console.warn('Firestore init fallback/error:', e);
+        });
         handleRedirectResultSafe();
     }
 
@@ -705,6 +838,7 @@ const WILDU_FIREBASE = (() => {
         auth,
         store,
         boot,
+        ready: ensureFirestoreReady,
         setFirestoreLogLevelByConnectivity
     };
 })();
@@ -715,7 +849,6 @@ const FS = WILDU_FIREBASE.store;
 const FV = WILDU_FIREBASE.store.fieldValue;
 
 WILDU_FIREBASE.boot();
-
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
     let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
