@@ -569,105 +569,152 @@
         measurementId: "G-KC1R6VSMF5"
     };
 
-    const WILDU_FIREBASE = (() => {
-        const app = (firebase.apps && firebase.apps.length)
-            ? firebase.app()
-            : firebase.initializeApp(firebaseConfig);
+const WILDU_FIREBASE = (() => {
+    const app = (firebase.apps && firebase.apps.length)
+        ? firebase.app()
+        : firebase.initializeApp(firebaseConfig);
 
-        const db = firebase.firestore();
-        const auth = firebase.auth();
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+    const FieldValue = firebase.firestore.FieldValue;
 
-        let logLevelBound = false;
-        let persistenceAttempted = false;
-        let redirectHandled = false;
+    let logLevelBound = false;
+    let persistenceAttempted = false;
+    let redirectHandled = false;
 
-        // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
-        // FALSE = console più pulita, solo errori online
-        const FIREBASE_READ_WARNINGS = true;
+    // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
+    // FALSE = console più pulita, solo errori online
+    const FIREBASE_READ_WARNINGS = true;
 
-        function getFirestoreLogLevel() {
-            if (!navigator.onLine) return 'silent';
-            return FIREBASE_READ_WARNINGS ? 'debug' : 'error';
-        }
+    function getFirestoreLogLevel() {
+        if (!navigator.onLine) return 'silent';
+        return FIREBASE_READ_WARNINGS ? 'debug' : 'error';
+    }
 
-        function setFirestoreLogLevelByConnectivity() {
-            firebase.firestore.setLogLevel(getFirestoreLogLevel());
-        }
+    function setFirestoreLogLevelByConnectivity() {
+        firebase.firestore.setLogLevel(getFirestoreLogLevel());
+    }
 
-        function bindFirestoreLogLevelEvents() {
-            if (logLevelBound) return;
-            logLevelBound = true;
+    function bindFirestoreLogLevelEvents() {
+        if (logLevelBound) return;
+        logLevelBound = true;
 
-            window.addEventListener('offline', () => {
-                firebase.firestore.setLogLevel('silent');
-            });
+        window.addEventListener('offline', () => {
+            firebase.firestore.setLogLevel('silent');
+        });
 
-            window.addEventListener('online', () => {
-                firebase.firestore.setLogLevel('error');
-            });
-        }
-
-        function enablePersistenceSafe() {
-            if (persistenceAttempted) return;
-            persistenceAttempted = true;
-
-            db.enablePersistence().catch(() => {
-                // niente console spam: l'app continua comunque a funzionare
-            });
-        }
-
-        function handleRedirectResultSafe() {
-            if (redirectHandled) return;
-            redirectHandled = true;
-
-            auth.getRedirectResult()
-                .then((result) => {
-                    if (result.user) {
-                        console.log("Login redirect OK", result.user);
-                        // NON fare troppo qui, ci pensa onAuthStateChanged
-                    }
-                })
-                .catch((error) => {
-                    console.error("Errore redirect:", error);
-
-                    const code = String(error?.code || '').toLowerCase();
-                    const msg = String(error?.message || '').toLowerCase();
-
-                    const looksOffline =
-                        !navigator.onLine ||
-                        code === 'auth/network-request-failed' ||
-                        msg.includes('network') ||
-                        msg.includes('offline');
-
-                    if (looksOffline) {
-                        showToast("Sei offline. Per completare l'accesso serve la connessione.");
-                        return;
-                    }
-
-                    showToast("Errore login Google");
-                });
-        }
-
-        function boot() {
+        window.addEventListener('online', () => {
             setFirestoreLogLevelByConnectivity();
-            bindFirestoreLogLevelEvents();
-            enablePersistenceSafe();
-            handleRedirectResultSafe();
+        });
+    }
+
+    function enablePersistenceSafe() {
+        if (persistenceAttempted) return;
+        persistenceAttempted = true;
+
+        db.enablePersistence().catch(() => {
+            // niente console spam: l'app continua comunque a funzionare
+        });
+    }
+
+    function handleRedirectResultSafe() {
+        if (redirectHandled) return;
+        redirectHandled = true;
+
+        auth.getRedirectResult()
+            .then((result) => {
+                if (result.user) {
+                    console.log("Login redirect OK", result.user);
+                    // NON fare troppo qui, ci pensa onAuthStateChanged
+                }
+            })
+            .catch((error) => {
+                console.error("Errore redirect:", error);
+
+                const code = String(error?.code || '').toLowerCase();
+                const msg = String(error?.message || '').toLowerCase();
+
+                const looksOffline =
+                    !navigator.onLine ||
+                    code === 'auth/network-request-failed' ||
+                    msg.includes('network') ||
+                    msg.includes('offline');
+
+                if (looksOffline) {
+                    showToast("Sei offline. Per completare l'accesso serve la connessione.");
+                    return;
+                }
+
+                showToast("Errore login Google");
+            });
+    }
+
+    const store = {
+        getUtenteRef(uid) {
+            return db.collection("utenti").doc(String(uid || "").trim());
+        },
+
+        getAmazonProductsRef() {
+            return db.collection("PARAMETERS_PARTNER").doc("prodotti_wildu");
+        },
+
+        async getUtente(uid, options = {}) {
+            const ref = store.getUtenteRef(uid);
+            if (options.source === 'server' || options.source === 'cache') {
+                return await ref.get({ source: options.source });
+            }
+            return await ref.get();
+        },
+
+        async setUtente(uid, payload, options = {}) {
+            const merge = options.merge !== false;
+            return await store.getUtenteRef(uid).set(payload, { merge });
+        },
+
+        async getAmazonProductsDoc(options = {}) {
+            const ref = store.getAmazonProductsRef();
+            if (options.source === 'server' || options.source === 'cache') {
+                return await ref.get({ source: options.source });
+            }
+            return await ref.get();
+        },
+
+        fieldValue: {
+            serverTimestamp() {
+                return FieldValue.serverTimestamp();
+            },
+            increment(amount) {
+                return FieldValue.increment(amount);
+            },
+            arrayUnion(...values) {
+                return FieldValue.arrayUnion(...values);
+            }
         }
+    };
 
-        return {
-            app,
-            db,
-            auth,
-            boot,
-            setFirestoreLogLevelByConnectivity
-        };
-    })();
+    function boot() {
+        setFirestoreLogLevelByConnectivity();
+        bindFirestoreLogLevelEvents();
+        enablePersistenceSafe();
+        handleRedirectResultSafe();
+    }
 
-    const db = WILDU_FIREBASE.db;
-    const auth = WILDU_FIREBASE.auth;
+    return {
+        app,
+        db,
+        auth,
+        store,
+        boot,
+        setFirestoreLogLevelByConnectivity
+    };
+})();
 
-    WILDU_FIREBASE.boot();
+const db = WILDU_FIREBASE.db;
+const auth = WILDU_FIREBASE.auth;
+const FS = WILDU_FIREBASE.store;
+const FV = WILDU_FIREBASE.store.fieldValue;
+
+WILDU_FIREBASE.boot();
 
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
@@ -1066,11 +1113,11 @@ async function saveProfileData() {
     try {
         // Usiamo la sintassi corretta per il tuo database (v8 compat)
         // Nota: ho usato "utenti" per essere coerente con la tua fetchXP
-        await db.collection("utenti").doc(wildUserKey).set({
+        await FS.setUtente(wildUserKey, {
             nome: newName,
             telefono: newPhone,
-            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
-        }, { merge: true });
+            ultimo_aggiornamento: FV.serverTimestamp()
+        });
 
         // Aggiorniamo la cache locale per riflettere i cambiamenti subito
         if (cachedXPData) {
@@ -1176,7 +1223,7 @@ async function handleTelegramAuth(tgUser) {
 
     try {
         const tgId = "TG-" + tgUser.id;
-        const docSnap = await db.collection("utenti").doc(tgId).get();
+        const docSnap = await FS.getUtente(tgId);
 
         // Se esiste già un profilo Telegram, usiamolo solo come prefill leggero
         // ma NON promuoviamo l'utente a LOGGED lato client.
@@ -1272,7 +1319,7 @@ authProbeInProgress = false;
                 // IMPORTANTE:
                 // l'esistenza del profilo va verificata SOLO dal server.
                 // Se siamo offline/non raggiungiamo Firestore, non dobbiamo mai dedurre "utente nuovo".
-                docSnap = await db.collection("utenti").doc(user.uid).get({ source: 'server' });
+                docSnap = await FS.getUtente(user.uid, { source: 'server' });
             } catch (verifyErr) {
                 const errCode = String(verifyErr?.code || '').toLowerCase();
                 const errMsg = String(verifyErr?.message || '').toLowerCase();
@@ -1528,8 +1575,7 @@ async function completeRegistration() {
             return showToast("Errore di sessione. Ricarica l'app.");
         }
 
-        const userRef = db.collection("utenti").doc(userId);
-        const existingSnap = await userRef.get();
+        const existingSnap = await FS.getUtente(userId);
         const existingData = existingSnap.exists ? (existingSnap.data() || {}) : {};
 
         let payload;
@@ -1540,24 +1586,24 @@ async function completeRegistration() {
                 email: userEmail,
                 nome: userName,
                 telefono: phone,
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+                ultimo_aggiornamento: FV.serverTimestamp()
             };
         } else {
             // PRIMA NASCITA REALE
             payload = {
                 xp: 0,
                 grado: "Socio Novizio",
-                registratoIl: firebase.firestore.FieldValue.serverTimestamp(),
+                registratoIl: FV.serverTimestamp(),
                 email: userEmail,
                 nome: userName,
                 telefono: phone,
                 bannato: false,
                 zaino: [],
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
+                ultimo_aggiornamento: FV.serverTimestamp()
             };
         }
 
-        await userRef.set(payload, { merge: true });
+        await FS.setUtente(userId, payload);
 
         document.getElementById('complete-profile-screen').classList.add('hidden');
 
@@ -2375,7 +2421,7 @@ async function fetchXP() {
     const backupKey = 'wildLastSafeProfile_' + wildUserKey;
 
     try {
-        const docSnap = await db.collection("utenti").doc(wildUserKey).get();
+        const docSnap = await FS.getUtente(wildUserKey);
         lastFetchTime = Date.now();
 
         if (!docSnap.exists) {
@@ -2714,11 +2760,11 @@ function evaluateBookings() {
     async function awardTripXP(tripId, xpVal) {
         try {
             const userRef = db.collection("utenti").doc(wildUserKey);
-            await userRef.set({
-                xp: firebase.firestore.FieldValue.increment(xpVal),
-                viaggi_riscattati: firebase.firestore.FieldValue.arrayUnion(tripId),
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
-            }, { merge: true });
+            await FS.setUtente(wildUserKey, {
+                xp: FV.increment(xpVal),
+                viaggi_riscattati: FV.arrayUnion(tripId),
+                ultimo_aggiornamento: FV.serverTimestamp()
+            });
             viaggiRiscattati.push(tripId);
             setTimeout(fetchXP, 600); 
         } catch(e) { console.error("Errore Reward Time-Travel", e); }
@@ -2814,10 +2860,10 @@ async function requestCancel(encodedBookingPayload, btnElement) {
         cancelCompleted = true;
 
         if (penalty > 0 && wildUserKey) {
-            await db.collection("utenti").doc(wildUserKey).set({
-                xp: firebase.firestore.FieldValue.increment(-penalty),
-                ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+            await FS.setUtente(wildUserKey, {
+                xp: FV.increment(-penalty),
+                ultimo_aggiornamento: FV.serverTimestamp()
+            });
 
             if (cachedXPData) {
                 cachedXPData.xp = Math.max(0, (parseInt(cachedXPData.xp || 0, 10) - penalty));
@@ -3363,10 +3409,10 @@ async function sendCustomBooking() {
 
             if (earnedXP > 0 && wildUserKey) {
                 try {
-                    await db.collection("utenti").doc(wildUserKey).set({
-                        xp: firebase.firestore.FieldValue.increment(earnedXP),
-                        ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
+                    await FS.setUtente(wildUserKey, {
+                        xp: FV.increment(earnedXP),
+                        ultimo_aggiornamento: FV.serverTimestamp()
+                    });
 
                     if (cachedXPData) cachedXPData.xp += earnedXP;
                     lastCelXP += earnedXP;
@@ -3430,10 +3476,10 @@ async function sendCustomBooking() {
     if (currentStoredGrade === computedGrade) return;
 
     try {
-        await db.collection("utenti").doc(wildUserKey).set({
+        await FS.setUtente(wildUserKey, {
             grado: computedGrade,
-            ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+            ultimo_aggiornamento: FV.serverTimestamp()
+        });
 
         cachedXPData.grado = computedGrade;
     } catch (e) {
@@ -4375,8 +4421,7 @@ function renderAmazonSponsors(products) {
 }
 
 async function fetchAmazonProductsRemote() {
-    const docRef = db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu');
-    const remoteSnap = await docRef.get({ source: 'server' });
+    const remoteSnap = await FS.getAmazonProductsDoc({ source: 'server' });
 
     if (!remoteSnap.exists) return [];
 
