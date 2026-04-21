@@ -239,6 +239,14 @@
         .btn-amazon-back:active { background: #444; }
         .btn-amazon-go { background: #FF9900; color: black; }
         .btn-amazon-go:active { background: #ffaa33; }
+
+
+        @keyframes wildSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+        
     </style>
     
 </head>
@@ -398,6 +406,18 @@
             </div>
         </div>
 
+
+        <div id="profile-loading-screen" class="hidden">
+    <div class="card" style="border-left-color: var(--w-gold); text-align: center;">
+        <h3 style="margin-top:0;">Verifica profilo</h3>
+        <p style="font-size:14px; color:#aaa; margin-bottom:18px;" id="profile-loading-desc">
+            Sincronizzazione in corso... 🌲
+        </p>
+        <div style="width:36px; height:36px; margin:0 auto; border:4px solid #333; border-top-color: var(--w-gold); border-radius:50%; animation:wildSpin 0.8s linear infinite;"></div>
+    </div>
+</div>
+
+        
         <div id="complete-profile-screen" class="hidden">
             <div class="card" style="border-left-color: var(--w-gold);">
                 <h3 style="margin-top:0;">Ultimo Passo!</h3>
@@ -601,6 +621,7 @@ auth.getRedirectResult()
     let initDataPromise = null;
     let initBootCompleted = false;
     let authRefreshLock = false;
+    let authProbeInProgress = false;
 
     // ==========================================
     // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
@@ -664,14 +685,36 @@ auth.getRedirectResult()
 
 function reconcileProfileShellWithClientSession() {
     const loginScreen = document.getElementById('login-screen');
+    const loadingScreen = document.getElementById('profile-loading-screen');
     const completeScreen = document.getElementById('complete-profile-screen');
     const profileData = document.getElementById('profile-data');
+
     if (!loginScreen || !completeScreen || !profileData) return;
 
-    if (clientSession.authState === 'LOGGED' || clientSession.authState === 'OFFLINE') {
+    if (loadingScreen) loadingScreen.classList.add('hidden');
+
+    if (clientSession.authState === 'LOGGED') {
         loginScreen.classList.add('hidden');
         completeScreen.classList.add('hidden');
         profileData.classList.remove('hidden');
+        return;
+    }
+
+    if (clientSession.authState === 'OFFLINE') {
+        loginScreen.classList.remove('hidden');
+        completeScreen.classList.add('hidden');
+        profileData.classList.add('hidden');
+
+        if (loadingScreen) loadingScreen.classList.add('hidden');
+        return;
+    }
+
+    if (authProbeInProgress) {
+        loginScreen.classList.add('hidden');
+        completeScreen.classList.add('hidden');
+        profileData.classList.add('hidden');
+
+        if (loadingScreen) loadingScreen.classList.remove('hidden');
         return;
     }
 
@@ -1114,6 +1157,8 @@ auth.onAuthStateChanged(async (user) => {
         tempTelegramUser = null;
         wildUserKey = user.uid;
         localStorage.setItem('wildUserKey', wildUserKey);
+        authProbeInProgress = true;
+reconcileProfileShellWithClientSession();
 
         const loginDesc = document.getElementById('login-desc');
 
@@ -1145,7 +1190,7 @@ if (!navigator.onLine) {
     if (loginDesc) {
         loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
     }
-
+authProbeInProgress = false;
     updateProfileUI();
     return;
 }
@@ -1200,7 +1245,7 @@ if (!navigator.onLine) {
                     if (loginDesc) {
                         loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
                     }
-
+authProbeInProgress = false;
                     updateProfileUI();
                     return;
                 }
@@ -1208,19 +1253,20 @@ if (!navigator.onLine) {
                 throw verifyErr;
             }
 
-            if (docSnap.exists) {
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('complete-profile-screen').classList.add('hidden');
+if (docSnap.exists) {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('complete-profile-screen').classList.add('hidden');
 
-                authRefreshLock = true;
-                try {
-                    await fetchInitData({ reason: 'AUTH_STATE', force: true });
-                } finally {
-                    authRefreshLock = false;
-                }
+    authRefreshLock = true;
+    try {
+        await fetchInitData({ reason: 'AUTH_STATE', force: true });
+    } finally {
+        authRefreshLock = false;
+    }
 
-                updateProfileUI();
-            } else {
+    authProbeInProgress = false;
+    updateProfileUI();
+} else {
                 // Qui arriviamo SOLO se il server ha davvero confermato che il profilo non esiste.
                 clientSession = {
                     authState: 'GUEST',
@@ -1229,6 +1275,7 @@ if (!navigator.onLine) {
                     capabilities: getDefaultClientCapabilities('WEB')
                 };
 
+                authProbeInProgress = false;
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('profile-data').classList.add('hidden');
                 document.getElementById('complete-profile-screen').classList.remove('hidden');
@@ -1277,29 +1324,34 @@ if (!navigator.onLine) {
                     loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
                 }
 
+                authProbeInProgress = false;
                 updateProfileUI();
                 return;
             }
 
+            authProbeInProgress = false;
+            reconcileProfileShellWithClientSession();
             showToast("Errore: " + e.message);
         }
-    } else {
-        tempGoogleUser = null;
+} else {
+    tempGoogleUser = null;
+    tempTelegramUser = null;
+    authProbeInProgress = false;
 
-        clientSession = {
-            authState: 'GUEST',
-            channel: 'WEB',
-            tokenStatus: 'NONE',
-            capabilities: getDefaultClientCapabilities('WEB')
-        };
+    clientSession = {
+        authState: 'GUEST',
+        channel: 'WEB',
+        tokenStatus: 'NONE',
+        capabilities: getDefaultClientCapabilities('WEB')
+    };
 
-        wildUserKey = null;
-        localStorage.removeItem('wildUserKey');
-        reconcileProfileShellWithClientSession();
+    wildUserKey = null;
+    localStorage.removeItem('wildUserKey');
+    reconcileProfileShellWithClientSession();
 
-        const loginDesc = document.getElementById('login-desc');
-        if (loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
-    }
+    const loginDesc = document.getElementById('login-desc');
+    if (loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
+}
 });
 
 // ==========================================
@@ -1463,6 +1515,7 @@ function logout() {
         regCtaCurrentReason = null;
         initDataPromise = null;
         authRefreshLock = false;
+        authProbeInProgress = false;
 
         clientSession = {
             authState: 'GUEST',
