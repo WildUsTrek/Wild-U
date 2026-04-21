@@ -657,24 +657,24 @@ const WILDU_FIREBASE = (() => {
             const fs = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
             const modularApp = getAppForModularFirestore();
 
-            let db;
+let firestoreDb;
 
-            try {
-                db = fs.initializeFirestore(modularApp, {
-                    localCache: fs.persistentLocalCache({})
-                });
-            } catch (persistentErr) {
-                console.warn('Firestore persistent cache non disponibile, fallback a memory cache.', persistentErr);
+try {
+    firestoreDb = fs.initializeFirestore(modularApp, {
+        localCache: fs.persistentLocalCache({})
+    });
+} catch (persistentErr) {
+    console.warn('Firestore persistent cache non disponibile, fallback a memory cache.', persistentErr);
 
-                db = fs.initializeFirestore(modularApp, {
-                    localCache: fs.memoryLocalCache()
-                });
-            }
+    firestoreDb = fs.initializeFirestore(modularApp, {
+        localCache: fs.memoryLocalCache()
+    });
+}
 
-            firestoreModuleRef = fs;
-            firestoreDbRef = db;
+firestoreModuleRef = fs;
+firestoreDbRef = firestoreDb;
 
-            return { fs, db };
+return { fs, firestoreDb };
         })();
 
         return firestoreReadyPromise;
@@ -734,47 +734,47 @@ const WILDU_FIREBASE = (() => {
             });
     }
 
-    const db = {
-        collection(collectionName) {
-            const safeCollectionName = String(collectionName || '').trim();
+const compatDb = {
+    collection(collectionName) {
+        const safeCollectionName = String(collectionName || '').trim();
 
-            return {
-                doc(docId) {
-                    const safeDocId = String(docId || '').trim();
+        return {
+            doc(docId) {
+                const safeDocId = String(docId || '').trim();
 
-                    return {
-                        async get(options = {}) {
-                            const { fs, db } = await ensureFirestoreReady();
-                            const ref = fs.doc(db, safeCollectionName, safeDocId);
+                return {
+                    async get(options = {}) {
+                        const { fs, firestoreDb } = await ensureFirestoreReady();
+                        const ref = fs.doc(firestoreDb, safeCollectionName, safeDocId);
 
-                            let snapshot;
-                            if (options.source === 'server') {
-                                snapshot = await fs.getDocFromServer(ref);
-                            } else if (options.source === 'cache') {
-                                snapshot = await fs.getDocFromCache(ref);
-                            } else {
-                                snapshot = await fs.getDoc(ref);
-                            }
-
-                            return wrapDocSnapshot(snapshot);
-                        },
-
-                        async set(payload, options = {}) {
-                            const { fs, db } = await ensureFirestoreReady();
-                            const ref = fs.doc(db, safeCollectionName, safeDocId);
-                            const merge = options.merge !== false;
-
-                            return await fs.setDoc(
-                                ref,
-                                normalizeForFirestore(payload, fs),
-                                { merge }
-                            );
+                        let snapshot;
+                        if (options.source === 'server') {
+                            snapshot = await fs.getDocFromServer(ref);
+                        } else if (options.source === 'cache') {
+                            snapshot = await fs.getDocFromCache(ref);
+                        } else {
+                            snapshot = await fs.getDoc(ref);
                         }
-                    };
-                }
-            };
-        }
-    };
+
+                        return wrapDocSnapshot(snapshot);
+                    },
+
+                    async set(payload, options = {}) {
+                        const { fs, firestoreDb } = await ensureFirestoreReady();
+                        const ref = fs.doc(firestoreDb, safeCollectionName, safeDocId);
+                        const merge = options.merge !== false;
+
+                        return await fs.setDoc(
+                            ref,
+                            normalizeForFirestore(payload, fs),
+                            { merge }
+                        );
+                    }
+                };
+            }
+        };
+    }
+};
 
     const FieldValue = {
         serverTimestamp() {
@@ -796,14 +796,14 @@ const WILDU_FIREBASE = (() => {
         }
     } catch (e) {}
 
-    const store = {
-        getUtenteRef(uid) {
-            return db.collection("utenti").doc(String(uid || "").trim());
-        },
+const store = {
+    getUtenteRef(uid) {
+        return compatDb.collection("utenti").doc(String(uid || "").trim());
+    },
 
-        getAmazonProductsRef() {
-            return db.collection("PARAMETERS_PARTNER").doc("prodotti_wildu");
-        },
+    getAmazonProductsRef() {
+        return compatDb.collection("PARAMETERS_PARTNER").doc("prodotti_wildu");
+    },
 
         async getUtente(uid, options = {}) {
             const ref = store.getUtenteRef(uid);
@@ -832,15 +832,15 @@ const WILDU_FIREBASE = (() => {
         handleRedirectResultSafe();
     }
 
-    return {
-        app,
-        db,
-        auth,
-        store,
-        boot,
-        ready: ensureFirestoreReady,
-        setFirestoreLogLevelByConnectivity
-    };
+return {
+    app,
+    db: compatDb,
+    auth,
+    store,
+    boot,
+    ready: ensureFirestoreReady,
+    setFirestoreLogLevelByConnectivity
+};
 })();
 
 const db = WILDU_FIREBASE.db;
