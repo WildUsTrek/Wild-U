@@ -4198,112 +4198,214 @@ function showPayDayDetails(id) {
 // --- MOTORE AMAZON SPONSOR SLIDER CON QUICK VIEW ---
 let amazonAutoScrollTimer = null;
 let amazonResumeTimer = null;
-let currentAmazonProducts = []; 
+let currentAmazonProducts = [];
 
-function initAmazonSponsors() {
-    const slider = document.getElementById('amazon-slider-engine');
-    const wrapper = document.getElementById('amazon-footer-wrapper');
-    if (!slider) return;
+const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
+let amazonSliderEventsBound = false;
+let amazonConnectivityEventsBound = false;
+let amazonInitInFlight = false;
 
-    // 🚀 FIX: Usiamo .onSnapshot per bypassare il blocco della cache offline!
-    db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu').onSnapshot((docSnap) => {
-        if (!docSnap.exists) return;
+function readAmazonProductsCache() {
+    try {
+        const raw = localStorage.getItem(AMAZON_PRODUCTS_CACHE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
 
-        const data = docSnap.data();
-        currentAmazonProducts = data.amazon_links || []; 
-        currentAmazonProducts.sort(() => Math.random() - 0.5);
+function writeAmazonProductsCache(products) {
+    try {
+        localStorage.setItem(
+            AMAZON_PRODUCTS_CACHE_KEY,
+            JSON.stringify(Array.isArray(products) ? products : [])
+        );
+    } catch (e) {}
+}
 
-        let html = "";
-        currentAmazonProducts.forEach((p, index) => {
-            // Il tuo filtro originale, intatto e infallibile
-            if (p.active !== true) return; 
-            
-            html += `
-                <div class="amazon-card" onclick="openAmazonDetail(${index})">
-                    <img src="${p.img_url}" alt="${p.title}">
-                    <div class="amazon-info">
-                        <p class="amazon-title">${p.title}</p>
-                        <p class="amazon-desc">${p.description}</p>
-                        <span class="amazon-price">€${p.price}</span>
-                        <span class="amazon-tag">AMAZON</span>
-                    </div>
-                </div>
-            `;
-        });
+function shuffleAmazonProducts(list) {
+    const copy = Array.isArray(list) ? list.slice() : [];
+    for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = copy[i];
+        copy[i] = copy[j];
+        copy[j] = tmp;
+    }
+    return copy;
+}
 
-slider.innerHTML = html;
-        
-        if (html !== "") {
-            wrapper.style.display = 'flex';
-            
-            // 🚀 FIX IMMAGINI FANTASMA: Pre-caricamento segreto (Preloading)
-            // Crea oggetti Immagine invisibili in memoria per forzare il download immediato
-            currentAmazonProducts.forEach(p => {
-                if (p.active === true && p.img_url) {
-                    const imgPreload = new Image();
-                    imgPreload.src = p.img_url;
-                }
-            });
+function bindAmazonSliderEventsOnce(slider) {
+    if (!slider || amazonSliderEventsBound) return;
+    amazonSliderEventsBound = true;
 
-            // Aspettiamo un paio di secondi prima di far partire lo slider per dare tempo 
-            // alla rete di scaricare le prime immagini in background
+    slider.addEventListener('touchstart', pauseAmazonAutoScroll, { passive: true });
+    slider.addEventListener('mousedown', pauseAmazonAutoScroll);
+
+    slider.addEventListener('scroll', () => {
+        const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1;
+        if (isEnd) {
             setTimeout(() => {
-                startAmazonAutoScroll();
-            }, 2500);
-
-            // Sensori anti-conflitto per lo scroll manuale
-
-            slider.addEventListener('touchstart', pauseAmazonAutoScroll, {passive: true});
-            slider.addEventListener('mousedown', pauseAmazonAutoScroll);
-
-            slider.addEventListener('scroll', () => {
-                const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1;
-                if (isEnd) {
-                    setTimeout(() => {
-                        if (slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1) {
-                            slider.scrollTo({ left: 0, behavior: 'smooth' });
-                        }
-                    }, 400); 
+                if (slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1) {
+                    slider.scrollTo({ left: 0, behavior: 'smooth' });
                 }
-            });
-        } else {
-            // Se non ci sono prodotti (es. tutti disattivati), nascondi il footer
-            wrapper.style.display = 'none';
+            }, 400);
         }
-    }, (error) => {
-        console.error("Errore Lettura Prodotti Amazon:", error);
     });
 }
 
+function renderAmazonSponsors(products) {
+    const slider = document.getElementById('amazon-slider-engine');
+    const wrapper = document.getElementById('amazon-footer-wrapper');
+    if (!slider || !wrapper) return;
+
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+
+    const activeProducts = shuffleAmazonProducts(
+        (Array.isArray(products) ? products : []).filter(p => p && p.active === true)
+    );
+
+    currentAmazonProducts = activeProducts;
+
+    if (!activeProducts.length) {
+        slider.innerHTML = '';
+        wrapper.style.display = 'none';
+        return;
+    }
+
+    let html = '';
+    activeProducts.forEach((p, index) => {
+        html += `
+            <div class="amazon-card" onclick="openAmazonDetail(${index})">
+                <img src="${p.img_url}" alt="${p.title}">
+                <div class="amazon-info">
+                    <p class="amazon-title">${p.title}</p>
+                    <p class="amazon-desc">${p.description}</p>
+                    <span class="amazon-price">€${p.price}</span>
+                    <span class="amazon-tag">AMAZON</span>
+                </div>
+            </div>
+        `;
+    });
+
+    slider.innerHTML = html;
+    wrapper.style.display = 'flex';
+
+    activeProducts.forEach(p => {
+        if (p.img_url) {
+            const imgPreload = new Image();
+            imgPreload.src = p.img_url;
+        }
+    });
+
+    bindAmazonSliderEventsOnce(slider);
+
+    setTimeout(() => {
+        startAmazonAutoScroll();
+    }, 1200);
+}
+
+async function fetchAmazonProductsOnce(forceRemote = false) {
+    const docRef = db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu');
+
+    try {
+        if (!forceRemote && !navigator.onLine) {
+            throw new Error('OFFLINE_SKIP_REMOTE');
+        }
+
+        const remoteSnap = await docRef.get({ source: 'server' });
+
+        if (!remoteSnap.exists) return [];
+
+        const data = remoteSnap.data() || {};
+        return Array.isArray(data.amazon_links) ? data.amazon_links : [];
+    } catch (remoteErr) {
+        try {
+            const cacheSnap = await docRef.get({ source: 'cache' });
+
+            if (cacheSnap.exists) {
+                const cacheData = cacheSnap.data() || {};
+                return Array.isArray(cacheData.amazon_links) ? cacheData.amazon_links : [];
+            }
+        } catch (cacheErr) {}
+
+        return null;
+    }
+}
+
+async function initAmazonSponsors(options = {}) {
+    if (amazonInitInFlight) return;
+    amazonInitInFlight = true;
+
+    const forceRemote = options.forceRemote === true;
+    const cachedProducts = readAmazonProductsCache();
+
+    if (cachedProducts.length) {
+        renderAmazonSponsors(cachedProducts);
+    }
+
+    try {
+        const fetchedProducts = await fetchAmazonProductsOnce(forceRemote);
+
+        if (Array.isArray(fetchedProducts)) {
+            writeAmazonProductsCache(fetchedProducts);
+            renderAmazonSponsors(fetchedProducts);
+        } else if (!cachedProducts.length) {
+            renderAmazonSponsors([]);
+        }
+    } finally {
+        amazonInitInFlight = false;
+    }
+
+    if (!amazonConnectivityEventsBound) {
+        amazonConnectivityEventsBound = true;
+
+        window.addEventListener('online', () => {
+            initAmazonSponsors({ forceRemote: true });
+        });
+
+        window.addEventListener('offline', () => {
+            const cachedAgain = readAmazonProductsCache();
+            if (cachedAgain.length) {
+                renderAmazonSponsors(cachedAgain);
+            }
+        });
+    }
+}
+
 function openAmazonDetail(index) {
-    const p = currentAmazonProducts[index];
-    if (!p) return;
-    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
-    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+    const p = currentAmazonProducts[index];
+    if (!p) return;
 
-    const content = document.getElementById('amazon-detail-content');
-    const linkBtn = document.getElementById('amazon-detail-link');
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
 
-    content.innerHTML = `
-        <img src="${p.img_url}" class="amazon-det-img" alt="${p.title}">
-        <p class="amazon-det-title">${p.title}</p>
-        <p class="amazon-det-desc">${p.description}</p>
-        <div class="amazon-det-price-row">
-            <span class="amazon-det-price">€${p.price}</span>
-        </div>
-    `;
-    linkBtn.href = p.affiliate_url;
-    document.getElementById('amazon-detail-overlay').classList.add('amazon-overlay-visible');
+    const content = document.getElementById('amazon-detail-content');
+    const linkBtn = document.getElementById('amazon-detail-link');
+
+    content.innerHTML = `
+        <img src="${p.img_url}" class="amazon-det-img" alt="${p.title}">
+        <p class="amazon-det-title">${p.title}</p>
+        <p class="amazon-det-desc">${p.description}</p>
+        <div class="amazon-det-price-row">
+            <span class="amazon-det-price">€${p.price}</span>
+        </div>
+    `;
+
+    linkBtn.href = p.affiliate_url;
+    document.getElementById('amazon-detail-overlay').classList.add('amazon-overlay-visible');
 }
 
 function closeAmazonDetail() {
-    document.getElementById('amazon-detail-overlay').classList.remove('amazon-overlay-visible');
-    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 5000);
+    document.getElementById('amazon-detail-overlay').classList.remove('amazon-overlay-visible');
+    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 5000);
 }
 
 function startAmazonAutoScroll() {
     const slider = document.getElementById('amazon-slider-engine');
     if (!slider) return;
+
     if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
 
     amazonAutoScrollTimer = setInterval(() => {
@@ -4335,10 +4437,12 @@ function startAmazonAutoScroll() {
 }
 
 function pauseAmazonAutoScroll() {
-    if(document.getElementById('amazon-detail-overlay').classList.contains('amazon-overlay-visible')) return;
-    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
-    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
-    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 12000); 
+    if (document.getElementById('amazon-detail-overlay').classList.contains('amazon-overlay-visible')) return;
+
+    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+
+    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 12000);
 }
 
 
