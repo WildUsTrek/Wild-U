@@ -603,15 +603,23 @@ auth.getRedirectResult()
 
     // Torna alla versione stabile: il warning giallo è normale e innocuo
     // Firestore: niente rumore quando sei offline, errori minimi quando sei online
-    firebase.firestore.setLogLevel(navigator.onLine ? 'error' : 'silent');
+const FIREBASE_SHOW_DEPRECATIONS = true;
 
-    window.addEventListener('offline', () => {
-        firebase.firestore.setLogLevel('silent');
-    });
+firebase.firestore.setLogLevel(
+  FIREBASE_SHOW_DEPRECATIONS ? 'debug' : (navigator.onLine ? 'error' : 'silent')
+);
 
-    window.addEventListener('online', () => {
-        firebase.firestore.setLogLevel('error');
-    });
+window.addEventListener('offline', () => {
+  firebase.firestore.setLogLevel(
+    FIREBASE_SHOW_DEPRECATIONS ? 'debug' : 'silent'
+  );
+});
+
+window.addEventListener('online', () => {
+  firebase.firestore.setLogLevel(
+    FIREBASE_SHOW_DEPRECATIONS ? 'debug' : 'error'
+  );
+});
 
     db.enablePersistence().catch(() => {
         // niente console spam: l'app continua comunque a funzionare
