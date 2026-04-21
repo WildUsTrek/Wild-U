@@ -2213,6 +2213,8 @@ if (cachedPublicData && !bypassPublicCache) {
                 throw new Error(data?.error || data?.message || "Errore getInitData");
             }
 
+            markConfirmedRemoteSuccess();
+            initAmazonSponsors({ allowRemote: true });
             syncClientSessionFromInitData(data);
 
 const publicCachePayload = {
@@ -4202,8 +4204,20 @@ let currentAmazonProducts = [];
 
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 let amazonSliderEventsBound = false;
-let amazonConnectivityEventsBound = false;
 let amazonInitInFlight = false;
+
+// finestra temporale in cui consideriamo "rete confermata"
+// dopo un fetch remoto riuscito del core app
+let lastConfirmedRemoteAt = 0;
+const AMAZON_REMOTE_TRUST_MS = 120000; // 2 minuti
+
+function markConfirmedRemoteSuccess() {
+    lastConfirmedRemoteAt = Date.now();
+}
+
+function hasConfirmedRemoteSuccess() {
+    return (Date.now() - lastConfirmedRemoteAt) < AMAZON_REMOTE_TRUST_MS;
+}
 
 function readAmazonProductsCache() {
     try {
@@ -4306,71 +4320,48 @@ function renderAmazonSponsors(products) {
     }, 1200);
 }
 
-async function fetchAmazonProductsOnce(forceRemote = false) {
+async function fetchAmazonProductsRemote() {
     const docRef = db.collection('PARAMETERS_PARTNER').doc('prodotti_wildu');
+    const remoteSnap = await docRef.get({ source: 'server' });
 
-    try {
-        if (!forceRemote && !navigator.onLine) {
-            throw new Error('OFFLINE_SKIP_REMOTE');
-        }
+    if (!remoteSnap.exists) return [];
 
-        const remoteSnap = await docRef.get({ source: 'server' });
-
-        if (!remoteSnap.exists) return [];
-
-        const data = remoteSnap.data() || {};
-        return Array.isArray(data.amazon_links) ? data.amazon_links : [];
-    } catch (remoteErr) {
-        try {
-            const cacheSnap = await docRef.get({ source: 'cache' });
-
-            if (cacheSnap.exists) {
-                const cacheData = cacheSnap.data() || {};
-                return Array.isArray(cacheData.amazon_links) ? cacheData.amazon_links : [];
-            }
-        } catch (cacheErr) {}
-
-        return null;
-    }
+    const data = remoteSnap.data() || {};
+    return Array.isArray(data.amazon_links) ? data.amazon_links : [];
 }
 
 async function initAmazonSponsors(options = {}) {
     if (amazonInitInFlight) return;
     amazonInitInFlight = true;
 
-    const forceRemote = options.forceRemote === true;
+    const allowRemote = options.allowRemote === true;
     const cachedProducts = readAmazonProductsCache();
 
+    // 1) render estetico immediato da cache locale
     if (cachedProducts.length) {
         renderAmazonSponsors(cachedProducts);
+    } else {
+        renderAmazonSponsors([]);
+    }
+
+    // 2) il footer NON decide da solo se la rete c'è
+    // prova remoto solo se il core app ha già dimostrato rete vera
+    if (!allowRemote && !hasConfirmedRemoteSuccess()) {
+        amazonInitInFlight = false;
+        return;
     }
 
     try {
-        const fetchedProducts = await fetchAmazonProductsOnce(forceRemote);
+        const fetchedProducts = await fetchAmazonProductsRemote();
 
         if (Array.isArray(fetchedProducts)) {
             writeAmazonProductsCache(fetchedProducts);
             renderAmazonSponsors(fetchedProducts);
-        } else if (!cachedProducts.length) {
-            renderAmazonSponsors([]);
         }
+    } catch (e) {
+        // silenzio operativo: il footer resta sulla cache locale
     } finally {
         amazonInitInFlight = false;
-    }
-
-    if (!amazonConnectivityEventsBound) {
-        amazonConnectivityEventsBound = true;
-
-        window.addEventListener('online', () => {
-            initAmazonSponsors({ forceRemote: true });
-        });
-
-        window.addEventListener('offline', () => {
-            const cachedAgain = readAmazonProductsCache();
-            if (cachedAgain.length) {
-                renderAmazonSponsors(cachedAgain);
-            }
-        });
     }
 }
 
