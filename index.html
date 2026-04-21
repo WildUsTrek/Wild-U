@@ -3576,7 +3576,69 @@ function readModuleCacheMeta() {
 function writeModuleCacheMeta(nextMeta) {
     localStorage.setItem(MODULE_CACHE_META_KEY, JSON.stringify(nextMeta || {}));
 }
+    
+async function debugDumpWilduCaches() {
+    const summary = {
+        online: navigator.onLine,
+        currentModuleUrl: window.currentModuleUrl || null,
+        currentModuleVersionedUrl: window.currentModuleVersionedUrl || null,
+        currentModuleRev: window.currentModuleRev || null,
+        moduleMeta: null,
+        caches: {}
+    };
 
+    try {
+        summary.moduleMeta = JSON.parse(localStorage.getItem(MODULE_CACHE_META_KEY) || '{}');
+    } catch (e) {
+        summary.moduleMeta = { error: 'MODULE_META_PARSE_ERROR', message: String(e && e.message || e) };
+    }
+
+    if (!('caches' in window)) {
+        console.log('[WILDU CACHE DUMP]', {
+            ...summary,
+            error: 'CACHE_API_NOT_AVAILABLE'
+        });
+        return summary;
+    }
+
+    try {
+        const cacheNames = await caches.keys();
+
+        for (const cacheName of cacheNames) {
+            const cache = await caches.open(cacheName);
+            const requests = await cache.keys();
+
+            summary.caches[cacheName] = requests.map(req => req.url);
+        }
+
+        console.log('[WILDU CACHE DUMP]', summary);
+        return summary;
+    } catch (e) {
+        console.log('[WILDU CACHE DUMP]', {
+            ...summary,
+            error: 'CACHE_DUMP_FAILED',
+            message: String(e && e.message || e)
+        });
+        return summary;
+    }
+}
+
+async function debugDumpModuleCacheOnly() {
+    const dump = await debugDumpWilduCaches();
+    const onlyModules = {
+        online: dump.online,
+        currentModuleUrl: dump.currentModuleUrl,
+        currentModuleVersionedUrl: dump.currentModuleVersionedUrl,
+        currentModuleRev: dump.currentModuleRev,
+        moduleMeta: dump.moduleMeta,
+        moduleCache: dump.caches['wildu-module-v1'] || [],
+        assetCache: dump.caches['wildu-asset-v1'] || []
+    };
+
+    console.log('[WILDU MODULE CACHE ONLY]', onlyModules);
+    return onlyModules;
+}
+    
 function isSkippableModuleUrl(rawUrl) {
     const value = String(rawUrl || '').trim();
     if (!value) return true;
