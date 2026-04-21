@@ -582,6 +582,21 @@ auth.getRedirectResult()
   })
   .catch((error) => {
     console.error("Errore redirect:", error);
+
+    const code = String(error?.code || '').toLowerCase();
+    const msg = String(error?.message || '').toLowerCase();
+
+    const looksOffline =
+      !navigator.onLine ||
+      code === 'auth/network-request-failed' ||
+      msg.includes('network') ||
+      msg.includes('offline');
+
+    if (looksOffline) {
+      showToast("Sei offline. Per completare l'accesso serve la connessione.");
+      return;
+    }
+
     showToast("Errore login Google");
   });
 
@@ -1359,14 +1374,41 @@ if (docSnap.exists) {
 // ==========================================
 
 function loginWithGoogle() {
+    if (!navigator.onLine) {
+        showToast("Sei offline. Per accedere serve la connessione.");
+        return;
+    }
+
     const provider = new firebase.auth.GoogleAuthProvider();
+
     auth.signInWithPopup(provider).catch((error) => {
         console.error("Errore login Google Popup:", error);
-        if (error.code === 'auth/popup-blocked') {
-             showToast("Popup bloccato. Usa il pulsante alternativo qui sotto.");
-        } else {
-             showToast("Errore: " + error.message + ". Usa il pulsante alternativo.");
+
+        const code = String(error?.code || '').toLowerCase();
+        const msg = String(error?.message || '').toLowerCase();
+
+        const looksOffline =
+            !navigator.onLine ||
+            code === 'auth/network-request-failed' ||
+            msg.includes('network') ||
+            msg.includes('offline');
+
+        if (looksOffline) {
+            showToast("Sei offline. Per accedere serve la connessione.");
+            return;
         }
+
+        if (code === 'auth/popup-blocked') {
+            showToast("Popup bloccato. Usa il pulsante alternativo qui sotto.");
+            return;
+        }
+
+        if (code === 'auth/popup-closed-by-user') {
+            showToast("Accesso annullato.");
+            return;
+        }
+
+        showToast("Errore accesso Google. Riprova con connessione attiva.");
     });
 }
 
@@ -1375,8 +1417,32 @@ function loginWithGoogle() {
 // ==========================================
 
 function loginWithGoogleRedirect() {
+    if (!navigator.onLine) {
+        showToast("Sei offline. Per accedere serve la connessione.");
+        return;
+    }
+
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithRedirect(provider);
+
+    auth.signInWithRedirect(provider).catch((error) => {
+        console.error("Errore login Google Redirect:", error);
+
+        const code = String(error?.code || '').toLowerCase();
+        const msg = String(error?.message || '').toLowerCase();
+
+        const looksOffline =
+            !navigator.onLine ||
+            code === 'auth/network-request-failed' ||
+            msg.includes('network') ||
+            msg.includes('offline');
+
+        if (looksOffline) {
+            showToast("Sei offline. Per accedere serve la connessione.");
+            return;
+        }
+
+        showToast("Errore accesso Google. Riprova con connessione attiva.");
+    });
 }
 
 // ==========================================
