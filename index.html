@@ -2759,7 +2759,7 @@ function evaluateBookings() {
     
     async function awardTripXP(tripId, xpVal) {
         try {
-            const userRef = db.collection("utenti").doc(wildUserKey);
+            
             await FS.setUtente(wildUserKey, {
                 xp: FV.increment(xpVal),
                 viaggi_riscattati: FV.arrayUnion(tripId),
@@ -3586,7 +3586,7 @@ if (profKeyEl) {
                 const userRef = db.collection("utenti").doc(wildUserKey);
                 await userRef.set({ 
                     xp: firebase.firestore.FieldValue.increment(winAmount),
-                    ultimo_aggiornamento: firebase.firestore.FieldValue.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
+                    ultimo_aggiornamento: FV.serverTimestamp() // 🟢 SCUDO ANTI-SPAM
                 }, { merge: true });
                 if (cachedXPData) cachedXPData.xp += winAmount;
             }
