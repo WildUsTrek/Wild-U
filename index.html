@@ -3136,23 +3136,26 @@ function showTripDetails(id) {
     }
     document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
-    // --- GESTIONE MAPPE (VERSIONE CORRETTA) ---
+    // --- GESTIONE MAPPE (FORZATURA REGIONALE) ---
     const mapContainer = document.getElementById('od-map-container');
-    const mapIframe = document.getElementById('od-map-iframe');
     const mapsBtn = document.getElementById('od-modal-maps');
+    const linkMaps = ev.ritrovo?.luogoLink || ev.luogoLink || "";
     
-    // Usiamo il link generato dal backend o costruiamo il fallback
-    const linkMappe = ev.luogoLink || "";
-    
-    if (luogoPulito && luogoPulito !== "Luogo non specificato") {
+    if (linkMaps || luogoPulito) {
         mapContainer.style.display = "block";
         mapsBtn.style.display = "block";
         
-        // Link per il tasto (apre Google Maps App)
-        mapsBtn.href = linkMappe || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(luogoPulito + ", Italy")}`;
+        const isPlaceValid = luogoPulito && luogoPulito !== "Luogo non specificato" && luogoPulito !== "Luogo da definire";
         
-        // Link per l'Iframe (Embed gratuito)
-        mapIframe.src = `https://maps.google.com/maps?q=${encodeURIComponent(luogoPulito + ", Italy")}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
+        // IL TRUCCO: Aggiungiamo la regione (es. TOSCANA) che il tuo DB ha già trovato!
+        const stringaRicerca = isPlaceValid 
+            ? `${luogoPulito}, ${reg ? reg + ", " : ""}Italy` 
+            : "Italy";
+            
+        const queryEmbed = encodeURIComponent(stringaRicerca);
+
+        mapsBtn.href = linkMaps || `https://maps.google.com/maps?q=${queryEmbed}`;
+        document.getElementById('od-map-iframe').src = `https://maps.google.com/maps?q=${queryEmbed}&output=embed`;
     } else {
         mapContainer.style.display = "none";
         mapsBtn.style.display = "none";
