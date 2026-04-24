@@ -67,13 +67,9 @@ self.addEventListener('activate', (e) => {
     })());
 });
 
+
+
 self.addEventListener('fetch', (e) => {
-    const req = e.request;
-    const url = new URL(req.url);
-
-    if (req.method !== 'GET') return;
-
-    self.addEventListener('fetch', (e) => {
     const req = e.request;
     const url = new URL(req.url);
 
@@ -81,9 +77,14 @@ self.addEventListener('fetch', (e) => {
 
     const isSameOrigin = url.origin === self.location.origin;
 
-    // Se è una richiesta verso un server esterno (es. Cloudinary, Wildu.it)
+    // Se è una richiesta verso un server esterno
     if (!isSameOrigin) {
-        // La intercettiamo SOLO se è un'immagine o un asset (così salviamo le foto ma ignoriamo le API Firebase)
+        // 🛑 BYPASS AMAZON: Lasciamo che il browser gestisca Amazon da solo
+        if (url.hostname.includes('amazon') || url.hostname.includes('ssl-images')) {
+            return; 
+        }
+
+        // La intercettiamo SOLO se è un'immagine o un asset utile (Cloudinary, Wildu)
         if (isAssetRequest(req, url)) {
             e.respondWith(handleAssetRequest(req));
         }
