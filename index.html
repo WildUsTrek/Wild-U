@@ -3012,20 +3012,51 @@ function executePenaltyRedirect() {
 
 function renderTrips(trips, targetId) {
     document.getElementById(targetId).innerHTML = trips.map(ev => {
-        // --- 1. DEBUG AIUTO (Premi F12 nel browser per vedere cosa ti sta mandando il backend) ---
+        // --- 1. DEBUG AIUTO ---
         // console.log("DEBUG EVENTO RICEVUTO:", ev);
 
-        // --- 2. GESTIONE UNIVERSALE DATE E TITOLO (Firestore nativo vs Legacy Sheets) ---
+        // --- 2. GESTIONE UNIVERSALE DATE E TITOLO ---
         const titolo = ev.Titolo || ev.titolo || "Evento Sconosciuto";
         const dataInizio = ev["Data inizio"] || ev.dataInizio || "";
         const dataFine = ev["Data fine"] || ev.dataFine || "";
         const anno = ev.Anno || (dataInizio ? dataInizio.split('/')[2] : new Date().getFullYear());
         
-        // Se la data ha già l'anno, non duplicarlo
         const dataPura = (dataInizio && dataInizio.includes(anno)) ? dataInizio : `${dataInizio}/${anno}`;
         const dataFinePura = (dataFine && dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`;
 
-        // --- 3. BOOKING KEY E IDENTIFICATIVI ---
+        // --- 3. ESTRAZIONE E PULIZIA ORARIO/LUOGO (IBRIDA E ANTIPROIETTILE) ---
+        const orario = ev["Orario Inizio"] || (ev.ritrovo ? ev.ritrovo.ora : "") || "";
+        
+        const reg = ev.Regione || ev.regione || "";
+        const nomeRegione = reg ? `${reg} - ` : "";
+        
+        let luogoRaw = "Luogo non specificato";
+        
+        if (ev.ritrovo && typeof ev.ritrovo === 'object' && ev.ritrovo.luogo) {
+            luogoRaw = ev.ritrovo.luogo; // Caso Firestore perfetto
+        } else if (ev.ritrovo && typeof ev.ritrovo === 'string') {
+            try { 
+                const parsed = JSON.parse(ev.ritrovo); 
+                if (parsed.luogo) luogoRaw = parsed.luogo; 
+            } catch(e) {} // Caso backend che ha stringhificato la mappa
+        } else if (ev.luogo) {
+            luogoRaw = ev.luogo; // Caso JSON appiattito
+        } else if (ev.START) {
+            luogoRaw = ev.START; // Caso Legacy CSV
+        } else if (ev["Luogo Nome"]) {
+            luogoRaw = ev["Luogo Nome"]; // Caso Legacy Alternativo
+        }
+        
+        // Pulizia: se nel luogo c'è scritto "ore 8:00", lo tagliamo via
+        const luogoPulito = luogoRaw.replace(/(?:,?\s*-?\s*)(?:ore|ora|orario)\s*\d{1,2}(?:[:.]\d{2})?.*/i, '').trim();
+        const luogoCompleto = `${nomeRegione}${luogoPulito}`;
+
+        // --- 4. DATI EXTRA (PRONTI PER USO FUTURO) ---
+        const descrizione = ev.descrizione || "";
+        const servizi = ev.servizi || [];
+        const immagine = ev.immagine || "";
+
+        // --- 5. BOOKING KEY E IDENTIFICATIVI ---
         const bookingId = ev.bookingId || "";
         const collection = ev.collection || "";
         const eventDocId = ev.eventDocId || ev.id || "";
@@ -3036,7 +3067,7 @@ function renderTrips(trips, targetId) {
             data: dataPura
         });
 
-        // --- 4. PREZZI E XP (Firestore nativo vs Legacy Sheets) ---
+        // --- 6. PREZZI E XP ---
         const hasOfferta = ev["Offerta Attiva"] === true;
         const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || "0";
         const prezzoEarly = ev["Prezzo Early"] || prezzoBase;
@@ -3047,30 +3078,7 @@ function renderTrips(trips, targetId) {
         const linkHref = ev.Link || ev.link || "";
         const linkBtn = linkHref ? `<a href='${linkHref}' target='_blank' class='btn-link'>Info</a>` : "";
 
-        // --- 5. ESTRAZIONE LUOGO IBRIDA (ANTIPROIETTILE) ---
-        const reg = ev.Regione || ev.regione || "";
-        const nomeRegione = reg ? `${reg} - ` : "";
-        
-        let luogo = "Luogo non specificato";
-        
-        if (ev.ritrovo && typeof ev.ritrovo === 'object' && ev.ritrovo.luogo) {
-            luogo = ev.ritrovo.luogo; // Caso Firestore perfetto
-        } else if (ev.ritrovo && typeof ev.ritrovo === 'string') {
-            try { 
-                const parsed = JSON.parse(ev.ritrovo); 
-                if (parsed.luogo) luogo = parsed.luogo; 
-            } catch(e) {} // Caso backend che ha stringhificato la mappa
-        } else if (ev.luogo) {
-            luogo = ev.luogo; // Caso JSON appiattito
-        } else if (ev.START) {
-            luogo = ev.START; // Caso Legacy CSV
-        } else if (ev["Luogo Nome"]) {
-            luogo = ev["Luogo Nome"]; // Caso Legacy Alternativo
-        }
-        
-        const luogoCompleto = `${nomeRegione}${luogo}`;
-
-        // --- 6. PULSANTI E PAYLOAD ---
+        // --- 7. PULSANTI E PAYLOAD ---
         const safeTitle = String(titolo).replace(/'/g, "\\'");
         const safeBookingId = String(bookingId).replace(/'/g, "\\'");
         const safeCollection = String(collection).replace(/'/g, "\\'");
@@ -3100,9 +3108,12 @@ function renderTrips(trips, targetId) {
             priceHtml = `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
         }
 
+        // --- 8. RENDER HTML CARD ---
         return `<div class="card">
             <span class="card-title">${titolo}</span>
-            <div style="font-size:15px; color:#aaa; margin-bottom: 8px;">📅 dal <b>${dataPura}</b> al <b>${dataFinePura}</b></div>
+            <div style="font-size:15px; color:#aaa; margin-bottom: 8px;">
+                📅 <b>${dataPura}</b> ${orario ? `<span style="color:#777; margin-left:5px;">| 🕒 ${orario}</span>` : ''}
+            </div>
             <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             <div class="price-box">
                 <div class="price-standard">Standard: ${prezzoStandard}€</div>
