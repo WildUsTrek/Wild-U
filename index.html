@@ -3031,6 +3031,11 @@ function renderTrips(trips, targetId) {
         const safeCollection = String(ev.collection || "").replace(/'/g, "\\'");
         const safeEventDocId = String(ev.eventDocId || "").replace(/'/g, "\\'");
 
+        // Estrazione Luogo e Regione per la UI
+        const nomeRegione = ev.Regione ? `${ev.Regione} - ` : "";
+        const luogo = ev.START || ev["Luogo Nome"] || "Luogo non specificato";
+        const luogoCompleto = `${nomeRegione}${luogo}`;
+
         let actionBtn = "";
 
         if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
@@ -3058,7 +3063,8 @@ function renderTrips(trips, targetId) {
 
         return `<div class="card">
             <span class="card-title">${ev.Titolo}</span>
-            <div style="font-size:15px; color:#aaa;">📅 dal <b>${dataPura}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div>
+            <div style="font-size:15px; color:#aaa; margin-bottom: 8px;">📅 dal <b>${dataPura}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div>
+            <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             <div class="price-box">
                 <div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div>
                 <div class="price-prime-wrapper">
