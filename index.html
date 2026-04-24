@@ -3015,8 +3015,11 @@ function renderTrips(trips, targetId) {
         // --- 1. GESTIONE DATE E TITOLO ---
         const titolo = ev.Titolo || ev.titolo || "Evento Sconosciuto";
         const dataInizio = ev["Data inizio"] || ev.dataInizio || "";
+        const dataFine = ev["Data fine"] || ev.dataFine || "";
         const anno = ev.Anno || (dataInizio ? dataInizio.split('/')[2] : new Date().getFullYear());
         const dataPura = (dataInizio && dataInizio.includes(anno)) ? dataInizio : `${dataInizio}/${anno}`;
+        const dataPuraFine = (dataFine && dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`;
+        const displayDate = (dataFine && dataFine !== dataInizio) ? `${dataPura} - ${dataPuraFine}` : dataPura;
 
         // --- 2. ORARIO E LUOGO ---
         const orario = ev["Orario Inizio"] || (ev.ritrovo ? ev.ritrovo.ora : "") || "";
@@ -3051,8 +3054,9 @@ function renderTrips(trips, targetId) {
         // --- 4. RENDER CARD (LAYOUT ORIGINALE CON NUOVO TASTO) ---
         return `<div class="card">
             <span class="card-title">${titolo}</span>
-            <div style="font-size:15px; color:#aaa; margin-bottom: 8px;">
-                📅 <b>${dataPura}</b> ${orario && orario !== "variabile, chiedi info" ? `<span style="color:#777; margin-left:5px;">| 🕒 ${orario}</span>` : ''}
+            <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
+                <div style="color:#fff;">📅 <b>${displayDate}</b></div>
+                ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
             </div>
             <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             
@@ -3285,6 +3289,8 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
             const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
             const titolo = od["Titolo"] || "Evento Speciale";
             const dataInizio = od["Data Inizio"] || "";
+            const dataFine = od["Data Fine"] || "";
+            const displayDate = (dataFine && dataFine !== dataInizio) ? `${dataInizio} - ${dataFine}` : dataInizio;
             const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
             
             // INSERIMENTO DELLA REGIONE
@@ -3298,7 +3304,10 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
             html += `
             <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
-                <p style="color: #00aaff; font-weight: bold; margin: 0 0 12px 0; font-size: 15px;">📅 ${dataInizio} <span style="color:#777; font-weight:normal;">| 🕒 ${orario}</span></p>
+                <div style="margin-bottom: 12px; line-height: 1.4;">
+                    <div style="color: #00aaff; font-weight: bold; font-size: 15px;">📅 ${displayDate}</div>
+                    <div style="color:#777; font-size: 14px;">🕒 ${orario}</div>
+                </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
@@ -3374,9 +3383,11 @@ function renderPayDays() {
     let html = '';
     for(let pd of processedList) {
         const id = pd["ID Evento (Super-Key)"] || pd["ID Evento"];
-        const titolo = pd["Titolo"] || "Evento Speciale";
-        const dataInizio = pd["Data Inizio"] || "";
-        const orario = (pd["Orario Inizio"] || "") + " - " + (pd["Orario Fine"] || "");
+            const titolo = pd["Titolo"] || "Evento Speciale";
+            const dataInizio = pd["Data Inizio"] || "";
+            const dataFine = pd["Data Fine"] || "";
+            const displayDate = (dataFine && dataFine !== dataInizio) ? `${dataInizio} - ${dataFine}` : dataInizio;
+            const orario = (pd["Orario Inizio"] || "") + " - " + (pd["Orario Fine"] || "");
         const prezzo = pd["Prezzo"] || "0";
         const nomeRegione = pd["Regione"] ? `${pd["Regione"]} - ` : "";
         const luogo = pd["Luogo Nome"] || "Luogo da definire";
@@ -3386,9 +3397,12 @@ function renderPayDays() {
 
         html += `
         <div style="background: #111; border-left: 4px solid #d4af37; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
-            <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
-            <p style="color: #d4af37; font-weight: bold; margin: 0 0 12px 0; font-size: 15px;">📅 ${dataInizio} <span style="color:#777; font-weight:normal;">| 🕒 ${orario}</span></p>
-            <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+            <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
+                <div style="margin-bottom: 12px; line-height: 1.4;">
+                    <div style="color: #d4af37; font-weight: bold; font-size: 15px;">📅 ${displayDate}</div>
+                    <div style="color:#777; font-size: 14px;">🕒 ${orario}</div>
+                </div>
+                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                 ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
                 ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
