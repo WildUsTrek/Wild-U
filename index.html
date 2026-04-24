@@ -3031,9 +3031,20 @@ function renderTrips(trips, targetId) {
         const safeCollection = String(ev.collection || "").replace(/'/g, "\\'");
         const safeEventDocId = String(ev.eventDocId || "").replace(/'/g, "\\'");
 
-        // Estrazione Luogo e Regione per la UI
-        const nomeRegione = ev.Regione ? `${ev.Regione} - ` : "";
-        const luogo = ev.START || ev["Luogo Nome"] || "Luogo non specificato";
+        // Estrazione Regione (gestisce sia 'Regione' che 'regione' per sicurezza)
+        const reg = ev.Regione || ev.regione || "";
+        const nomeRegione = reg ? `${reg} - ` : "";
+        
+        // Estrazione Luogo (legge la mappa 'ritrovo' dal nuovo schema Firestore)
+        let luogo = "Luogo non specificato";
+        if (ev.ritrovo && ev.ritrovo.luogo) {
+            luogo = ev.ritrovo.luogo;
+        } else if (ev.START) {
+            luogo = ev.START;
+        } else if (ev["Luogo Nome"]) {
+            luogo = ev["Luogo Nome"];
+        }
+        
         const luogoCompleto = `${nomeRegione}${luogo}`;
 
         let actionBtn = "";
