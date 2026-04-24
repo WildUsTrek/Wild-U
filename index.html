@@ -3051,17 +3051,19 @@ function renderTrips(trips, targetId) {
                <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
             : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
 
-        // --- 4. RENDER CARD (LAYOUT ORIGINALE CON NUOVO TASTO) ---
+// --- 4. RENDER CARD (ORARIO SPOSTATO SOPRA IL PREZZO STANDARD) ---
         return `<div class="card">
             <span class="card-title">${titolo}</span>
             <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
                 <div style="color:#fff;">📅 <b>${displayDate}</b></div>
-                ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
             </div>
             <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             
             <div class="price-box">
-                <div class="price-standard">Standard: ${prezzoStandard}€</div>
+                <div>
+                    ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 13px; margin-bottom: 4px;">🕒 ${orario}</div>` : ''}
+                    <div class="price-standard">Standard: ${prezzoStandard}€</div>
+                </div>
                 <div class="price-prime-wrapper">
                     <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
                     ${priceHtml}
