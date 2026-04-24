@@ -3012,43 +3012,71 @@ function executePenaltyRedirect() {
 
 function renderTrips(trips, targetId) {
     document.getElementById(targetId).innerHTML = trips.map(ev => {
-        const dataPura = ev["Data inizio"] + "/" + ev.Anno;
+        // --- 1. DEBUG AIUTO (Premi F12 nel browser per vedere cosa ti sta mandando il backend) ---
+        // console.log("DEBUG EVENTO RICEVUTO:", ev);
+
+        // --- 2. GESTIONE UNIVERSALE DATE E TITOLO (Firestore nativo vs Legacy Sheets) ---
+        const titolo = ev.Titolo || ev.titolo || "Evento Sconosciuto";
+        const dataInizio = ev["Data inizio"] || ev.dataInizio || "";
+        const dataFine = ev["Data fine"] || ev.dataFine || "";
+        const anno = ev.Anno || (dataInizio ? dataInizio.split('/')[2] : new Date().getFullYear());
+        
+        // Se la data ha già l'anno, non duplicarlo
+        const dataPura = (dataInizio && dataInizio.includes(anno)) ? dataInizio : `${dataInizio}/${anno}`;
+        const dataFinePura = (dataFine && dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`;
+
+        // --- 3. BOOKING KEY E IDENTIFICATIVI ---
+        const bookingId = ev.bookingId || "";
+        const collection = ev.collection || "";
+        const eventDocId = ev.eventDocId || ev.id || "";
 
         const bookingKey = buildClientBookingKey({
-            bookingId: ev.bookingId || "",
-            titolo: ev.Titolo || "",
+            bookingId: bookingId,
+            titolo: titolo,
             data: dataPura
         });
 
+        // --- 4. PREZZI E XP (Firestore nativo vs Legacy Sheets) ---
         const hasOfferta = ev["Offerta Attiva"] === true;
-        const prezzoFinale = hasOfferta ? ev["Prezzo Early"] : ev["Prezzo Prime"];
+        const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || "0";
+        const prezzoEarly = ev["Prezzo Early"] || prezzoBase;
+        const prezzoFinale = hasOfferta ? prezzoEarly : prezzoBase;
+        const prezzoStandard = ev["Prezzo (€)"] || prezzoBase;
 
-        const xpReward = Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
-        const linkBtn = ev.Link ? "<a href='" + ev.Link + "' target='_blank' class='btn-link'>Info</a>" : "";
+        const xpReward = ev.xp_reward || Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
+        const linkHref = ev.Link || ev.link || "";
+        const linkBtn = linkHref ? `<a href='${linkHref}' target='_blank' class='btn-link'>Info</a>` : "";
 
-        const safeTitle = String(ev.Titolo || "").replace(/'/g, "\\'");
-        const safeBookingId = String(ev.bookingId || "").replace(/'/g, "\\'");
-        const safeCollection = String(ev.collection || "").replace(/'/g, "\\'");
-        const safeEventDocId = String(ev.eventDocId || "").replace(/'/g, "\\'");
-
-        // Estrazione Regione (gestisce sia 'Regione' che 'regione' per sicurezza)
+        // --- 5. ESTRAZIONE LUOGO IBRIDA (ANTIPROIETTILE) ---
         const reg = ev.Regione || ev.regione || "";
         const nomeRegione = reg ? `${reg} - ` : "";
         
-        // Estrazione Luogo (legge la mappa 'ritrovo' dal nuovo schema Firestore)
         let luogo = "Luogo non specificato";
-        if (ev.ritrovo && ev.ritrovo.luogo) {
-            luogo = ev.ritrovo.luogo;
+        
+        if (ev.ritrovo && typeof ev.ritrovo === 'object' && ev.ritrovo.luogo) {
+            luogo = ev.ritrovo.luogo; // Caso Firestore perfetto
+        } else if (ev.ritrovo && typeof ev.ritrovo === 'string') {
+            try { 
+                const parsed = JSON.parse(ev.ritrovo); 
+                if (parsed.luogo) luogo = parsed.luogo; 
+            } catch(e) {} // Caso backend che ha stringhificato la mappa
+        } else if (ev.luogo) {
+            luogo = ev.luogo; // Caso JSON appiattito
         } else if (ev.START) {
-            luogo = ev.START;
+            luogo = ev.START; // Caso Legacy CSV
         } else if (ev["Luogo Nome"]) {
-            luogo = ev["Luogo Nome"];
+            luogo = ev["Luogo Nome"]; // Caso Legacy Alternativo
         }
         
         const luogoCompleto = `${nomeRegione}${luogo}`;
 
-        let actionBtn = "";
+        // --- 6. PULSANTI E PAYLOAD ---
+        const safeTitle = String(titolo).replace(/'/g, "\\'");
+        const safeBookingId = String(bookingId).replace(/'/g, "\\'");
+        const safeCollection = String(collection).replace(/'/g, "\\'");
+        const safeEventDocId = String(eventDocId).replace(/'/g, "\\'");
 
+        let actionBtn = "";
         if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
             actionBtn = `<button disabled style="background: #444; color: #888; border: 1px solid #555; cursor: not-allowed; flex: 2; padding: 16px; border-radius: 12px; font-weight: bold; font-size: 15px;">🎒 GIÀ IN ZAINO</button>`;
         }
@@ -3064,20 +3092,20 @@ function renderTrips(trips, targetId) {
             priceHtml = `
                 <div style="color: #ffaa00; font-size: 11px; font-weight: 900; letter-spacing: 1px; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
                 <div class="price-prime" style="border-color: #ffaa00; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);">
-                    <span class="prime-val" style="color: #ffaa00;">${ev["Prezzo Early"]}€</span>
+                    <span class="prime-val" style="color: #ffaa00;">${prezzoEarly}€</span>
                 </div>
-                <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${ev["Prezzo Prime"]}€</div>
+                <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>
             `;
         } else {
-            priceHtml = `<div class="price-prime"><span class="prime-val">${ev["Prezzo Prime"]}€</span></div>`;
+            priceHtml = `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
         }
 
         return `<div class="card">
-            <span class="card-title">${ev.Titolo}</span>
-            <div style="font-size:15px; color:#aaa; margin-bottom: 8px;">📅 dal <b>${dataPura}</b> al <b>${ev["Data fine"]}/${ev.Anno}</b></div>
+            <span class="card-title">${titolo}</span>
+            <div style="font-size:15px; color:#aaa; margin-bottom: 8px;">📅 dal <b>${dataPura}</b> al <b>${dataFinePura}</b></div>
             <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             <div class="price-box">
-                <div class="price-standard">Standard: ${ev["Prezzo (€)"]}€</div>
+                <div class="price-standard">Standard: ${prezzoStandard}€</div>
                 <div class="price-prime-wrapper">
                     <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
                     ${priceHtml}
