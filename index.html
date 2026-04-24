@@ -4198,7 +4198,9 @@ function showOpenDayDetails(id) {
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
 
     document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
-    document.getElementById('od-modal-date').innerText = "📅 " + (od["Data Inizio"] || "");
+    const dInizio = od["Data Inizio"] || "";
+    const dFine = od["Data Fine"] || "";
+    document.getElementById('od-modal-date').innerText = (dFine && dFine !== dInizio) ? `📅 dal ${dInizio} al ${dFine}` : `📅 ${dInizio}`;
     document.getElementById('od-modal-time').innerText = "🕒 " + (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
 
     const regVal = od["Regione"] || od["regione"] || "";
@@ -4350,7 +4352,9 @@ function showPayDayDetails(id) {
     }
 
     document.getElementById('od-modal-title').innerText = pd["Titolo"] || "Evento";
-    document.getElementById('od-modal-date').innerText = "📅 " + (pd["Data Inizio"] || "");
+    const dInizio = pd["Data Inizio"] || "";
+    const dFine = pd["Data Fine"] || "";
+    document.getElementById('od-modal-date').innerText = (dFine && dFine !== dInizio) ? `📅 dal ${dInizio} al ${dFine}` : `📅 ${dInizio}`;
     document.getElementById('od-modal-time').innerText = "🕒 " + (pd["Orario Inizio"] || "") + " - " + (pd["Orario Fine"] || "");
 
     const regVal = pd["Regione"] || pd["regione"] || "";
