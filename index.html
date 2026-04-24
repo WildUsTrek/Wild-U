@@ -3136,21 +3136,23 @@ function showTripDetails(id) {
     }
     document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
-    // Gestione Mappe (con safe url)
+    // --- GESTIONE MAPPE (VERSIONE CORRETTA) ---
     const mapContainer = document.getElementById('od-map-container');
+    const mapIframe = document.getElementById('od-map-iframe');
     const mapsBtn = document.getElementById('od-modal-maps');
-    const linkMaps = ev.ritrovo?.luogoLink || ev.luogoLink || "";
     
-    if (linkMaps || luogoPulito) {
+    // Usiamo il link generato dal backend o costruiamo il fallback
+    const linkMappe = ev.luogoLink || "";
+    
+    if (luogoPulito && luogoPulito !== "Luogo non specificato") {
         mapContainer.style.display = "block";
         mapsBtn.style.display = "block";
         
-        // Protezione contro le stringhe "Luogo non specificato" per evitare errori di Maps
-        const isPlaceValid = luogoPulito && luogoPulito !== "Luogo non specificato" && luogoPulito !== "Luogo da definire";
-        const queryEmbed = isPlaceValid ? encodeURIComponent(luogoPulito + ", Italy") : "Italy";
-
-        mapsBtn.href = linkMaps || `http://googleusercontent.com/maps.google.com/maps?q=${queryEmbed}`;
-        document.getElementById('od-map-iframe').src = `http://googleusercontent.com/maps.google.com/maps?q=${queryEmbed}&output=embed`;
+        // Link per il tasto (apre Google Maps App)
+        mapsBtn.href = linkMappe || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(luogoPulito + ", Italy")}`;
+        
+        // Link per l'Iframe (Embed gratuito)
+        mapIframe.src = `https://maps.google.com/maps?q=${encodeURIComponent(luogoPulito + ", Italy")}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
     } else {
         mapContainer.style.display = "none";
         mapsBtn.style.display = "none";
