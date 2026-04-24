@@ -48,8 +48,9 @@ const SHELL_URLS = [
 const MODULE_CACHE_MAX_ENTRIES = 40;
 const MODULE_CACHE_TRIM_TO = 24;
 
-const ASSET_CACHE_MAX_ENTRIES = 160;
-const ASSET_CACHE_TRIM_TO = 110;
+// AUMENTIAMO LA CAPIENZA PER LE FOTO:
+const ASSET_CACHE_MAX_ENTRIES = 300; 
+const ASSET_CACHE_TRIM_TO = 250;
 
 self.addEventListener('install', (e) => {
     self.skipWaiting();
@@ -72,7 +73,22 @@ self.addEventListener('fetch', (e) => {
 
     if (req.method !== 'GET') return;
 
-    // Non tocchiamo risorse esterne: Firebase, Google, Telegram, GitHub raw, Cloud Run esterno, ecc.
+    self.addEventListener('fetch', (e) => {
+    const req = e.request;
+    const url = new URL(req.url);
+
+    if (req.method !== 'GET') return;
+
+    const isSameOrigin = url.origin === self.location.origin;
+
+    // Se è una richiesta verso un server esterno (es. Cloudinary, Wildu.it)
+    if (!isSameOrigin) {
+        // La intercettiamo SOLO se è un'immagine o un asset (così salviamo le foto ma ignoriamo le API Firebase)
+        if (isAssetRequest(req, url)) {
+            e.respondWith(handleAssetRequest(req));
+        }
+        return; 
+    }
     if (url.origin !== self.location.origin) return;
 
 
@@ -150,19 +166,21 @@ function isModuleRequest(url) {
 function isAssetRequest(req, url) {
     const destination = req.destination || '';
     const path = url.pathname.toLowerCase();
+    const href = url.href.toLowerCase();
 
+    // Il browser sa già che è un'immagine tramite il tag <img>
     if ([
-        'style',
-        'script',
-        'image',
-        'font',
-        'audio',
-        'video',
-        'iframe'
+        'style', 'script', 'image', 'font', 'audio', 'video', 'iframe'
     ].includes(destination)) {
         return true;
     }
 
+    // Forza la cattura per i tuoi server specifici (Cloudinary, Wildu.it, Google Docs)
+    if (href.includes('res.cloudinary.com') || href.includes('www.wildu.it/public/') || href.includes('docs.google.com/uc')) {
+        return true;
+    }
+
+    // Controllo classico tramite estensione del file
     return /\.(css|js|mjs|json|png|jpg|jpeg|gif|svg|webp|ico|bmp|woff|woff2|ttf|eot|mp3|wav|ogg|m4a|aac|mp4|webm|pdf|txt|zip|rar|7z|doc|docx|xls|xlsx|ppt|pptx)$/i.test(path);
 }
 
