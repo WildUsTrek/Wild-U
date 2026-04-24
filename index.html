@@ -3286,12 +3286,19 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
 
         let html = '';
         for(let od of processedList) {
-            const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
-            const titolo = od["Titolo"] || "Evento Speciale";
-            const dataInizio = od["Data Inizio"] || "";
-            const dataFine = od["Data Fine"] || "";
-            const displayDate = (dataFine && dataFine !== dataInizio) ? `${dataInizio} - ${dataFine}` : dataInizio;
-            const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+        const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
+        const titolo = od["Titolo"] || "Evento Speciale";
+        const dInizio = od["Data Inizio"] || "";
+        const dFine = od["Data Fine"] || "";
+        const displayDate = (dFine && dFine !== dInizio) ? `${dInizio} - ${dFine}` : dInizio;
+        const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+
+        // --- 📸 IMMAGINE CARD (FIX CHIRURGICO) ---
+        const imgUrl = od["immagine"] || od["fotoUrl"] || "";
+        let imgHtml = "";
+        if (imgUrl && imgUrl.trim() !== "") {
+            imgHtml = `<img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px; margin-bottom:15px;" loading="lazy">`;
+        }
             
             // INSERIMENTO DELLA REGIONE
             const nomeRegione = od["Regione"] ? `${od["Regione"]} - ` : "";
