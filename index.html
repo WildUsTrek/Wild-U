@@ -3092,11 +3092,22 @@ function showTripDetails(id) {
     let luogoRaw = ev.ritrovo?.luogo || ev.luogo || ev.START || "Luogo da definire";
     const luogoPulito = luogoRaw.replace(/(?:,?\s*-?\s*)\b(orario|ore|ora)\b\s*:?\s*.*/i, '').trim();
 
-    // Reset visibilità elementi modal
+    // --- 🧹 RESET VISIBILITÀ MODAL ---
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('od-modal-gear-title').innerText = "🎒 Nello Zaino";
+
+    // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
+    // --- 🔄 INVERSIONE LAYOUT: SERVIZI PRIMA DELLA DESCRIZIONE ---
+    const container = document.getElementById('od-modal-desc').parentNode;
+    const descEl = document.getElementById('od-modal-desc');
+    const gearTitleEl = document.getElementById('od-modal-gear-title');
+    const gearListEl = document.getElementById('od-modal-gear');
+    
+    container.insertBefore(gearTitleEl, descEl);
+    container.insertBefore(gearListEl, descEl);
+    // 👆 FINE BLOCCO INVERSIONE 👆
 
     // Popolamento testi base
     document.getElementById('od-modal-title').innerText = titolo;
@@ -4194,8 +4205,21 @@ function showOpenDayDetails(id) {
         imgContainer.style.display = 'none';
     }  //newwwwwwwwwwwwwwwwwwwwwwwwww
 
-    // --- RESET DEL TITOLO ZAINO ---
+    // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
+    document.getElementById('trip-modal-img-container').style.display = 'none';
+    document.getElementById('trip-modal-price-box').style.display = 'none';
+    document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
+
+    // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
+    // --- 🔄 RIPRISTINO LAYOUT: DESCRIZIONE PRIMA DELLO ZAINO ---
+    const container = document.getElementById('od-modal-desc').parentNode;
+    const descEl = document.getElementById('od-modal-desc');
+    const gearTitleEl = document.getElementById('od-modal-gear-title');
+    
+    // Riportiamo la descrizione sopra il titolo dello Zaino
+    container.insertBefore(descEl, gearTitleEl);
+    // 👆 FINE BLOCCO RIPRISTINO 👆
 
     document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
     const dInizio = od["Data Inizio"] || "";
@@ -4336,8 +4360,21 @@ function showPayDayDetails(id) {
         return;
     }
 
-    // --- RESET DEL TITOLO ZAINO ---
+    // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
+    document.getElementById('trip-modal-img-container').style.display = 'none';
+    document.getElementById('trip-modal-price-box').style.display = 'none';
+    document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
+
+    // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
+    // --- 🔄 RIPRISTINO LAYOUT: DESCRIZIONE PRIMA DELLO ZAINO ---
+    const container = document.getElementById('od-modal-desc').parentNode;
+    const descEl = document.getElementById('od-modal-desc');
+    const gearTitleEl = document.getElementById('od-modal-gear-title');
+    
+    // Riportiamo la descrizione sopra il titolo dello Zaino
+    container.insertBefore(descEl, gearTitleEl);
+    // 👆 FINE BLOCCO RIPRISTINO 👆
 
     // --- 📸 ACCENSIONE IMMAGINE NEL MODAL ---
     const imgUrl = pd["immagine"] || pd["fotoUrl"] || ""; 
@@ -4763,8 +4800,11 @@ document.addEventListener('DOMContentLoaded', () => {
             <img id="trip-modal-img" src="" style="width:100%; height:100%; object-fit:cover;">
         </div>
 
-        <h2 id="od-modal-title" style="color:#00aaff; margin-top:0; font-size: 24px;">Titolo</h2>
-        <p style="color:#aaa; font-size:15px; margin-bottom: 5px;"><span id="od-modal-date"></span> <span style="color:#555;">|</span> <span id="od-modal-time"></span></p>
+        <h2 id="od-modal-title" style="color:#00aaff; margin-top:0; font-size: 24px; margin-bottom: 8px;">Titolo</h2>
+        <div style="color:#aaa; font-size:15px; margin-bottom: 12px; line-height: 1.4;">
+            <div id="od-modal-date" style="margin-bottom: 4px;"></div>
+            <div id="od-modal-time"></div>
+        </div>
         <p style="color:#ddd; font-size:15px; margin-top:0;">📍 <span id="od-modal-place"></span></p>
         
         <div style="display:flex; gap:10px; margin:20px 0;">
