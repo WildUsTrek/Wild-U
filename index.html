@@ -280,8 +280,10 @@
 
 <div id="custom-booking-modal" class="modal-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center; padding: 15px; box-sizing: border-box;">
     
-    <div class="modal-content" style="background: #1a1a1a; padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; box-sizing: border-box; text-align: left; border: 1px solid var(--w-gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+    <div class="modal-content" style="position: relative; background: #1a1a1a; padding: 25px; border-radius: 15px; width: 100%; max-width: 400px; box-sizing: border-box; text-align: left; border: 1px solid var(--w-gold); box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
         
+        <div id="cb-viewers-fomo" style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #d4af37; color: #000; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 900; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4); opacity: 0; transition: opacity 0.5s ease-in-out; pointer-events: none; z-index: 10; white-space: nowrap;"></div>
+
         <h2 style="color: var(--w-gold); margin-top:0; text-align: center; text-transform: uppercase;">Il tuo Passaporto</h2>
         <p style="text-align: center; font-size: 13px; color: #aaa; margin-bottom: 20px;">Controlla i dettagli prima di preparare lo zaino.</p>
         
@@ -576,6 +578,33 @@
             btn.innerHTML = '+ Leggi tutto';
         }
     }    
+
+
+ // --- 🔄 LOOP FOMO LIVE VIEWERS ---
+    function runFomoViewersLoop() {
+        const viewersToast = document.getElementById('cb-viewers-fomo');
+        if (!viewersToast || document.getElementById('custom-booking-modal').style.display === 'none') return;
+
+        // 1. Decidiamo quanto tempo deve passare prima di apparire (Random 2-5 secondi)
+        const waitBeforeShow = Math.floor(Math.random() * 3000) + 2000;
+
+        window.fomoViewersTimeout = setTimeout(() => {
+            const viewers = Math.floor(Math.random() * 3) + 1;
+            viewersToast.innerText = `👀 ${viewers} ${viewers === 1 ? 'utente sta' : 'utenti stanno'} valutando il viaggio`;
+            viewersToast.style.opacity = '1';
+
+            // 2. Resta visibile per 4 secondi
+            setTimeout(() => {
+                viewersToast.style.opacity = '0';
+                
+                // 3. Una volta sparito, aspetta un tempo random (6-12 sec) e ricomincia il ciclo
+                const waitBeforeNextCycle = Math.floor(Math.random() * 6000) + 6000;
+                window.fomoCycleTimeout = setTimeout(runFomoViewersLoop, waitBeforeNextCycle);
+                
+            }, 4000);
+        }, waitBeforeShow);
+    }   
+    
     
     
     const MOTORE_API_URL = "https://wildu-gateway-959006418837.europe-west1.run.app/api/gateway";
@@ -3210,6 +3239,8 @@ function showTripDetails(id) {
     const luogoPulito = luogoRaw.replace(/(?:,?\s*-?\s*)\b(orario|ore|ora)\b\s*:?\s*.*/i, '').trim();
 
     // --- 🧹 RESET VISIBILITÀ MODAL ---
+    const oldPrice = document.getElementById('pd-dynamic-price');
+    if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
@@ -3238,9 +3269,7 @@ function showTripDetails(id) {
     } else {
         document.getElementById('od-modal-desc').innerHTML = rawDesc;
     }
-    // --- 🚀 SPOSTA IL PULSANTE CLONE (SOPRA I SERVIZI) ---
-    const topContainerTrip = document.getElementById('od-modal-top-book-container');
-    document.getElementById('od-modal-desc').parentNode.insertBefore(topContainerTrip, document.getElementById('od-modal-gear-title'));
+
 
     // --- ⚙️ MOTORE FOMO NEL MODAL ---
     const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
@@ -3316,8 +3345,7 @@ function showTripDetails(id) {
 
     // Tasto Prenota Finale
     const bookBtn = document.getElementById('od-modal-book');
-    const topBookBtn = document.getElementById('od-modal-book-top');
-    const topContainer = document.getElementById('od-modal-top-book-container');
+
     const bookingKey = buildClientBookingKey({ bookingId: ev.bookingId || "", titolo, data: dataPura });
 
     if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
@@ -3336,18 +3364,47 @@ function showTripDetails(id) {
         bookBtn.innerText = "PRENOTA ORA";
         bookBtn.style.background = "var(--w-gold)";
         bookBtn.style.color = "#000";
-        topContainer.style.display = 'block';
-        topBookBtn.innerText = "PRENOTA ORA";
-        topBookBtn.style.background = "var(--w-gold)";
-        topBookBtn.onclick = () => {
-            document.getElementById('od-details-modal').style.display = 'none';
-            openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id, "TOP_SENZA_IMPEGNO");
-        };
+
         bookBtn.onclick = () => {
             document.getElementById('od-details-modal').style.display = 'none';
             openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id);
         };
     }
+
+
+    // --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    // Rimuoviamo vecchi cloni se presenti
+    const oldClone = document.getElementById('cloned-top-btn-wrapper');
+    if(oldClone) oldClone.remove();
+
+    const gearTitle = document.getElementById('od-modal-gear-title');
+    const bottomBtn = document.getElementById('od-modal-book');
+    
+    // Creiamo un wrapper e cloniamo il bottone inferiore (copiandone lo stato disabled/testo)
+    const wrapper = document.createElement('div');
+    wrapper.id = 'cloned-top-btn-wrapper';
+    wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
+    
+    const clonedBtn = bottomBtn.cloneNode(true);
+    clonedBtn.id = 'od-modal-book-top';
+    
+    // Se non è disabilitato, gli diamo il comportamento per il TOP
+    if(!clonedBtn.disabled) {
+        clonedBtn.onclick = () => {
+            document.getElementById('od-details-modal').style.display = 'none';
+            openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id, "TOP_SENZA_IMPEGNO");
+        };
+    }
+    
+    const subtitle = document.createElement('div');
+    subtitle.innerHTML = '✨ Richiesta rapida senza impegno';
+    subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;';
+    
+    wrapper.appendChild(clonedBtn);
+    wrapper.appendChild(subtitle);
+    
+    // Lo inseriamo ESATTAMENTE sopra "Servizi Inclusi"
+    gearTitle.parentNode.insertBefore(wrapper, gearTitle);
 
     document.getElementById('od-details-modal').style.display = 'block';
 }
@@ -3634,11 +3691,23 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
     document.getElementById('cb-telefono').value = telefonoSalvato;
 
     document.getElementById('custom-booking-modal').style.display = 'flex';
+    
+    // --- 👀 FOMO: AVVIO LOOP LIVE VIEWERS ---
+    clearTimeout(window.fomoViewersTimeout);
+    clearTimeout(window.fomoCycleTimeout);
+    runFomoViewersLoop(); 
 }
 
     // Funzione per chiudere il modulo
 function closeCustomBooking() {
     currentBookingDraft = null;
+    // --- 🛑 STOP TOTALE FOMO ---
+    clearTimeout(window.fomoViewersTimeout);
+    clearTimeout(window.fomoCycleTimeout);
+    const viewersToast = document.getElementById('cb-viewers-fomo');
+    if(viewersToast) viewersToast.style.opacity = '0';
+
+    const bookingIdEl = document.getElementById('cb-booking-id');
 
     const bookingIdEl = document.getElementById('cb-booking-id');
     const bookingCollectionEl = document.getElementById('cb-booking-collection');
@@ -4399,6 +4468,8 @@ function showOpenDayDetails(id) {
 
 
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
+    const oldPrice = document.getElementById('pd-dynamic-price');
+    if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
@@ -4452,10 +4523,7 @@ function showOpenDayDetails(id) {
         document.getElementById('od-modal-desc').innerHTML = rawDesc;
     }
 
-    // --- 🚀 SPOSTA IL PULSANTE CLONE (SOPRA LA DESCRIZIONE) ---
-    const topContainerOD = document.getElementById('od-modal-top-book-container');
-    const descElOD = document.getElementById('od-modal-desc');
-    descElOD.parentNode.insertBefore(topContainerOD, descElOD);
+
 
     // --- ⚙️ MOTORE FOMO NEL MODAL ---
     const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
@@ -4501,8 +4569,7 @@ function showOpenDayDetails(id) {
 
     // --- IL CERVELLO DEL TASTO ISCRIVITI ---
     const bookBtn = document.getElementById('od-modal-book');
-    const topBookBtn = document.getElementById('od-modal-book-top');
-    const topContainer = document.getElementById('od-modal-top-book-container');
+  
     const t = od["Titolo"] || "Open Day";
     const d = od["Data Inizio"] || "";
     const odBookingId = od.bookingId || "";
@@ -4532,17 +4599,7 @@ function showOpenDayDetails(id) {
         bookBtn.style.color = "#000";
         bookBtn.style.border = "none";
         bookBtn.style.cursor = "pointer";
-        topContainer.style.display = 'block';
-        topBookBtn.innerText = "ISCRIVITI GRATIS ORA";
-        topBookBtn.style.background = "#00aaff";
-        topBookBtn.onclick = () => {
-            // Triggera la stessa logica di bookBtn.onclick ma passa "TOP_SENZA_IMPEGNO"
-            document.getElementById('od-details-modal').style.display = 'none';
-            const min = parseInt(config.od_xp_min) || 4;
-            const max = parseInt(config.od_xp_max) || 12;
-            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
-            openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId, "TOP_SENZA_IMPEGNO");
-        };
+       
         bookBtn.onclick = function () {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
 
@@ -4551,6 +4608,41 @@ function showOpenDayDetails(id) {
                 return;
             }
 
+
+            // --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    const oldClone = document.getElementById('cloned-top-btn-wrapper');
+    if(oldClone) oldClone.remove();
+
+    const descEl = document.getElementById('od-modal-desc');
+    const bottomBtn = document.getElementById('od-modal-book');
+    
+    const wrapper = document.createElement('div');
+    wrapper.id = 'cloned-top-btn-wrapper';
+    wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
+    
+    const clonedBtn = bottomBtn.cloneNode(true);
+    clonedBtn.id = 'od-modal-book-top';
+    
+    if(!clonedBtn.disabled) {
+        clonedBtn.onclick = () => {
+            document.getElementById('od-details-modal').style.display = 'none';
+            const min = parseInt(config.od_xp_min) || 4;
+            const max = parseInt(config.od_xp_max) || 12;
+            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+            openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId, "TOP_SENZA_IMPEGNO");
+        };
+    }
+    
+    const subtitle = document.createElement('div');
+    subtitle.innerHTML = '✨ Richiesta rapida senza impegno';
+    subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;';
+    
+    wrapper.appendChild(clonedBtn);
+    wrapper.appendChild(subtitle);
+    
+    // Lo inseriamo ESATTAMENTE sopra la descrizione (che contiene solo il testo nell'Open Day)
+    descEl.parentNode.insertBefore(wrapper, descEl);
+            
             document.getElementById('od-details-modal').style.display = 'none';
 
             const min = parseInt(config.od_xp_min) || 4;
@@ -4646,17 +4738,25 @@ function showPayDayDetails(id) {
 
     let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
     const prezzo = pd["Prezzo"] || "0";
-    const rawDesc = (`💳 Prezzo: <b>${prezzo}€</b><br><br>` + desc).replace(/\n/g, '<br>');
-    if (rawDesc.length > 180) {
-        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
-    } else {
-        document.getElementById('od-modal-desc').innerHTML = rawDesc;
+    
+    // Assicuriamoci che il prezzo abbia un suo div separato SOPRA la descrizione
+    let priceBox = document.getElementById('pd-dynamic-price');
+    const descContainer = document.getElementById('od-modal-desc');
+    if(!priceBox) {
+        priceBox = document.createElement('div');
+        priceBox.id = 'pd-dynamic-price';
+        priceBox.style.cssText = 'margin-bottom: 20px; font-size: 16px; color: #eee;';
+        descContainer.parentNode.insertBefore(priceBox, descContainer);
     }
+    priceBox.innerHTML = `💳 Prezzo: <b>${prezzo}€</b>`;
+    priceBox.style.display = 'block';
 
-    // --- 🚀 SPOSTA IL PULSANTE CLONE (SOPRA LA DESCRIZIONE) ---
-    const topContainerPD = document.getElementById('od-modal-top-book-container');
-    const descElPD = document.getElementById('od-modal-desc');
-    descElPD.parentNode.insertBefore(topContainerPD, descElPD);
+    const rawDesc = desc.replace(/\n/g, '<br>');
+    if (rawDesc.length > 250) {
+        descContainer.innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
+    } else {
+        descContainer.innerHTML = rawDesc;
+    }
 
     // --- ⚙️ MOTORE FOMO NEL MODAL ----
     const occ = calculateDisplayOccupancy(id, dInizio, pd.qnt || 0, pd.postiMax);
@@ -4695,8 +4795,7 @@ function showPayDayDetails(id) {
     }
 
     const bookBtn = document.getElementById('od-modal-book');
-    const topBookBtn = document.getElementById('od-modal-book-top');
-    const topContainer = document.getElementById('od-modal-top-book-container');
+  
     const t = pd["Titolo"] || "Hike";
     const d = pd["Data Inizio"] || "";
     const pdBookingId = pd.bookingId || "";
@@ -4726,14 +4825,7 @@ function showPayDayDetails(id) {
         bookBtn.style.color = "#000";
         bookBtn.style.border = "none";
         bookBtn.style.cursor = "pointer";
-        topContainer.style.display = 'block';
-        topBookBtn.innerText = "PRENOTA ORA";
-        topBookBtn.style.background = "#d4af37";
-        topBookBtn.onclick = () => {
-            document.getElementById('od-details-modal').style.display = 'none';
-            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
-            openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId, "TOP_SENZA_IMPEGNO");
-        };
+
         bookBtn.onclick = function() {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
 
@@ -4741,6 +4833,39 @@ function showPayDayDetails(id) {
                 showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
                 return;
             }
+
+
+     // --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    const oldClone = document.getElementById('cloned-top-btn-wrapper');
+    if(oldClone) oldClone.remove();
+
+    const bottomBtn = document.getElementById('od-modal-book');
+    const descEl = document.getElementById('od-modal-desc');
+    
+    const wrapper = document.createElement('div');
+    wrapper.id = 'cloned-top-btn-wrapper';
+    wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
+    
+    const clonedBtn = bottomBtn.cloneNode(true);
+    clonedBtn.id = 'od-modal-book-top';
+    
+    if(!clonedBtn.disabled) {
+        clonedBtn.onclick = () => {
+            document.getElementById('od-details-modal').style.display = 'none';
+            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
+            openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId, "TOP_SENZA_IMPEGNO");
+        };
+    }
+    
+    const subtitle = document.createElement('div');
+    subtitle.innerHTML = '✨ Richiesta rapida senza impegno';
+    subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;';
+    
+    wrapper.appendChild(clonedBtn);
+    wrapper.appendChild(subtitle);
+    
+    // Lo inseriamo SOPRA la descrizione (e quindi SOTTO il nuovo blocco prezzo che abbiamo appena creato)
+    descEl.parentNode.insertBefore(wrapper, descEl);       
 
             document.getElementById('od-details-modal').style.display = 'none';
 
@@ -5100,10 +5225,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <p id="od-modal-desc" style="color:#eee; line-height:1.6; font-size:16px; margin-bottom:25px;"></p>
         
-        <div id="od-modal-top-book-container" style="margin-bottom: 25px; display:none; text-align:center;">
-            <button id="od-modal-book-top" style="width:100%; padding:16px; border-radius:10px; font-weight:bold; font-size:17px; cursor:pointer; text-transform:uppercase; border:none;"></button>
-            <div style="font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;">✨ Richiesta rapida senza impegno</div>
-        </div>
+
 
         <h3 id="od-modal-gear-title" style="color:#00aaff; border-bottom:1px solid #333; padding-bottom:10px;">🎒 Nello Zaino</h3>        
         <ul id="od-modal-gear" style="list-style:none; padding:0; color:#ddd; font-size:15px;"></ul>
