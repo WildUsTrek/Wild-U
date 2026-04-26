@@ -246,6 +246,15 @@
     to { transform: rotate(360deg); }
 }
 
+
+/* --- CLASSE TRONCAMENTO DESCRIZIONI --- */
+        .text-truncate-custom {
+            display: -webkit-box;
+            -webkit-line-clamp: 5;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }        
+
         
     </style>
     
@@ -555,6 +564,20 @@
 
     
 <script>
+
+// --- FUNZIONE TOGGLE DESCRIZIONE ---
+    function toggleModalDesc(btn) {
+        const wrapper = document.getElementById('modal-desc-wrapper');
+        if (wrapper.classList.contains('text-truncate-custom')) {
+            wrapper.classList.remove('text-truncate-custom');
+            btn.innerHTML = '− Riduci testo';
+        } else {
+            wrapper.classList.add('text-truncate-custom');
+            btn.innerHTML = '+ Leggi tutto';
+        }
+    }    
+    
+    
     const MOTORE_API_URL = "https://wildu-gateway-959006418837.europe-west1.run.app/api/gateway";
     const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSe7aR5jiuxXAoJHVTN6yh62U5tfTHCDp-tB0YVH2xnVJQa0hg/viewform";
 
@@ -3209,8 +3232,12 @@ function showTripDetails(id) {
     document.getElementById('od-modal-time').innerText = `🕒 Ritrovo: ${orario}`;
     document.getElementById('od-modal-place').innerText = luogoPulito;
     document.getElementById('od-modal-region-display').innerText = reg ? `🗺️ AREA: ${reg}` : "";
-    document.getElementById('od-modal-desc').innerHTML = (ev.descrizione || "Nessuna descrizione disponibile.").replace(/\n/g, '<br>');
-
+    const rawDesc = (ev.descrizione || "Nessuna descrizione disponibile.").replace(/\n/g, '<br>');
+    if (rawDesc.length > 180) {
+        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
+    } else {
+        document.getElementById('od-modal-desc').innerHTML = rawDesc;
+    }
     // --- 🚀 SPOSTA IL PULSANTE CLONE (SOPRA I SERVIZI) ---
     const topContainer = document.getElementById('od-modal-top-book-container');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
@@ -4419,7 +4446,12 @@ function showOpenDayDetails(id) {
     document.getElementById('od-modal-dsl').style.display = od["Dislivello"] ? "inline-block" : "none";
 
     let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
-    document.getElementById('od-modal-desc').innerHTML = desc.replace(/\n/g, '<br>');
+    const rawDesc = desc.replace(/\n/g, '<br>');
+    if (rawDesc.length > 180) {
+        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
+    } else {
+        document.getElementById('od-modal-desc').innerHTML = rawDesc;
+    }
 
     // --- 🚀 SPOSTA IL PULSANTE CLONE (SOPRA LA DESCRIZIONE) ---
     const topContainer = document.getElementById('od-modal-top-book-container');
@@ -4615,7 +4647,12 @@ function showPayDayDetails(id) {
 
     let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
     const prezzo = pd["Prezzo"] || "0";
-    document.getElementById('od-modal-desc').innerHTML = (`💳 Prezzo: <b>${prezzo}€</b><br><br>` + desc).replace(/\n/g, '<br>');
+    const rawDesc = (`💳 Prezzo: <b>${prezzo}€</b><br><br>` + desc).replace(/\n/g, '<br>');
+    if (rawDesc.length > 180) {
+        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
+    } else {
+        document.getElementById('od-modal-desc').innerHTML = rawDesc;
+    }
 
     // --- 🚀 SPOSTA IL PULSANTE CLONE (SOPRA LA DESCRIZIONE) ---
     const topContainer = document.getElementById('od-modal-top-book-container');
