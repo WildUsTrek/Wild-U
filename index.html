@@ -1743,6 +1743,7 @@ function logout() {
         myBookedTitles = [];
         pendingBookings = [];
         pendingCancels = [];
+        currentBookingDraft = null; // DISTRUGGE LA BOZZA IN SOSPESO
         regCtaSessionShown = false;
         regCtaCurrentReason = null;
         initDataPromise = null;
@@ -1762,16 +1763,26 @@ function logout() {
         localStorage.removeItem('lastCelebratedXP');
     };
 
+// ESEGUIAMO LA PULIZIA *PRIMA* DI CHIAMARE FIREBASE
+    // Così l'interfaccia si svuota istantaneamente
+    cleanClientState();
+    
+    // Forza il reset visivo immediato se l'utente è ancora nella pagina Profilo
+    if (currentTab === 'profile') {
+        const xpFill = document.getElementById('xp-fill');
+        const xpPercentText = document.getElementById('xp-percentage');
+        if (xpFill) xpFill.style.width = "0%";
+        if (xpPercentText) xpPercentText.innerText = "0%";
+    }
+
     if (isTelegram) {
-        cleanClientState();
-        location.reload();
+        // Su Telegram forziamo un refresh hard con un parametro per bypassare la cache
+        window.location.href = window.location.pathname + '?nocache=' + Date.now();
     } else {
         auth.signOut().then(() => {
-            cleanClientState();
-            location.reload();
+            window.location.href = window.location.pathname + '?nocache=' + Date.now();
         }).catch(() => {
-            cleanClientState();
-            location.reload();
+            window.location.href = window.location.pathname + '?nocache=' + Date.now();
         });
     }
 }
