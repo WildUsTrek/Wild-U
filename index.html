@@ -2982,8 +2982,10 @@ function executePenaltyRedirect() {
         return Math.floor(randomVal * (max - min + 1)) + min;
     }
 
-    function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, postiMaxDb) {
-        const postiMax = postiMaxDb || 11;
+function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, postiMaxDb) {
+        // Generiamo un tetto massimo finto ma fisso (tra 9 e 14) se il DB non lo fornisce
+        const postiMaxFinti = getSeededRandom(String(idEvento) + "CAP", 9, 14);
+        const postiMax = postiMaxDb || postiMaxFinti;
         const veri = iscrittiRealiCount || 0;
         
         if (!dataInizio) return { occupati: veri, totali: postiMax, isAlmostFull: veri >= (postiMax * 0.8) };
@@ -2997,9 +2999,9 @@ function executePenaltyRedirect() {
         let maxPercent = 0;
 
         if (diffDays <= 60) {
-            // Partenza vicina: Riempiamo al 75% - 85%
-            minPercent = 0.75;
-            maxPercent = 0.85;
+            // Partenza vicina: Riempiamo al 60% - 90% (Più organico)
+            minPercent = 0.60;
+            maxPercent = 0.90;
         } else {
             // Partenza lontana: Riempiamo al 20% - 50%
             minPercent = 0.20;
@@ -3010,7 +3012,7 @@ function executePenaltyRedirect() {
         const maxFinti = Math.floor(postiMax * maxPercent);
         
         // Generiamo il numero finto ma fisso basato sull'ID del viaggio
-        const iscrittiFinti = getSeededRandom(idEvento, minFinti, maxFinti);
+        const iscrittiFinti = getSeededRandom(String(idEvento), minFinti, maxFinti);
 
         // Vince sempre il numero più alto tra il Reale e il Finto
         let iscrittiMostrati = Math.max(veri, iscrittiFinti);
@@ -3503,7 +3505,7 @@ function renderPayDays() {
             }
 
             // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
-            const occ = calculateDisplayOccupancy(id, dInizio, pd.qnt || 0, pd.postiMax);
+            const occ = calculateDisplayOccupancy(id, dataInizio, pd.qnt || 0, pd.postiMax);
             const occColor = occ.isAlmostFull ? '#ff4444' : '#d4af37';
             const occIcon = occ.isAlmostFull ? '🔥' : '👥';
 
