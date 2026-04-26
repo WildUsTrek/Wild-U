@@ -2732,103 +2732,54 @@ function evaluateBookings() {
 
     myBookedTitles = []; 
     const occupiedSlots = new Set();
-    // Iniziamo il conteggio dai pendenti (i "lavori in corso")
-    pendingBookings.forEach(pKey => occupiedSlots.add(pKey));
+    const today = new Date();
+    today.setHours(0,0,0,0);
 
+    let activeHtml = '';
+
+    // 1. ANALISI VIAGGI CONFERMATI SUL SERVER
     const myB = allBookings.filter(b => {
         const owner = String(b["WILD KEY"] || b["UTENTE"] || "").trim();
-
-        const bookingKey = buildClientBookingKey({
+        const bKey = buildClientBookingKey({
             bookingId: b.bookingId || "",
             titolo: b["Viaggio Scelto (non modificare)"] || "",
             data: b["Data Inizio (non modificare)"] || ""
         });
-
-        const isBeingCancelled = bookingKey && pendingCancels.includes(bookingKey);
-
+        const isBeingCancelled = bKey && pendingCancels.includes(bKey);
         return owner === String(wildUserKey).trim() && !isBeingCancelled;
     });
-
-    const today = new Date();
-    today.setHours(0,0,0,0);
-
-    let activeCount = 0;
-    let activeHtml = '';
 
     for (let b of myB) {
         const title = b["Viaggio Scelto (non modificare)"] || "";
         const dateStr = b["Data Inizio (non modificare)"] || "";
         if (!title) continue;
 
-        const bookingKey = buildClientBookingKey({
-            bookingId: b.bookingId || "",
-            titolo: title,
-            data: dateStr
-        });
-
+        const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
         const bDate = parseItalianDate(dateStr);
+
+        // Se il viaggio è futuro o di OGGI, lo contiamo e lo mostriamo
         if (bDate >= today) {
-            // Se il viaggio è "vivo" (futuro o oggi), occupa un posto nello zaino
             occupiedSlots.add(bookingKey);
+            if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
 
-            if (bookingKey && !myBookedTitles.includes(bookingKey)) {
-                myBookedTitles.push(bookingKey);
-            }
-
-                        let infoBtn = "";
-
-            const tripOrig = allTrips.find(t => {
-                const tripKey = buildClientBookingKey({
-                    bookingId: t.bookingId || "",
-                    titolo: t.Titolo || "",
-                    data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""
-                });
-                return tripKey === bookingKey;
-            });
-
-            const odOrig = allOpenDays.find(od => {
-                const odKey = buildClientBookingKey({
-                    bookingId: od.bookingId || "",
-                    titolo: od["Titolo"] || "",
-                    data: od["Data Inizio"] || ""
-                });
-                return odKey === bookingKey;
-            });
-
-            const hikeList =
-                (typeof allHikes !== 'undefined' && Array.isArray(allHikes)) ? allHikes :
-                ((typeof allPayDays !== 'undefined' && Array.isArray(allPayDays)) ? allPayDays : []);
-
-            const hikeOrig = hikeList.find(h => {
-                const hikeKey = buildClientBookingKey({
-                    bookingId: h.bookingId || "",
-                    titolo: h["Titolo"] || "",
-                    data: h["Data Inizio"] || ""
-                });
-                return hikeKey === bookingKey;
-            });
+            let infoBtn = "";
+            const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
+            const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
+            const hikeList = (typeof allPayDays !== 'undefined' && Array.isArray(allPayDays)) ? allPayDays : [];
+            const hikeOrig = hikeList.find(h => buildClientBookingKey({bookingId: h.bookingId, titolo: h["Titolo"], data: h["Data Inizio"]}) === bookingKey);
 
             if (tripOrig) {
                 const tId = tripOrig.eventDocId || tripOrig.id;
-                const linkBtn = tripOrig.Link ? `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>` : "";
-                const detailsBtn = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO ℹ️</button>`;
-                infoBtn = linkBtn + detailsBtn;
+                const lB = tripOrig.Link ? `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>` : "";
+                const dB = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO ℹ️</button>`;
+                infoBtn = lB + dB;
             } else if (odOrig) {
-                const odId = odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"];
-                infoBtn = `<button onclick="showOpenDayDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
-            
-} else if (hikeOrig) {
-    const hikeId = hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"];
-    infoBtn = `<button onclick="showPayDayDetails('${hikeId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
-}
+                infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+            } else if (hikeOrig) {
+                infoBtn = `<button onclick="showPayDayDetails('${hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+            }
 
-            const cancelPayload = encodeURIComponent(JSON.stringify({
-                titolo: title,
-                data: dateStr,
-                bookingId: b.bookingId || "",
-                collection: b.collection || "",
-                eventDocId: b.eventDocId || ""
-            }));
+            const cP = encodeURIComponent(JSON.stringify({ titolo: title, data: dateStr, bookingId: b.bookingId, collection: b.collection, eventDocId: b.eventDocId }));
 
             activeHtml += `
             <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
@@ -2838,32 +2789,41 @@ function evaluateBookings() {
                 </div>
                 <div style="display: flex; justify-content: flex-end;">
                     ${infoBtn}
-                    <button onclick="requestCancel('${cancelPayload}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
+                    <button onclick="requestCancel('${cP}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
                 </div>
             </div>`;
         }
     }
 
-    // Verifichiamo se abbiamo effettivamente disegnato qualcosa (activeHtml)
-    document.getElementById('my-bookings-list').innerHTML = (activeHtml === '')
-        ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>'
+    // 2. ANALISI VIAGGI PENDENTI (NON ANCORA ARRIVATI DAL SERVER)
+    pendingBookings.forEach(pKey => {
+        if (!myBookedTitles.includes(pKey)) {
+            occupiedSlots.add(pKey);
+            myBookedTitles.push(pKey);
+            const displayTitle = pKey.split('__')[0].toUpperCase();
+
+            activeHtml += `
+            <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
+                <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
+                <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE IN CORSO...</div>
+            </div>`;
+        }
+    });
+
+    // RENDER UI
+    document.getElementById('my-bookings-list').innerHTML = (activeHtml === '') 
+        ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' 
         : activeHtml;
 
+    // MATEMATICA UNIFICATA
     const totalOccupied = occupiedSlots.size;
     const max = parseInt(config.limite_prenotazioni) || 3;
-
-    // La decisione finale basata sulla dimensione reale dello zaino
     canBook = !isBanned && totalOccupied < max;
 
-    if (isBanned) {
-        banReason = "ACCOUNT SOSPESO";
-    } else if (totalOccupied >= max) {
-        banReason = `ZAINO PIENO (${totalOccupied}/${max})`;
-    } else {
-        banReason = "";
-    }
+    if (isBanned) banReason = "ACCOUNT SOSPESO";
+    else if (totalOccupied >= max) banReason = `ZAINO PIENO (${totalOccupied}/${max})`;
+    else banReason = "";
 
-    // Aggiornamento interfaccia
     filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
 }
