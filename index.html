@@ -3678,12 +3678,28 @@ async function sendCustomBooking() {
 
         closeCustomBooking();
 
-        if (result.alreadyBooked === true) {
+if (result.alreadyBooked === true) {
             showToast("🎒 Sei già iscritto a questa avventura!");
             setTimeout(() => show('profile'), 700);
             setTimeout(() => fetchInitData({ force: true }), 1200);
         } else {
-            showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
+            // --- ⚙️ MOTORE FOMO: CONTROLLO LISTA D'ATTESA POST-PRENOTAZIONE ---
+            const tipoEv = document.getElementById('cb-tipo-evento').value;
+            let targetEvent = null;
+            if (tipoEv === "APP") targetEvent = allTrips.find(e => (e.eventDocId || e.id) === bookingEventDocIdRaw || e.Titolo === titoloRaw);
+            else if (tipoEv === "OPENDAY") targetEvent = allOpenDays.find(e => (e.eventDocId || e.id) === bookingEventDocIdRaw || e.Titolo === titoloRaw);
+            else if (tipoEv === "PAID") targetEvent = allPayDays.find(e => (e.eventDocId || e.id) === bookingEventDocIdRaw || e.Titolo === titoloRaw);
+
+            const qnti = targetEvent?.qnt || 0;
+            const pMax = targetEvent?.postiMax || 11;
+            const idPerMotore = targetEvent?.id || targetEvent?.eventDocId || titoloRaw;
+            const occ = calculateDisplayOccupancy(idPerMotore, dataRaw, qnti, pMax);
+
+            if (occ.isAlmostFull) {
+                showToast("🔥 ALTA RICHIESTA: Ti contatteremo a breve per confermare o inserirti in lista d'attesa!");
+            } else {
+                showToast("ZAINO PRONTO! Prenotazione confermata 🎒");
+            }
 
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
 
