@@ -3122,32 +3122,34 @@ function renderTrips(trips, targetId) {
                <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
             : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
 
-// --- 📸 IMMAGINE CARD (Aggiunta per coerenza con i partner) ---
+// --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E CREAZIONE BADGE ---
+        const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
+        const occBadgeBg = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
+        const occBadgeBorder = occ.isAlmostFull ? '#ff4444' : 'var(--w-gold)';
+        const occIcon = occ.isAlmostFull ? '🔥' : '👥';
+        const badgeHtml = `<div style="position: absolute; top: 10px; left: 10px; background: ${occBadgeBg}; color: #fff; border: 1px solid ${occBadgeBorder}; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 2;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>`;
+
+        // --- 📸 IMMAGINE CARD (CON BADGE SOVRAPPOSTO) ---
         const imgUrl = ev.immagine || ev.fotoUrl || "";
         let imgHtml = "";
         if (imgUrl && imgUrl.trim() !== "") {
-            imgHtml = `<img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px; margin-bottom:15px;" loading="lazy">`;
+            imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`;
+        } else {
+            imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
         }
 
-        // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
-        // (Nota: assumo che il tuo db usi 'ev.qnt' per gli iscritti reali e 'ev.postiMax' per il totale)
-        const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
-        const occColor = occ.isAlmostFull ? '#ff4444' : '#00aaff';
-        const occIcon = occ.isAlmostFull ? '🔥' : '👥';
-
-        // --- 4. RENDER CARD (CON INDICATORE ISCRITTI) ---
+        // --- 4. RENDER CARD (NUOVO LAYOUT ORARIO) ---
         return `<div class="card">
             ${imgHtml}
             <span class="card-title">${titolo}</span>
             <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
                 <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
-                <div style="color:${occColor}; font-size: 14px; font-weight: bold;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>
+                ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
             </div>
             <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             
             <div class="price-box">
                 <div>
-                    ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 13px; margin-bottom: 4px;">🕒 ${orario}</div>` : ''}
                     <div class="price-standard">Standard: ${prezzoStandard}€</div>
                 </div>
                 <div class="price-prime-wrapper">
@@ -3208,6 +3210,14 @@ function showTripDetails(id) {
     document.getElementById('od-modal-place').innerText = luogoPulito;
     document.getElementById('od-modal-region-display').innerText = reg ? `🗺️ AREA: ${reg}` : "";
     document.getElementById('od-modal-desc').innerHTML = (ev.descrizione || "Nessuna descrizione disponibile.").replace(/\n/g, '<br>');
+
+    // --- ⚙️ MOTORE FOMO NEL MODAL ---
+    const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
+    const fomoBadge = document.getElementById('trip-modal-fomo-badge');
+    fomoBadge.style.background = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
+    fomoBadge.style.border = occ.isAlmostFull ? '1px solid #ff4444' : '1px solid var(--w-gold)';
+    fomoBadge.innerHTML = `${occ.isAlmostFull ? '🔥' : '👥'} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}`;
+    fomoBadge.style.display = 'block';
 
     // Gestione Immagine
     if (ev.immagine || ev.fotoUrl) {
@@ -3381,34 +3391,36 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         const displayDate = (dFine && dFine !== dInizio) ? `${dInizio} - ${dFine}` : dInizio;
         const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
 
-        // --- 📸 IMMAGINE CARD (FIX CHIRURGICO) ---
-        const imgUrl = od["immagine"] || od["fotoUrl"] || "";
-        let imgHtml = "";
-        if (imgUrl && imgUrl.trim() !== "") {
-            imgHtml = `<img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px; margin-bottom:15px;" loading="lazy">`;
-        }
+// --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E BADGE ---
+            const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
+            const occBadgeBg = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
+            const occBadgeBorder = occ.isAlmostFull ? '#ff4444' : '#00aaff';
+            const occIcon = occ.isAlmostFull ? '🔥' : '👥';
+            const badgeHtml = `<div style="position: absolute; top: 10px; left: 10px; background: ${occBadgeBg}; color: #fff; border: 1px solid ${occBadgeBorder}; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 2;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>`;
+
+            // --- 📸 IMMAGINE CARD (CON BADGE SOVRAPPOSTO) ---
+            const imgUrl = od["immagine"] || od["fotoUrl"] || "";
+            let imgHtml = "";
+            if (imgUrl && imgUrl.trim() !== "") {
+                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`;
+            } else {
+                imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
+            }
             
-            // INSERIMENTO DELLA REGIONE
+            // INSERIMENTO DELLA REGIONE E TESTI
             const nomeRegione = od["Regione"] ? `${od["Regione"]} - ` : "";
             const luogo = od["Luogo Nome"] || "Luogo da definire";
             const luogoCompleto = `${nomeRegione}${luogo}`;
-
             const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
             const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
 
-            // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
-            const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
-            const occColor = occ.isAlmostFull ? '#ff4444' : '#00aaff';
-            const occIcon = occ.isAlmostFull ? '🔥' : '👥';
-
             html += `
             <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
-                ${typeof imgHtml !== 'undefined' ? imgHtml : ''}
+                ${imgHtml}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
                     <div style="color: #00aaff; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
-                    <div style="color:${occColor}; font-size: 14px; font-weight: bold; margin-bottom:4px;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>
-                    <div style="color:#777; font-size: 14px;">🕒 ${orario}</div>
+                    <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
@@ -3497,17 +3509,21 @@ function renderPayDays() {
         const km = pd["KM"] ? `🥾 ${pd["KM"]} km` : "";
         const dsl = pd["Dislivello"] ? `⛰️ ${pd["Dislivello"]} m` : "";
 
-        // --- 📸 IMMAGINE CARD (Assicuriamoci che esista la variabile) ---
+// --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E BADGE ---
+            const occ = calculateDisplayOccupancy(id, dataInizio, pd.qnt || 0, pd.postiMax);
+            const occBadgeBg = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
+            const occBadgeBorder = occ.isAlmostFull ? '#ff4444' : '#d4af37';
+            const occIcon = occ.isAlmostFull ? '🔥' : '👥';
+            const badgeHtml = `<div style="position: absolute; top: 10px; left: 10px; background: ${occBadgeBg}; color: #fff; border: 1px solid ${occBadgeBorder}; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 2;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>`;
+
+            // --- 📸 IMMAGINE CARD (CON BADGE) ---
             const imgUrl = pd["immagine"] || pd["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px; margin-bottom:15px;" loading="lazy">`;
+                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`;
+            } else {
+                imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
             }
-
-            // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
-            const occ = calculateDisplayOccupancy(id, dataInizio, pd.qnt || 0, pd.postiMax);
-            const occColor = occ.isAlmostFull ? '#ff4444' : '#d4af37';
-            const occIcon = occ.isAlmostFull ? '🔥' : '👥';
 
             html += `
             <div style="background: #111; border-left: 4px solid #d4af37; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
@@ -3515,17 +3531,16 @@ function renderPayDays() {
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
                     <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
-                    <div style="color:${occColor}; font-size: 14px; font-weight: bold; margin-bottom:4px;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>
-                    <div style="color:#777; font-size: 14px;">🕒 ${orario}</div>
+                    <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
-            <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-                ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
-                ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
-                <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzo}€</div>
-            </div>
-            <button onclick="showPayDayDetails('${id}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
-        </div>`;
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
+                ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
+                <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzo}€</div>
+            </div>
+            <button onclick="showPayDayDetails('${id}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+        </div>`;
     }
 
     container.innerHTML = html;
@@ -4390,6 +4405,14 @@ function showOpenDayDetails(id) {
     let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
     document.getElementById('od-modal-desc').innerHTML = desc.replace(/\n/g, '<br>');
 
+    // --- ⚙️ MOTORE FOMO NEL MODAL ---
+    const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
+    const fomoBadge = document.getElementById('trip-modal-fomo-badge');
+    fomoBadge.style.background = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
+    fomoBadge.style.border = occ.isAlmostFull ? '1px solid #ff4444' : '1px solid #00aaff';
+    fomoBadge.innerHTML = `${occ.isAlmostFull ? '🔥' : '👥'} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}`;
+    fomoBadge.style.display = 'block';
+
     // Decodifica Attrezzatura JSON
     let gearHtml = '';
     try {
@@ -4559,6 +4582,14 @@ function showPayDayDetails(id) {
     let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
     const prezzo = pd["Prezzo"] || "0";
     document.getElementById('od-modal-desc').innerHTML = (`💳 Prezzo: <b>${prezzo}€</b><br><br>` + desc).replace(/\n/g, '<br>');
+
+    // --- ⚙️ MOTORE FOMO NEL MODAL ---
+    const occ = calculateDisplayOccupancy(id, dInizio, pd.qnt || 0, pd.postiMax);
+    const fomoBadge = document.getElementById('trip-modal-fomo-badge');
+    fomoBadge.style.background = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
+    fomoBadge.style.border = occ.isAlmostFull ? '1px solid #ff4444' : '1px solid #d4af37';
+    fomoBadge.innerHTML = `${occ.isAlmostFull ? '🔥' : '👥'} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}`;
+    fomoBadge.style.display = 'block';
 
     let gearHtml = '';
     try {
@@ -4948,8 +4979,9 @@ document.addEventListener('DOMContentLoaded', () => {
     <div style="background:#1a1a1a; width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:15px; border:2px solid #00aaff; padding:25px; box-sizing:border-box; position:relative; box-shadow: 0 0 20px rgba(0, 170, 255, 0.2);">
         <button onclick="document.getElementById('od-details-modal').style.display='none'" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
         
-        <div id="trip-modal-img-container" style="width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
+        <div id="trip-modal-img-container" style="position:relative; width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
             <img id="trip-modal-img" src="" style="width:100%; height:100%; object-fit:cover;">
+            <div id="trip-modal-fomo-badge" style="position: absolute; top: 10px; left: 10px; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.6); display: none; backdrop-filter: blur(4px); z-index: 2;"></div>
         </div>
 
         <h2 id="od-modal-title" style="color:#00aaff; margin-top:0; font-size: 24px; margin-bottom: 8px;">Titolo</h2>
