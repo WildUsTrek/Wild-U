@@ -4523,7 +4523,7 @@ function showOpenDayDetails(id) {
 
 
 
-    // --- ⚙️ MOTORE FOMO NEL MODAL ---
+    
     const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
     const fomoBadge = document.getElementById('trip-modal-fomo-badge');
     fomoBadge.style.background = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
@@ -4580,11 +4580,20 @@ function showOpenDayDetails(id) {
         data: d
     });
 
-    if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
         bookBtn.style.display = "block";
         bookBtn.disabled = true;
         bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
         bookBtn.style.background = "#444";
+        bookBtn.style.color = "#888";
+        bookBtn.style.border = "1px solid #555";
+        bookBtn.style.cursor = "not-allowed";
+        bookBtn.onclick = null;
+    } else if (!canBook) {
+        bookBtn.style.display = "block";
+        bookBtn.disabled = true;
+        bookBtn.innerText = banReason;
+        bookBtn.style.background = "#222";
         bookBtn.style.color = "#888";
         bookBtn.style.border = "1px solid #555";
         bookBtn.style.cursor = "not-allowed";
@@ -4597,32 +4606,33 @@ function showOpenDayDetails(id) {
         bookBtn.style.color = "#000";
         bookBtn.style.border = "none";
         bookBtn.style.cursor = "pointer";
-       
+        
         bookBtn.onclick = function () {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
+            document.getElementById('od-details-modal').style.display = 'none';
+            const min = parseInt(config.od_xp_min) || 4;
+            const max = parseInt(config.od_xp_max) || 12;
+            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+            openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId);
+        };
+    }
 
-            if (!canBook) {
-                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
-                return;
-            }
-
-
-            // --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    // --- 🚀 MOTORE CLONE INTELLIGENTE (Ora è FUORI dal click!) ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
 
-    const descEl = document.getElementById('od-modal-desc');
-    const bottomBtn = document.getElementById('od-modal-book');
+    const descElForClone = document.getElementById('od-modal-desc');
     
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
     wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
     
-    const clonedBtn = bottomBtn.cloneNode(true);
+    const clonedBtn = bookBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
     
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
+            if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
             document.getElementById('od-details-modal').style.display = 'none';
             const min = parseInt(config.od_xp_min) || 4;
             const max = parseInt(config.od_xp_max) || 12;
@@ -4638,10 +4648,11 @@ function showOpenDayDetails(id) {
     wrapper.appendChild(clonedBtn);
     wrapper.appendChild(subtitle);
     
-    // Lo inseriamo ESATTAMENTE sopra la descrizione (che contiene solo il testo nell'Open Day)
-    descEl.parentNode.insertBefore(wrapper, descEl);
-            
-            document.getElementById('od-details-modal').style.display = 'none';
+    descElForClone.parentNode.insertBefore(wrapper, descElForClone);
+
+    // MOSTRA IL MODAL DETTAGLI
+    document.getElementById('od-details-modal').style.display = 'block';
+}
 
             const min = parseInt(config.od_xp_min) || 4;
             const max = parseInt(config.od_xp_max) || 12;
@@ -4806,11 +4817,20 @@ function showPayDayDetails(id) {
         data: d
     });
 
-    if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
         bookBtn.style.display = "block";
         bookBtn.disabled = true;
         bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
         bookBtn.style.background = "#444";
+        bookBtn.style.color = "#888";
+        bookBtn.style.border = "1px solid #555";
+        bookBtn.style.cursor = "not-allowed";
+        bookBtn.onclick = null;
+    } else if (!canBook) {
+        bookBtn.style.display = "block";
+        bookBtn.disabled = true;
+        bookBtn.innerText = banReason;
+        bookBtn.style.background = "#222";
         bookBtn.style.color = "#888";
         bookBtn.style.border = "1px solid #555";
         bookBtn.style.cursor = "not-allowed";
@@ -4826,29 +4846,28 @@ function showPayDayDetails(id) {
 
         bookBtn.onclick = function() {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
+            document.getElementById('od-details-modal').style.display = 'none';
+            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
+            openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId);
+        };
+    }
 
-            if (!canBook) {
-                showToast("🎒 Zaino Pieno! " + (banReason || "Hai raggiunto il limite."));
-                return;
-            }
-
-
-     // --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    // --- 🚀 MOTORE CLONE INTELLIGENTE (Ora è FUORI dal click!) ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
 
-    const bottomBtn = document.getElementById('od-modal-book');
-    const descEl = document.getElementById('od-modal-desc');
+    const descElForClone = document.getElementById('od-modal-desc');
     
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
     wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
     
-    const clonedBtn = bottomBtn.cloneNode(true);
+    const clonedBtn = bookBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
     
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
+            if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
             document.getElementById('od-details-modal').style.display = 'none';
             const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
             openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId, "TOP_SENZA_IMPEGNO");
@@ -4862,42 +4881,10 @@ function showPayDayDetails(id) {
     wrapper.appendChild(clonedBtn);
     wrapper.appendChild(subtitle);
     
-    // Lo inseriamo SOPRA la descrizione (e quindi SOTTO il nuovo blocco prezzo che abbiamo appena creato)
-    descEl.parentNode.insertBefore(wrapper, descEl);       
-
-            document.getElementById('od-details-modal').style.display = 'none';
-
-            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
-
-            setCurrentBookingDraft({
-                titolo: t,
-                data: d,
-                prezzo: prezzo,
-                bookingId: pdBookingId,
-                collection: pdCollection,
-                eventDocId: pdEventDocId
-            });
-
-            document.getElementById('cb-titolo').innerText = t;
-            document.getElementById('cb-data').innerText = d;
-            document.getElementById('cb-prezzo').innerText = prezzo + "€";
-            document.getElementById('cb-tipo-evento').value = "PAID";
-            document.getElementById('cb-xp').value = earnedXP;
-            document.getElementById('cb-booking-id').value = pdBookingId;
-            document.getElementById('cb-booking-collection').value = pdCollection;
-            document.getElementById('cb-booking-eventdocid').value = pdEventDocId;
-
-            const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
-            const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
-            document.getElementById('cb-nome').value = nomeSalvato;
-            document.getElementById('cb-telefono').value = telefonoSalvato;
-
-            document.getElementById('custom-booking-modal').style.display = 'flex';
-        };
-    }
+    descElForClone.parentNode.insertBefore(wrapper, descElForClone);        
 
     document.getElementById('od-details-modal').style.display = 'block';
-}    
+}
     
 // --- MOTORE AMAZON SPONSOR SLIDER CON QUICK VIEW ---
 let amazonAutoScrollTimer = null;
