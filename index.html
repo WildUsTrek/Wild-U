@@ -2420,11 +2420,8 @@ const publicCachePayload = {
             // Se il server risponde, svuotiamo la memoria locale dei lavori in corso.
             allBookings = Array.isArray(data.bookings) ? data.bookings : (data.userOverlay?.bookings || []);
             
-            if (Array.isArray(allBookings)) {
-                pendingBookings = []; 
-                pendingCancels = [];
-                // Obblighiamo lo zaino a resettarsi sulla realtà del DB
-                evaluateBookings(); 
+            // Reset grafico iniziale: Firestore sta arrivando...
+            evaluateBookings(); 
             } //NEEEWWWWWW
 
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
@@ -2545,6 +2542,14 @@ async function fetchXP() {
         const data = docSnap.data() || {};
         isBanned = data.bannato === true;
         viaggiRiscattati = data.viaggi_riscattati || [];
+
+        // 🛡️ FIRESTORE SOURCE OF TRUTH: Allineiamo lo zaino con il DB reale (UID-Specific)
+        // Questo distrugge definitivamente i residui dello Sheet o di altri profili.
+        allBookings = Array.isArray(data.zaino) ? data.zaino : [];
+        
+        // Pulizia lavori in corso: ora che Firestore ha risposto, i sospesi non servono più
+        pendingBookings = [];
+        pendingCancels = [];
 
         const userData = {
             xp: parseInt(data.xp || 0, 10),
