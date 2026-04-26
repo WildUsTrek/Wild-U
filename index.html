@@ -2421,24 +2421,16 @@ const publicCachePayload = {
             allTrips = data.events || [];
             allOpenDays = data.opendays || [];
             allPayDays = data.paydays || [];
-            allBookings = Array.isArray(data.bookings)
-                ? data.bookings
-                : (data.userOverlay?.bookings || []);
-
-            // 🛡️ ANTI-PARADOSSO: Se il viaggio è arrivato ufficialmente dal server, NEWWWWWW
-            // rimuovilo istantaneamente dai "lavori in corso" (pendingBookings)
-            if (allBookings && pendingBookings.length > 0) {
-                pendingBookings = pendingBookings.filter(pKey => {
-                    return !allBookings.some(b => {
-                        const bKey = buildClientBookingKey({
-                            bookingId: b.bookingId,
-                            titolo: b["Viaggio Scelto (non modificare)"],
-                            data: b["Data Inizio (non modificare)"]
-                        });
-                        return bKey === pKey;
-                    });
-                });
-            }    //NEEEWWWWWW
+          // 🛡️ SINCRONIZZATORE REALE: Firestore comanda.
+            // Se il server risponde, svuotiamo la memoria locale dei lavori in corso.
+            allBookings = Array.isArray(data.bookings) ? data.bookings : (data.userOverlay?.bookings || []);
+            
+            if (Array.isArray(allBookings)) {
+                pendingBookings = []; 
+                pendingCancels = [];
+                // Obblighiamo lo zaino a resettarsi sulla realtà del DB
+                evaluateBookings(); 
+            } //NEEEWWWWWW
 
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
@@ -2730,92 +2722,82 @@ function setCurrentBookingDraft(payload = {}) {
 function evaluateBookings() {
     if (!wildUserKey) return;
 
+    // Reset totale della memoria bottoni
     myBookedTitles = []; 
     const occupiedSlots = new Set();
     const today = new Date();
     today.setHours(0,0,0,0);
-
     let activeHtml = '';
 
-    // 1. ANALISI VIAGGI CONFERMATI SUL SERVER
-    const myB = allBookings.filter(b => {
+    // 1. ANALISI VIAGGI REALI DA FIRESTORE
+    // Questo è l'unico blocco che può scrivere in myBookedTitles
+    const myConfirmed = allBookings.filter(b => {
         const owner = String(b["WILD KEY"] || b["UTENTE"] || "").trim();
-        const bKey = buildClientBookingKey({
-            bookingId: b.bookingId || "",
-            titolo: b["Viaggio Scelto (non modificare)"] || "",
-            data: b["Data Inizio (non modificare)"] || ""
-        });
-        const isBeingCancelled = bKey && pendingCancels.includes(bKey);
-        return owner === String(wildUserKey).trim() && !isBeingCancelled;
+        if (owner !== String(wildUserKey).trim()) return false;
+        const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
+        if (!dateStr) return true;
+        const bDate = parseItalianDate(dateStr);
+        return bDate >= today; // Ignora i viaggi passati
     });
 
-    for (let b of myB) {
-        const title = b["Viaggio Scelto (non modificare)"] || "";
-        const dateStr = b["Data Inizio (non modificare)"] || "";
-        if (!title) continue;
-
+    for (let b of myConfirmed) {
+        const title = b.titolo || b["Viaggio Scelto (non modificare)"] || "Viaggio";
+        const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
-        const bDate = parseItalianDate(dateStr);
 
-        // Se il viaggio è futuro o di OGGI, lo contiamo e lo mostriamo
-        if (bDate >= today) {
-            occupiedSlots.add(bookingKey);
-            if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
+        occupiedSlots.add(bookingKey);
+        // SOLO i viaggi che Firestore conferma finiscono qui e bloccano il tasto "Già iscritto"
+        if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
 
-            let infoBtn = "";
-            const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
-            const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
-            const hikeList = (typeof allPayDays !== 'undefined' && Array.isArray(allPayDays)) ? allPayDays : [];
-            const hikeOrig = hikeList.find(h => buildClientBookingKey({bookingId: h.bookingId, titolo: h["Titolo"], data: h["Data Inizio"]}) === bookingKey);
+        let infoBtn = "";
+        const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
+        const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
+        const hikeOrig = allPayDays.find(h => buildClientBookingKey({bookingId: h.bookingId, titolo: h["Titolo"], data: h["Data Inizio"]}) === bookingKey);
 
-            if (tripOrig) {
-                const tId = tripOrig.eventDocId || tripOrig.id;
-                const lB = tripOrig.Link ? `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>` : "";
-                const dB = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO ℹ️</button>`;
-                infoBtn = lB + dB;
-            } else if (odOrig) {
-                infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
-            } else if (hikeOrig) {
-                infoBtn = `<button onclick="showPayDayDetails('${hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
-            }
-
-            const cP = encodeURIComponent(JSON.stringify({ titolo: title, data: dateStr, bookingId: b.bookingId, collection: b.collection, eventDocId: b.eventDocId }));
-
-            activeHtml += `
-            <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
-                <div style="margin-bottom: 12px;">
-                    <div style="font-weight: bold; color: #fff; font-size: 14px; text-transform: uppercase;">${title}</div>
-                    <div style="font-size: 12px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr}</div>
-                </div>
-                <div style="display: flex; justify-content: flex-end;">
-                    ${infoBtn}
-                    <button onclick="requestCancel('${cP}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
-                </div>
-            </div>`;
+        if (tripOrig) {
+            const tId = tripOrig.eventDocId || tripOrig.id;
+            const lB = tripOrig.Link ? `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>` : "";
+            infoBtn = lB + `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO ℹ️</button>`;
+        } else if (odOrig) {
+            infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+        } else if (hikeOrig) {
+            infoBtn = `<button onclick="showPayDayDetails('${hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         }
+
+        const cP = encodeURIComponent(JSON.stringify({ titolo: title, data: dateStr, bookingId: b.bookingId, collection: b.collection, eventDocId: b.eventDocId }));
+
+        activeHtml += `
+        <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+            <div style="margin-bottom: 12px;">
+                <div style="font-weight: bold; color: #fff; font-size: 14px; text-transform: uppercase;">${title}</div>
+                <div style="font-size: 12px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr || 'Vedere Dettagli'}</div>
+            </div>
+            <div style="display: flex; justify-content: flex-end;">
+                ${infoBtn}
+                <button onclick="requestCancel('${cP}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
+            </div>
+        </div>`;
     }
 
-    // 2. ANALISI VIAGGI PENDENTI (NON ANCORA ARRIVATI DAL SERVER)
+    // 2. GESTIONE PENDENTI (GHOST CARDS)
+    // Mostriamo la card di caricamento MA NON blocchiamo il tasto "Già iscritto" della card principale
+    // finché il server non ci dà il record reale.
     pendingBookings.forEach(pKey => {
         if (!myBookedTitles.includes(pKey)) {
             occupiedSlots.add(pKey);
-            myBookedTitles.push(pKey);
-            const displayTitle = pKey.split('__')[0].toUpperCase();
-
+            const displayTitle = pKey.split('__')[0].replace('official_events:', '').replace(/_/g, ' ').toUpperCase();
             activeHtml += `
             <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
                 <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
-                <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE IN CORSO...</div>
+                <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
             </div>`;
         }
     });
 
-    // RENDER UI
     document.getElementById('my-bookings-list').innerHTML = (activeHtml === '') 
         ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' 
         : activeHtml;
 
-    // MATEMATICA UNIFICATA
     const totalOccupied = occupiedSlots.size;
     const max = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && totalOccupied < max;
