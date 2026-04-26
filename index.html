@@ -2416,11 +2416,10 @@ const publicCachePayload = {
             allTrips = data.events || [];
             allOpenDays = data.opendays || [];
             allPayDays = data.paydays || [];
-          // 🛡️ SINCRONIZZATORE REALE: Firestore comanda.
-            // Se il server risponde, svuotiamo la memoria locale dei lavori in corso.
-            allBookings = Array.isArray(data.bookings) ? data.bookings : (data.userOverlay?.bookings || []);
-            
-            // Reset grafico iniziale: Firestore sta arrivando...
+            /// 🛡️ TAGLIO DEL CORDONE COL GATEWAY (SHEET):
+            // L'app da ora in poi ignorerà le prenotazioni provenienti dallo Sheet.
+            // La variabile allBookings verrà riempita ESCLUSIVAMENTE da Firestore.
+            allBookings = []; 
             evaluateBookings(); 
              //NEEEWWWWWW
 
