@@ -3303,7 +3303,7 @@ function showTripDetails(id) {
     const servizi = ev.servizi || [];
     if (servizi.length > 0) {
         document.getElementById('od-modal-gear-title').innerText = "🎒 Servizi Inclusi";
-        gearHtml = servizi.map(s => `<li style="margin-bottom:8px;">✅ ${s}</li>`).join('');
+        gearHtml = servizi.map(s => `<li style="margin-bottom:8px; display:flex; align-items:flex-start; gap:8px;"><span style="flex-shrink:0;">✅</span><span style="flex:1;">${s}</span></li>`).join('');
     } else {
         gearHtml = '<li>Dettagli servizi disponibili sul sito ufficiale.</li>';
     }
@@ -3383,7 +3383,7 @@ function showTripDetails(id) {
     // Creiamo un wrapper e cloniamo il bottone inferiore (copiandone lo stato disabled/testo)
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
-    wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
+    wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
     
     const clonedBtn = bottomBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
@@ -4537,7 +4537,7 @@ function showOpenDayDetails(id) {
         const gearArr = JSON.parse(od["Attrezzatura (JSON)"] || "[]");
         if (gearArr.length > 0) {
             for (let g of gearArr) {
-                gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
+                gearHtml += `<li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px;"><span style="flex-shrink:0;">✅</span><span style="flex:1;"><b style="color:#fff;">${g.item}</b>${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px; display:block;">(${g.note})</span>` : ''}</span></li>`;
             }
         } else {
             gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>';
@@ -4625,7 +4625,7 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
     
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
-    wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
+    wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
     
     const clonedBtn = bookBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
@@ -4745,7 +4745,7 @@ function showPayDayDetails(id) {
         const gearArr = JSON.parse(pd["Attrezzatura (JSON)"] || "[]");
         if(gearArr.length > 0) {
             for(let g of gearArr) {
-                gearHtml += `<li style="margin-bottom:10px;">✅ <b style="color:#fff;">${g.item}</b> ${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px;">(${g.note})</span>` : ''}</li>`;
+                gearHtml += `<li style="margin-bottom:10px; display:flex; align-items:flex-start; gap:8px;"><span style="flex-shrink:0;">✅</span><span style="flex:1;"><b style="color:#fff;">${g.item}</b>${g.note ? `<span style="color:#aaa; font-size:13px; margin-left:5px; display:block;">(${g.note})</span>` : ''}</span></li>`;
             }
         } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
     } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
@@ -4825,7 +4825,7 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
     
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
-    wrapper.style.cssText = 'margin-bottom:25px; text-align:center;';
+    wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
     
     const clonedBtn = bookBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
