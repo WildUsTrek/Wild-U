@@ -2719,9 +2719,19 @@ function setCurrentBookingDraft(payload = {}) {
 }
     
 function evaluateBookings() {
-    // Se non c'è un utente loggato su Google o salvato, non facciamo nulla
+    console.group("🕵️ INDAGINE ZAINO: CHI HA INVITATO VIA DEL MARE?");
+    
     const currentUid = auth.currentUser ? auth.currentUser.uid : wildUserKey;
-    if (!currentUid) return;
+    console.log("1. UTENTE CORRENTE:", currentUid);
+    
+    if (!currentUid) {
+        console.log("❌ Nessun utente loggato, esco.");
+        console.groupEnd();
+        return;
+    }
+
+    console.log("2. ALL BOOKINGS (Dati grezzi in memoria ORA):", JSON.parse(JSON.stringify(allBookings)));
+    console.log("3. PENDING BOOKINGS (Dati sospesi ORA):", JSON.parse(JSON.stringify(pendingBookings)));
 
     myBookedTitles = []; 
     const occupiedSlots = new Set();
@@ -2729,20 +2739,25 @@ function evaluateBookings() {
     today.setHours(0,0,0,0);
     let activeHtml = '';
 
-    // 1. LA VERITÀ DI FIRESTORE (SOLO VIAGGI FUTURI)
-    // Non cerchiamo più "WILD KEY" perché i dati arrivano direttamente dal TUO documento Firestore
+    // 1. ANALISI VIAGGI REALI
     const myConfirmed = allBookings.filter(b => {
+        const title = b.titolo || b["Viaggio Scelto (non modificare)"] || "Sconosciuto";
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const bDate = parseItalianDate(dateStr);
+        const isValid = !dateStr || bDate >= today; 
         
-        // Se il viaggio è passato (ieri o prima), lo ignoriamo
-        return !dateStr || bDate >= today; 
+        console.log(`-> Filtro DB: [${title}] data [${dateStr}]. Passa il controllo data? ${isValid}`);
+        return isValid; 
     });
+
+    console.log("4. VIAGGI SOPRAVVISSUTI AI FILTRI:", myConfirmed);
 
     for (let b of myConfirmed) {
         const title = b.titolo || b["Viaggio Scelto (non modificare)"] || "Viaggio";
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
+
+        console.log(`-> Aggiungo in Zaino REALE: [${title}] con Chiave: [${bookingKey}]`);
 
         occupiedSlots.add(bookingKey);
         if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
@@ -2776,26 +2791,30 @@ function evaluateBookings() {
         </div>`;
     }
 
-    // 2. GHOST CARDS (Solo se Firestore non ha ancora risposto con dati)
-    if (allBookings.length === 0) {
-        pendingBookings.forEach(pKey => {
-            if (!myBookedTitles.includes(pKey)) {
-                occupiedSlots.add(pKey);
-                const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
-                activeHtml += `
-                <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
-                    <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
-                    <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
-                </div>`;
-            }
-        });
-    }
+    console.log("5. CONTROLLO PENDENTI (Ricerca Fantasmi):");
+    pendingBookings.forEach(pKey => {
+        console.log(`-> Verifico pendente: [${pKey}]`);
+        if (!myBookedTitles.includes(pKey)) {
+            console.log(`-> ⚠️ TROVATO FANTASMA! Aggiungo allo zaino visuale: [${pKey}]`);
+            occupiedSlots.add(pKey);
+            const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
+            activeHtml += `
+            <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
+                <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
+                <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
+            </div>`;
+        } else {
+            console.log(`-> Pendente saltato perché già in zaino: [${pKey}]`);
+        }
+    });
 
     document.getElementById('my-bookings-list').innerHTML = (activeHtml === '') 
         ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' 
         : activeHtml;
 
     const totalOccupied = occupiedSlots.size;
+    console.log(`6. RISULTATO FINALE ZAINO: Occupati = ${totalOccupied}, Contenuto =`, Array.from(occupiedSlots));
+    
     const max = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && totalOccupied < max;
     
@@ -2805,6 +2824,8 @@ function evaluateBookings() {
 
     filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
+    
+    console.groupEnd();
 }
 
     
