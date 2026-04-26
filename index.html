@@ -1732,59 +1732,54 @@ async function completeRegistration() {
 
 function logout() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-    const isTelegram = tgUser && tgUser.id;
+    const isTelegram = !!(tgUser && tgUser.id);
 
-    const cleanClientState = () => {
-        tempGoogleUser = null;
-        tempTelegramUser = null;
-        cachedXPData = null;
-        wildUserKey = null;
-        allBookings = [];
-        myBookedTitles = [];
-        pendingBookings = [];
-        pendingCancels = [];
-        isBookingInProgress = false; // Fondamentale!
-        isCancellingInProgress = false; // Fondamentale!
-        currentBookingDraft = null; // DISTRUGGE LA BOZZA IN SOSPESO
-        regCtaSessionShown = false;
-        regCtaCurrentReason = null;
-        initDataPromise = null;
-        authRefreshLock = false;
-        authProbeInProgress = false;
+    // 1. PULIZIA NUCLEARE DELLO STORAGE (Nessun residuo tra profili)
+    localStorage.clear();
+    sessionStorage.clear();
 
-        clientSession = {
-            authState: 'GUEST',
-            channel: isTelegram ? 'TELEGRAM' : 'WEB',
-            tokenStatus: 'NONE',
-            capabilities: getDefaultClientCapabilities(isTelegram ? 'TELEGRAM' : 'WEB')
-        };
+    // 2. RESET VARIABILI GLOBALI
+    tempGoogleUser = null;
+    tempTelegramUser = null;
+    cachedXPData = null;
+    wildUserKey = null;
+    allBookings = [];
+    myBookedTitles = [];
+    pendingBookings = [];
+    pendingCancels = [];
+    isBookingInProgress = false;
+    isCancellingInProgress = false;
+    currentBookingDraft = null;
+    regCtaSessionShown = false;
+    initDataPromise = null;
 
-        localStorage.removeItem('wildUserKey');
-        localStorage.removeItem('wildCachePublic');
-        localStorage.removeItem('lastViewedXP');
-        localStorage.removeItem('lastCelebratedXP');
+    clientSession = {
+        authState: 'GUEST',
+        channel: isTelegram ? 'TELEGRAM' : 'WEB',
+        tokenStatus: 'NONE',
+        capabilities: getDefaultClientCapabilities(isTelegram ? 'TELEGRAM' : 'WEB')
     };
 
-// ESEGUIAMO LA PULIZIA *PRIMA* DI CHIAMARE FIREBASE
-    // Così l'interfaccia si svuota istantaneamente
-    cleanClientState();
-    
-    // Forza il reset visivo immediato se l'utente è ancora nella pagina Profilo
+    // 3. RESET GRAFICO IMMEDIATO
     if (currentTab === 'profile') {
         const xpFill = document.getElementById('xp-fill');
         const xpPercentText = document.getElementById('xp-percentage');
         if (xpFill) xpFill.style.width = "0%";
         if (xpPercentText) xpPercentText.innerText = "0%";
+        const list = document.getElementById('my-bookings-list');
+        if (list) list.innerHTML = '<p style="color:#aaa; text-align:center; padding:20px;">Scollegamento in corso...</p>';
     }
 
+    // 4. USCITA DEFINITIVA
+    const targetUrl = window.location.pathname + '?logout=true&nocache=' + Date.now();
+
     if (isTelegram) {
-        // Su Telegram forziamo un refresh hard con un parametro per bypassare la cache
-        window.location.href = window.location.pathname + '?nocache=' + Date.now();
+        window.location.href = targetUrl;
     } else {
         auth.signOut().then(() => {
-            window.location.href = window.location.pathname + '?nocache=' + Date.now();
+            window.location.href = targetUrl;
         }).catch(() => {
-            window.location.href = window.location.pathname + '?nocache=' + Date.now();
+            window.location.href = targetUrl;
         });
     }
 }
@@ -2720,24 +2715,25 @@ function setCurrentBookingDraft(payload = {}) {
 }
     
 function evaluateBookings() {
-    if (!wildUserKey) return;
+    // 🛡️ SICUREZZA LIVE: Chiediamo l'ID a Firebase, non alla cache locale
+    const currentUid = auth.currentUser ? auth.currentUser.uid : wildUserKey;
+    if (!currentUid) return;
 
-    // Reset totale della memoria bottoni
     myBookedTitles = []; 
     const occupiedSlots = new Set();
     const today = new Date();
     today.setHours(0,0,0,0);
     let activeHtml = '';
 
-    // 1. ANALISI VIAGGI REALI DA FIRESTORE
-    // Questo è l'unico blocco che può scrivere in myBookedTitles
+    // 1. ANALISI VIAGGI REALI DA FIRESTORE (Solo quelli dell'utente ATTUALE)
     const myConfirmed = allBookings.filter(b => {
         const owner = String(b["WILD KEY"] || b["UTENTE"] || "").trim();
-        if (owner !== String(wildUserKey).trim()) return false;
+        // Se il proprietario nel DB non è l'utente loggato adesso, scarta!
+        if (owner !== String(currentUid).trim()) return false;
+
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
-        if (!dateStr) return true;
         const bDate = parseItalianDate(dateStr);
-        return bDate >= today; // Ignora i viaggi passati
+        return !dateStr || bDate >= today; 
     });
 
     for (let b of myConfirmed) {
@@ -2746,7 +2742,7 @@ function evaluateBookings() {
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
 
         occupiedSlots.add(bookingKey);
-        // SOLO i viaggi che Firestore conferma finiscono qui e bloccano il tasto "Già iscritto"
+        // Blocca i tasti "GIA ISCRITTO" solo se il server conferma
         if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
 
         let infoBtn = "";
@@ -2756,8 +2752,7 @@ function evaluateBookings() {
 
         if (tripOrig) {
             const tId = tripOrig.eventDocId || tripOrig.id;
-            const lB = tripOrig.Link ? `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>` : "";
-            infoBtn = lB + `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO ℹ️</button>`;
+            infoBtn = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         } else if (odOrig) {
             infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         } else if (hikeOrig) {
@@ -2779,13 +2774,11 @@ function evaluateBookings() {
         </div>`;
     }
 
-    // 2. GESTIONE PENDENTI (GHOST CARDS)
-    // Mostriamo la card di caricamento MA NON blocchiamo il tasto "Già iscritto" della card principale
-    // finché il server non ci dà il record reale.
+    // 2. GHOST CARDS (Solo per il profilo corrente)
     pendingBookings.forEach(pKey => {
         if (!myBookedTitles.includes(pKey)) {
             occupiedSlots.add(pKey);
-            const displayTitle = pKey.split('__')[0].replace('official_events:', '').replace(/_/g, ' ').toUpperCase();
+            const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
             activeHtml += `
             <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
                 <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
@@ -3764,7 +3757,7 @@ async function sendCustomBooking() {
             prezzo: prezzoRaw,
             nome: nomeRaw,
             telefono: telefono,
-            wildKey: wildUserKey,
+            wildKey: auth.currentUser ? auth.currentUser.uid : wildUserKey, // Prende l'ID reale da Google, non dalla memoria cache
             bookingId: bookingIdRaw,
             collection: bookingCollectionRaw,
             eventDocId: bookingEventDocIdRaw,
