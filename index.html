@@ -3129,7 +3129,7 @@ function renderTrips(trips, targetId) {
 
         // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
         // (Nota: assumo che il tuo db usi 'ev.qnt' per gli iscritti reali e 'ev.postiMax' per il totale)
-        const occ = calculateDisplayOccupancy(ev.id || titolo, dInizio, ev.qnt || 0, ev.postiMax);
+        const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
         const occColor = occ.isAlmostFull ? '#ff4444' : '#00aaff';
         const occIcon = occ.isAlmostFull ? '🔥' : '👥';
 
@@ -4355,17 +4355,7 @@ function showOpenDayDetails(id) {
     container.insertBefore(descEl, gearTitleEl);
     // 👆 FINE BLOCCO RIPRISTINO 👆
 
-    // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Open Day) ---
-    const imgUrl = od["immagine"] || od["fotoUrl"] || ""; 
-    const imgContainer = document.getElementById('trip-modal-img-container');
-    const imgElement = document.getElementById('trip-modal-img');
 
-    if (imgUrl && imgUrl.trim() !== "") {
-        imgElement.src = formatAssetLink(imgUrl);
-        imgContainer.style.display = 'block';
-    } else {
-        imgContainer.style.display = 'none';
-    }
 
     // Popolamento testi base
 
