@@ -2720,7 +2720,7 @@ function setCurrentBookingDraft(payload = {}) {
 }
     
 function evaluateBookings() {
-    // 🛡️ SICUREZZA LIVE: Chiediamo l'ID a Firebase, non alla cache locale
+    // Se non c'è un utente loggato su Google o salvato, non facciamo nulla
     const currentUid = auth.currentUser ? auth.currentUser.uid : wildUserKey;
     if (!currentUid) return;
 
@@ -2730,14 +2730,13 @@ function evaluateBookings() {
     today.setHours(0,0,0,0);
     let activeHtml = '';
 
-    // 1. ANALISI VIAGGI REALI DA FIRESTORE (Solo quelli dell'utente ATTUALE)
+    // 1. LA VERITÀ DI FIRESTORE (SOLO VIAGGI FUTURI)
+    // Non cerchiamo più "WILD KEY" perché i dati arrivano direttamente dal TUO documento Firestore
     const myConfirmed = allBookings.filter(b => {
-        const owner = String(b["WILD KEY"] || b["UTENTE"] || "").trim();
-        // Se il proprietario nel DB non è l'utente loggato adesso, scarta!
-        if (owner !== String(currentUid).trim()) return false;
-
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const bDate = parseItalianDate(dateStr);
+        
+        // Se il viaggio è passato (ieri o prima), lo ignoriamo
         return !dateStr || bDate >= today; 
     });
 
@@ -2747,7 +2746,6 @@ function evaluateBookings() {
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
 
         occupiedSlots.add(bookingKey);
-        // Blocca i tasti "GIA ISCRITTO" solo se il server conferma
         if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
 
         let infoBtn = "";
@@ -2779,18 +2777,20 @@ function evaluateBookings() {
         </div>`;
     }
 
-    // 2. GHOST CARDS (Solo per il profilo corrente)
-    pendingBookings.forEach(pKey => {
-        if (!myBookedTitles.includes(pKey)) {
-            occupiedSlots.add(pKey);
-            const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
-            activeHtml += `
-            <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
-                <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
-                <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
-            </div>`;
-        }
-    });
+    // 2. GHOST CARDS (Solo se Firestore non ha ancora risposto con dati)
+    if (allBookings.length === 0) {
+        pendingBookings.forEach(pKey => {
+            if (!myBookedTitles.includes(pKey)) {
+                occupiedSlots.add(pKey);
+                const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
+                activeHtml += `
+                <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
+                    <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
+                    <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
+                </div>`;
+            }
+        });
+    }
 
     document.getElementById('my-bookings-list').innerHTML = (activeHtml === '') 
         ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' 
@@ -2799,7 +2799,7 @@ function evaluateBookings() {
     const totalOccupied = occupiedSlots.size;
     const max = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && totalOccupied < max;
-
+    
     if (isBanned) banReason = "ACCOUNT SOSPESO";
     else if (totalOccupied >= max) banReason = `ZAINO PIENO (${totalOccupied}/${max})`;
     else banReason = "";
