@@ -253,7 +253,10 @@
             -webkit-line-clamp: 5;
             -webkit-box-orient: vertical;
             overflow: hidden;
-        }        
+            
+        } 
+
+        #od-modal-desc, .amazon-det-desc { text-align: justify; hyphens: auto; }
 
         
     </style>
@@ -2771,8 +2774,11 @@ function evaluateBookings() {
                 return hikeKey === bookingKey;
             });
 
-            if (tripOrig && tripOrig.Link) {
-                infoBtn = `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">LINK SITO</button>`;
+            if (tripOrig) {
+                const tId = tripOrig.eventDocId || tripOrig.id;
+                const linkBtn = tripOrig.Link ? `<button onclick="window.open('${tripOrig.Link}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>` : "";
+                const detailsBtn = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO ℹ️</button>`;
+                infoBtn = linkBtn + detailsBtn;
             } else if (odOrig) {
                 const odId = odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"];
                 infoBtn = `<button onclick="showOpenDayDetails('${odId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
