@@ -2730,7 +2730,10 @@ function setCurrentBookingDraft(payload = {}) {
 function evaluateBookings() {
     if (!wildUserKey) return;
 
-    myBookedTitles = [...pendingBookings];
+    myBookedTitles = []; 
+    const occupiedSlots = new Set();
+    // Iniziamo il conteggio dai pendenti (i "lavori in corso")
+    pendingBookings.forEach(pKey => occupiedSlots.add(pKey));
 
     const myB = allBookings.filter(b => {
         const owner = String(b["WILD KEY"] || b["UTENTE"] || "").trim();
@@ -2765,7 +2768,8 @@ function evaluateBookings() {
 
         const bDate = parseItalianDate(dateStr);
         if (bDate >= today) {
-            activeCount++;
+            // Se il viaggio è "vivo" (futuro o oggi), occupa un posto nello zaino
+            occupiedSlots.add(bookingKey);
 
             if (bookingKey && !myBookedTitles.includes(bookingKey)) {
                 myBookedTitles.push(bookingKey);
@@ -2840,18 +2844,12 @@ function evaluateBookings() {
         }
     }
 
-    document.getElementById('my-bookings-list').innerHTML = (activeCount === 0)
+    // Verifichiamo se abbiamo effettivamente disegnato qualcosa (activeHtml)
+    document.getElementById('my-bookings-list').innerHTML = (activeHtml === '')
         ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>'
         : activeHtml;
 
-    // --- 🛡️ LOGICA ANTI-PARADOSSO (Set di ID Unici) ---
-    const uniqueOccupiedSlots = new Set();
-
-    // Inseriamo le chiavi dei viaggi (reali e pendenti) nel Set
-    // Il Set eliminerà automaticamente i doppioni se una chiave è presente in entrambi
-    myBookedTitles.forEach(key => uniqueOccupiedSlots.add(key));
-
-    const totalOccupied = uniqueOccupiedSlots.size;
+    const totalOccupied = occupiedSlots.size;
     const max = parseInt(config.limite_prenotazioni) || 3;
 
     // La decisione finale basata sulla dimensione reale dello zaino
