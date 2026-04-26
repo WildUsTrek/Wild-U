@@ -4351,11 +4351,21 @@ function showOpenDayDetails(id) {
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     
-    // Riportiamo la descrizione sopra il titolo dello Zaino
+// Riportiamo la descrizione sopra il titolo dello Zaino
     container.insertBefore(descEl, gearTitleEl);
     // 👆 FINE BLOCCO RIPRISTINO 👆
 
+    // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Open Day) ---
+    const modalImgOD = od["immagine"] || od["fotoUrl"] || ""; 
+    const modalContOD = document.getElementById('trip-modal-img-container');
+    const modalElOD = document.getElementById('trip-modal-img');
 
+    if (modalImgOD && modalImgOD.trim() !== "") {
+        modalElOD.src = formatAssetLink(modalImgOD);
+        modalContOD.style.display = 'block';
+    } else {
+        modalContOD.style.display = 'none';
+    }
 
     // Popolamento testi base
 
@@ -4510,25 +4520,23 @@ function showPayDayDetails(id) {
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     
-   // Riportiamo la descrizione sopra il titolo dello Zaino
+// Riportiamo la descrizione sopra il titolo dello Zaino
     container.insertBefore(descEl, gearTitleEl);
     // 👆 FINE BLOCCO RIPRISTINO 👆
 
     // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Pay Day) ---
-    const imgUrl = pd["immagine"] || pd["fotoUrl"] || ""; 
-    const imgContainer = document.getElementById('trip-modal-img-container');
-    const imgElement = document.getElementById('trip-modal-img');
+    const modalImgPD = pd["immagine"] || pd["fotoUrl"] || ""; 
+    const modalContPD = document.getElementById('trip-modal-img-container');
+    const modalElPD = document.getElementById('trip-modal-img');
 
-    if (imgUrl && imgUrl.trim() !== "") {
-        imgElement.src = formatAssetLink(imgUrl);
-        imgContainer.style.display = 'block';
+    if (modalImgPD && modalImgPD.trim() !== "") {
+        modalElPD.src = formatAssetLink(modalImgPD);
+        modalContPD.style.display = 'block';
     } else {
-        imgContainer.style.display = 'none';
+        modalContPD.style.display = 'none';
     }
 
     // Popolamento testi base
-
-
 
     document.getElementById('od-modal-title').innerText = pd["Titolo"] || "Evento";
     const dInizio = pd["Data Inizio"] || "";
