@@ -1743,6 +1743,8 @@ function logout() {
         myBookedTitles = [];
         pendingBookings = [];
         pendingCancels = [];
+        isBookingInProgress = false; // Fondamentale!
+        isCancellingInProgress = false; // Fondamentale!
         currentBookingDraft = null; // DISTRUGGE LA BOZZA IN SOSPESO
         regCtaSessionShown = false;
         regCtaCurrentReason = null;
@@ -2423,6 +2425,21 @@ const publicCachePayload = {
                 ? data.bookings
                 : (data.userOverlay?.bookings || []);
 
+            // 🛡️ ANTI-PARADOSSO: Se il viaggio è arrivato ufficialmente dal server, NEWWWWWW
+            // rimuovilo istantaneamente dai "lavori in corso" (pendingBookings)
+            if (allBookings && pendingBookings.length > 0) {
+                pendingBookings = pendingBookings.filter(pKey => {
+                    return !allBookings.some(b => {
+                        const bKey = buildClientBookingKey({
+                            bookingId: b.bookingId,
+                            titolo: b["Viaggio Scelto (non modificare)"],
+                            data: b["Data Inizio (non modificare)"]
+                        });
+                        return bKey === pKey;
+                    });
+                });
+            }    //NEEEWWWWWW
+
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
 
@@ -2458,6 +2475,8 @@ const publicCachePayload = {
             } else {
                 allBookings = [];
                 myBookedTitles = [];
+                pendingBookings = []; // <--- SVUOTA I FANTASMI
+                pendingCancels = [];  // <--- SVUOTA I FANTASMI
             }
 
             renderOpenDays();
@@ -2825,15 +2844,28 @@ function evaluateBookings() {
         ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>'
         : activeHtml;
 
-    const realActiveCount = activeCount + pendingBookings.length;
+    // --- 🛡️ LOGICA ANTI-PARADOSSO (Set di ID Unici) ---
+    const uniqueOccupiedSlots = new Set();
+
+    // Inseriamo le chiavi dei viaggi (reali e pendenti) nel Set
+    // Il Set eliminerà automaticamente i doppioni se una chiave è presente in entrambi
+    myBookedTitles.forEach(key => uniqueOccupiedSlots.add(key));
+
+    const totalOccupied = uniqueOccupiedSlots.size;
     const max = parseInt(config.limite_prenotazioni) || 3;
 
-    canBook = !isBanned && realActiveCount < max;
+    // La decisione finale basata sulla dimensione reale dello zaino
+    canBook = !isBanned && totalOccupied < max;
 
-    if (isBanned) banReason = "ACCOUNT SOSPESO";
-    else if (realActiveCount >= max) banReason = `ZAINO PIENO (${realActiveCount}/${max})`;
-    else banReason = "";
+    if (isBanned) {
+        banReason = "ACCOUNT SOSPESO";
+    } else if (totalOccupied >= max) {
+        banReason = `ZAINO PIENO (${totalOccupied}/${max})`;
+    } else {
+        banReason = "";
+    }
 
+    // Aggiornamento interfaccia
     filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
 }
