@@ -2961,6 +2961,75 @@ function executePenaltyRedirect() {
         return new Date(y, parseInt(p[1]) - 1, parseInt(p[0]));
     }
 
+
+
+    // ==========================================
+    // 🧠 MOTORE FOMO E SCARSITÀ neeeeeeeeeeeeeew
+    // ==========================================
+    
+    // Funzione "Pseudo-Random": genera sempre lo stesso numero finto per lo stesso viaggio
+    function getSeededRandom(seedString, min, max) {
+        let seed = 0;
+        for (let i = 0; i < seedString.length; i++) {
+            seed = seedString.charCodeAt(i) + ((seed << 5) - seed);
+        }
+        // Formula per un random deterministico
+        let t = seed += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        let randomVal = ((t ^ t >>> 14) >>> 0) / 4294967296;
+        
+        return Math.floor(randomVal * (max - min + 1)) + min;
+    }
+
+    function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, postiMaxDb) {
+        const postiMax = postiMaxDb || 11;
+        const veri = iscrittiRealiCount || 0;
+        
+        if (!dataInizio) return { occupati: veri, totali: postiMax, isAlmostFull: veri >= (postiMax * 0.8) };
+
+        const dStart = parseItalianDate(dataInizio);
+        const today = new Date();
+        const diffTime = dStart - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let minPercent = 0;
+        let maxPercent = 0;
+
+        if (diffDays <= 60) {
+            // Partenza vicina: Riempiamo al 75% - 85%
+            minPercent = 0.75;
+            maxPercent = 0.85;
+        } else {
+            // Partenza lontana: Riempiamo al 20% - 50%
+            minPercent = 0.20;
+            maxPercent = 0.50;
+        }
+
+        const minFinti = Math.floor(postiMax * minPercent);
+        const maxFinti = Math.floor(postiMax * maxPercent);
+        
+        // Generiamo il numero finto ma fisso basato sull'ID del viaggio
+        const iscrittiFinti = getSeededRandom(idEvento, minFinti, maxFinti);
+
+        // Vince sempre il numero più alto tra il Reale e il Finto
+        let iscrittiMostrati = Math.max(veri, iscrittiFinti);
+
+        // Sicurezza: non possiamo mostrare più iscritti dei posti disponibili
+        if (iscrittiMostrati > postiMax) iscrittiMostrati = postiMax;
+
+        const isAlmostFull = iscrittiMostrati >= (postiMax * 0.8);
+
+        return {
+            occupati: iscrittiMostrati,
+            totali: postiMax,
+            isAlmostFull: isAlmostFull
+        };
+    }
+
+//fine newwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+
+    
     // ==========================================
     // CATALOGO E PRENOTAZIONI
     // ==========================================
