@@ -3120,11 +3120,26 @@ function renderTrips(trips, targetId) {
                <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
             : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
 
-// --- 4. RENDER CARD (ORARIO SPOSTATO SOPRA IL PREZZO STANDARD) ---
+// --- 📸 IMMAGINE CARD (Aggiunta per coerenza con i partner) ---
+        const imgUrl = ev.immagine || ev.fotoUrl || "";
+        let imgHtml = "";
+        if (imgUrl && imgUrl.trim() !== "") {
+            imgHtml = `<img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px; margin-bottom:15px;" loading="lazy">`;
+        }
+
+        // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
+        // (Nota: assumo che il tuo db usi 'ev.qnt' per gli iscritti reali e 'ev.postiMax' per il totale)
+        const occ = calculateDisplayOccupancy(ev.id || titolo, dInizio, ev.qnt || 0, ev.postiMax);
+        const occColor = occ.isAlmostFull ? '#ff4444' : '#00aaff';
+        const occIcon = occ.isAlmostFull ? '🔥' : '👥';
+
+        // --- 4. RENDER CARD (CON INDICATORE ISCRITTI) ---
         return `<div class="card">
+            ${imgHtml}
             <span class="card-title">${titolo}</span>
             <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
-                <div style="color:#fff;">📅 <b>${displayDate}</b></div>
+                <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
+                <div style="color:${occColor}; font-size: 14px; font-weight: bold;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>
             </div>
             <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
             
@@ -3379,12 +3394,18 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
             const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
             const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
 
+            // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
+            const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
+            const occColor = occ.isAlmostFull ? '#ff4444' : '#00aaff';
+            const occIcon = occ.isAlmostFull ? '🔥' : '👥';
+
             html += `
             <div style="background: #111; border-left: 4px solid #00aaff; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 170, 255, 0.1);">
                 ${typeof imgHtml !== 'undefined' ? imgHtml : ''}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
-                    <div style="color: #00aaff; font-weight: bold; font-size: 15px;">📅 ${displayDate}</div>
+                    <div style="color: #00aaff; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
+                    <div style="color:${occColor}; font-size: 14px; font-weight: bold; margin-bottom:4px;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>
                     <div style="color:#777; font-size: 14px;">🕒 ${orario}</div>
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
@@ -3481,12 +3502,18 @@ function renderPayDays() {
                 imgHtml = `<img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px; margin-bottom:15px;" loading="lazy">`;
             }
 
+            // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE ---
+            const occ = calculateDisplayOccupancy(id, dInizio, pd.qnt || 0, pd.postiMax);
+            const occColor = occ.isAlmostFull ? '#ff4444' : '#d4af37';
+            const occIcon = occ.isAlmostFull ? '🔥' : '👥';
+
             html += `
             <div style="background: #111; border-left: 4px solid #d4af37; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
-                    <div style="color: #d4af37; font-weight: bold; font-size: 15px;">📅 ${displayDate}</div>
+                    <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
+                    <div style="color:${occColor}; font-size: 14px; font-weight: bold; margin-bottom:4px;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>
                     <div style="color:#777; font-size: 14px;">🕒 ${orario}</div>
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
@@ -4322,6 +4349,20 @@ function showOpenDayDetails(id) {
     container.insertBefore(descEl, gearTitleEl);
     // 👆 FINE BLOCCO RIPRISTINO 👆
 
+    // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Open Day) ---
+    const imgUrl = od["immagine"] || od["fotoUrl"] || ""; 
+    const imgContainer = document.getElementById('trip-modal-img-container');
+    const imgElement = document.getElementById('trip-modal-img');
+
+    if (imgUrl && imgUrl.trim() !== "") {
+        imgElement.src = formatAssetLink(imgUrl);
+        imgContainer.style.display = 'block';
+    } else {
+        imgContainer.style.display = 'none';
+    }
+
+    // Popolamento testi base
+
     document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
     const dInizio = od["Data Inizio"] || "";
     const dFine = od["Data Fine"] || "";
@@ -4473,9 +4514,23 @@ function showPayDayDetails(id) {
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     
-    // Riportiamo la descrizione sopra il titolo dello Zaino
+   // Riportiamo la descrizione sopra il titolo dello Zaino
     container.insertBefore(descEl, gearTitleEl);
     // 👆 FINE BLOCCO RIPRISTINO 👆
+
+    // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Pay Day) ---
+    const imgUrl = pd["immagine"] || pd["fotoUrl"] || ""; 
+    const imgContainer = document.getElementById('trip-modal-img-container');
+    const imgElement = document.getElementById('trip-modal-img');
+
+    if (imgUrl && imgUrl.trim() !== "") {
+        imgElement.src = formatAssetLink(imgUrl);
+        imgContainer.style.display = 'block';
+    } else {
+        imgContainer.style.display = 'none';
+    }
+
+    // Popolamento testi base
 
     // --- 📸 ACCENSIONE IMMAGINE NEL MODAL ---
     const imgUrl = pd["immagine"] || pd["fotoUrl"] || ""; 
