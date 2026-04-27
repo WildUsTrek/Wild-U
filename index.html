@@ -62,7 +62,8 @@
 /* --- WILDU AMAZON FOOTER SLIDER --- */
 
 
-/* --- WILDU AMAZON FOOTER SLIDER --- */ 
+
+/* --- 🌲 WILDU MASTER FOOTER - ARCHITETTURA UNIFICATA FINALE --- */
 
 #amazon-footer-wrapper {
     position: fixed;
@@ -70,73 +71,60 @@
     right: 0;
     bottom: 0;
     width: 100vw;
-    max-width: none;
-    display: none;
-    justify-content: stretch;
-    align-items: flex-start;
-    padding: 0;
     background: rgba(18, 18, 18, 0.95);
     backdrop-filter: blur(10px);
     border-top: 1px solid rgba(255,255,255,0.1);
     z-index: 1040;
-    overflow: visible;
+    /* Aumentiamo il padding verticale per dare respiro ed evitare tagli */
+    padding: 12px 0 !important; 
     box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+    /* Permette alle card di non essere mozzate se spuntano di 1px */
+    overflow: visible !important; 
 }
 
-/*.amazon-slider {
+.amazon-slider {
     width: 100%;
-    flex: 1 1 auto;
     display: flex;
     align-items: center;
     overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    scroll-snap-stop: always;
+    /* overflow-y visible è vitale: impedisce il taglio dei margini delle card */
+    overflow-y: visible !important; 
+    /* Cambiamo in 'proximity': su PC è molto più fluido e non salta intere pagine */
+    scroll-snap-type: x proximity !important; 
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
-    min-height: 74px;
-    padding: 3px 0 2px 0;
-    box-sizing: border-box;
-    //🎯 IL MURO 50% ABBATTUTO:
-    scroll-padding-inline: 0px !important;
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important; 
+    /* La calamita si attiva a 20px: sincronia totale col tuo JS (offsetLeft - 20) */
+    scroll-padding-left: 20px !important;
+    padding: 0 !important;
     gap: 12px;
-}*/
-
-.amazon-slider::-webkit-scrollbar {
-    display: none;
+    scrollbar-width: none;
 }
 
+.amazon-slider::-webkit-scrollbar { display: none; }
+
 .amazon-card {
+    /* Usiamo flex-basis per una larghezza solida */
     flex: 0 0 88%;
     max-width: 330px;
-    height: 72px !important;
-    margin: 0;
-    padding: 8px 10px;
-    box-sizing: border-box;
+    height: 74px !important;
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
+    /* Aggancio magnetico a sinistra sulla linea dei 20px */
     scroll-snap-align: start !important;
+    /* Risolve il bug del PC: dice al browser di fermarsi alla card successiva, non alla fine della pagina */
+    scroll-snap-stop: normal !important; 
     display: flex;
     align-items: center;
-    text-decoration: none !important;
-    transition: transform 0.2s;
+    padding: 8px 10px;
+    box-sizing: border-box;
     cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.2s;
 }
 
-.amazon-card:active {
-    transform: scale(0.97);
-}
+.amazon-card:active { transform: scale(0.97); }
 
-.amazon-card:first-child {
-    margin-left: 10px;
-}
-.amazon-card:last-child {
-    margin-right: 10px;
-}
-        
 .amazon-card img {
     width: 58px;
     height: 58px !important;
@@ -147,12 +135,7 @@
     margin-right: 14px;
 }
 
-.amazon-info {
-    flex: 1;
-    min-width: 0;
-    text-align: left;
-    line-height: normal;
-}
+.amazon-info { flex: 1; min-width: 0; text-align: left; }
 
 .amazon-title {
     color: white;
@@ -176,11 +159,7 @@
     overflow: hidden;
 }
 
-.amazon-price {
-    color: #FF9900;
-    font-weight: 800;
-    font-size: 0.82rem;
-}
+.amazon-price { color: #FF9900; font-weight: 800; font-size: 0.82rem; }
 
 .amazon-tag {
     font-size: 0.56rem;
@@ -190,52 +169,20 @@
     border-radius: 4px;
     font-weight: bold;
     margin-left: 5px;
-    vertical-align: middle;
 }
 
+/* Margini di cortesia per la prima e l'ultima card */
+.amazon-card:first-child { margin-left: 20px !important; }
+.amazon-card:last-child { margin-right: 20px !important; }
+
+/* Adattamento Desktop (PC) */
 @media (min-width: 768px) {
-    #amazon-footer-wrapper {
-        padding: 8px 0 8px;
-    }
+    .amazon-card { flex: 0 0 340px; }
+    #amazon-footer-wrapper { padding: 10px 0 !important; }
+}        
+        
 
-    .amazon-slider {
-        min-height: 84px;
-        padding: 0;
-        gap: 12px;
-    }
-
-    .amazon-card {
-        flex: 0 0 340px;
-        max-width: 340px;
-        height: 74px !important;
-        padding: 8px 10px;
-    }
-
-    .amazon-card img {
-        width: 60px;
-        height: 60px !important;
-        margin-right: 10px;
-    }
-
-    .amazon-card:first-child {
-        margin-left: 14px;
-    }
-    .amazon-card:last-child {
-        margin-right: 14px;
-    }
-
-    .amazon-title {
-        font-size: 0.74rem;
-    }
-
-    .amazon-desc {
-        font-size: 0.64rem;
-    }
-
-    .amazon-price {
-        font-size: 0.8rem;
-    }
-}
+        
 
         /* --- WILDU AMAZON QUICK VIEW (Modale Originale) --- */
         #amazon-detail-overlay, #amazon-detail-overlay * { box-sizing: border-box; }
@@ -332,46 +279,6 @@
         }
         
 
-/* 🎯 LA CURA DEFINITIVA: CAROSELLO NATIVO FUSO */
-
-    #amazon-footer-wrapper {
-        padding: 10px 0 10px 0 !important; 
-    }
-
-    .amazon-slider {
-        width: 100%;
-        flex: 1 1 auto;
-        display: flex;
-        align-items: center;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scroll-snap-type: x mandatory;
-        scroll-snap-stop: always;
-        scroll-behavior: smooth;
-        -webkit-overflow-scrolling: touch;
-        min-height: 74px;
-        box-sizing: border-box;
-        gap: 12px;
-        /* Rende lo slider "infinito" ai lati */
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-        /* 🛡️ LA CALAMITA: deve essere identica al -20 del JS */
-        scroll-padding-inline: 20px !important; 
-        scrollbar-width: none !important;
-        -ms-overflow-style: none !important;
-    }
-
-    .amazon-card {
-        scroll-snap-align: start !important; /* Si ancora alla linea dei 20px */
-    }
-
-    .amazon-card:first-child {
-        margin-left: 20px !important; /* CORRETTO: Aggiunto px! */
-    }
-
-    .amazon-card:last-child {
-        margin-right: 20px !important; 
-    }
 
         
     </style>
