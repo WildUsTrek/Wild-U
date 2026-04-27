@@ -380,62 +380,6 @@
         
 
 
-  /* =========================
-   🧪 WILDU SLIDER DEBUG MODE
-   ========================= */
-
-.amazon-slider.debug {
-    position: relative;
-    outline: 2px dashed red;
-}
-
-/* 📏 Linea scrollLeft (viewport start) */
-.amazon-slider.debug::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 2px;
-    background: red;
-    z-index: 9999;
-}
-
-/* 🎯 Linea SNAP (scroll-padding-left = 20px) */
-.amazon-slider.debug::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 20px; /* deve matchare il tuo scroll-padding */
-    width: 2px;
-    background: lime;
-    z-index: 9999;
-}
-
-/* 🟥 Box card */
-.amazon-card.debug {
-    outline: 2px solid yellow;
-    position: relative;
-}
-
-/* 📍 Punto di offsetLeft */
-.amazon-card.debug::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 2px;
-    background: cyan;
-}
-
-/* 🟡 Card attiva */
-.amazon-card.active-debug {
-    outline: 3px solid orange !important;
-    background: rgba(255,165,0,0.15);
-}  
-    
 
 
     
@@ -5522,29 +5466,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-function enableAmazonSliderDebug() {
-    const slider = document.getElementById('amazon-slider-engine');
-    if (!slider) return;
-
-    slider.classList.add('debug');
-
-    const cards = slider.querySelectorAll('.amazon-card');
-    cards.forEach(card => card.classList.add('debug'));
-
-    slider.addEventListener('scroll', () => {
-        const cardsArr = Array.from(cards);
-
-        let currentIndex = cardsArr.findIndex(card => {
-            return Math.abs(card.offsetLeft - slider.scrollLeft) < 5;
-        });
-
-        cardsArr.forEach(c => c.classList.remove('active-debug'));
-
-        if (currentIndex >= 0) {
-            cardsArr[currentIndex].classList.add('active-debug');
-        }
-    });
-}                
 
                 
 </script>
