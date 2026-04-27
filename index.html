@@ -64,6 +64,7 @@
 #amazon-footer-wrapper {
     --amazon-card-w: clamp(250px, 72vw, 292px);
     --amazon-bleed: clamp(72px, 22vw, 110px);
+    --amazon-track-shift: 6px;
 
     position: fixed;
     left: 0;
@@ -92,8 +93,8 @@
     width: calc(100vw + (var(--amazon-bleed) * 2));
     max-width: none;
 
-    margin-left: calc(var(--amazon-bleed) * -1);
-    margin-right: calc(var(--amazon-bleed) * -1);
+    margin-left: calc((var(--amazon-bleed) * -1) - var(--amazon-track-shift));
+    margin-right: calc((var(--amazon-bleed) * -1) + var(--amazon-track-shift));
 
     display: flex;
     align-items: center;
@@ -5318,6 +5319,10 @@ function startAmazonAutoScroll() {
         const currentScrollLeft = slider.scrollLeft;
         const maxScrollLeft = slider.scrollWidth - slider.clientWidth;
 
+        if (maxScrollLeft <= 2) {
+            return;
+        }
+
         function getCenteredTargetLeft(card) {
             const cardRect = card.getBoundingClientRect();
 
@@ -5343,8 +5348,21 @@ function startAmazonAutoScroll() {
             }
         });
 
-        const nextIndex = currentIndex + 1 >= cards.length ? 0 : currentIndex + 1;
-        const nextTargetLeft = getCenteredTargetLeft(cards[nextIndex]);
+        let nextTargetLeft = null;
+
+        for (let step = 1; step <= cards.length; step++) {
+            const candidateIndex = (currentIndex + step) % cards.length;
+            const candidateTarget = getCenteredTargetLeft(cards[candidateIndex]);
+
+            if (Math.abs(candidateTarget - currentScrollLeft) > 4) {
+                nextTargetLeft = candidateTarget;
+                break;
+            }
+        }
+
+        if (nextTargetLeft === null) {
+            return;
+        }
 
         slider.scrollTo({
             left: nextTargetLeft,
