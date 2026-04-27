@@ -5074,24 +5074,7 @@ function shuffleAmazonProducts(list) {
     return copy;
 }
 
-function bindAmazonSliderEventsOnce(slider) {
-    if (!slider || amazonSliderEventsBound) return;
-    amazonSliderEventsBound = true;
 
-    slider.addEventListener('touchstart', pauseAmazonAutoScroll, { passive: true });
-    slider.addEventListener('mousedown', pauseAmazonAutoScroll);
-
-    slider.addEventListener('scroll', () => {
-        const isEnd = slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1;
-        if (isEnd) {
-            setTimeout(() => {
-                if (slider.scrollLeft + slider.offsetWidth >= slider.scrollWidth - 1) {
-                    slider.scrollTo({ left: 0, behavior: 'smooth' });
-                }
-            }, 400);
-        }
-    });
-}
 
 function renderAmazonSponsors(products) {
     const slider = document.getElementById('amazon-slider-engine');
@@ -5299,10 +5282,7 @@ function openAmazonDetail(index) {
     document.getElementById('amazon-detail-overlay').classList.add('amazon-overlay-visible');
 }
 
-function closeAmazonDetail() {
-    document.getElementById('amazon-detail-overlay').classList.remove('amazon-overlay-visible');
-    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 5000);
-}
+
 
 function startAmazonAutoScroll() {
     const slider = document.getElementById('amazon-slider-engine');
@@ -5356,14 +5336,57 @@ function startAmazonAutoScroll() {
     }, 4500);
 }
 
-function pauseAmazonAutoScroll() {
-    if (document.getElementById('amazon-detail-overlay').classList.contains('amazon-overlay-visible')) return;
+function bindAmazonSliderEventsOnce(slider) {
+    if (!slider || amazonSliderEventsBound) return;
+    amazonSliderEventsBound = true;
 
-    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
-    if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+    slider.addEventListener('touchstart', pauseAmazonAutoScroll, { passive: true });
+    slider.addEventListener('mousedown', pauseAmazonAutoScroll);
 
-    amazonResumeTimer = setTimeout(startAmazonAutoScroll, 12000);
+    slider.addEventListener('wheel', pauseAmazonAutoScroll, { passive: true });
+
+    slider.addEventListener('keydown', pauseAmazonAutoScroll);
 }
+
+function closeAmazonDetail() {
+    const overlay = document.getElementById('amazon-detail-overlay');
+    if (overlay) {
+        overlay.classList.remove('amazon-overlay-visible');
+    }
+
+    if (amazonResumeTimer) {
+        clearTimeout(amazonResumeTimer);
+        amazonResumeTimer = null;
+    }
+
+    amazonResumeTimer = setTimeout(() => {
+        amazonResumeTimer = null;
+        startAmazonAutoScroll();
+    }, 5000);
+}
+
+function pauseAmazonAutoScroll() {
+    const overlay = document.getElementById('amazon-detail-overlay');
+
+    if (overlay && overlay.classList.contains('amazon-overlay-visible')) {
+        return;
+    }
+
+    if (amazonAutoScrollTimer) {
+        clearInterval(amazonAutoScrollTimer);
+        amazonAutoScrollTimer = null;
+    }
+
+    if (amazonResumeTimer) {
+        clearTimeout(amazonResumeTimer);
+        amazonResumeTimer = null;
+    }
+
+    amazonResumeTimer = setTimeout(() => {
+        amazonResumeTimer = null;
+        startAmazonAutoScroll();
+    }, 12000);
+}    
 
 
 
