@@ -83,7 +83,7 @@
     box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
 }
 
-.amazon-slider {
+/*.amazon-slider {
     width: 100%;
     flex: 1 1 auto;
     display: flex;
@@ -97,12 +97,12 @@
     min-height: 74px;
     padding: 3px 0 2px 0;
     box-sizing: border-box;
-    /* 🎯 IL MURO 50% ABBATTUTO: */
+    //🎯 IL MURO 50% ABBATTUTO:
     scroll-padding-inline: 0px !important;
-    scrollbar-width: none !important; /* Firefox */
-    -ms-overflow-style: none !important; /* IE/Edge */
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important; 
     gap: 12px;
-}
+}*/
 
 .amazon-slider::-webkit-scrollbar {
     display: none;
@@ -332,36 +332,46 @@
         }
         
 
-/* 🎯 LA CURA DEFINITIVA: CAROSELLO NATIVO */
-        
-        /* Diamo respiro verticale al blocco nero */
-        #amazon-footer-wrapper {
-            padding: 1px 0 2px 0 !important; 
-        }
+/* 🎯 LA CURA DEFINITIVA: CAROSELLO NATIVO FUSO */
 
-        /* 1. Il binario scorre all'infinito (padding 0), ma la CALAMITA si attiva a 20px dal bordo sinistro */
-        .amazon-slider {
-            padding-left: 0 !important;
-            padding-right: 0 !important;
-            scroll-padding-inline: 20px !important; 
-            scrollbar-width: none !important;
-            -ms-overflow-style: none !important;
-        }
+    #amazon-footer-wrapper {
+        padding: 1px 0 1px 0 !important; 
+    }
 
-        /* 2. Le card si agganciano a sinistra (start), allineandosi alla calamita di 20px */
-        .amazon-card {
-            scroll-snap-align: start !important; 
-        }
-        
-        /* 3. Uccidiamo il margine sinistro che spostava tutto a destra */
-        .amazon-card:first-child {
-            margin-left: 0 !important; 
-        }
-        
-        /* 4. Manteniamo spazio a destra per scorrere oltre l'ultimo elemento */
-        .amazon-card:last-child {
-            margin-right: 20px !important; 
-        }
+    .amazon-slider {
+        width: 100%;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        scroll-snap-stop: always;
+        scroll-behavior: smooth;
+        -webkit-overflow-scrolling: touch;
+        min-height: 74px;
+        box-sizing: border-box;
+        gap: 12px;
+        /* Le regole chiave per il bleeding: */
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        scroll-padding-inline: 20px !important; 
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+    }
+
+    .amazon-card {
+        scroll-snap-align: start !important; 
+    }
+
+    .amazon-card:first-child {
+        margin-left: 0 !important; 
+    }
+
+    .amazon-card:last-child {
+        margin-right: 20px !important; 
+    }
+
         
     </style>
     
