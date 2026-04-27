@@ -62,12 +62,12 @@
 /* --- WILDU AMAZON FOOTER SLIDER --- */
 
 #amazon-footer-wrapper {
-    --amazon-side-pad: 20px;
+    --amazon-side-pad: 16px;
 
     position: fixed;
     left: 0;
     right: 0;
-    bottom: var(--amazon-footer-offset, 0px);
+    bottom: 0;
     width: 100%;
 
     display: none;
@@ -79,23 +79,28 @@
     box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
 
     z-index: 1040;
-    padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 0;
 
     box-sizing: border-box;
-    overflow: hidden;
+
+    /* NON taglia il nastro delle card */
+    overflow: visible;
 }
 
 .amazon-slider {
-    width: 100%;
+    width: 100vw;
+    max-width: 100vw;
+
     display: flex;
     align-items: center;
     gap: 12px;
 
-    padding: 0 var(--amazon-side-pad);
+    padding-left: var(--amazon-side-pad);
+    padding-right: var(--amazon-side-pad);
     box-sizing: border-box;
 
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
 
     scroll-snap-type: x mandatory;
     scroll-padding-left: var(--amazon-side-pad);
@@ -103,6 +108,8 @@
     -webkit-overflow-scrolling: touch;
 
     scrollbar-width: none;
+
+    overscroll-behavior-x: contain;
 }
 
 .amazon-slider::-webkit-scrollbar {
@@ -110,7 +117,7 @@
 }
 
 .amazon-card {
-    flex: 0 0 88%;
+    flex: 0 0 calc(100vw - 56px);
     max-width: 330px;
     height: 74px;
     min-height: 74px;
@@ -217,12 +224,11 @@
 @media (min-width: 768px) {
     #amazon-footer-wrapper {
         --amazon-side-pad: 24px;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        padding: 10px 0;
     }
 
     .amazon-card {
-        flex-basis: 340px;
+        flex: 0 0 340px;
         max-width: 340px;
     }
 }
