@@ -258,6 +258,26 @@
 
         #od-modal-desc, .amazon-det-desc { text-align: justify; hyphens: auto; }
 
+
+         /* ==========================================
+           🛡️ SCUDO ANTI-FURTO IMMAGINI
+           ========================================== */
+        img {
+            -webkit-user-drag: none !important;
+            user-drag: none !important;
+            -webkit-touch-callout: none !important; /* Blocca il menu popup su iOS/Android */
+            -webkit-user-select: none !important;
+            user-select: none !important;
+            pointer-events: none !important; /* Rende l'immagine "intangibile" ai tap/click */
+        }
+        
+        /* Estendiamo la protezione ai contenitori per bloccare il "Tieni premuto" attorno alle foto */
+        .card, .amazon-card, #trip-modal-img-container, #amazon-detail-overlay {
+            -webkit-touch-callout: none !important;
+            -webkit-user-select: none !important;
+            user-select: none !important;
+        }       
+        
         
     </style>
     
@@ -332,7 +352,7 @@
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
     <button id="btn-free" onclick="show('free')">Open Day</button>
-    <button id="btn-paid" onclick="show('paid')">Hike</button>
+    
     <button id="btn-wheel" onclick="show('wheel')">Ruota del destino</button>
     <button id="btn-rewards" onclick="show('rewards')">Premi e Giochi</button>
     <button id="btn-profile" onclick="show('profile')">Profilo</button>
@@ -361,17 +381,7 @@
         <div id="openday-list"></div>
     </div>
 
-<div id="sec-paid" class="hidden">
-    <div class="filter-header">
-        <button class="btn-reset" onclick="resetPDFilters()" style="margin:0;">Reset Filtri</button>
-        <div id="payday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Hike...</div>
-    </div>
-    <div class="filter-section-dropdowns">
-        <select id="filter-pd-months-select" class="pill-select"></select>
-        <select id="filter-pd-regions-select" class="pill-select"></select>
-    </div>
-    <div id="payday-list"></div>
-</div>
+
 
     
    <div id="sec-rewards" class="hidden">
@@ -2718,20 +2728,22 @@ function setCurrentBookingDraft(payload = {}) {
     if (bookingEventDocIdEl) bookingEventDocIdEl.value = currentBookingDraft.eventDocId;
 }
     
+// 🎛️ INTERRUTTORE INDAGINI: Metti 'false' per silenziare la console in produzione
+let DEBUG_ZAINO = true;
+
 function evaluateBookings() {
-    console.group("🕵️ INDAGINE ZAINO: CHI HA INVITATO VIA DEL MARE?");
+    if (DEBUG_ZAINO) console.group("🕵️ INDAGINE ZAINO: CHI HA INVITATO VIA DEL MARE?");
     
     const currentUid = auth.currentUser ? auth.currentUser.uid : wildUserKey;
-    console.log("1. UTENTE CORRENTE:", currentUid);
+    if (DEBUG_ZAINO) console.log("1. UTENTE CORRENTE:", currentUid);
     
     if (!currentUid) {
-        console.log("❌ Nessun utente loggato, esco.");
-        console.groupEnd();
+        if (DEBUG_ZAINO) { console.log("❌ Nessun utente loggato, esco."); console.groupEnd(); }
         return;
     }
 
-    console.log("2. ALL BOOKINGS (Dati grezzi in memoria ORA):", JSON.parse(JSON.stringify(allBookings)));
-    console.log("3. PENDING BOOKINGS (Dati sospesi ORA):", JSON.parse(JSON.stringify(pendingBookings)));
+    if (DEBUG_ZAINO) console.log("2. ALL BOOKINGS (Dati grezzi in memoria ORA):", JSON.parse(JSON.stringify(allBookings)));
+    if (DEBUG_ZAINO) console.log("3. PENDING BOOKINGS (Dati sospesi ORA):", JSON.parse(JSON.stringify(pendingBookings)));
 
     myBookedTitles = []; 
     const occupiedSlots = new Set();
@@ -2746,27 +2758,30 @@ function evaluateBookings() {
         const bDate = parseItalianDate(dateStr);
         const isValid = !dateStr || bDate >= today; 
         
-        console.log(`-> Filtro DB: [${title}] data [${dateStr}]. Passa il controllo data? ${isValid}`);
+        if (DEBUG_ZAINO) console.log(`-> Filtro DB: [${title}] data [${dateStr}]. Passa il controllo data? ${isValid}`);
         return isValid; 
     });
 
-    console.log("4. VIAGGI SOPRAVVISSUTI AI FILTRI:", myConfirmed);
+    if (DEBUG_ZAINO) console.log("4. VIAGGI SOPRAVVISSUTI AI FILTRI:", myConfirmed);
 
     for (let b of myConfirmed) {
         const title = b.titolo || b["Viaggio Scelto (non modificare)"] || "Viaggio";
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
 
-        console.log(`-> Aggiungo in Zaino REALE: [${title}] con Chiave: [${bookingKey}]`);
+        if (DEBUG_ZAINO) console.log(`-> Aggiungo in Zaino REALE: [${title}] con Chiave: [${bookingKey}]`);
 
         occupiedSlots.add(bookingKey);
         if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
 
         let infoBtn = "";
+        let siteBtn = ""; // <--- INIZIALIZZIAMO IL NUOVO TASTO SITO
+        
         const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
         const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
         const hikeOrig = allPayDays.find(h => buildClientBookingKey({bookingId: h.bookingId, titolo: h["Titolo"], data: h["Data Inizio"]}) === bookingKey);
 
+        // --- COSTRUZIONE TASTO INFO ---
         if (tripOrig) {
             const tId = tripOrig.eventDocId || tripOrig.id;
             infoBtn = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
@@ -2774,6 +2789,15 @@ function evaluateBookings() {
             infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         } else if (hikeOrig) {
             infoBtn = `<button onclick="showPayDayDetails('${hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+        }
+
+        // --- 🎯 COSTRUZIONE TASTO SITO ---
+        const origEvent = tripOrig || odOrig || hikeOrig;
+        if (origEvent) {
+            const linkSito = origEvent.Link || origEvent.link || origEvent["Luogo Link Maps"] || "";
+            if (linkSito) {
+                siteBtn = `<button onclick="window.open('${linkSito}', '_blank')" style="background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>`;
+            }
         }
 
         const cP = encodeURIComponent(JSON.stringify({ titolo: title, data: dateStr, bookingId: b.bookingId, collection: b.collection, eventDocId: b.eventDocId }));
@@ -2785,36 +2809,46 @@ function evaluateBookings() {
                 <div style="font-size: 12px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr || 'Vedere Dettagli'}</div>
             </div>
             <div style="display: flex; justify-content: flex-end;">
+                ${siteBtn}
                 ${infoBtn}
                 <button onclick="requestCancel('${cP}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
             </div>
         </div>`;
     }
 
-    console.log("5. CONTROLLO PENDENTI (Ricerca Fantasmi):");
-    pendingBookings.forEach(pKey => {
-        console.log(`-> Verifico pendente: [${pKey}]`);
-        if (!myBookedTitles.includes(pKey)) {
-            console.log(`-> ⚠️ TROVATO FANTASMA! Aggiungo allo zaino visuale: [${pKey}]`);
-            occupiedSlots.add(pKey);
-            const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
-            activeHtml += `
-            <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
-                <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
-                <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
-            </div>`;
-        } else {
-            console.log(`-> Pendente saltato perché già in zaino: [${pKey}]`);
+    // 2. GHOST CARDS (Con scudo anti-fantasma)
+    if (DEBUG_ZAINO) console.log("5. CONTROLLO PENDENTI (Ricerca Fantasmi):");
+    
+    if (isBookingInProgress) {
+        pendingBookings.forEach(pKey => {
+            if (DEBUG_ZAINO) console.log(`-> Verifico pendente: [${pKey}]`);
+            if (!myBookedTitles.includes(pKey)) {
+                if (DEBUG_ZAINO) console.log(`-> ⚠️ TROVATO PENDENTE AUTORIZZATO! Aggiungo allo zaino visuale: [${pKey}]`);
+                occupiedSlots.add(pKey);
+                const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
+                activeHtml += `
+                <div style="background: #1a1a1a; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid #555; opacity: 0.7; border: 1px dashed #444;">
+                    <div style="font-weight: bold; color: #888; font-size: 14px;">${displayTitle}</div>
+                    <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
+                </div>`;
+            } else {
+                if (DEBUG_ZAINO) console.log(`-> Pendente saltato perché già in zaino: [${pKey}]`);
+            }
+        });
+    } else {
+        if (pendingBookings.length > 0) {
+            if (DEBUG_ZAINO) console.log(`-> 🧹 PULIZIA: Nessuna prenotazione in corso, distruggo ${pendingBookings.length} fantasmi pendenti.`);
+            pendingBookings = [];
         }
-    });
+    }
 
     document.getElementById('my-bookings-list').innerHTML = (activeHtml === '') 
         ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' 
         : activeHtml;
 
     const totalOccupied = occupiedSlots.size;
-    console.log(`6. RISULTATO FINALE ZAINO: Occupati = ${totalOccupied}, Contenuto =`, Array.from(occupiedSlots));
-    
+    if (DEBUG_ZAINO) console.log(`6. RISULTATO FINALE ZAINO: Occupati = ${totalOccupied}, Contenuto =`, Array.from(occupiedSlots));
+
     const max = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && totalOccupied < max;
     
@@ -2825,7 +2859,7 @@ function evaluateBookings() {
     filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
     
-    console.groupEnd();
+    if (DEBUG_ZAINO) console.groupEnd();
 }
 
     
@@ -3096,17 +3130,26 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
 //fine newwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 
     
-    // ==========================================
-    // CATALOGO E PRENOTAZIONI
+ // ==========================================
+    // CATALOGO E PRENOTAZIONI (FUSIONE VIAGGI + HIKE)
     // ==========================================
     let activeFilters = { month: 'Tutti', region: 'Tutte' };
+    
     function buildFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
-        const monthsRaw = [...new Set(allTrips.map(t => t["Data inizio"] ? t["Data inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+        
+        // FUSIONE: Mettiamo insieme Viaggi Ufficiali e Hike
+        const mergedCatalog = [...allTrips, ...allPayDays];
+
+        const monthsRaw = [...new Set(mergedCatalog.map(t => {
+            const d = t["Data inizio"] || t["Data Inizio"];
+            return d ? d.split('/')[1] : null;
+        }))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+
         const mSel = document.getElementById('filter-months-select');
         if (mSel) mSel.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + monthsRaw.map(m => `<option value="${m}">${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
         
-        const regionsRaw = [...new Set(allTrips.map(t => t.Regione || 'Italia'))].sort();
+        const regionsRaw = [...new Set(mergedCatalog.map(t => t.Regione || t.regione || 'Italia'))].filter(x=>x).sort();
         const rSel = document.getElementById('filter-regions-select');
         if (rSel) rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
     }
@@ -3120,37 +3163,50 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     }
 
     function filterTrips() {
-        // Creiamo la linea del tempo di "Oggi" (a mezzanotte esatta)
         const today = new Date(); 
         today.setHours(0,0,0,0);
 
-        const filtered = allTrips.filter(t => {
-            // 1. LO SCUDO TEMPORALE: Ricomponiamo la data completa e la valutiamo
+        // CREIAMO IL CATALOGO IBRIDO: Etichettiamo gli Hike per fargli cambiare colore dopo
+        const mergedCatalog = [
+            ...allTrips.map(t => ({ ...t, isHike: false })),
+            ...allPayDays.map(p => ({ ...p, isHike: true }))
+        ];
+
+        const filtered = mergedCatalog.filter(t => {
+            const dataInizio = t["Data inizio"] || t["Data Inizio"] || "";
             const annoScelto = t.Anno || today.getFullYear();
-            const dataStringa = t["Data inizio"] ? `${t["Data inizio"]}/${annoScelto}` : "";
+            const dataStringa = dataInizio ? (dataInizio.includes(annoScelto) ? dataInizio : `${dataInizio}/${annoScelto}`) : "";
             const dataViaggio = parseItalianDate(dataStringa);
             
-            // Se la data matematica del viaggio è minore di oggi, il viaggio è "scaduto"
             const isScaduto = dataViaggio < today;
+            const passMonth = (activeFilters.month === 'Tutti' || (dataInizio && dataInizio.split('/')[1] === activeFilters.month));
+            const passRegion = (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region || t.regione === activeFilters.region);
 
-            // 2. I TUOI FILTRI ORIGINALI (Mese e Regione)
-            const passMonth = (activeFilters.month === 'Tutti' || (t["Data inizio"] && t["Data inizio"].split('/')[1] === activeFilters.month));
-            const passRegion = (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region);
-
-            // Tieni il viaggio SOLO SE: non è scaduto E passa il mese E passa la regione
             return !isScaduto && passMonth && passRegion;
+        }).sort((a, b) => {
+            // ORDINE CRONOLOGICO ASSOLUTO TRA TUTTI GLI EVENTI
+            const dA = a["Data inizio"] || a["Data Inizio"] || "";
+            const yA = a.Anno || today.getFullYear();
+            const dateA = parseItalianDate(dA.includes(yA) ? dA : `${dA}/${yA}`);
+
+            const dB = b["Data inizio"] || b["Data Inizio"] || "";
+            const yB = b.Anno || today.getFullYear();
+            const dateB = parseItalianDate(dB.includes(yB) ? dB : `${dB}/${yB}`);
+            return dateA - dateB;
         });
 
-        document.getElementById('trip-count-badge').innerText = filtered.length + " Viaggi in Vetrina";
+        document.getElementById('trip-count-badge').innerText = filtered.length + " Avventure in Vetrina";
         renderTrips(filtered, 'event-list');
     }
 
 function renderTrips(trips, targetId) {
     document.getElementById(targetId).innerHTML = trips.map(ev => {
+        const isHike = ev.isHike;
+
         // --- 1. GESTIONE DATE E TITOLO ---
         const titolo = ev.Titolo || ev.titolo || "Evento Sconosciuto";
-        const dataInizio = ev["Data inizio"] || ev.dataInizio || "";
-        const dataFine = ev["Data fine"] || ev.dataFine || "";
+        const dataInizio = ev["Data inizio"] || ev["Data Inizio"] || ev.dataInizio || "";
+        const dataFine = ev["Data fine"] || ev["Data Fine"] || ev.dataFine || "";
         const anno = ev.Anno || (dataInizio ? dataInizio.split('/')[2] : new Date().getFullYear());
         const dataPura = (dataInizio && dataInizio.includes(anno)) ? dataInizio : `${dataInizio}/${anno}`;
         const dataPuraFine = (dataFine && dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`;
@@ -3161,69 +3217,92 @@ function renderTrips(trips, targetId) {
         const reg = ev.Regione || ev.regione || "";
         const nomeRegione = reg ? `${reg} - ` : "";
         
-        // La pulizia drastica non serve più qui, la fa il backend.
-        // Teniamo solo un piccolo fallback per sicurezza.
-        let luogoRaw = ev.ritrovo?.luogo || ev.luogo || ev.START || "Luogo non specificato";
+        let luogoRaw = ev.ritrovo?.luogo || ev["Luogo Nome"] || ev.luogo || ev.START || "Luogo non specificato";
         const luogoPulito = luogoRaw.replace(/(?:,?\s*-?\s*)\b(orario|ore|ora)\b\s*:?\s*.*/i, '').trim();
         const luogoCompleto = `${nomeRegione}${luogoPulito}`;
 
-        // --- 3. PREZZI E XP (Ripristinati come la versione "Perfect") ---
+        const km = ev["KM"] ? `🥾 ${ev["KM"]} km` : "";
+        const dsl = ev["Dislivello"] ? `⛰️ ${ev["Dislivello"]} m` : "";
+
+        // --- 3. PREZZI E XP ---
         const hasOfferta = ev["Offerta Attiva"] === true;
-        const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || "0";
+        const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || ev.Prezzo || "0";
         const prezzoEarly = ev["Prezzo Early"] || prezzoBase;
         const prezzoFinale = hasOfferta ? prezzoEarly : prezzoBase;
-        const prezzoStandard = ev["Prezzo (€)"] || prezzoBase;
+        const prezzoStandard = ev["Prezzo (€)"] || ev.Prezzo || prezzoBase;
         const xpReward = ev.xp_reward || Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
 
         const eventDocId = ev.eventDocId || ev.id || "";
         const safeId = String(eventDocId).replace(/'/g, "\\'");
 
-        let priceHtml = hasOfferta 
-            ? `<div style="color: #ffaa00; font-size: 11px; font-weight: 900; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
-               <div class="price-prime" style="border-color: #ffaa00;">
-                   <span class="prime-val" style="color: #ffaa00;">${prezzoEarly}€</span>
-               </div>
-               <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
-            : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
+        // 🎯 FASE 2: PULSANTE LINK SITO UFFICIALE PICCOLO (Clone)
+        const linkSito = ev.Link || ev.link || ev["Luogo Link Maps"] || "";
+        const miniLinkBtn = linkSito ? `<button onclick="window.open('${linkSito}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-left: 10px; font-size: 10px; vertical-align: middle;">SITO 🔗</button>` : "";
 
-// --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E CREAZIONE BADGE ---
+        // --- MOTORE FOMO ---
         const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
         const occBadgeBg = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
-        const occBadgeBorder = occ.isAlmostFull ? '#ff4444' : 'var(--w-gold)';
+        const themeColor = isHike ? '#d4af37' : 'var(--w-green)'; // Oro per Hike, Verde per Official
+        const occBadgeBorder = occ.isAlmostFull ? '#ff4444' : themeColor;
         const occIcon = occ.isAlmostFull ? '🔥' : '👥';
         const badgeHtml = `<div style="position: absolute; top: 10px; left: 10px; background: ${occBadgeBg}; color: #fff; border: 1px solid ${occBadgeBorder}; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 2;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>`;
 
-        // --- 📸 IMMAGINE CARD (CON BADGE SOVRAPPOSTO) ---
+        // --- IMMAGINE ---
         const imgUrl = ev.immagine || ev.fotoUrl || "";
-        let imgHtml = "";
-        if (imgUrl && imgUrl.trim() !== "") {
-            imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`;
-        } else {
-            imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
-        }
+        let imgHtml = imgUrl && imgUrl.trim() !== ""
+            ? `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`
+            : `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
 
-        // --- 4. RENDER CARD (NUOVO LAYOUT ORARIO) ---
-        return `<div class="card">
-            ${imgHtml}
-            <span class="card-title">${titolo}</span>
-            <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
-                <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
-                ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
-            </div>
-            <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
-            
-            <div class="price-box">
-                <div>
-                    <div class="price-standard">Standard: ${prezzoStandard}€</div>
+        // --- RENDER IBRIDO ---
+        if (isHike) {
+            // ⛰️ ESTETICA HIKE (Cornice Oro)
+            return `<div class="card" style="border-left-color: #d4af37; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
+                ${imgHtml}
+                <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
+                <div style="margin-bottom: 12px; line-height: 1.4;">
+                    <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
+                    ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
                 </div>
-                <div class="price-prime-wrapper">
-                    <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
-                    ${priceHtml}
+                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                    ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
+                    ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
+                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzoBase}€ ${miniLinkBtn}</div>
                 </div>
-            </div>
-            
-            <button class="btn-book" style="width:100%; margin-top:15px; background:rgba(212, 175, 55, 0.1); color:var(--w-gold); border: 2px solid var(--w-gold);" onclick="showTripDetails('${safeId}')">SCOPRI DETTAGLI</button>
-        </div>`;
+                <button class="btn-book" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
+            </div>`;
+        } else {
+            // 🌲 ESTETICA OFFICIAL (Cornice Verde)
+            let priceHtml = hasOfferta 
+                ? `<div style="color: #ffaa00; font-size: 11px; font-weight: 900; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
+                   <div class="price-prime" style="border-color: #ffaa00;">
+                       <span class="prime-val" style="color: #ffaa00;">${prezzoEarly}€</span>
+                   </div>
+                   <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
+                : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
+
+            return `<div class="card" style="border-left-color: var(--w-green);">
+                ${imgHtml}
+                <span class="card-title">${titolo}</span>
+                <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
+                    <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
+                    ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
+                </div>
+                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+
+                <div class="price-box">
+                    <div>
+                        <div class="price-standard" style="display:flex; align-items:center;">Standard: ${prezzoStandard}€ ${miniLinkBtn}</div>
+                    </div>
+                    <div class="price-prime-wrapper">
+                        <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
+                        ${priceHtml}
+                    </div>
+                </div>
+
+                <button class="btn-book" style="width:100%; margin-top:15px; background:rgba(212, 175, 55, 0.1); color:var(--w-gold); border: 2px solid var(--w-gold);" onclick="showTripDetails('${safeId}')">SCOPRI DETTAGLI</button>
+            </div>`;
+        }
     }).join('');
 }
 
@@ -5139,6 +5218,25 @@ if (window.visualViewport) {
 }
 
 
+// ==========================================
+// 🛡️ SCUDO ANTI-FURTO JS (Disabilita Tasto Destro e Drag)
+// ==========================================
+document.addEventListener('contextmenu', function(e) {
+    // Blocchiamo il tasto destro su tutte le card, i modali e gli slider
+    if (e.target.closest('.card') || e.target.closest('.amazon-card') || 
+        e.target.closest('#od-details-modal') || e.target.closest('#amazon-detail-overlay') || 
+        e.target.tagName === 'IMG') {
+        e.preventDefault();
+    }
+});
+
+document.addEventListener('dragstart', function(e) {
+    // Impediamo il trascinamento delle foto sul desktop
+    if (e.target.tagName === 'IMG' || e.target.closest('.card') || e.target.closest('.amazon-card')) {
+        e.preventDefault();
+    }
+});
+    
     
     
 document.addEventListener('DOMContentLoaded', () => {
