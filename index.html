@@ -280,12 +280,20 @@
 
 
 
-/* 🎯 REGOLA CHIRURGICA TASTO CLONE "PRENOTA" FLOTTANTE */
-        #od-modal-book-top {
+/* 🎯 REGOLA CHIRURGICA TASTO CLONE SULL'IMMAGINE (BASSO A SX) */
+        #cloned-top-btn-wrapper {
             position: absolute !important;
-            top: 20px !important;
-            right: 20px !important;
+            bottom: 12px !important; /* Lo fissa in basso! */
+            left: 12px !important;   /* Lo fissa a sinistra! */
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important; /* Allinea a sinistra */
+            z-index: 10 !important;
+            margin: 0 !important;
             width: auto !important;
+        }
+
+        #od-modal-book-top {
             font-size: 12px !important;
             padding: 8px 16px !important;
             border-radius: 20px !important;
@@ -293,15 +301,18 @@
             color: #000 !important;
             box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important;
             border: 2px solid #fff !important;
-            z-index: 100 !important;
             text-transform: uppercase !important;
-            margin: 0 !important;
+            margin-bottom: 4px !important; 
+            width: fit-content !important;
         }
-        
-        /* Nasconde il sottotitolo corsivo del clone che sporca l'immagine 
-        #cloned-top-btn-wrapper div {
-            display: none !important;
-        }   DISATTIVATO*/ 
+
+        #cloned-top-subtitle {
+            font-size: 11px !important;
+            color: #fff !important;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.9) !important;
+            font-style: italic !important;
+            font-weight: 600 !important;
+        }
         
         
     </style>
@@ -3252,9 +3263,9 @@ function renderTrips(trips, targetId) {
         const luogoCompleto = `${nomeRegione}${luogoPulito}`;
 
         // 🎯 FIX: Ingranditi font e box per allinearli al prezzo (36px di altezza, font 15px bold)
-        const km = ev["KM"] ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 15px; font-weight: bold; height: 36px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">🥾 ${ev["KM"]} km</div>` : "";
-        const dsl = ev["Dislivello"] ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 15px; font-weight: bold; height: 36px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">⛰️ ${ev["Dislivello"]} m</div>` : "";
-
+        const km = ev["KM"] ? `🥾 ${ev["KM"]} km` : "";
+        const dsl = ev["Dislivello"] ? `⛰️ ${ev["Dislivello"]} m` : "";
+        
         // --- 3. PREZZI E XP ---
         const hasOfferta = ev["Offerta Attiva"] === true;
         const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || ev.Prezzo || "0";
@@ -3761,7 +3772,7 @@ function renderPayDays() {
             <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                 ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
                 ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
-                <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzo}€</div>
+                <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;"> ${prezzo}€</div>
             </div>
             <button onclick="showPayDayDetails('${id}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
         </div>`;
@@ -4853,7 +4864,7 @@ function showPayDayDetails(id) {
         priceBox.style.cssText = 'margin-bottom: 20px; font-size: 16px; color: #eee;';
         descContainer.parentNode.insertBefore(priceBox, descContainer);
     }
-    priceBox.innerHTML = `💳 Prezzo: <b>${prezzo}€</b>`;
+    priceBox.innerHTML = ` Prezzo: <b>${prezzo}€</b>`;
     priceBox.style.display = 'block';
 
     const rawDesc = desc.replace(/\n/g, '<br>');
