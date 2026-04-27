@@ -112,37 +112,127 @@
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
     /* Aggancio magnetico a sinistra sulla linea dei 20px */
-    scroll-snap-align: start !important;
-    /* Risolve il bug del PC: dice al browser di fermarsi alla card successiva, non alla fine della pagina */
-    scroll-snap-stop: normal !important; 
-    display: flex;
-    align-items: center;
-    padding: 8px 10px;
-    box-sizing: border-box;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: transform 0.2s;
+    scroll-snap-align: start !important;/* ==========================================
+   🌲 AMAZON FOOTER - VERSIONE STABILE DEFINITIVA
+========================================== */
+
+#amazon-footer-wrapper {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+
+    background: rgba(18, 18, 18, 0.95);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(255,255,255,0.1);
+
+    z-index: 1040;
+    padding: 12px 0;
+    box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+
+    overflow: visible;
 }
 
-.amazon-card:active { transform: scale(0.97); }
+/* ================================
+   🎯 SLIDER
+================================ */
+
+.amazon-slider {
+    width: 100%;
+    display: flex;
+    align-items: center;
+
+    overflow-x: auto;
+    overflow-y: visible;
+
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+
+    /* spazio reale ai lati (FONDAMENTALE) */
+    gap: 12px;
+
+    scrollbar-width: none;
+}
+
+.amazon-slider::-webkit-scrollbar {
+    display: none;
+}
+
+/* 💥 SPAZIO REALE SCROLLABILE (FIX TAGLIO CARD) */
+.amazon-slider::before,
+.amazon-slider::after {
+    content: "";
+    flex: 0 0 20px; /* sincronizzato con JS offset */
+}
+
+/* ================================
+   🧩 CARD
+================================ */
+
+.amazon-card {
+    flex: 0 0 88%;
+    max-width: 330px;
+    height: 74px;
+
+    display: flex;
+    align-items: center;
+
+    padding: 8px 10px;
+    box-sizing: border-box;
+
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+
+    cursor: pointer;
+    transition: transform 0.2s;
+
+    scroll-snap-align: start;
+}
+
+.amazon-card:active {
+    transform: scale(0.97);
+}
+
+/* ================================
+   🖼️ IMAGE
+================================ */
 
 .amazon-card img {
     width: 58px;
-    height: 58px !important;
+    height: 58px;
+
     flex-shrink: 0;
     object-fit: contain;
+
     background: white;
     border-radius: 6px;
     margin-right: 14px;
+
+    /* anti-drag mirato */
+    -webkit-user-drag: none;
+    user-drag: none;
+    pointer-events: none;
 }
 
-.amazon-info { flex: 1; min-width: 0; text-align: left; }
+/* ================================
+   📄 TEXT
+================================ */
+
+.amazon-info {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+}
 
 .amazon-title {
     color: white;
     font-size: 0.76rem;
     font-weight: 800;
     margin: 0;
+
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -154,13 +244,18 @@
     font-size: 0.66rem;
     line-height: 1.2;
     margin: 2px 0;
+
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.amazon-price { color: #FF9900; font-weight: 800; font-size: 0.82rem; }
+.amazon-price {
+    color: #FF9900;
+    font-weight: 800;
+    font-size: 0.82rem;
+}
 
 .amazon-tag {
     font-size: 0.56rem;
@@ -172,41 +267,197 @@
     margin-left: 5px;
 }
 
-/* Margini di cortesia per la prima e l'ultima card 
-.amazon-card:first-child { margin-left: 20px !important; }
-.amazon-card:last-child { margin-right: 20px !important; }*/
+/* ================================
+   🖥️ DESKTOP
+================================ */
 
-/* Adattamento Desktop (PC) */
 @media (min-width: 768px) {
-    .amazon-card { flex: 0 0 340px; }
-    #amazon-footer-wrapper { padding: 10px 0 !important; }
-}        
-        
+    .amazon-card {
+        flex: 0 0 340px;
+    }
+
+    #amazon-footer-wrapper {
+        padding: 10px 0;
+    }
+}
 
         
 
-        /* --- WILDU AMAZON QUICK VIEW (Modale Originale) --- */
-        #amazon-detail-overlay, #amazon-detail-overlay * { box-sizing: border-box; }
-        #amazon-detail-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); z-index: 20000; display: flex; justify-content: center; align-items: center; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; padding: 20px; }
-        #amazon-detail-overlay.amazon-overlay-visible { opacity: 1; visibility: visible; }
-        .amazon-detail-card { background: #1a1a1a; border: 2px solid rgba(255, 153, 0, 0.3); border-radius: 20px; width: 100%; max-width: 400px; padding: 25px; box-shadow: 0 15px 50px rgba(0,0,0,0.8); transform: scale(0.9); transition: transform 0.3s ease; text-align: center; }
-        #amazon-detail-overlay.amazon-overlay-visible .amazon-detail-card { transform: scale(1); }
-        .amazon-det-img { width: 100%; max-width: 180px; height: 180px; object-fit: contain; background: white; border-radius: 16px; padding: 15px; margin: 0 auto 20px auto; display: block; box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
-        .amazon-det-title { color: white; font-size: 1.1rem; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; line-height: 1.2; }
-        .amazon-det-desc { color: #ccc; font-size: 0.85rem; line-height: 1.4; margin-bottom: 15px; }
-        .amazon-det-price-row { margin-bottom: 20px; }
-        .amazon-det-price { color: #FF9900; font-size: 1.5rem; font-weight: 800; }
-        .amazon-detail-actions { display: flex; gap: 10px; }
-        
-        /* I bottoni belli originali */
-        .btn-amazon-back, .btn-amazon-go { flex: 1; padding: 12px; border-radius: 10px; font-weight: bold; font-size: 0.8rem; border: none; text-decoration: none !important; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; transition: background 0.2s; }
-        .btn-amazon-back { background: #333; color: white; }
-        .btn-amazon-back:active { background: #444; }
-        .btn-amazon-go { background: #FF9900; color: black; }
-        .btn-amazon-go:active { background: #ffaa33; }
+/* --- WILDU AMAZON QUICK VIEW (Modale Originale - HARDENED) --- */
 
+/* Box model sicuro */
+#amazon-detail-overlay,
+#amazon-detail-overlay * {
+    box-sizing: border-box;
+}
 
-        @keyframes wildSpin {
+/* Overlay principale */
+#amazon-detail-overlay {
+    position: fixed;
+    inset: 0; /* sostituisce top/left/width/height */
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+
+    z-index: 20000;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+
+    padding: 20px;
+
+    /* 🧠 FIX: evita scroll dietro su mobile */
+    overscroll-behavior: contain;
+}
+
+/* Stato attivo */
+#amazon-detail-overlay.amazon-overlay-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* Card */
+.amazon-detail-card {
+    background: #1a1a1a;
+    border: 2px solid rgba(255, 153, 0, 0.3);
+    border-radius: 20px;
+
+    width: 100%;
+    max-width: 400px;
+
+    padding: 25px;
+
+    box-shadow: 0 15px 50px rgba(0,0,0,0.8);
+
+    transform: scale(0.92);
+    transition: transform 0.3s ease;
+
+    text-align: center;
+
+    /* 🧠 FIX: evita overflow strani */
+    overflow: hidden;
+}
+
+/* Animazione ingresso */
+#amazon-detail-overlay.amazon-overlay-visible .amazon-detail-card {
+    transform: scale(1);
+}
+
+/* Immagine */
+.amazon-det-img {
+    width: 100%;
+    max-width: 180px;
+    height: 180px;
+
+    object-fit: contain;
+
+    background: white;
+    border-radius: 16px;
+
+    padding: 15px;
+    margin: 0 auto 20px auto;
+
+    display: block;
+
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+/* Titolo */
+.amazon-det-title {
+    color: white;
+    font-size: 1.1rem;
+    font-weight: 800;
+    text-transform: uppercase;
+
+    margin-bottom: 8px;
+    line-height: 1.2;
+}
+
+/* Descrizione */
+.amazon-det-desc {
+    color: #ccc;
+    font-size: 0.85rem;
+    line-height: 1.4;
+
+    margin-bottom: 15px;
+
+    text-align: justify;
+    hyphens: auto;
+}
+
+/* Prezzo */
+.amazon-det-price-row {
+    margin-bottom: 20px;
+}
+
+.amazon-det-price {
+    color: #FF9900;
+    font-size: 1.5rem;
+    font-weight: 800;
+}
+
+/* Azioni */
+.amazon-detail-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Bottoni */
+.btn-amazon-back,
+.btn-amazon-go {
+    flex: 1;
+
+    padding: 12px;
+
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 0.8rem;
+
+    border: none;
+    text-decoration: none !important;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+
+    cursor: pointer;
+
+    transition: transform 0.1s ease, background 0.2s ease;
+}
+
+/* Back */
+.btn-amazon-back {
+    background: #333;
+    color: white;
+}
+
+.btn-amazon-back:active {
+    background: #444;
+    transform: scale(0.97);
+}
+
+/* Go */
+.btn-amazon-go {
+    background: #FF9900;
+    color: black;
+}
+
+.btn-amazon-go:active {
+    background: #ffaa33;
+    transform: scale(0.97);
+}
+
+/* Animazione opzionale */
+@keyframes wildSpin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
@@ -281,6 +532,65 @@
         
 
 
+  /* =========================
+   🧪 WILDU SLIDER DEBUG MODE
+   ========================= */
+
+.amazon-slider.debug {
+    position: relative;
+    outline: 2px dashed red;
+}
+
+/* 📏 Linea scrollLeft (viewport start) */
+.amazon-slider.debug::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    background: red;
+    z-index: 9999;
+}
+
+/* 🎯 Linea SNAP (scroll-padding-left = 20px) */
+.amazon-slider.debug::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 20px; /* deve matchare il tuo scroll-padding */
+    width: 2px;
+    background: lime;
+    z-index: 9999;
+}
+
+/* 🟥 Box card */
+.amazon-card.debug {
+    outline: 2px solid yellow;
+    position: relative;
+}
+
+/* 📍 Punto di offsetLeft */
+.amazon-card.debug::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    background: cyan;
+}
+
+/* 🟡 Card attiva */
+.amazon-card.active-debug {
+    outline: 3px solid orange !important;
+    background: rgba(255,165,0,0.15);
+}  
+    
+
+
+    
         
     </style>
     
@@ -5363,7 +5673,32 @@ document.addEventListener('DOMContentLoaded', () => {
     initAmazonSponsors();
 });
 
-    
+
+function enableAmazonSliderDebug() {
+    const slider = document.getElementById('amazon-slider-engine');
+    if (!slider) return;
+
+    slider.classList.add('debug');
+
+    const cards = slider.querySelectorAll('.amazon-card');
+    cards.forEach(card => card.classList.add('debug'));
+
+    slider.addEventListener('scroll', () => {
+        const cardsArr = Array.from(cards);
+
+        let currentIndex = cardsArr.findIndex(card => {
+            return Math.abs(card.offsetLeft - slider.scrollLeft) < 5;
+        });
+
+        cardsArr.forEach(c => c.classList.remove('active-debug'));
+
+        if (currentIndex >= 0) {
+            cardsArr[currentIndex].classList.add('active-debug');
+        }
+    });
+}                
+
+                
 </script>
 
 <div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
