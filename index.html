@@ -97,7 +97,10 @@
     min-height: 74px;
     padding: 3px 0 2px 0;
     box-sizing: border-box;
-    scroll-padding-inline: 50%;
+    /* 🎯 IL MURO 50% ABBATTUTO: */
+    scroll-padding-inline: 0px !important;
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE/Edge */
     gap: 12px;
 }
 
@@ -115,7 +118,7 @@
     background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
-    scroll-snap-align: start;
+    scroll-snap-align: center !important;
     display: flex;
     align-items: center;
     text-decoration: none !important;
@@ -329,40 +332,36 @@
         }
         
 
-  /* 🎯 FIX ESTETICA FOOTER AMAZON (Allineamento e Respiro) */
-
-        /* 1. Diamo respiro verticale al blocco nero del footer */
+/* 🎯 LA CURA DEFINITIVA: CAROSELLO NATIVO */
+        
+        /* Diamo respiro verticale al blocco nero */
         #amazon-footer-wrapper {
-            padding: 2px 0 2px 0 !important; 
+            padding: 1px 0 2px 0 !important; 
         }
 
-        /* 2. Allineiamo PERFETTAMENTE la prima card alla linea delle card viaggi (20px) */
-        .amazon-card:first-child {
-            margin-left: 20px !important;
-        }
-        
-        /* Simmetria per l'ultima card a destra */
-        .amazon-card:last-child {
-            margin-right: 20px !important;
-        }
-
-        /* 3. Uccidiamo la scrollbar nativa anche su Firefox e vecchi browser */
+        /* 1. Il binario scorre all'infinito (padding 0), ma la CALAMITA si attiva a 20px dal bordo sinistro */
         .amazon-slider {
-            scrollbar-width: none !important; /* Firefox */
-            -ms-overflow-style: none !important; /* IE/Edge */
-        }      
-
-
-        /* 🎯 LA CURA PER LA PATTUMIERA PUZZOLENTE */
-        
-        .amazon-slider {
-            scroll-padding-inline: 0px !important; /* Disintegra il muro magnetico che tagliava a sx */
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            scroll-padding-inline: 20px !important; 
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
         }
 
+        /* 2. Le card si agganciano a sinistra (start), allineandosi alla calamita di 20px */
         .amazon-card {
-            scroll-snap-align: center !important; /* La calamita ora è PERFETTAMENTE al centro */
-        }      
-
+            scroll-snap-align: start !important; 
+        }
+        
+        /* 3. Uccidiamo il margine sinistro che spostava tutto a destra */
+        .amazon-card:first-child {
+            margin-left: 0 !important; 
+        }
+        
+        /* 4. Manteniamo spazio a destra per scorrere oltre l'ultimo elemento */
+        .amazon-card:last-child {
+            margin-right: 20px !important; 
+        }
         
     </style>
     
@@ -5365,7 +5364,7 @@ function startAmazonAutoScroll() {
             nextCard = cards[0];
         }
 
-        const targetLeft = nextCard.offsetLeft - ((slider.clientWidth - nextCard.offsetWidth) / 2);
+        const targetLeft = nextCard.offsetLeft - 20;
 
         slider.scrollTo({
             left: Math.max(0, targetLeft),
