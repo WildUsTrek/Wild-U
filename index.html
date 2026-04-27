@@ -3160,40 +3160,44 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         filterTrips(); 
     }
 
-    function filterTrips() {
+function filterTrips() {
         const today = new Date(); 
         today.setHours(0,0,0,0);
 
-        // CREIAMO IL CATALOGO IBRIDO: Etichettiamo gli Hike per fargli cambiare colore dopo
+        // Creiamo il catalogo ibrido
         const mergedCatalog = [
             ...allTrips.map(t => ({ ...t, isHike: false })),
             ...allPayDays.map(p => ({ ...p, isHike: true }))
         ];
 
+        // 🛡️ SCUDO DATE: Normalizza perfettamente le date da qualsiasi database provengano
+        const getSafeDate = (item) => {
+            const raw = item["Data inizio"] || item["Data Inizio"] || "";
+            if (!raw) return "";
+            const parts = raw.split('/');
+            // Se ha già 3 pezzi (DD/MM/YYYY), è perfetta così. Altrimenti aggiungiamo l'anno.
+            if (parts.length === 3) return raw; 
+            const y = item.Anno || today.getFullYear();
+            return `${raw}/${y}`; 
+        };
+
         const filtered = mergedCatalog.filter(t => {
-            const dataInizio = t["Data inizio"] || t["Data Inizio"] || "";
-            const annoScelto = t.Anno || today.getFullYear();
-            const dataStringa = dataInizio ? (dataInizio.includes(annoScelto) ? dataInizio : `${dataInizio}/${annoScelto}`) : "";
-            const dataViaggio = parseItalianDate(dataStringa);
+            const safeDateStr = getSafeDate(t);
+            const dataViaggio = parseItalianDate(safeDateStr);
             
             const isScaduto = dataViaggio < today;
-            const passMonth = (activeFilters.month === 'Tutti' || (dataInizio && dataInizio.split('/')[1] === activeFilters.month));
             
-            // 🛡️ FIX REGIONE: Confrontiamo tutto in Maiuscolo
+            // Il mese si trova sempre all'indice 1, sia nel formato DD/MM che DD/MM/YYYY
+            const rawInizio = t["Data inizio"] || t["Data Inizio"] || "";
+            const passMonth = (activeFilters.month === 'Tutti' || (rawInizio && rawInizio.split('/')[1] === activeFilters.month));
+            
             const rVal = String(t.Regione || t.regione || "").trim().toUpperCase();
             const passRegion = (activeFilters.region === 'Tutte' || rVal === activeFilters.region);
 
             return !isScaduto && passMonth && passRegion;
         }).sort((a, b) => {
-            // ORDINE CRONOLOGICO ASSOLUTO TRA TUTTI GLI EVENTI
-            const dA = a["Data inizio"] || a["Data Inizio"] || "";
-            const yA = a.Anno || today.getFullYear();
-            const dateA = parseItalianDate(dA.includes(yA) ? dA : `${dA}/${yA}`);
-
-            const dB = b["Data inizio"] || b["Data Inizio"] || "";
-            const yB = b.Anno || today.getFullYear();
-            const dateB = parseItalianDate(dB.includes(yB) ? dB : `${dB}/${yB}`);
-            return dateA - dateB;
+            // ORDINE CRONOLOGICO ASSOLUTO (Usa lo scudo per estrarre date matematiche esatte)
+            return parseItalianDate(getSafeDate(a)) - parseItalianDate(getSafeDate(b));
         });
 
         document.getElementById('trip-count-badge').innerText = filtered.length + " Avventure in Vetrina";
@@ -3236,9 +3240,12 @@ function renderTrips(trips, targetId) {
         const eventDocId = ev.eventDocId || ev.id || "";
         const safeId = String(eventDocId).replace(/'/g, "\\'");
 
-        // 🎯 FASE 2: PULSANTE LINK SITO UFFICIALE PICCOLO (Clone)
+        // 🎯 FASE 2: PULSANTE LINK SITO UFFICIALE (Sopra il prezzo, solo per Official)
         const linkSito = ev.Link || ev.link || ev["Luogo Link Maps"] || "";
-        const miniLinkBtn = linkSito ? `<button onclick="window.open('${linkSito}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-left: 10px; font-size: 10px; vertical-align: middle;">SITO 🔗</button>` : "";
+        // Nota: display:block e margin-bottom lo spingono sopra alla scritta Standard
+        const miniLinkBtn = (linkSito && !isHike) ? 
+            `<button onclick="window.open('${linkSito}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">SITO 🔗</button>` 
+            : "";
 
         // --- MOTORE FOMO ---
         const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
@@ -3256,7 +3263,7 @@ function renderTrips(trips, targetId) {
 
         // --- RENDER IBRIDO ---
         if (isHike) {
-            // ⛰️ ESTETICA HIKE (Cornice Oro)
+            // ⛰️ ESTETICA HIKE (Cornice Oro - Pulsante Sito RIMOSSO)
             return `<div class="card" style="border-left-color: #d4af37; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
@@ -3268,12 +3275,12 @@ function renderTrips(trips, targetId) {
                 <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                     ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
                     ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
-                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzoBase}€ ${miniLinkBtn}</div>
+                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzoBase}€</div>
                 </div>
                 <button class="btn-book" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
             </div>`;
         } else {
-            // 🌲 ESTETICA OFFICIAL (Cornice Verde)
+            // 🌲 ESTETICA OFFICIAL (Cornice Verde - Pulsante Sito SOPRA Standard)
             let priceHtml = hasOfferta 
                 ? `<div style="color: #ffaa00; font-size: 11px; font-weight: 900; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
                    <div class="price-prime" style="border-color: #ffaa00;">
@@ -3293,7 +3300,8 @@ function renderTrips(trips, targetId) {
 
                 <div class="price-box">
                     <div>
-                        <div class="price-standard" style="display:flex; align-items:center;">Standard: ${prezzoStandard}€ ${miniLinkBtn}</div>
+                        ${miniLinkBtn}
+                        <div class="price-standard">Standard: ${prezzoStandard}€</div>
                     </div>
                     <div class="price-prime-wrapper">
                         <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
