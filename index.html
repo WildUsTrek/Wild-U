@@ -3214,8 +3214,8 @@ function renderTrips(trips, targetId) {
         const dataFine = ev["Data fine"] || ev["Data Fine"] || ev.dataFine || "";
         const anno = ev.Anno || (dataInizio ? dataInizio.split('/')[2] : new Date().getFullYear());
         const dataPura = (dataInizio && dataInizio.includes(anno)) ? dataInizio : `${dataInizio}/${anno}`;
-        const dataPuraFine = (dataFine && dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`;
-        const displayDate = (dataFine && dataFine !== dataInizio) ? `${dataPura} - ${dataPuraFine}` : dataPura;
+        const dataPuraFine = (dataFine && dataFine !== dataInizio) ? ((dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`) : "";
+        const displayDate = dataPuraFine ? `${dataPura} - ${dataPuraFine}` : dataPura;
 
         // --- 2. ORARIO E LUOGO ---
         const orario = ev["Orario Inizio"] || (ev.ritrovo ? ev.ritrovo.ora : "") || "";
@@ -3240,17 +3240,16 @@ function renderTrips(trips, targetId) {
         const eventDocId = ev.eventDocId || ev.id || "";
         const safeId = String(eventDocId).replace(/'/g, "\\'");
 
-        // 🎯 FASE 2: PULSANTE LINK SITO UFFICIALE (Sopra il prezzo, solo per Official)
+        // 🎯 FASE 2: PULSANTE LINK SITO UFFICIALE (Aggiornato Testo)
         const linkSito = ev.Link || ev.link || ev["Luogo Link Maps"] || "";
-        // Nota: display:block e margin-bottom lo spingono sopra alla scritta Standard
         const miniLinkBtn = (linkSito && !isHike) ? 
-            `<button onclick="window.open('${linkSito}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">SITO 🔗</button>` 
+            `<button onclick="window.open('${linkSito}', '_blank')" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">LINK AL SITO</button>` 
             : "";
 
         // --- MOTORE FOMO ---
         const occ = calculateDisplayOccupancy(ev.id || titolo, dataInizio, ev.qnt || 0, ev.postiMax);
         const occBadgeBg = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
-        const themeColor = isHike ? '#d4af37' : 'var(--w-green)'; // Oro per Hike, Verde per Official
+        const themeColor = isHike ? '#d4af37' : 'var(--w-green)'; 
         const occBadgeBorder = occ.isAlmostFull ? '#ff4444' : themeColor;
         const occIcon = occ.isAlmostFull ? '🔥' : '👥';
         const badgeHtml = `<div style="position: absolute; top: 10px; left: 10px; background: ${occBadgeBg}; color: #fff; border: 1px solid ${occBadgeBorder}; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 2;">${occIcon} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}</div>`;
@@ -3263,7 +3262,7 @@ function renderTrips(trips, targetId) {
 
         // --- RENDER IBRIDO ---
         if (isHike) {
-            // ⛰️ ESTETICA HIKE (Cornice Oro - Pulsante Sito RIMOSSO)
+            // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo Gigante Allineato a Fondo)
             return `<div class="card" style="border-left-color: #d4af37; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
@@ -3272,15 +3271,17 @@ function renderTrips(trips, targetId) {
                     ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
-                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
                     ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
                     ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
-                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzoBase}€</div>
+                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 12px; border-radius: 8px; font-size: 18px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 36px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzoBase}€</div>
                 </div>
+                
                 <button class="btn-book" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
             </div>`;
         } else {
-            // 🌲 ESTETICA OFFICIAL (Cornice Verde - Pulsante Sito SOPRA Standard)
+            // 🌲 ESTETICA OFFICIAL
             let priceHtml = hasOfferta 
                 ? `<div style="color: #ffaa00; font-size: 11px; font-weight: 900; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
                    <div class="price-prime" style="border-color: #ffaa00;">
