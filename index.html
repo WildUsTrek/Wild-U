@@ -62,7 +62,7 @@
 /* --- WILDU AMAZON FOOTER SLIDER --- */
 
 #amazon-footer-wrapper {
-    --amazon-card-w: min(330px, calc(100vw - 56px));
+    --amazon-card-w: clamp(255px, 74vw, 292px);
     --amazon-side-pad: calc((100vw - var(--amazon-card-w)) / 2);
 
     position: fixed;
@@ -83,12 +83,12 @@
     padding: 8px 0;
 
     box-sizing: border-box;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .amazon-slider {
-    width: 100vw;
-    max-width: 100vw;
+    width: 100%;
+    max-width: 100%;
 
     display: flex;
     align-items: center;
@@ -99,16 +99,17 @@
     box-sizing: border-box;
 
     overflow-x: auto;
-    overflow-y: visible;
+    overflow-y: hidden;
 
     scroll-snap-type: x mandatory;
     scroll-padding-left: var(--amazon-side-pad);
+    scroll-padding-right: var(--amazon-side-pad);
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
 
     scrollbar-width: none;
     overscroll-behavior-x: contain;
-}        
+}
 
 .amazon-slider::-webkit-scrollbar {
     display: none;
@@ -135,7 +136,7 @@
     cursor: pointer;
     overflow: hidden;
 
-    scroll-snap-align: start;
+    scroll-snap-align: center;
     scroll-snap-stop: always;
 
     transition: transform 0.15s ease;
@@ -223,7 +224,7 @@
 
 @media (min-width: 768px) {
     #amazon-footer-wrapper {
-        --amazon-card-w: 340px;
+        --amazon-card-w: 330px;
         --amazon-side-pad: 24px;
         padding: 10px 0;
     }
@@ -5310,22 +5311,28 @@ function startAmazonAutoScroll() {
         const cards = Array.from(slider.querySelectorAll('.amazon-card'));
         if (cards.length < 2) return;
 
-        const sliderStyle = getComputedStyle(slider);
-        const scrollPaddingLeft = parseFloat(sliderStyle.scrollPaddingLeft) || 0;
         const sliderRect = slider.getBoundingClientRect();
         const currentScrollLeft = slider.scrollLeft;
+        const maxScrollLeft = slider.scrollWidth - slider.clientWidth;
 
-        function getCardTargetLeft(card) {
+        function getCenteredTargetLeft(card) {
             const cardRect = card.getBoundingClientRect();
-            return currentScrollLeft + cardRect.left - sliderRect.left - scrollPaddingLeft;
+
+            const rawTarget =
+                currentScrollLeft +
+                cardRect.left -
+                sliderRect.left -
+                ((slider.clientWidth - cardRect.width) / 2);
+
+            return Math.max(0, Math.min(rawTarget, maxScrollLeft));
         }
 
         let currentIndex = 0;
         let closestDistance = Infinity;
 
         cards.forEach((card, index) => {
-            const cardTargetLeft = getCardTargetLeft(card);
-            const distance = Math.abs(cardTargetLeft - currentScrollLeft);
+            const targetLeft = getCenteredTargetLeft(card);
+            const distance = Math.abs(targetLeft - currentScrollLeft);
 
             if (distance < closestDistance) {
                 closestDistance = distance;
@@ -5334,7 +5341,7 @@ function startAmazonAutoScroll() {
         });
 
         const nextIndex = currentIndex + 1 >= cards.length ? 0 : currentIndex + 1;
-        const nextTargetLeft = Math.max(0, getCardTargetLeft(cards[nextIndex]));
+        const nextTargetLeft = getCenteredTargetLeft(cards[nextIndex]);
 
         slider.scrollTo({
             left: nextTargetLeft,
