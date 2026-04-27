@@ -63,6 +63,7 @@
 
 #amazon-footer-wrapper {
     --amazon-card-w: clamp(250px, 72vw, 292px);
+    --amazon-bleed: clamp(72px, 22vw, 110px);
 
     position: fixed;
     left: 0;
@@ -82,18 +83,24 @@
     padding: 8px 0;
 
     box-sizing: border-box;
-    overflow: hidden;
+
+    /* Il footer non deve essere il coltello che taglia le card */
+    overflow: visible;
 }
 
 .amazon-slider {
-    width: 100vw;
-    max-width: 100vw;
+    width: calc(100vw + (var(--amazon-bleed) * 2));
+    max-width: none;
+
+    margin-left: calc(var(--amazon-bleed) * -1);
+    margin-right: calc(var(--amazon-bleed) * -1);
 
     display: flex;
     align-items: center;
     gap: 12px;
 
-    padding: 0;
+    padding-left: var(--amazon-bleed);
+    padding-right: var(--amazon-bleed);
     box-sizing: border-box;
 
     overflow-x: auto;
@@ -106,6 +113,7 @@
     scrollbar-width: none;
     overscroll-behavior-x: contain;
 }
+        
 
 .amazon-slider::-webkit-scrollbar {
     display: none;
