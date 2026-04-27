@@ -3510,23 +3510,17 @@ function showTripDetails(id) {
     }
 
 
-    // --- 🚀 MOTORE CLONE INTELLIGENTE ---
-    // Rimuoviamo vecchi cloni se presenti
+// --- 🚀 MOTORE CLONE INTELLIGENTE ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
 
-    const gearTitle = document.getElementById('od-modal-gear-title');
     const bottomBtn = document.getElementById('od-modal-book');
-    
-    // Creiamo un wrapper e cloniamo il bottone inferiore (copiandone lo stato disabled/testo)
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
-    wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
     
     const clonedBtn = bottomBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
     
-    // Se non è disabilitato, gli diamo il comportamento per il TOP
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
             document.getElementById('od-details-modal').style.display = 'none';
@@ -3535,14 +3529,22 @@ function showTripDetails(id) {
     }
     
     const subtitle = document.createElement('div');
-    subtitle.innerHTML = '✨ Richiesta rapida senza impegno';
-    subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;';
+    subtitle.id = 'cloned-top-subtitle';
+    subtitle.innerHTML = '✨ Richiesta senza impegno';
     
     wrapper.appendChild(clonedBtn);
     wrapper.appendChild(subtitle);
     
-    // Lo inseriamo ESATTAMENTE sopra "Servizi Inclusi"
-    gearTitle.parentNode.insertBefore(wrapper, gearTitle);
+    // Lo posizioniamo DENTRO l'immagine per farlo fluttuare in basso a sinistra
+    const imgContainer = document.getElementById('trip-modal-img-container');
+    if (imgContainer && imgContainer.style.display !== 'none') {
+        imgContainer.appendChild(wrapper);
+    } else {
+        wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
+        subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic;';
+        const gearTitle = document.getElementById('od-modal-gear-title');
+        gearTitle.parentNode.insertBefore(wrapper, gearTitle);
+    }
 
     document.getElementById('od-details-modal').style.display = 'block';
 }
@@ -4759,15 +4761,12 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         };
     }
 
-    // --- 🚀 MOTORE CLONE INTELLIGENTE (Ora è FUORI dal click!) ---
+// --- 🚀 MOTORE CLONE INTELLIGENTE ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
-
-    const descElForClone = document.getElementById('od-modal-desc');
     
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
-    wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
     
     const clonedBtn = bookBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
@@ -4784,13 +4783,21 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
     }
     
     const subtitle = document.createElement('div');
-    subtitle.innerHTML = '✨ Richiesta rapida senza impegno';
-    subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;';
+    subtitle.id = 'cloned-top-subtitle';
+    subtitle.innerHTML = '✨ Richiesta senza impegno';
     
     wrapper.appendChild(clonedBtn);
     wrapper.appendChild(subtitle);
     
-    descElForClone.parentNode.insertBefore(wrapper, descElForClone);
+    const imgContainer = document.getElementById('trip-modal-img-container');
+    if (imgContainer && imgContainer.style.display !== 'none') {
+        imgContainer.appendChild(wrapper);
+    } else {
+        wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
+        subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic;';
+        const descElForClone = document.getElementById('od-modal-desc');
+        descElForClone.parentNode.insertBefore(wrapper, descElForClone);
+    }
 
     // MOSTRA IL MODAL DETTAGLI
     document.getElementById('od-details-modal').style.display = 'block';
@@ -4959,15 +4966,12 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         };
     }
 
-    // --- 🚀 MOTORE CLONE INTELLIGENTE (Ora è FUORI dal click!) ---
+// --- 🚀 MOTORE CLONE INTELLIGENTE ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
-
-    const descElForClone = document.getElementById('od-modal-desc');
     
     const wrapper = document.createElement('div');
     wrapper.id = 'cloned-top-btn-wrapper';
-    wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
     
     const clonedBtn = bookBtn.cloneNode(true);
     clonedBtn.id = 'od-modal-book-top';
@@ -4982,13 +4986,21 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
     }
     
     const subtitle = document.createElement('div');
-    subtitle.innerHTML = '✨ Richiesta rapida senza impegno';
-    subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic; letter-spacing: 0.5px;';
+    subtitle.id = 'cloned-top-subtitle';
+    subtitle.innerHTML = '✨ Richiesta senza impegno';
     
     wrapper.appendChild(clonedBtn);
     wrapper.appendChild(subtitle);
     
-    descElForClone.parentNode.insertBefore(wrapper, descElForClone);        
+    const imgContainer = document.getElementById('trip-modal-img-container');
+    if (imgContainer && imgContainer.style.display !== 'none') {
+        imgContainer.appendChild(wrapper);
+    } else {
+        wrapper.style.cssText = 'margin-bottom: 25px; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;';
+        subtitle.style.cssText = 'font-size: 11px; color: #aaa; margin-top: 6px; font-style: italic;';
+        const descElForClone = document.getElementById('od-modal-desc');
+        descElForClone.parentNode.insertBefore(wrapper, descElForClone);
+    }
 
     document.getElementById('od-details-modal').style.display = 'block';
 }
