@@ -280,17 +280,11 @@
 
 
 
-/* 🎯 REGOLA UNIVERSALE TASTO "PRENOTA" NEI MODALI (FLOTTANTE SULL'IMMAGINE) */
-        .modal-content {
-            position: relative;
-        }
-        
-        .modal-content button[onclick*="sendCustomBooking"],
-        #trip-modal button.btn-book,
-        #od-details-modal button.btn-book {
+/* 🎯 REGOLA CHIRURGICA TASTO CLONE "PRENOTA" FLOTTANTE */
+        #od-modal-book-top {
             position: absolute !important;
-            top: 130px !important; 
-            right: 15px !important;
+            top: 20px !important;
+            right: 20px !important;
             width: auto !important;
             font-size: 12px !important;
             padding: 8px 16px !important;
@@ -300,8 +294,14 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important;
             border: 2px solid #fff !important;
             z-index: 100 !important;
-            text-transform: uppercase;
+            text-transform: uppercase !important;
+            margin: 0 !important;
         }
+        
+        /* Nasconde il sottotitolo corsivo del clone che sporca l'immagine 
+        #cloned-top-btn-wrapper div {
+            display: none !important;
+        }   DISATTIVATO*/ 
         
         
     </style>
@@ -3288,7 +3288,7 @@ function renderTrips(trips, targetId) {
 
         // --- RENDER IBRIDO ---
         if (isHike) {
-            // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo Gigante Allineato a Fondo, NO ICONA CARTA)
+            // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo VIP Gigante Allineato a Fondo)
             return `<div class="card" style="border-left-color: #d4af37; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
@@ -3298,10 +3298,10 @@ function renderTrips(trips, targetId) {
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-                    ${km}
-                    ${dsl}
-                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 18px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 36px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
+                    ${km ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: bold; height: 42px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">${km}</div>` : ''}
+                    ${dsl ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: bold; height: 42px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">${dsl}</div>` : ''}
+                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 26px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 42px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
                 </div>
                 
                 <button class="btn-book" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
