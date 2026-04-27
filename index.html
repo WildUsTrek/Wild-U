@@ -5308,38 +5308,48 @@ function startAmazonAutoScroll() {
     const slider = document.getElementById('amazon-slider-engine');
     if (!slider) return;
 
-    if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+    if (amazonAutoScrollTimer) {
+        clearInterval(amazonAutoScrollTimer);
+        amazonAutoScrollTimer = null;
+    }
 
     amazonAutoScrollTimer = setInterval(() => {
-        const cards = Array.from(slider.querySelectorAll('.amazon-card'));
-        if (!cards.length) return;
-
-        // trova la card più vicina
-        let currentIndex = 0;
-        let minDiff = Infinity;
-
-        cards.forEach((card, i) => {
-            const diff = Math.abs(card.offsetLeft - slider.scrollLeft);
-            if (diff < minDiff) {
-                minDiff = diff;
-                currentIndex = i;
-            }
-        });
-
-        let nextIndex = currentIndex + 1;
-
-        if (nextIndex >= cards.length) {
-            slider.scrollTo({ left: 0, behavior: 'auto' });
+        const overlay = document.getElementById('amazon-detail-overlay');
+        if (overlay && overlay.classList.contains('amazon-overlay-visible')) {
             return;
         }
 
-        const style = getComputedStyle(slider);
-        const offset = parseInt(style.scrollPaddingLeft) || 0;
+        const cards = Array.from(slider.querySelectorAll('.amazon-card'));
+        if (cards.length < 2) return;
 
-        const targetLeft = cards[nextIndex].offsetLeft - offset;
+        const sliderStyle = getComputedStyle(slider);
+        const scrollPaddingLeft = parseFloat(sliderStyle.scrollPaddingLeft) || 0;
+        const sliderRect = slider.getBoundingClientRect();
+        const currentScrollLeft = slider.scrollLeft;
+
+        function getCardTargetLeft(card) {
+            const cardRect = card.getBoundingClientRect();
+            return currentScrollLeft + cardRect.left - sliderRect.left - scrollPaddingLeft;
+        }
+
+        let currentIndex = 0;
+        let closestDistance = Infinity;
+
+        cards.forEach((card, index) => {
+            const cardTargetLeft = getCardTargetLeft(card);
+            const distance = Math.abs(cardTargetLeft - currentScrollLeft);
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                currentIndex = index;
+            }
+        });
+
+        const nextIndex = currentIndex + 1 >= cards.length ? 0 : currentIndex + 1;
+        const nextTargetLeft = Math.max(0, getCardTargetLeft(cards[nextIndex]));
 
         slider.scrollTo({
-            left: targetLeft,
+            left: nextTargetLeft,
             behavior: 'smooth'
         });
 
