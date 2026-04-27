@@ -70,7 +70,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    width: 100vw;
+    width: 100%;
     background: rgba(18, 18, 18, 0.95);
     backdrop-filter: blur(10px);
     border-top: 1px solid rgba(255,255,255,0.1);
@@ -90,12 +90,13 @@
     /* overflow-y visible è vitale: impedisce il taglio dei margini delle card */
     overflow-y: visible !important; 
     /* Cambiamo in 'proximity': su PC è molto più fluido e non salta intere pagine */
-    scroll-snap-type: x proximity !important; 
+    scroll-snap-type: x mandatory !important; 
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     /* La calamita si attiva a 20px: sincronia totale col tuo JS (offsetLeft - 20) */
     scroll-padding-left: 20px !important;
-    padding: 0 !important;
+    padding-left: 20px;
+    padding-right: 20px;
     gap: 12px;
     scrollbar-width: none;
 }
@@ -171,9 +172,9 @@
     margin-left: 5px;
 }
 
-/* Margini di cortesia per la prima e l'ultima card */
+/* Margini di cortesia per la prima e l'ultima card 
 .amazon-card:first-child { margin-left: 20px !important; }
-.amazon-card:last-child { margin-right: 20px !important; }
+.amazon-card:last-child { margin-right: 20px !important; }*/
 
 /* Adattamento Desktop (PC) */
 @media (min-width: 768px) {
@@ -5267,27 +5268,35 @@ function startAmazonAutoScroll() {
         const cards = Array.from(slider.querySelectorAll('.amazon-card'));
         if (!cards.length) return;
 
-        const sliderCenter = slider.scrollLeft + (slider.clientWidth / 2);
+        // trova la card più vicina
+        let currentIndex = 0;
+        let minDiff = Infinity;
 
-        let nextCard = null;
-        for (const card of cards) {
-            const cardCenter = card.offsetLeft + (card.offsetWidth / 2);
-            if (cardCenter > sliderCenter + 8) {
-                nextCard = card;
-                break;
+        cards.forEach((card, i) => {
+            const diff = Math.abs(card.offsetLeft - slider.scrollLeft);
+            if (diff < minDiff) {
+                minDiff = diff;
+                currentIndex = i;
             }
+        });
+
+        let nextIndex = currentIndex + 1;
+
+        if (nextIndex >= cards.length) {
+            slider.scrollTo({ left: 0, behavior: 'auto' });
+            return;
         }
 
-        if (!nextCard) {
-            nextCard = cards[0];
-        }
+        const style = getComputedStyle(slider);
+        const offset = parseInt(style.scrollPaddingLeft) || 0;
 
-        const targetLeft = nextCard.offsetLeft - 20;
+        const targetLeft = cards[nextIndex].offsetLeft - offset;
 
         slider.scrollTo({
-            left: Math.max(0, targetLeft),
+            left: targetLeft,
             behavior: 'smooth'
         });
+
     }, 4500);
 }
 
