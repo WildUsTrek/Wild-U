@@ -62,7 +62,8 @@
 /* --- WILDU AMAZON FOOTER SLIDER --- */
 
 #amazon-footer-wrapper {
-    --amazon-side-pad: 16px;
+    --amazon-card-w: min(330px, calc(100vw - 56px));
+    --amazon-side-pad: calc((100vw - var(--amazon-card-w)) / 2);
 
     position: fixed;
     left: 0;
@@ -82,8 +83,6 @@
     padding: 8px 0;
 
     box-sizing: border-box;
-
-    /* NON taglia il nastro delle card */
     overflow: visible;
 }
 
@@ -108,17 +107,18 @@
     -webkit-overflow-scrolling: touch;
 
     scrollbar-width: none;
-
     overscroll-behavior-x: contain;
-}
+}        
 
 .amazon-slider::-webkit-scrollbar {
     display: none;
 }
 
 .amazon-card {
-    flex: 0 0 calc(100vw - 56px);
-    max-width: 330px;
+    flex: 0 0 var(--amazon-card-w);
+    width: var(--amazon-card-w);
+    max-width: var(--amazon-card-w);
+
     height: 74px;
     min-height: 74px;
 
@@ -223,13 +223,15 @@
 
 @media (min-width: 768px) {
     #amazon-footer-wrapper {
+        --amazon-card-w: 340px;
         --amazon-side-pad: 24px;
         padding: 10px 0;
     }
 
     .amazon-card {
-        flex: 0 0 340px;
-        max-width: 340px;
+        flex: 0 0 var(--amazon-card-w);
+        width: var(--amazon-card-w);
+        max-width: var(--amazon-card-w);
     }
 }
 
