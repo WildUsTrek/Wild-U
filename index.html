@@ -108,6 +108,8 @@
     overflow-y: hidden;
 
     scroll-snap-type: x mandatory;
+    scroll-padding-left: var(--amazon-bleed);
+    scroll-padding-right: var(--amazon-bleed);
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
 
@@ -5299,7 +5301,9 @@ function openAmazonDetail(index) {
 
 function startAmazonAutoScroll() {
     const slider = document.getElementById('amazon-slider-engine');
-    if (!slider) return;
+    const wrapper = document.getElementById('amazon-footer-wrapper');
+
+    if (!slider || !wrapper) return;
 
     if (amazonAutoScrollTimer) {
         clearInterval(amazonAutoScrollTimer);
@@ -5315,7 +5319,6 @@ function startAmazonAutoScroll() {
         const cards = Array.from(slider.querySelectorAll('.amazon-card'));
         if (cards.length < 2) return;
 
-        const sliderRect = slider.getBoundingClientRect();
         const currentScrollLeft = slider.scrollLeft;
         const maxScrollLeft = slider.scrollWidth - slider.clientWidth;
 
@@ -5323,14 +5326,14 @@ function startAmazonAutoScroll() {
             return;
         }
 
-        function getCenteredTargetLeft(card) {
-            const cardRect = card.getBoundingClientRect();
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const visibleCenterX = wrapperRect.left + (wrapperRect.width / 2);
 
-            const rawTarget =
-                currentScrollLeft +
-                cardRect.left -
-                sliderRect.left -
-                ((slider.clientWidth - cardRect.width) / 2);
+        function getVisibleCenteredTargetLeft(card) {
+            const cardRect = card.getBoundingClientRect();
+            const cardCenterX = cardRect.left + (cardRect.width / 2);
+
+            const rawTarget = currentScrollLeft + (cardCenterX - visibleCenterX);
 
             return Math.max(0, Math.min(rawTarget, maxScrollLeft));
         }
@@ -5339,7 +5342,7 @@ function startAmazonAutoScroll() {
         let closestDistance = Infinity;
 
         cards.forEach((card, index) => {
-            const targetLeft = getCenteredTargetLeft(card);
+            const targetLeft = getVisibleCenteredTargetLeft(card);
             const distance = Math.abs(targetLeft - currentScrollLeft);
 
             if (distance < closestDistance) {
@@ -5352,9 +5355,9 @@ function startAmazonAutoScroll() {
 
         for (let step = 1; step <= cards.length; step++) {
             const candidateIndex = (currentIndex + step) % cards.length;
-            const candidateTarget = getCenteredTargetLeft(cards[candidateIndex]);
+            const candidateTarget = getVisibleCenteredTargetLeft(cards[candidateIndex]);
 
-            if (Math.abs(candidateTarget - currentScrollLeft) > 4) {
+            if (Math.abs(candidateTarget - currentScrollLeft) > 2) {
                 nextTargetLeft = candidateTarget;
                 break;
             }
