@@ -277,6 +277,31 @@
             -webkit-user-select: none !important;
             user-select: none !important;
         }       
+
+
+
+/* 🎯 REGOLA UNIVERSALE TASTO "PRENOTA" NEI MODALI (FLOTTANTE SULL'IMMAGINE) */
+        .modal-content {
+            position: relative;
+        }
+        
+        .modal-content button[onclick*="sendCustomBooking"],
+        #trip-modal button.btn-book,
+        #od-details-modal button.btn-book {
+            position: absolute !important;
+            top: 130px !important; 
+            right: 15px !important;
+            width: auto !important;
+            font-size: 12px !important;
+            padding: 8px 16px !important;
+            border-radius: 20px !important;
+            background: rgba(212, 175, 55, 0.95) !important;
+            color: #000 !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important;
+            border: 2px solid #fff !important;
+            z-index: 100 !important;
+            text-transform: uppercase;
+        }
         
         
     </style>
@@ -3226,8 +3251,9 @@ function renderTrips(trips, targetId) {
         const luogoPulito = luogoRaw.replace(/(?:,?\s*-?\s*)\b(orario|ore|ora)\b\s*:?\s*.*/i, '').trim();
         const luogoCompleto = `${nomeRegione}${luogoPulito}`;
 
-        const km = ev["KM"] ? `🥾 ${ev["KM"]} km` : "";
-        const dsl = ev["Dislivello"] ? `⛰️ ${ev["Dislivello"]} m` : "";
+        // 🎯 FIX: Ingranditi font e box per allinearli al prezzo (36px di altezza, font 15px bold)
+        const km = ev["KM"] ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 15px; font-weight: bold; height: 36px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">🥾 ${ev["KM"]} km</div>` : "";
+        const dsl = ev["Dislivello"] ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 15px; font-weight: bold; height: 36px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">⛰️ ${ev["Dislivello"]} m</div>` : "";
 
         // --- 3. PREZZI E XP ---
         const hasOfferta = ev["Offerta Attiva"] === true;
@@ -3262,7 +3288,7 @@ function renderTrips(trips, targetId) {
 
         // --- RENDER IBRIDO ---
         if (isHike) {
-            // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo Gigante Allineato a Fondo)
+            // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo Gigante Allineato a Fondo, NO ICONA CARTA)
             return `<div class="card" style="border-left-color: #d4af37; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
                 <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
@@ -3272,10 +3298,10 @@ function renderTrips(trips, targetId) {
                 </div>
                 <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
-                    ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
-                    ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
-                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 12px; border-radius: 8px; font-size: 18px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 36px; display: flex; align-items: center; box-sizing: border-box;">💳 ${prezzoBase}€</div>
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+                    ${km}
+                    ${dsl}
+                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 18px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 36px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
                 </div>
                 
                 <button class="btn-book" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
