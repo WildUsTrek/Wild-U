@@ -2791,10 +2791,9 @@ function evaluateBookings() {
             infoBtn = `<button onclick="showPayDayDetails('${hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         }
 
-        // --- 🎯 COSTRUZIONE TASTO SITO ---
-        const origEvent = tripOrig || odOrig || hikeOrig;
-        if (origEvent) {
-            const linkSito = origEvent.Link || origEvent.link || origEvent["Luogo Link Maps"] || "";
+        // --- 🎯 COSTRUZIONE TASTO SITO (SOLO PER OFFICIAL TRIPS) ---
+        if (tripOrig) {
+            const linkSito = tripOrig.Link || tripOrig.link || ""; // Tolto il fallback infame a Mappe!
             if (linkSito) {
                 siteBtn = `<button onclick="window.open('${linkSito}', '_blank')" style="background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>`;
             }
@@ -3135,10 +3134,8 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     // ==========================================
     let activeFilters = { month: 'Tutti', region: 'Tutte' };
     
-    function buildFilters() {
+        function buildFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
-        
-        // FUSIONE: Mettiamo insieme Viaggi Ufficiali e Hike
         const mergedCatalog = [...allTrips, ...allPayDays];
 
         const monthsRaw = [...new Set(mergedCatalog.map(t => {
@@ -3149,7 +3146,8 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         const mSel = document.getElementById('filter-months-select');
         if (mSel) mSel.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + monthsRaw.map(m => `<option value="${m}">${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
         
-        const regionsRaw = [...new Set(mergedCatalog.map(t => t.Regione || t.regione || 'Italia'))].filter(x=>x).sort();
+        // 🛡️ FIX REGIONE: Convertiamo TUTTO in Maiuscolo per evitare duplicati come "Toscana" e "TOSCANA"
+        const regionsRaw = [...new Set(mergedCatalog.map(t => String(t.Regione || t.regione || 'Italia').trim().toUpperCase()))].sort();
         const rSel = document.getElementById('filter-regions-select');
         if (rSel) rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
     }
@@ -3180,7 +3178,10 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
             
             const isScaduto = dataViaggio < today;
             const passMonth = (activeFilters.month === 'Tutti' || (dataInizio && dataInizio.split('/')[1] === activeFilters.month));
-            const passRegion = (activeFilters.region === 'Tutte' || t.Regione === activeFilters.region || t.regione === activeFilters.region);
+            
+            // 🛡️ FIX REGIONE: Confrontiamo tutto in Maiuscolo
+            const rVal = String(t.Regione || t.regione || "").trim().toUpperCase();
+            const passRegion = (activeFilters.region === 'Tutte' || rVal === activeFilters.region);
 
             return !isScaduto && passMonth && passRegion;
         }).sort((a, b) => {
