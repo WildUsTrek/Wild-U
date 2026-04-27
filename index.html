@@ -3006,7 +3006,12 @@ function executePenaltyRedirect() {
 
     showToast("Prenotazione annullata. Penale applicata.");
     setTimeout(() => show('profile'), 500);
-    setTimeout(() => fetchInitData({ force: true }), 1200);
+    
+    // 🛡️ AGGIORNAMENTO ZAINO FIRESTORE DOPO ANNULLAMENTO
+    setTimeout(() => {
+        fetchInitData({ force: true });
+        fetchXP(); 
+    }, 1200);
 
     isCancellingInProgress = false;
 }
@@ -3862,7 +3867,11 @@ if (result.alreadyBooked === true) {
                 setTimeout(() => show('profile'), 1000);
             }
 
-            setTimeout(() => fetchInitData({ force: true }), 1500);
+            // 🛡️ AGGIORNAMENTO ZAINO FIRESTORE
+            setTimeout(() => {
+                fetchInitData({ force: true });
+                fetchXP(); // <--- LA MAGIA È QUI: Scarica il nuovo zaino e disintegra la card in sospeso!
+            }, 1500);
         }
 
     } catch (error) {
