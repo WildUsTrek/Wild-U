@@ -5088,37 +5088,77 @@ function renderAmazonSponsors(products) {
     if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
     if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
 
-    const activeProducts = shuffleAmazonProducts(
+    // 1. Prepariamo i prodotti Amazon base (aggiungiamo flag isTravel: false)
+    let mixedList = shuffleAmazonProducts(
         (Array.isArray(products) ? products : []).filter(p => p && p.active === true)
-    );
+    ).map(p => ({ ...p, isTravel: false }));
 
-    currentAmazonProducts = activeProducts;
+    // 2. Recuperiamo i Viaggi/Hike entro 60 giorni (la funzione di supporto deve esserci!)
+    const upcomingTravels = getUpcomingTravelCards();
 
-    if (!activeProducts.length) {
+    // 3. LOGICA DI INCASTRO (Ogni 5-7 card Amazon inseriamo un viaggio)
+    if (upcomingTravels.length > 0 && mixedList.length > 5) {
+        let insertIndex = 0;
+        let position = 0;
+        
+        while (position < mixedList.length && insertIndex < upcomingTravels.length) {
+            const gap = Math.floor(Math.random() * (7 - 5 + 1)) + 5;
+            position += gap;
+
+            if (position < mixedList.length) {
+                mixedList.splice(position, 0, { ...upcomingTravels[insertIndex], isTravel: true });
+                insertIndex++;
+                position++; // Salta la card appena inserita per non sballare i conti
+            }
+        }
+    }
+
+    // Salviamo la lista globale (Fondamentale per far funzionare openAmazonDetail senza sfasamenti di indice!)
+    currentAmazonProducts = mixedList;
+
+    if (!mixedList.length) {
         slider.innerHTML = '';
         wrapper.style.display = 'none';
         return;
     }
 
+    // 4. Rendering Unificato
     let html = '';
-    activeProducts.forEach((p, index) => {
-        html += `
-            <div class="amazon-card" onclick="openAmazonDetail(${index})">
-                <img src="${p.img_url}" alt="${p.title}">
-                <div class="amazon-info">
-                    <p class="amazon-title">${p.title}</p>
-                    <p class="amazon-desc">${p.description}</p>
-                    <span class="amazon-price">€${p.price}</span>
-                    <span class="amazon-tag">AMAZON</span>
+    mixedList.forEach((p, index) => {
+        if (p.isTravel) {
+            // ✈️ CARD IBRIDA: VIAGGIO / HIKE
+            html += `
+                <div class="amazon-card" onclick="showTripDetailsFromCarousel('${p.safeId}', ${p.isHike})" style="border-color: ${p.isHike ? 'var(--w-gold)' : 'var(--w-green)'}; background: rgba(0,0,0,0.4);">
+                    <img src="${p.img_url}" alt="${p.title}">
+                    <div class="amazon-info">
+                        <p class="amazon-title" style="color:${p.isHike ? 'var(--w-gold)' : '#fff'};">${p.title}</p>
+                        <p class="amazon-desc" style="color:#eee;">📅 Partenza: ${p.dateText}</p>
+                        <span class="amazon-price">€${p.price}</span>
+                        <span class="amazon-tag" style="background:${p.isHike ? 'var(--w-gold)' : 'var(--w-green)'}; color:#000;">${p.tag}</span>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        } else {
+            // 📦 CARD STANDARD: AMAZON (Mantiene la tua logica intatta col parametro index esatto)
+            html += `
+                <div class="amazon-card" onclick="openAmazonDetail(${index})">
+                    <img src="${p.img_url}" alt="${p.title}">
+                    <div class="amazon-info">
+                        <p class="amazon-title">${p.title}</p>
+                        <p class="amazon-desc">${p.description}</p>
+                        <span class="amazon-price">€${p.price}</span>
+                        <span class="amazon-tag">AMAZON</span>
+                    </div>
+                </div>
+            `;
+        }
     });
 
     slider.innerHTML = html;
     wrapper.style.display = 'flex';
 
-    activeProducts.forEach(p => {
+    // 5. IL TUO PRELOAD DELLE IMMAGINI (Recuperato e applicato a tutta la mixedList)
+    mixedList.forEach(p => {
         if (p.img_url) {
             const imgPreload = new Image();
             imgPreload.src = p.img_url;
@@ -5131,6 +5171,47 @@ function renderAmazonSponsors(products) {
         startAmazonAutoScroll();
     }, 1200);
 }
+
+// Recupera viaggi/hike entro 60 giorni e li formatta per il carosello
+function getUpcomingTravelCards() {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const limitDate = new Date();
+    limitDate.setDate(today.getDate() + 60);
+
+    const merged = [
+        ...allTrips.map(t => ({ ...t, isHike: false })),
+        ...allPayDays.map(p => ({ ...p, isHike: true }))
+    ];
+
+    return merged.filter(ev => {
+        const rawDate = ev["Data inizio"] || ev["Data Inizio"] || "";
+        if (!rawDate) return false;
+        const parts = rawDate.split('/');
+        const y = ev.Anno || today.getFullYear();
+        const dEv = parseItalianDate(`${parts[0]}/${parts[1]}/${y}`);
+        return dEv >= today && dEv <= limitDate;
+    })
+    .sort(() => Math.random() - 0.5) // Randomizza l'ordine
+    .map(ev => {
+        const prezzo = ev["Prezzo Prime"] || ev.prezzo_std || ev.Prezzo || "0";
+        return {
+            title: ev.Titolo || ev.titolo,
+            img_url: formatAssetLink(ev.immagine || ev.fotoUrl),
+            price: prezzo,
+            dateText: ev["Data inizio"] || ev["Data Inizio"],
+            tag: ev.isHike ? "HIKE" : "VIAGGIO",
+            isHike: ev.isHike,
+            safeId: String(ev.eventDocId || ev.id || "").replace(/'/g, "\\'")
+        };
+    });
+}
+
+// Gestisce il click su un viaggio nel carosello Amazon
+function showTripDetailsFromCarousel(id, isHike) {
+    if (isHike) showPayDayDetails(id);
+    else showTripDetails(id);
+}    
 
 async function fetchAmazonProductsRemote() {
     const remoteSnap = await FS.getAmazonProductsDoc({ source: 'server' });
