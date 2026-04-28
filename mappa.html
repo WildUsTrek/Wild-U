@@ -1,8 +1,345 @@
-<div class="card" style="border-left-color: var(--w-gold); text-align: center; margin-top: 20px;">
-    <h2 style="color: var(--w-gold);">mappe dei tesori</h2>
-    <p style="color: #ccc; font-size: 15px;">Gli spiriti stanno costruendo questa sezione...</p>
+<div id="wildu-treasure-maps-module" style="padding-bottom: 30px;">
+    <div class="card" style="border-left-color: var(--w-gold); margin-top: 20px;">
+        <h2 style="color: var(--w-gold); margin-top:0; text-align:center;">🗺️ Mappa dei Tesori</h2>
+        <p style="color: #ccc; font-size: 15px; line-height:1.5; text-align:center; margin-bottom:20px;">
+            Qui trovi tracce GPX, mappe, percorsi e strumenti utili per orientarti nelle avventure Wild-U.
+        </p>
+
+        <div id="treasure-map-list" style="display:flex; flex-direction:column; gap:14px;"></div>
+
+        <div id="treasure-map-empty" style="display:none; text-align:center; padding:25px 10px;">
+            <div style="font-size:42px; margin-bottom:10px;">🧭</div>
+            <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                Nessuna mappa disponibile per ora.<br>
+                Gli spiriti stanno ancora tracciando il sentiero.
+            </p>
+        </div>
+    </div>
 </div>
 
 <script>
-    console.log("Modulo caricato con successo!");
+(function () {
+    console.log("[WILDU TREASURE MAPS] Modulo Mappa dei Tesori caricato");
+
+    const root = document.getElementById("wildu-treasure-maps-module");
+    const listEl = document.getElementById("treasure-map-list");
+    const emptyEl = document.getElementById("treasure-map-empty");
+
+    if (!root || !listEl || !emptyEl) return;
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function firstValue(obj, keys) {
+        if (!obj) return "";
+        for (let i = 0; i < keys.length; i++) {
+            const v = obj[keys[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== "") {
+                return String(v).trim();
+            }
+        }
+        return "";
+    }
+
+    function extractUrl(item) {
+        if (!item || typeof item !== "object") return "";
+
+        return firstValue(item, [
+            "Link_Risorsa",
+            "link_risorsa",
+            "Link",
+            "link",
+            "URL",
+            "url",
+            "Href",
+            "href",
+            "Src",
+            "src",
+            "File",
+            "file",
+            "Percorso",
+            "percorso"
+        ]);
+    }
+
+    function normalizeTreasureUrl(rawUrl) {
+        const value = String(rawUrl || "").trim();
+        if (!value) return "";
+
+        const low = value.toLowerCase();
+
+        if (
+            low.startsWith("javascript:") ||
+            low.startsWith("data:") ||
+            low.startsWith("blob:") ||
+            low.startsWith("mailto:") ||
+            low.startsWith("tel:")
+        ) {
+            return "";
+        }
+
+        try {
+            const finalUrl = window.WILDU_MODULE && typeof window.WILDU_MODULE.getUrl === "function"
+                ? window.WILDU_MODULE.getUrl(value)
+                : value;
+
+            return String(finalUrl || "").trim();
+        } catch (e) {
+            return value;
+        }
+    }
+
+    function getTreasureKind(item, url) {
+        const raw = (
+            firstValue(item, ["Tipo", "tipo", "Categoria", "categoria", "Tag", "tag", "Formato", "formato"]) +
+            " " +
+            url
+        ).toLowerCase();
+
+        if (raw.includes(".gpx") || raw.includes("gpx")) {
+            return {
+                icon: "🥾",
+                label: "TRACCIA GPX",
+                color: "var(--w-gold)"
+            };
+        }
+
+        if (raw.includes(".kml") || raw.includes("kml") || raw.includes("kmz")) {
+            return {
+                icon: "🗺️",
+                label: "MAPPA KML",
+                color: "#00aaff"
+            };
+        }
+
+        if (raw.includes("maps.google") || raw.includes("google.com/maps") || raw.includes("maps.app.goo.gl")) {
+            return {
+                icon: "📍",
+                label: "GOOGLE MAPS",
+                color: "#25D366"
+            };
+        }
+
+        if (raw.includes(".pdf") || raw.includes("pdf")) {
+            return {
+                icon: "📄",
+                label: "PDF MAPPA",
+                color: "#ff6666"
+            };
+        }
+
+        return {
+            icon: "🧭",
+            label: "RISORSA MAPPA",
+            color: "var(--w-gold)"
+        };
+    }
+
+    function shouldShowTreasureItem(item, url) {
+        if (!url) return false;
+
+        const text = JSON.stringify(item || {}).toLowerCase() + " " + String(url || "").toLowerCase();
+
+        return (
+            text.includes("gpx") ||
+            text.includes("kml") ||
+            text.includes("kmz") ||
+            text.includes("mappa") ||
+            text.includes("map") ||
+            text.includes("maps.google") ||
+            text.includes("google.com/maps") ||
+            text.includes("maps.app.goo.gl") ||
+            text.includes("percorso") ||
+            text.includes("sentiero") ||
+            text.includes("traccia")
+        );
+    }
+
+    function getInternalLinks() {
+        if (window.WILDU_MODULE && Array.isArray(window.WILDU_MODULE.links)) {
+            return window.WILDU_MODULE.links;
+        }
+
+        if (Array.isArray(window.currentInternalLinks)) {
+            return window.currentInternalLinks;
+        }
+
+        return [];
+    }
+
+    function openTreasure(url) {
+        if (!url) return;
+        window.open(url, "_blank", "noopener");
+    }
+
+    function renderTreasureMaps() {
+        const rawLinks = getInternalLinks();
+
+        const items = rawLinks
+            .map((item) => {
+                const rawUrl = extractUrl(item);
+                const url = normalizeTreasureUrl(rawUrl);
+
+                return {
+                    item,
+                    url
+                };
+            })
+            .filter(entry => shouldShowTreasureItem(entry.item, entry.url));
+
+        if (!items.length) {
+            listEl.innerHTML = "";
+            emptyEl.style.display = "block";
+            return;
+        }
+
+        emptyEl.style.display = "none";
+
+        listEl.innerHTML = items.map((entry, index) => {
+            const item = entry.item || {};
+            const url = entry.url;
+            const kind = getTreasureKind(item, url);
+
+            const titolo = firstValue(item, [
+                "Titolo",
+                "titolo",
+                "Nome",
+                "nome",
+                "Title",
+                "title",
+                "Label",
+                "label"
+            ]) || kind.label;
+
+            const descrizione = firstValue(item, [
+                "Descrizione",
+                "descrizione",
+                "Description",
+                "description",
+                "Note",
+                "note"
+            ]) || "Apri questa risorsa per consultare il percorso o salvarlo sul dispositivo.";
+
+            const safeUrl = escapeHtml(url);
+            const safeTitle = escapeHtml(titolo);
+            const safeDesc = escapeHtml(descrizione);
+
+            return `
+                <div
+                    class="treasure-map-card"
+                    style="
+                        background:#181818;
+                        border:1px solid rgba(255,255,255,0.08);
+                        border-left:4px solid ${kind.color};
+                        border-radius:14px;
+                        padding:16px;
+                        box-shadow:0 4px 14px rgba(0,0,0,0.35);
+                    "
+                >
+                    <div style="display:flex; gap:12px; align-items:flex-start;">
+                        <div style="
+                            width:44px;
+                            height:44px;
+                            min-width:44px;
+                            border-radius:12px;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            background:rgba(255,255,255,0.06);
+                            font-size:24px;
+                            border:1px solid rgba(255,255,255,0.08);
+                        ">${kind.icon}</div>
+
+                        <div style="flex:1; min-width:0; text-align:left;">
+                            <div style="
+                                color:${kind.color};
+                                font-size:10px;
+                                font-weight:900;
+                                letter-spacing:1px;
+                                text-transform:uppercase;
+                                margin-bottom:5px;
+                            ">${kind.label}</div>
+
+                            <div style="
+                                color:#fff;
+                                font-size:16px;
+                                font-weight:900;
+                                line-height:1.2;
+                                margin-bottom:6px;
+                                text-transform:uppercase;
+                            ">${safeTitle}</div>
+
+                            <div style="
+                                color:#aaa;
+                                font-size:13px;
+                                line-height:1.45;
+                                margin-bottom:12px;
+                            ">${safeDesc}</div>
+
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button
+                                    type="button"
+                                    data-treasure-url="${safeUrl}"
+                                    data-treasure-action="open"
+                                    style="
+                                        flex:1;
+                                        min-width:130px;
+                                        background:${kind.color};
+                                        color:#000;
+                                        border:none;
+                                        border-radius:10px;
+                                        padding:11px 12px;
+                                        font-size:13px;
+                                        font-weight:900;
+                                        cursor:pointer;
+                                        text-transform:uppercase;
+                                    "
+                                >Apri</button>
+
+                                <a
+                                    href="${safeUrl}"
+                                    target="_blank"
+                                    rel="noopener"
+                                    style="
+                                        flex:1;
+                                        min-width:130px;
+                                        background:#2a2a2a;
+                                        color:#fff;
+                                        border:1px solid #444;
+                                        border-radius:10px;
+                                        padding:11px 12px;
+                                        font-size:13px;
+                                        font-weight:900;
+                                        text-decoration:none;
+                                        text-align:center;
+                                        box-sizing:border-box;
+                                        text-transform:uppercase;
+                                    "
+                                >Salva / Esporta</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        listEl.querySelectorAll("[data-treasure-action='open']").forEach(btn => {
+            btn.addEventListener("click", function () {
+                openTreasure(this.getAttribute("data-treasure-url"));
+            });
+        });
+    }
+
+    renderTreasureMaps();
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
+        window.WILDU_MODULE.rewriteRoot(root);
+    }
+})();
 </script>
