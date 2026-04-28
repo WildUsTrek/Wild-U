@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stone Lines — Skeleton</title>
+  <meta name="description" content="Skeleton completo per un gioco di logica 2D stile Marienbad/Nim.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <section id="menu-screen" class="screen active">
+      <div class="panel panel-menu">
+        <h1 class="game-title">Stone Lines</h1>
+        <p class="game-subtitle">Scheletro operativo per un gioco di logica 2D leggero e offline.</p>
+
+        <div class="menu-grid">
+          <label class="field">
+            <span>Modalità</span>
+            <select id="mode-select">
+              <option value="pvp">2 Giocatori</option>
+              <option value="cpu">Vs CPU</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Configurazione board</span>
+            <select id="board-select">
+              <option value="5,4,3,2,1">5 / 4 / 3 / 2 / 1</option>
+              <option value="7,5,3,1">7 / 5 / 3 / 1</option>
+              <option value="6,5,4,3,2,1">6 / 5 / 4 / 3 / 2 / 1</option>
+            </select>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="misere-toggle">
+            <span>Variante misère: chi prende l'ultima pietra perde</span>
+          </label>
+        </div>
+
+        <div class="menu-actions">
+          <button id="start-btn" class="btn btn-primary">Nuova partita</button>
+          <button id="rules-btn" class="btn btn-secondary">Regole</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="game-screen" class="screen">
+      <div id="hud" class="panel panel-hud">
+        <div class="hud-left">
+          <div id="turn-label" class="turn-label">Turno: Giocatore 1</div>
+          <div id="selection-label" class="selection-label">Nessuna selezione</div>
+        </div>
+        <div class="hud-actions">
+          <button id="confirm-btn" class="btn btn-primary" disabled>Conferma</button>
+          <button id="cancel-btn" class="btn btn-secondary" disabled>Annulla</button>
+          <button id="reset-btn" class="btn btn-secondary">Ricomincia</button>
+          <button id="menu-btn" class="btn btn-ghost">Menu</button>
+        </div>
+      </div>
+
+      <main class="board-wrap">
+        <div id="board" aria-label="Tabellone di gioco"></div>
+      </main>
+    </section>
+
+    <section id="result-screen" class="screen">
+      <div class="panel panel-result">
+        <h2 id="winner-label">Ha vinto il Giocatore 1</h2>
+        <p id="result-detail">Partita completata.</p>
+        <div class="menu-actions">
+          <button id="play-again-btn" class="btn btn-primary">Rigioca</button>
+          <button id="back-menu-btn" class="btn btn-secondary">Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="rules-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+        <div class="modal-header">
+          <h3 id="rules-title">Regole</h3>
+          <button id="rules-close-btn" class="btn btn-ghost btn-close" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="modal-body">
+          <ol>
+            <li>A ogni turno scegli una sola riga.</li>
+            <li>Puoi rimuovere una o più pietre contigue della riga scelta.</li>
+            <li>Non puoi creare selezioni con buchi.</li>
+            <li>Nella modalità standard vince chi prende l'ultima pietra.</li>
+            <li>Nella modalità misère perde chi prende l'ultima pietra.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/state.js"></script>
+  <script src="js/logic.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
