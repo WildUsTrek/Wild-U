@@ -1,164 +1,456 @@
-<div class="card" style="border-left-color: var(--w-gold); margin-top: 20px;">
-    <div style="text-align:center; margin-bottom:18px;">
-        <h2 style="color: var(--w-gold); margin:0; text-transform:uppercase; letter-spacing:1px;">
-            WildWall
-        </h2>
-        <p style="color:#ccc; font-size:14px; line-height:1.5; margin:10px 0 0 0;">
-            Un mosaico vivo delle immagini già custodite nella cache Wild-U.
+<div id="wildu-wildwall-module" style="padding-bottom: 30px;">
+    <div class="card" style="border-left-color: var(--w-gold); margin-top: 20px;">
+        <h2 style="color: var(--w-gold); margin-top:0; text-align:center;">🖼️ WildWall</h2>
+
+        <p style="color:#ccc; font-size:14px; line-height:1.5; text-align:center; margin-bottom:18px;">
+            Un mosaico vivo delle avventure Wild-U già passate dalla tua bussola.
         </p>
-    </div>
 
-    <div id="wildwall-cache-status" style="
-        color:#aaa;
-        text-align:center;
-        font-size:13px;
-        padding:20px;
-        border-radius:14px;
-        background:rgba(255,255,255,0.04);
-        border:1px solid rgba(255,255,255,0.08);
-        margin-bottom:16px;
-    ">
-        Gli spiriti stanno raccogliendo le immagini già viste...
-    </div>
+        <div id="wildwall-count" style="color:#777; font-size:11px; font-weight:900; letter-spacing:1px; text-align:center; text-transform:uppercase; margin-bottom:16px;"></div>
 
-    <div id="wildwall-cache-gallery" class="wildwall-cache-gallery"></div>
+        <div id="wildwall-grid" style="
+            display:grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap:10px;
+        "></div>
+
+        <div id="wildwall-empty" style="display:none; text-align:center; padding:28px 10px;">
+            <div style="font-size:46px; margin-bottom:10px;">🌲</div>
+            <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                Nessuna immagine viaggio trovata nella cache.<br>
+                Apri qualche avventura e torna qui.
+            </p>
+        </div>
+    </div>
 </div>
 
-<style>
-    .wildwall-cache-gallery {
-        column-count: 2;
-        column-gap: 10px;
-        width: 100%;
-    }
-
-    .wildwall-cache-item {
-        break-inside: avoid;
-        -webkit-column-break-inside: avoid;
-        margin: 0 0 10px 0;
-        border-radius: 16px;
-        overflow: hidden;
-        background: #111;
-        border: 1px solid rgba(255,255,255,0.08);
-        box-shadow: 0 8px 22px rgba(0,0,0,0.35);
-        position: relative;
-        animation: wildWallFadeIn 0.45s ease both;
-    }
-
-    .wildwall-cache-item img {
-        width: 100%;
-        height: auto;
-        min-height: 120px;
-        max-height: 260px;
-        object-fit: cover;
-        display: block;
-        transform: scale(1.01);
-        background: #111;
-    }
-
-    .wildwall-cache-caption {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        padding: 22px 9px 8px 9px;
-        background: linear-gradient(0deg, rgba(0,0,0,0.82), transparent);
-        color: #fff;
-        font-size: 10px;
-        font-weight: 900;
-        letter-spacing: 0.4px;
-        text-transform: uppercase;
-        text-shadow: 0 1px 3px #000;
-        box-sizing: border-box;
-    }
-
-    .wildwall-cache-source {
-        color: var(--w-gold);
-        opacity: 0.9;
-        font-size: 9px;
-        display: block;
-        margin-top: 2px;
-    }
-
-    @media (min-width: 600px) {
-        .wildwall-cache-gallery {
-            column-count: 3;
-        }
-    }
-
-    @keyframes wildWallFadeIn {
-        from {
-            opacity: 0;
-            transform: translateY(8px) scale(0.98);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-        }
-    }
-</style>
-
 <script>
-(async function renderWildWallFromWilduCache() {
-    console.log("[WILDWALL] Modulo cache immagini caricato.");
+(function () {
+    console.log("[WILDU WILDWALL] Avvio modulo anti-asset + anti-doppioni");
 
-    const statusBox = document.getElementById('wildwall-cache-status');
-    const gallery = document.getElementById('wildwall-cache-gallery');
+    const gridEl = document.getElementById("wildwall-grid");
+    const emptyEl = document.getElementById("wildwall-empty");
+    const countEl = document.getElementById("wildwall-count");
 
-    if (!statusBox || !gallery) return;
+    if (!gridEl || !emptyEl || !countEl) return;
 
-    try {
-        const api = window.WILDU_MODULE;
+    const PUBLIC_CACHE_KEY = "wildCachePublic";
 
-        if (!api || typeof api.getCachedImages !== "function") {
-            statusBox.innerHTML = `
-                Cache immagini non disponibile.<br>
-                <span style="color:#777;">Completa prima lo Step 2/4 nel file principale.</span>
-            `;
-            gallery.innerHTML = "";
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function readWildPublicCachePayload() {
+        try {
+            const raw = localStorage.getItem(PUBLIC_CACHE_KEY);
+            if (!raw) return null;
+
+            const envelope = JSON.parse(raw);
+            return envelope && envelope.payload ? envelope.payload : null;
+        } catch (e) {
+            console.warn("[WILDU WILDWALL] Cache pubblica non leggibile:", e);
+            return null;
+        }
+    }
+
+    function fallbackFormatAssetLink(url) {
+        if (!url) return "";
+
+        const value = String(url || "").trim();
+        if (!value) return "";
+
+        try {
+            if (typeof window.formatAssetLink === "function") {
+                return window.formatAssetLink(value);
+            }
+        } catch (e) {}
+
+        if (value.includes("/file/d/")) {
+            try {
+                return "https://docs.google.com/uc?export=media&id=" +
+                    value.split("/file/d/")[1].split("/")[0].split("?")[0];
+            } catch (e) {
+                return value;
+            }
+        }
+
+        if (value.includes("id=") && value.includes("drive.google")) {
+            try {
+                return "https://docs.google.com/uc?export=media&id=" +
+                    value.split("id=")[1].split("&")[0];
+            } catch (e) {
+                return value;
+            }
+        }
+
+        return value;
+    }
+
+    function isUnsafeUrl(rawUrl) {
+        const value = String(rawUrl || "").trim().toLowerCase();
+
+        return (
+            !value ||
+            value.startsWith("javascript:") ||
+            value.startsWith("data:") ||
+            value.startsWith("blob:") ||
+            value.startsWith("mailto:") ||
+            value.startsWith("tel:")
+        );
+    }
+
+    function looksLikeImageUrl(rawUrl) {
+        const value = String(rawUrl || "").trim().toLowerCase();
+        if (!value) return false;
+
+        return (
+            value.includes(".jpg") ||
+            value.includes(".jpeg") ||
+            value.includes(".png") ||
+            value.includes(".webp") ||
+            value.includes(".gif") ||
+            value.includes("images.unsplash.com") ||
+            value.includes("res.cloudinary.com") ||
+            value.includes("drive.google.com") ||
+            value.includes("docs.google.com/uc") ||
+            value.includes("googleusercontent.com")
+        );
+    }
+
+    function canonicalImageKey(rawUrl) {
+        let value = fallbackFormatAssetLink(rawUrl);
+        value = String(value || "").trim();
+
+        if (!value) return "";
+
+        try {
+            const u = new URL(value, window.location.href);
+
+            const host = u.hostname.toLowerCase().replace(/^www\./, "");
+            let path = u.pathname || "";
+
+            // Google Drive già convertito da formatAssetLink: la vera identità è l'id.
+            const driveId = u.searchParams.get("id");
+            if (driveId && (host.includes("docs.google.com") || host.includes("drive.google.com"))) {
+                return "gdrive:" + driveId.trim();
+            }
+
+            // Rimuove parametri volatili che creano falsi doppioni.
+            [
+                "t",
+                "time",
+                "timestamp",
+                "nocache",
+                "cache",
+                "cachebust",
+                "cacheBust",
+                "cb",
+                "rand",
+                "random",
+                "shellv",
+                "mr",
+                "v"
+            ].forEach(k => u.searchParams.delete(k));
+
+            // Normalizzazione prudente: host minuscolo, path stabile.
+            const query = u.searchParams.toString();
+            return host + path + (query ? "?" + query : "");
+        } catch (e) {
+            return value
+                .toLowerCase()
+                .replace(/[?&](t|time|timestamp|nocache|cache|cachebust|cb|rand|random|shellv|mr|v)=[^&]+/gi, "")
+                .trim();
+        }
+    }
+
+    function buildForbiddenAssetKeys(cachePayload) {
+        const forbidden = new Set();
+
+        function addAssetValue(v) {
+            if (!v) return;
+
+            const raw = String(v || "").trim();
+            if (!raw) return;
+
+            // Censura solo valori che sembrano davvero immagini/asset visuali.
+            // Non vogliamo mischiare link social, WhatsApp, audio, ecc.
+            if (!looksLikeImageUrl(raw)) return;
+
+            const key = canonicalImageKey(raw);
+            if (key) forbidden.add(key);
+        }
+
+        try {
+            if (window.WILD_ASSETS && typeof window.WILD_ASSETS === "object") {
+                Object.keys(window.WILD_ASSETS).forEach(k => {
+                    addAssetValue(window.WILD_ASSETS[k]);
+                });
+            }
+        } catch (e) {}
+
+        try {
+            if (cachePayload && cachePayload.assets && typeof cachePayload.assets === "object") {
+                Object.keys(cachePayload.assets).forEach(k => {
+                    addAssetValue(cachePayload.assets[k]);
+                });
+            }
+        } catch (e) {}
+
+        return forbidden;
+    }
+
+    function firstNonEmpty(obj, keys) {
+        if (!obj) return "";
+
+        for (let i = 0; i < keys.length; i++) {
+            const v = obj[keys[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== "") {
+                return String(v).trim();
+            }
+        }
+
+        return "";
+    }
+
+    function getRuntimeLists() {
+        const trips = Array.isArray(window.allTrips) ? window.allTrips : [];
+        const openDays = Array.isArray(window.allOpenDays) ? window.allOpenDays : [];
+        const payDays = Array.isArray(window.allPayDays) ? window.allPayDays : [];
+
+        return {
+            events: trips,
+            opendays: openDays,
+            paydays: payDays
+        };
+    }
+
+    function getCachedLists(cachePayload) {
+        return {
+            events: Array.isArray(cachePayload && cachePayload.events) ? cachePayload.events : [],
+            opendays: Array.isArray(cachePayload && cachePayload.opendays) ? cachePayload.opendays : [],
+            paydays: Array.isArray(cachePayload && cachePayload.paydays) ? cachePayload.paydays : []
+        };
+    }
+
+    function collectTravelImages(sourceName, list, forbiddenAssetKeys, outputMap) {
+        if (!Array.isArray(list)) return;
+
+        list.forEach(item => {
+            if (!item || typeof item !== "object") return;
+
+            const rawImg = firstNonEmpty(item, [
+                "immagine",
+                "fotoUrl",
+                "img_url",
+                "image",
+                "Image",
+                "Foto",
+                "foto",
+                "cover",
+                "Cover"
+            ]);
+
+            if (!rawImg || isUnsafeUrl(rawImg)) return;
+
+            const finalUrl = fallbackFormatAssetLink(rawImg);
+            if (!finalUrl || isUnsafeUrl(finalUrl)) return;
+
+            const key = canonicalImageKey(finalUrl);
+            if (!key) return;
+
+            // CENSURA ASSOLUTA ASSET:
+            // se l'immagine coincide con header, logo, icone o altri asset globali,
+            // non entra nel WildWall.
+            if (forbiddenAssetKeys.has(key)) return;
+
+            // ANTI-DOPPIONE:
+            // se due viaggi usano la stessa immagine, vince il primo inserito.
+            if (outputMap.has(key)) return;
+
+            const titolo = firstNonEmpty(item, [
+                "Titolo",
+                "titolo",
+                "title",
+                "Nome",
+                "nome"
+            ]) || "Avventura Wild-U";
+
+            const regione = firstNonEmpty(item, [
+                "Regione",
+                "regione",
+                "area",
+                "Area"
+            ]);
+
+            const data = firstNonEmpty(item, [
+                "Data inizio",
+                "Data Inizio",
+                "dataInizio",
+                "data"
+            ]);
+
+            let badge = "VIAGGIO";
+            if (sourceName === "opendays") badge = "OPEN DAY";
+            if (sourceName === "paydays") badge = "HIKE";
+
+            outputMap.set(key, {
+                key,
+                url: finalUrl,
+                titolo,
+                regione,
+                data,
+                badge
+            });
+        });
+    }
+
+    function shuffleList(list) {
+        const copy = Array.isArray(list) ? list.slice() : [];
+
+        for (let i = copy.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = copy[i];
+            copy[i] = copy[j];
+            copy[j] = tmp;
+        }
+
+        return copy;
+    }
+
+    function renderWildWall() {
+        const cachePayload = readWildPublicCachePayload();
+        const forbiddenAssetKeys = buildForbiddenAssetKeys(cachePayload);
+
+        const uniqueImages = new Map();
+
+        const runtimeLists = getRuntimeLists();
+        const cachedLists = getCachedLists(cachePayload);
+
+        // Prima runtime, poi cache: se l'app ha dati freschi, hanno priorità.
+        collectTravelImages("events", runtimeLists.events, forbiddenAssetKeys, uniqueImages);
+        collectTravelImages("opendays", runtimeLists.opendays, forbiddenAssetKeys, uniqueImages);
+        collectTravelImages("paydays", runtimeLists.paydays, forbiddenAssetKeys, uniqueImages);
+
+        collectTravelImages("events", cachedLists.events, forbiddenAssetKeys, uniqueImages);
+        collectTravelImages("opendays", cachedLists.opendays, forbiddenAssetKeys, uniqueImages);
+        collectTravelImages("paydays", cachedLists.paydays, forbiddenAssetKeys, uniqueImages);
+
+        const images = shuffleList(Array.from(uniqueImages.values()));
+
+        if (!images.length) {
+            gridEl.innerHTML = "";
+            emptyEl.style.display = "block";
+            countEl.innerText = "0 immagini viaggio trovate";
             return;
         }
 
-        const images = await api.getCachedImages({ max: 70 });
+        emptyEl.style.display = "none";
+        countEl.innerText = images.length + " immagini viaggio uniche";
 
-        if (!Array.isArray(images) || images.length === 0) {
-            statusBox.innerHTML = `
-                Nessuna immagine trovata nella cache Wild-U.<br>
-                <span style="color:#777;">Apri qualche viaggio, Open Day o contenuto illustrato e poi torna qui.</span>
-            `;
-            gallery.innerHTML = "";
-            return;
-        }
+        gridEl.innerHTML = images.map((img, index) => {
+            const safeUrl = escapeHtml(img.url);
+            const safeTitle = escapeHtml(img.titolo);
+            const safeRegione = escapeHtml(img.regione);
+            const safeData = escapeHtml(img.data);
+            const safeBadge = escapeHtml(img.badge);
 
-        statusBox.innerHTML = `
-            <span style="color:var(--w-gold); font-weight:900;">${images.length}</span>
-            immagini evocate dalla cache Wild-U.
-        `;
-
-        gallery.innerHTML = images.map((img, index) => {
-            const url = String(img.url || "").replace(/"/g, "&quot;");
-            const title = String(img.title || "Wild-U").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            const source = String(img.source || "cache").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            const delay = Math.min(index * 18, 520);
+            const tall = index % 5 === 0;
+            const height = tall ? "210px" : "145px";
 
             return `
-                <div class="wildwall-cache-item" style="animation-delay:${delay}ms;">
-                    <img src="${url}" alt="${title}" loading="lazy">
-                    <div class="wildwall-cache-caption">
-                        ${title}
-                        <span class="wildwall-cache-source">${source}</span>
+                <div style="
+                    position:relative;
+                    overflow:hidden;
+                    border-radius:14px;
+                    height:${height};
+                    background:#111;
+                    border:1px solid rgba(255,255,255,0.08);
+                    box-shadow:0 5px 16px rgba(0,0,0,0.35);
+                ">
+                    <img
+                        src="${safeUrl}"
+                        alt="${safeTitle}"
+                        loading="lazy"
+                        style="
+                            width:100%;
+                            height:100%;
+                            object-fit:cover;
+                            display:block;
+                            filter:saturate(1.08) contrast(1.03);
+                        "
+                    >
+
+                    <div style="
+                        position:absolute;
+                        inset:0;
+                        background:linear-gradient(180deg, rgba(0,0,0,0.05) 20%, rgba(0,0,0,0.82) 100%);
+                        pointer-events:none;
+                    "></div>
+
+                    <div style="
+                        position:absolute;
+                        top:8px;
+                        left:8px;
+                        background:rgba(0,0,0,0.65);
+                        border:1px solid rgba(212,175,55,0.55);
+                        color:var(--w-gold);
+                        border-radius:999px;
+                        padding:4px 8px;
+                        font-size:9px;
+                        font-weight:900;
+                        letter-spacing:0.7px;
+                        text-transform:uppercase;
+                    ">${safeBadge}</div>
+
+                    <div style="
+                        position:absolute;
+                        left:10px;
+                        right:10px;
+                        bottom:10px;
+                        text-align:left;
+                    ">
+                        <div style="
+                            color:#fff;
+                            font-size:12px;
+                            font-weight:900;
+                            line-height:1.15;
+                            text-transform:uppercase;
+                            text-shadow:0 2px 8px rgba(0,0,0,0.8);
+                            display:-webkit-box;
+                            -webkit-line-clamp:2;
+                            -webkit-box-orient:vertical;
+                            overflow:hidden;
+                        ">${safeTitle}</div>
+
+                        <div style="
+                            margin-top:4px;
+                            color:#ccc;
+                            font-size:10px;
+                            font-weight:700;
+                            line-height:1.2;
+                            text-shadow:0 2px 8px rgba(0,0,0,0.8);
+                            white-space:nowrap;
+                            overflow:hidden;
+                            text-overflow:ellipsis;
+                        ">
+                            ${safeRegione ? "📍 " + safeRegione : ""}${safeRegione && safeData ? " · " : ""}${safeData ? "📅 " + safeData : ""}
+                        </div>
                     </div>
                 </div>
             `;
-        }).join('');
+        }).join("");
 
-    } catch (e) {
-        console.error("[WILDWALL] Errore lettura cache immagini:", e);
-
-        statusBox.innerHTML = `
-            Errore durante la lettura della cache immagini.<br>
-            <span style="color:#777;">Il modulo non ha scritto né cancellato dati.</span>
-        `;
-        gallery.innerHTML = "";
+        console.log("[WILDU WILDWALL] Render completato", {
+            immaginiUniche: images.length,
+            assetCensuratiPotenziali: forbiddenAssetKeys.size
+        });
     }
+
+    renderWildWall();
 })();
 </script>
