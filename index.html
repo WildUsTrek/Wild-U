@@ -28,7 +28,54 @@
         .guide-box { background: #222; padding: 18px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--w-green); } .guide-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 16px; } .guide-box p { margin: 0; font-size: 14px; color: #ccc; line-height: 1.5; }
         #toast-msg { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--w-green); color: #fff; padding: 12px 24px; border-radius: 25px; z-index: 9999; display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 14px; white-space: nowrap; }
         .hero-header { width: 100%; height: 160px; background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000'); background-size: cover; background-position: center; position: relative; border-bottom: 3px solid var(--w-green); } .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); } .hero-title { position: absolute; top: 40%; width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); z-index: 2; }
-        .nav { display: flex; gap: 8px; padding: 12px; background: #000; position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #222; overflow-x: auto; -webkit-overflow-scrolling: touch; } .nav::-webkit-scrollbar { display: none; } .nav button { flex: 0 0 auto; background: #222; border: none; color: #888; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 900; text-transform: uppercase; white-space: nowrap; } .nav button.active { background: var(--w-green); color: #fff; box-shadow: 0 0 12px var(--w-green); }
+
+        .nav {
+    display: flex;
+    gap: 8px;
+
+    /* Safe area: impedisce alla navbar di finire sotto notch/status bar */
+    padding: 12px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+
+    background: #000;
+
+    position: sticky;
+    position: -webkit-sticky;
+    top: 0;
+
+    z-index: 1200;
+    border-bottom: 1px solid #222;
+
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+
+    box-sizing: border-box;
+}
+
+.nav::-webkit-scrollbar {
+    display: none;
+}
+
+.nav button {
+    flex: 0 0 auto;
+    background: #222;
+    border: none;
+    color: #888;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 900;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.nav button.active {
+    background: var(--w-green);
+    color: #fff;
+    box-shadow: 0 0 12px var(--w-green);
+}
+        
         .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; } .resource-item:active { background: #252525; } .resource-info { display: flex; align-items: center; gap: 15px; } .resource-icon { font-size: 24px; } .resource-name { font-weight: 800; color: #fff; }
 .container {
     padding: 20px;
@@ -5297,18 +5344,186 @@ function rewriteModuleResourceUrls(root, moduleRev) {
     });
 }
 
+// ==========================================
+// CACHE IMAGE COLLECTOR PER MODULI ESTERNI
+// Usato da WildWall: niente array immagini Firestore,
+// solo immagini già note alla shell/cache Wildu.
+// ==========================================
+
+function wilduLooksLikeImageUrl(rawUrl) {
+    const value = String(rawUrl || "").trim();
+    if (!value) return false;
+
+    const low = value.toLowerCase();
+
+    if (
+        low.startsWith("javascript:") ||
+        low.startsWith("data:") ||
+        low.startsWith("blob:") ||
+        low.startsWith("mailto:") ||
+        low.startsWith("tel:")
+    ) {
+        return false;
+    }
+
+    return (
+        /\.(png|jpg|jpeg|webp|gif|avif|svg)(\?|#|$)/i.test(low) ||
+        low.includes("images.unsplash.com/") ||
+        low.includes("res.cloudinary.com/") ||
+        low.includes("docs.google.com/uc?export=media") ||
+        low.includes("googleusercontent.com")
+    );
+}
+
+function addWilduImageCandidate(pool, seen, rawUrl, title, source) {
+    const formatted = formatAssetLink(String(rawUrl || "").trim());
+    if (!formatted || !wilduLooksLikeImageUrl(formatted)) return;
+
+    let absUrl = formatted;
+
+    try {
+        absUrl = new URL(formatted, window.location.href).toString();
+    } catch (e) {}
+
+    if (seen.has(absUrl)) return;
+    seen.add(absUrl);
+
+    pool.push({
+        url: absUrl,
+        title: String(title || "Wild-U").trim(),
+        source: String(source || "cache").trim()
+    });
+}
+
+function collectWilduImagesFromList(pool, seen, list, source) {
+    if (!Array.isArray(list)) return;
+
+    list.forEach(item => {
+        if (!item || typeof item !== "object") return;
+
+        const title = firstNonEmptyValue(
+            item.Titolo,
+            item.titolo,
+            item.title,
+            item.Nome,
+            item.nome,
+            "Wild-U"
+        );
+
+        addWilduImageCandidate(pool, seen, item.immagine, title, source);
+        addWilduImageCandidate(pool, seen, item.fotoUrl, title, source);
+        addWilduImageCandidate(pool, seen, item.img_url, title, source);
+        addWilduImageCandidate(pool, seen, item.image, title, source);
+        addWilduImageCandidate(pool, seen, item.Image, title, source);
+    });
+}
+
+async function getWilduCachedImageCandidates(options = {}) {
+    const max = Math.max(1, parseInt(options.max, 10) || 80);
+    const pool = [];
+    const seen = new Set();
+
+    // 1) Asset pubblici già caricati nella shell
+    try {
+        Object.keys(WILD_ASSETS || {}).forEach(key => {
+            const val = WILD_ASSETS[key];
+            const lowKey = String(key || "").toLowerCase();
+
+            if (
+                lowKey.includes("img") ||
+                lowKey.includes("image") ||
+                lowKey.includes("foto") ||
+                wilduLooksLikeImageUrl(val)
+            ) {
+                addWilduImageCandidate(pool, seen, val, key, "assets");
+            }
+        });
+    } catch (e) {}
+
+    // 2) Cataloghi runtime già caricati
+    collectWilduImagesFromList(pool, seen, allTrips, "viaggi");
+    collectWilduImagesFromList(pool, seen, allOpenDays, "open-day");
+    collectWilduImagesFromList(pool, seen, allPayDays, "hike");
+
+    // 3) Cache pubblica localStorage
+    try {
+        const env = readPublicCacheEnvelope();
+        const payload = env && env.payload ? env.payload : null;
+
+        if (payload) {
+            collectWilduImagesFromList(pool, seen, payload.events, "cache-viaggi");
+            collectWilduImagesFromList(pool, seen, payload.opendays, "cache-open-day");
+            collectWilduImagesFromList(pool, seen, payload.paydays, "cache-hike");
+
+            if (payload.assets) {
+                Object.keys(payload.assets).forEach(key => {
+                    const val = payload.assets[key];
+                    const lowKey = String(key || "").toLowerCase();
+
+                    if (
+                        lowKey.includes("img") ||
+                        lowKey.includes("image") ||
+                        lowKey.includes("foto") ||
+                        wilduLooksLikeImageUrl(val)
+                    ) {
+                        addWilduImageCandidate(pool, seen, val, key, "cache-assets");
+                    }
+                });
+            }
+        }
+    } catch (e) {}
+
+    // 4) Cache API del browser: solo URL già presenti, nessun fetch nuovo.
+    if ("caches" in window) {
+        try {
+            const cacheNames = await caches.keys();
+
+            for (const cacheName of cacheNames) {
+                if (!/^wildu-/i.test(cacheName)) continue;
+
+                const cache = await caches.open(cacheName);
+                const requests = await cache.keys();
+
+                requests.forEach(req => {
+                    const url = req && req.url ? req.url : "";
+                    addWilduImageCandidate(pool, seen, url, "Immagine Wild-U", "browser-cache");
+                });
+            }
+        } catch (e) {
+            console.warn("Lettura cache immagini WildWall saltata:", e);
+        }
+    }
+
+    // Random elegante ma ordinato: mescola una copia, non distrugge la fonte.
+    const shuffled = pool.slice();
+
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = shuffled[i];
+        shuffled[i] = shuffled[j];
+        shuffled[j] = tmp;
+    }
+
+    return shuffled.slice(0, max);
+}
+
 function exposeModuleRuntime(moduleRev) {
     window.currentModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
     window.WILDU_MODULE = {
         rev: window.currentModuleRev,
         links: Array.isArray(window.currentInternalLinks) ? window.currentInternalLinks : [],
+        resourceBuckets: window.WILDU_RESOURCE_BUCKETS || {},
+        getCachedImages: getWilduCachedImageCandidates,
+
         getUrl: function (rawUrl) {
             return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
         },
+
         getLink: function (ref, fallbackUrl) {
             return getModuleInternalLink(ref, fallbackUrl);
         },
+
         rewriteRoot: function (root) {
             rewriteModuleResourceUrls(root || document, window.currentModuleRev || 1);
         }
@@ -5323,11 +5538,196 @@ function exposeModuleRuntime(moduleRev) {
     };
 }
 
+// ==========================================
+// RISORSE PREMI & GIOCHI — FILTRO PRUDENTE
+// Non elimina dati Firestore: riduce solo le voci visibili.
+// I link GPX vengono spostati nel contesto "Mappa dei Tesori".
+// ==========================================
+
+window.WILDU_RESOURCE_BUCKETS = window.WILDU_RESOURCE_BUCKETS || {
+    gpx: [],
+    libri: [],
+    hidden: [],
+    visible: []
+};
+
+function normalizeWilduResourceName(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function getWilduResourceTitle(res) {
+    return String(res?.Titolo || res?.titolo || res?.Title || res?.title || "").trim();
+}
+
+function getWilduResourceDescription(res) {
+    return String(res?.Descrizione || res?.descrizione || res?.Description || res?.description || "").trim();
+}
+
+function getWilduResourceCategory(res) {
+    return String(res?.Categoria || res?.categoria || res?.Category || res?.category || "🌿").trim();
+}
+
+function getWilduResourceLinks(res) {
+    return Array.isArray(res?.link_interni) ? res.link_interni : [];
+}
+
+function isWilduStandaloneBooksResource(res) {
+    const title = normalizeWilduResourceName(getWilduResourceTitle(res));
+
+    // Nasconde solo la voce autonoma "Libri", non "Guide Manuali e Libri".
+    return title === "libri" || title === "libro";
+}
+
+function isWilduTreasureMapResource(res) {
+    const title = normalizeWilduResourceName(getWilduResourceTitle(res));
+    return title.includes("mappa dei tesori") || title.includes("mappa tesori");
+}
+
+function isWilduGpxResource(res) {
+    if (isWilduTreasureMapResource(res)) return false;
+
+    const blob = normalizeWilduResourceName([
+        getWilduResourceTitle(res),
+        getWilduResourceDescription(res),
+        getWilduResourceCategory(res)
+    ].join(" "));
+
+    if (/\bgpx\b/i.test(blob)) return true;
+
+    const links = getWilduResourceLinks(res);
+    return links.some(item => {
+        const raw = String(
+            item?.Link_Risorsa ||
+            item?.link_risorsa ||
+            item?.Link ||
+            item?.link ||
+            item?.URL ||
+            item?.url ||
+            item?.href ||
+            item?.Href ||
+            item?.file ||
+            item?.File ||
+            ""
+        ).toLowerCase();
+
+        return raw.includes(".gpx") || raw.includes("gpx");
+    });
+}
+
+function getWilduDisplayResourceTitle(res) {
+    const original = getWilduResourceTitle(res);
+    const norm = normalizeWilduResourceName(original);
+
+    if (norm === "costruisci il tuo rifugio") {
+        return "Giochi Wildu Gratis";
+    }
+
+    if (norm === "guide e manuali" || norm === "guide manuali") {
+        return "Guide Manuali e Libri";
+    }
+
+    return original || "Risorsa Wild-U";
+}
+
+function mergeWilduUniqueResourceLinks(primaryLinks, extraLinks) {
+    const out = [];
+    const seen = new Set();
+
+    function getKey(item) {
+        if (!item || typeof item !== "object") return String(item || "");
+        return String(
+            item.Link_Risorsa ||
+            item.link_risorsa ||
+            item.Link ||
+            item.link ||
+            item.URL ||
+            item.url ||
+            item.href ||
+            item.Href ||
+            item.File ||
+            item.file ||
+            item.Titolo ||
+            item.titolo ||
+            JSON.stringify(item)
+        ).trim();
+    }
+
+    [...(primaryLinks || []), ...(extraLinks || [])].forEach(item => {
+        const key = getKey(item);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push(item);
+    });
+
+    return out;
+}
+
 function renderDynamicResources(resources) {
     const container = document.getElementById('dynamic-resources-list');
     if (!container) return;
 
-    container.innerHTML = resources.map(res => {
+    const sourceList = Array.isArray(resources) ? resources : [];
+
+    const gpxResources = [];
+    const libriResources = [];
+    const hiddenResources = [];
+    const visibleResources = [];
+
+    sourceList.forEach(res => {
+        if (!res) return;
+
+        if (isWilduStandaloneBooksResource(res)) {
+            libriResources.push(res);
+            hiddenResources.push(res);
+            return;
+        }
+
+        if (isWilduGpxResource(res)) {
+            gpxResources.push(res);
+            hiddenResources.push(res);
+            return;
+        }
+
+        visibleResources.push(res);
+    });
+
+    const gpxLinks = [];
+    gpxResources.forEach(res => {
+        getWilduResourceLinks(res).forEach(link => gpxLinks.push(link));
+    });
+
+    const finalResources = visibleResources.map(res => {
+        const cloned = { ...res };
+
+        cloned.Titolo = getWilduDisplayResourceTitle(res);
+
+        // Se questa è "Mappa dei Tesori", ci innestiamo dentro i link GPX.
+        if (isWilduTreasureMapResource(res) && gpxLinks.length) {
+            cloned.link_interni = mergeWilduUniqueResourceLinks(
+                getWilduResourceLinks(res),
+                gpxLinks
+            );
+
+            cloned.__wilduMergedGpx = true;
+            cloned.__wilduMergedGpxCount = gpxLinks.length;
+        }
+
+        return cloned;
+    });
+
+    window.WILDU_RESOURCE_BUCKETS = {
+        gpx: gpxResources,
+        libri: libriResources,
+        hidden: hiddenResources,
+        visible: finalResources
+    };
+
+    container.innerHTML = finalResources.map(res => {
         const safeLinks = btoa(JSON.stringify(res.link_interni || []));
         const grado = res.Grado_Minimo || "";
 
@@ -5348,16 +5748,19 @@ function renderDynamicResources(resources) {
             audioParam = `WILD_ASSETS['${res.Audio}']`;
         }
 
-        const safeLinkRisorsa = String(res.Link_Risorsa || "").replace(/'/g, "\\'");
-        const safeGrado = String(grado || "").replace(/'/g, "\\'");
+        const safeLinkRisorsa = String(res.Link_Risorsa || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        const safeGrado = String(grado || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        const displayTitle = getWilduDisplayResourceTitle(res);
+        const displayDesc = getWilduResourceDescription(res);
+        const displayCategory = getWilduResourceCategory(res);
 
         return `
             <div class="resource-item" onclick="openModule('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev})">
                 <div class="resource-info">
-                    <span class="resource-icon">${res.Categoria}</span>
+                    <span class="resource-icon">${displayCategory}</span>
                     <div style="display:flex; flex-direction:column;">
-                        <span class="resource-name">${res.Titolo}</span>
-                        <span style="font-size:11px; color:#666;">${res.Descrizione}</span>
+                        <span class="resource-name">${displayTitle}</span>
+                        <span style="font-size:11px; color:#666;">${displayDesc}</span>
                     </div>
                 </div>
                 <span style="color:var(--w-sub)">➔</span>
