@@ -428,9 +428,122 @@
     <div id="module-container" class="hidden"></div>
     
     <div id="sec-events">
-        <div class="filter-header"><button class="btn-reset" onclick="resetFilters()" style="margin:0;">Reset Filtri</button><div id="trip-count-badge" class="trip-counter">Caricamento...</div></div>
-        <div class="filter-section-dropdowns"><select id="filter-months-select" class="pill-select" onchange="setFilter('month', this.value)"></select><select id="filter-regions-select" class="pill-select" onchange="setFilter('region', this.value)"></select></div>
-        <div id="event-list"></div>
+
+        <div id="events-catalog-view">
+            <div class="filter-header">
+                <button class="btn-reset" onclick="resetFilters()" style="margin:0;">Reset Filtri</button>
+                <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
+            </div>
+
+            <div class="filter-section-dropdowns">
+                <select id="filter-months-select" class="pill-select" onchange="setFilter('month', this.value)"></select>
+                <select id="filter-regions-select" class="pill-select" onchange="setFilter('region', this.value)"></select>
+            </div>
+
+            <button
+                type="button"
+                onclick="openDestinyInsideTrips()"
+                style="
+                    width: 100%;
+                    margin: 0 0 22px 0;
+                    padding: 18px 18px;
+                    border: 1px solid rgba(212, 175, 55, 0.75);
+                    border-radius: 18px;
+                    background:
+                        radial-gradient(circle at top left, rgba(212,175,55,0.28), transparent 42%),
+                        linear-gradient(135deg, rgba(45,90,39,0.95), rgba(18,18,18,0.96));
+                    color: #fff;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 0 18px rgba(212,175,55,0.16);
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 14px;
+                    text-align: left;
+                    box-sizing: border-box;
+                    overflow: hidden;
+                "
+            >
+                <span style="display:flex; align-items:center; gap:14px; min-width:0;">
+                    <span style="
+                        width: 46px;
+                        height: 46px;
+                        min-width: 46px;
+                        border-radius: 50%;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: rgba(212,175,55,0.16);
+                        border: 1px solid rgba(212,175,55,0.55);
+                        box-shadow: inset 0 0 14px rgba(212,175,55,0.14);
+                        font-size: 25px;
+                    ">🎡</span>
+
+                    <span style="display:flex; flex-direction:column; min-width:0;">
+                        <span style="
+                            color: var(--w-gold);
+                            font-size: 11px;
+                            font-weight: 900;
+                            letter-spacing: 1px;
+                            text-transform: uppercase;
+                            margin-bottom: 4px;
+                        ">Non sai dove andare?</span>
+
+                        <span style="
+                            color: #fff;
+                            font-size: 17px;
+                            font-weight: 900;
+                            line-height: 1.15;
+                            text-transform: uppercase;
+                        ">Invoca la Ruota del Destino</span>
+
+                        <span style="
+                            color: #cfcfcf;
+                            font-size: 12px;
+                            line-height: 1.25;
+                            margin-top: 4px;
+                        ">Lascia scegliere agli spiriti del bosco la prossima avventura.</span>
+                    </span>
+                </span>
+
+                <span style="
+                    color: #000;
+                    background: var(--w-gold);
+                    border-radius: 999px;
+                    padding: 8px 11px;
+                    font-size: 13px;
+                    font-weight: 900;
+                    white-space: nowrap;
+                    box-shadow: 0 0 14px rgba(212,175,55,0.35);
+                ">APRILA ➔</span>
+            </button>
+
+            <div id="event-list"></div>
+        </div>
+
+<div id="events-destiny-view" class="hidden" style="text-align:center;">
+    <button
+        type="button"
+        onclick="closeDestinyInsideTrips()"
+        style="
+            width: 100%;
+            margin: 0 0 18px 0;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(212,175,55,0.65);
+            background: rgba(255,255,255,0.06);
+            color: var(--w-gold);
+            font-weight: 900;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+        "
+    >
+        ← Torna ai viaggi
+    </button>
+
+    <div id="events-destiny-slot"></div>
+</div>
     </div>
 
     <div id="sec-free" class="hidden">
@@ -3219,11 +3332,127 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     }
 
     function setFilter(type, val) { activeFilters[type] = val; filterTrips(); }
+
     function resetFilters() { 
-        activeFilters.month = 'Tutti'; activeFilters.region = 'Tutte'; 
-        if(document.getElementById('filter-months-select')) document.getElementById('filter-months-select').value = 'Tutti';
-        if(document.getElementById('filter-regions-select')) document.getElementById('filter-regions-select').value = 'Tutte';
+        activeFilters.month = 'Tutti'; 
+        activeFilters.region = 'Tutte'; 
+
+        if (document.getElementById('filter-months-select')) {
+            document.getElementById('filter-months-select').value = 'Tutti';
+        }
+
+        if (document.getElementById('filter-regions-select')) {
+            document.getElementById('filter-regions-select').value = 'Tutte';
+        }
+
         filterTrips(); 
+    }
+
+    // ==========================================
+    // 🎡 RUOTA DEL DESTINO DENTRO TAB VIAGGI
+    // ==========================================
+    let destinyWheelOriginalParent = null;
+    let destinyWheelOriginalNextSibling = null;
+    let destinyWheelIsInline = false;
+
+    function getOrCreateEventsDestinySlot(destinyView) {
+        let slot = document.getElementById('events-destiny-slot');
+
+        if (!slot && destinyView) {
+            slot = document.createElement('div');
+            slot.id = 'events-destiny-slot';
+            destinyView.appendChild(slot);
+        }
+
+        return slot;
+    }
+
+    function restoreDestinyWheelHome() {
+        const wheelSection = document.getElementById('sec-wheel');
+
+        if (!wheelSection || !destinyWheelOriginalParent) {
+            destinyWheelIsInline = false;
+            return;
+        }
+
+        if (wheelSection.parentNode !== destinyWheelOriginalParent) {
+            if (
+                destinyWheelOriginalNextSibling &&
+                destinyWheelOriginalNextSibling.parentNode === destinyWheelOriginalParent
+            ) {
+                destinyWheelOriginalParent.insertBefore(wheelSection, destinyWheelOriginalNextSibling);
+            } else {
+                destinyWheelOriginalParent.appendChild(wheelSection);
+            }
+        }
+
+        wheelSection.classList.add('hidden');
+        wheelSection.style.display = '';
+        destinyWheelIsInline = false;
+    }
+
+    function openDestinyInsideTrips() {
+        const catalogView = document.getElementById('events-catalog-view');
+        const destinyView = document.getElementById('events-destiny-view');
+        const wheelSection = document.getElementById('sec-wheel');
+
+        if (!catalogView || !destinyView || !wheelSection) {
+            showToast("Ruota non pronta. Controlla lo step 1/4.");
+            return;
+        }
+
+        if (!destinyWheelOriginalParent) {
+            destinyWheelOriginalParent = wheelSection.parentNode;
+            destinyWheelOriginalNextSibling = wheelSection.nextSibling;
+        }
+
+        const destinySlot = getOrCreateEventsDestinySlot(destinyView);
+
+        if (!destinySlot) {
+            showToast("Spazio Ruota non trovato.");
+            return;
+        }
+
+        catalogView.classList.add('hidden');
+        destinyView.classList.remove('hidden');
+        destinyView.style.display = 'block';
+
+        destinySlot.appendChild(wheelSection);
+
+        wheelSection.classList.remove('hidden');
+        wheelSection.style.display = 'block';
+
+        destinyWheelIsInline = true;
+
+        setTimeout(() => {
+            destinyView.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }, 80);
+    }
+
+    function closeDestinyInsideTrips() {
+        const catalogView = document.getElementById('events-catalog-view');
+        const destinyView = document.getElementById('events-destiny-view');
+
+        restoreDestinyWheelHome();
+
+        if (destinyView) {
+            destinyView.classList.add('hidden');
+            destinyView.style.display = '';
+        }
+
+        if (catalogView) {
+            catalogView.classList.remove('hidden');
+
+            setTimeout(() => {
+                catalogView.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }, 80);
+        }
     }
 
 function filterTrips() {
@@ -3453,62 +3682,50 @@ function showTripDetails(id) {
         document.getElementById('trip-modal-img-container').style.display = 'block';
     }
 
-    // Prezzi e XP nel Modal
+// Prezzi e XP nel Modal
     const hasOfferta = ev["Offerta Attiva"] === true;
     const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || "0";
     const prezzoEarly = ev["Prezzo Early"] || prezzoBase;
-    const prezzoStandard = ev["Prezzo (€)"] || prezzoBase;
+    const prezzoStandard = ev["Prezzo (€)"] || ev.Prezzo || prezzoBase;
     const prezzoFinale = hasOfferta ? prezzoEarly : prezzoBase;
     const xpReward = ev.xp_reward || Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
 
     document.getElementById('trip-modal-price-box').style.display = 'block';
+    document.getElementById('trip-modal-std-row').style.display = 'flex'; // Mostra riga standard
+    document.getElementById('trip-modal-prime-label').innerText = 'ESCLUSIVO PRIME';
     document.getElementById('trip-modal-p-std').innerText = `${prezzoStandard}€`;
     document.getElementById('trip-modal-p-prime').innerText = `${prezzoFinale}€`;
+    document.getElementById('trip-modal-p-prime').style.color = 'var(--w-gold)';
+    document.getElementById('trip-modal-xp-container').style.display = 'block';
     document.getElementById('trip-modal-xp').innerText = `+${xpReward} XP`;
 
-    // Gestione Servizi
-    let gearHtml = '';
-    const servizi = ev.servizi || [];
-    if (servizi.length > 0) {
-        document.getElementById('od-modal-gear-title').innerText = "🎒 Servizi Inclusi";
-        gearHtml = servizi.map(s => `<li style="margin-bottom:8px; display:flex; align-items:flex-start; gap:8px;"><span style="flex-shrink:0;">✅</span><span style="flex:1;">${s}</span></li>`).join('');
+    // 🎯 Link Sito Ufficiale Discreto (Solo Official)
+    const linkSito = ev.Link || ev.link || "";
+    const discreteLink = document.getElementById('trip-modal-link-sito-discreto');
+    if (linkSito) {
+        discreteLink.href = linkSito;
+        discreteLink.style.display = 'block';
     } else {
-        gearHtml = '<li>Dettagli servizi disponibili sul sito ufficiale.</li>';
+        discreteLink.style.display = 'none';
     }
-    document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
-    // --- GESTIONE MAPPE (FORZATURA REGIONALE) ---
+    // --- GESTIONE MAPPE (COSTRUZIONE STRINGA PER OFFICIAL) ---
     const mapContainer = document.getElementById('od-map-container');
     const mapsBtn = document.getElementById('od-modal-maps');
-    const linkMaps = ev.ritrovo?.luogoLink || ev.luogoLink || "";
     
-    if (linkMaps || luogoPulito) {
+    if (luogoPulito && luogoPulito !== "Luogo da definire") {
         mapContainer.style.display = "block";
         mapsBtn.style.display = "block";
         
-        const isPlaceValid = luogoPulito && luogoPulito !== "Luogo non specificato" && luogoPulito !== "Luogo da definire";
-        
-        // IL TRUCCO: Aggiungiamo la regione (es. TOSCANA) che il tuo DB ha già trovato!
-        const stringaRicerca = isPlaceValid 
-            ? `${luogoPulito}, ${reg ? reg + ", " : ""}Italy` 
-            : "Italy";
-            
+        // Costruiamo la stringa di ricerca con Regione per precisione
+        const stringaRicerca = `${luogoPulito}, ${reg ? reg + ", " : ""}Italy`;
         const queryEmbed = encodeURIComponent(stringaRicerca);
 
-        mapsBtn.href = linkMaps || `https://maps.google.com/maps?q=${queryEmbed}`;
-        document.getElementById('od-map-iframe').src = `https://maps.google.com/maps?q=${queryEmbed}&output=embed`;
+        mapsBtn.href = `https://maps.google.com/?q={queryEmbed}`;
+        document.getElementById('od-map-iframe').src = `https://maps.google.com/maps?q=${queryEmbed}&t=m&z=16&output=embed&iwloc=near`;
     } else {
         mapContainer.style.display = "none";
         mapsBtn.style.display = "none";
-    }
-
-    // Link Sito Ufficiale
-    const linkSito = ev.Link || ev.link || "";
-    if (linkSito) {
-        const uffBtn = document.getElementById('trip-modal-link-ufficiale');
-        uffBtn.href = linkSito;
-        uffBtn.innerText = "🔗 LINK SITO UFFICIALE";
-        uffBtn.style.display = 'block';
     }
 
     // Tasto Prenota Finale
@@ -4216,43 +4433,110 @@ if (profKeyEl) {
     function processXPBuffer() { if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); } }
     function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; sRew.play(); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
     function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play(); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
+
+
     
     function show(id) {
         currentTab = id;
+
+        // ==========================================
+        // 🛡️ SCUDO ANTI-PARADOSSO RUOTA INLINE
+        // ==========================================
+        // Se la Ruota è stata spostata dentro "Viaggi", prima di qualunque cambio tab
+        // la rimettiamo nella sua posizione originale. Così:
+        // - la vecchia tab Ruota continua a funzionare;
+        // - la tab Viaggi non resta sporca;
+        // - non esistono ID duplicati;
+        // - non perdiamo stato/funzioni della Ruota.
+        if (
+            typeof destinyWheelIsInline !== 'undefined' &&
+            destinyWheelIsInline === true &&
+            typeof restoreDestinyWheelHome === 'function'
+        ) {
+            restoreDestinyWheelHome();
+
+            const destinyView = document.getElementById('events-destiny-view');
+            if (destinyView) {
+                destinyView.classList.add('hidden');
+                destinyView.style.display = '';
+            }
+
+            const catalogView = document.getElementById('events-catalog-view');
+            if (catalogView) {
+                catalogView.classList.remove('hidden');
+                catalogView.style.display = '';
+            }
+
+            const openBtn = document.getElementById('events-destiny-open-btn');
+            if (openBtn) {
+                openBtn.setAttribute('aria-expanded', 'false');
+                openBtn.classList.remove('destiny-open-active');
+            }
+        }
         
-        // 1. FORZA LO SCROLL IN ALTO (Il "Mirino" per la barra XP)
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // 1. FORZA LO SCROLL IN ALTO
+        window.scrollTo({ 
+            top: 0, 
+            behavior: 'smooth' 
+        });
 
         ['events', 'free', 'paid', 'rewards', 'wheel', 'profile', 'groups', 'install'].forEach(s => { 
-    if(document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden'); 
-    if(document.getElementById('btn-' + s)) document.getElementById('btn-' + s).classList.remove('active'); 
-});
+            const section = document.getElementById('sec-' + s);
+            const button = document.getElementById('btn-' + s);
+
+            if (section) {
+                section.classList.add('hidden');
+            }
+
+            if (button) {
+                button.classList.remove('active');
+            }
+        });
         
-        if(document.getElementById('sec-' + id)) document.getElementById('sec-' + id).classList.remove('hidden');
+        const targetSection = document.getElementById('sec-' + id);
+        if (targetSection) {
+            targetSection.classList.remove('hidden');
+        }
         
         // 2. ATTIVA IL BOTTONE E LO CENTRA VISIVAMENTE
         const activeBtn = document.getElementById('btn-' + id);
-        if(activeBtn) {
+        if (activeBtn) {
             activeBtn.classList.add('active');
-            // IL TRUCCO UX: Centra il bottone cliccato nella barra orizzontale in modo fluido
-            activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+
+            activeBtn.scrollIntoView({ 
+                behavior: 'smooth', 
+                inline: 'center', 
+                block: 'nearest' 
+            });
         }
         
         const m = document.getElementById('module-container'); 
-        if(m && !m.classList.contains('hidden')){ 
-            m.innerHTML=''; 
+        if (m && !m.classList.contains('hidden')) { 
+            m.innerHTML = ''; 
             m.classList.add('hidden'); 
-            if(currentModuleAudio){ currentModuleAudio.pause(); currentModuleAudio=null; } 
+
+            if (currentModuleAudio) { 
+                currentModuleAudio.pause(); 
+                currentModuleAudio = null; 
+            } 
         }
         
         setTimeout(() => { 
-            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); 
-            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); 
+            if (aMus && FIXED_VOL_MUS > 0) {
+                fadeAudio(aMus, FIXED_VOL_MUS);
+            }
+
+            if (aAmb && FIXED_VOL_AMB > 0) {
+                fadeAudio(aAmb, FIXED_VOL_AMB);
+            }
         }, 100);
         
         if (id === 'profile') { 
-            if (cachedXPData) renderProfile(cachedXPData); 
-            else if (wildUserKey) fetchXP(); 
+            if (cachedXPData) {
+                renderProfile(cachedXPData);
+            } else if (wildUserKey) {
+                fetchXP();
+            }
         }
     }
     
@@ -4635,16 +4919,13 @@ function showOpenDayDetails(id) {
         return;
     }
 
-    // --- PARTE ESTETICA ---
-    
-
-
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
     const oldPrice = document.getElementById('pd-dynamic-price');
     if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
+    document.getElementById('trip-modal-link-sito-discreto').style.display = 'none'; // Aggiunto reset nuovo link
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
 
     // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
@@ -4653,7 +4934,7 @@ function showOpenDayDetails(id) {
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     
-// Riportiamo la descrizione sopra il titolo dello Zaino
+    // Riportiamo la descrizione sopra il titolo dello Zaino
     container.insertBefore(descEl, gearTitleEl);
     // 👆 FINE BLOCCO RIPRISTINO 👆
 
@@ -4670,7 +4951,6 @@ function showOpenDayDetails(id) {
     }
 
     // Popolamento testi base
-
     document.getElementById('od-modal-title').innerText = od["Titolo"] || "Evento";
     const dInizio = od["Data Inizio"] || "";
     const dFine = od["Data Fine"] || "";
@@ -4687,6 +4967,20 @@ function showOpenDayDetails(id) {
     document.getElementById('od-modal-dsl').innerText = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
     document.getElementById('od-modal-dsl').style.display = od["Dislivello"] ? "inline-block" : "none";
 
+    // --- 🎯 UNIFICAZIONE BOX PREZZO (OPEN DAY GRATIS) ---
+    // Calcoliamo randomXP QUI, così il box grafico e il bottone usano LO STESSO NUMERO.
+    const min = parseInt(config.od_xp_min) || 4;
+    const max = parseInt(config.od_xp_max) || 12;
+    const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+    
+    document.getElementById('trip-modal-price-box').style.display = 'block';
+    document.getElementById('trip-modal-std-row').style.display = 'none'; // Nascondiamo lo standard
+    document.getElementById('trip-modal-prime-label').innerText = 'STATUS EVENTO';
+    document.getElementById('trip-modal-p-prime').innerText = 'GRATIS';
+    document.getElementById('trip-modal-p-prime').style.color = '#00aaff'; // Colore Open Day
+    document.getElementById('trip-modal-xp-container').style.display = 'block';
+    document.getElementById('trip-modal-xp').innerText = `+${randomXP} XP`;
+
     let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
     const rawDesc = desc.replace(/\n/g, '<br>');
     if (rawDesc.length > 180) {
@@ -4695,9 +4989,6 @@ function showOpenDayDetails(id) {
         document.getElementById('od-modal-desc').innerHTML = rawDesc;
     }
 
-
-
-    
     const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
     const fomoBadge = document.getElementById('trip-modal-fomo-badge');
     fomoBadge.style.background = occ.isAlmostFull ? 'rgba(255, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.75)';
@@ -4721,7 +5012,7 @@ function showOpenDayDetails(id) {
     }
     document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
-    // Gestione Mappe e Iframe
+    // --- GESTIONE MAPPE E IFRAME ---
     const mapsBtn = document.getElementById('od-modal-maps');
     const mapContainer = document.getElementById('od-map-container');
     const mapIframe = document.getElementById('od-map-iframe');
@@ -4731,9 +5022,18 @@ function showOpenDayDetails(id) {
     if (linkStr || nomeLuogo) {
         mapsBtn.style.display = "block";
         mapContainer.style.display = "block";
+        
+        // Pulsante: usa il link esatto se c'è, altrimenti fallback ricerca Google Maps
         mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/" + encodeURIComponent(nomeLuogo + ", Italy");
-        const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
-        mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+        
+        // Iframe: usa embed link esatto se c'è, altrimenti fallback query
+        if (linkStr) {
+            const embedLink = linkStr.includes('output=embed') ? linkStr : linkStr + (linkStr.includes('?') ? '&' : '?') + 'output=embed';
+            mapIframe.src = embedLink;
+        } else {
+            const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
+            mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+        }
     } else {
         mapsBtn.style.display = "none";
         mapContainer.style.display = "none";
@@ -4741,7 +5041,7 @@ function showOpenDayDetails(id) {
 
     // --- IL CERVELLO DEL TASTO ISCRIVITI ---
     const bookBtn = document.getElementById('od-modal-book');
-  
+    
     const t = od["Titolo"] || "Open Day";
     const d = od["Data Inizio"] || "";
     const odBookingId = od.bookingId || "";
@@ -4754,7 +5054,7 @@ function showOpenDayDetails(id) {
         data: d
     });
 
-if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+    if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
         bookBtn.style.display = "block";
         bookBtn.disabled = true;
         bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
@@ -4784,14 +5084,12 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         bookBtn.onclick = function () {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
             document.getElementById('od-details-modal').style.display = 'none';
-            const min = parseInt(config.od_xp_min) || 4;
-            const max = parseInt(config.od_xp_max) || 12;
-            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+            // Usa il randomXP fisso calcolato in alto!
             openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId);
         };
     }
 
-// --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    // --- 🚀 MOTORE CLONE INTELLIGENTE ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
     
@@ -4805,9 +5103,7 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         clonedBtn.onclick = () => {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
             document.getElementById('od-details-modal').style.display = 'none';
-            const min = parseInt(config.od_xp_min) || 4;
-            const max = parseInt(config.od_xp_max) || 12;
-            const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
+            // Usa il randomXP fisso calcolato in alto!
             openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId, "TOP_SENZA_IMPEGNO");
         };
     }
@@ -4844,20 +5140,23 @@ function showPayDayDetails(id) {
     }
 
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
+    const oldPrice = document.getElementById('pd-dynamic-price');
+    if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
+    document.getElementById('trip-modal-link-sito-discreto').style.display = 'none';
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
+    
+    // ... e poi continua col resto ...
 
-    // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
     // --- 🔄 RIPRISTINO LAYOUT: DESCRIZIONE PRIMA DELLO ZAINO ---
     const container = document.getElementById('od-modal-desc').parentNode;
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     
-// Riportiamo la descrizione sopra il titolo dello Zaino
+    // Riportiamo la descrizione sopra il titolo dello Zaino
     container.insertBefore(descEl, gearTitleEl);
-    // 👆 FINE BLOCCO RIPRISTINO 👆
 
     // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Pay Day) ---
     const modalImgPD = pd["immagine"] || pd["fotoUrl"] || ""; 
@@ -4871,8 +5170,7 @@ function showPayDayDetails(id) {
         modalContPD.style.display = 'none';
     }
 
-    // Popolamento testi base
-
+    // --- TESTI BASE ---
     document.getElementById('od-modal-title').innerText = pd["Titolo"] || "Evento";
     const dInizio = pd["Data Inizio"] || "";
     const dFine = pd["Data Fine"] || "";
@@ -4889,26 +5187,25 @@ function showPayDayDetails(id) {
     document.getElementById('od-modal-dsl').innerText = pd["Dislivello"] ? `⛰️ ${pd["Dislivello"]} m` : "";
     document.getElementById('od-modal-dsl').style.display = pd["Dislivello"] ? "inline-block" : "none";
 
-    let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
+    // --- 🎯 UNIFICAZIONE BOX PREZZO E CALCOLO XP (PAY DAY) ---
     const prezzo = pd["Prezzo"] || "0";
+    const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
     
-    // Assicuriamoci che il prezzo abbia un suo div separato SOPRA la descrizione
-    let priceBox = document.getElementById('pd-dynamic-price');
-    const descContainer = document.getElementById('od-modal-desc');
-    if(!priceBox) {
-        priceBox = document.createElement('div');
-        priceBox.id = 'pd-dynamic-price';
-        priceBox.style.cssText = 'margin-bottom: 20px; font-size: 16px; color: #eee;';
-        descContainer.parentNode.insertBefore(priceBox, descContainer);
-    }
-    priceBox.innerHTML = ` Prezzo: <b>${prezzo}€</b>`;
-    priceBox.style.display = 'block';
+    document.getElementById('trip-modal-price-box').style.display = 'block';
+    document.getElementById('trip-modal-std-row').style.display = 'none'; // Nascondiamo la riga "Standard"
+    document.getElementById('trip-modal-prime-label').innerText = 'QUOTA PARTECIPAZIONE';
+    document.getElementById('trip-modal-p-prime').innerText = `${prezzo}€`;
+    document.getElementById('trip-modal-p-prime').style.color = 'var(--w-gold)';
+    document.getElementById('trip-modal-xp-container').style.display = 'block';
+    document.getElementById('trip-modal-xp').innerText = `+${earnedXP} XP`;
 
+    // --- DESCRIZIONE ---
+    let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
     const rawDesc = desc.replace(/\n/g, '<br>');
     if (rawDesc.length > 250) {
-        descContainer.innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
+        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
     } else {
-        descContainer.innerHTML = rawDesc;
+        document.getElementById('od-modal-desc').innerHTML = rawDesc;
     }
 
     // --- ⚙️ MOTORE FOMO NEL MODAL ----
@@ -4919,6 +5216,7 @@ function showPayDayDetails(id) {
     fomoBadge.innerHTML = `${occ.isAlmostFull ? '🔥' : '👥'} ${occ.occupati}/${occ.totali} Iscritti ${occ.isAlmostFull ? '(Ultimi Posti!)' : ''}`;
     fomoBadge.style.display = 'block';
 
+    // --- ATTREZZATURA ---
     let gearHtml = '';
     try {
         const gearArr = JSON.parse(pd["Attrezzatura (JSON)"] || "[]");
@@ -4930,6 +5228,7 @@ function showPayDayDetails(id) {
     } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
     document.getElementById('od-modal-gear').innerHTML = gearHtml;
 
+    // --- GESTIONE MAPPE E IFRAME (LINK DIRETTO COORDINATE) ---
     const mapsBtn = document.getElementById('od-modal-maps');
     const mapContainer = document.getElementById('od-map-container');
     const mapIframe = document.getElementById('od-map-iframe');
@@ -4939,16 +5238,25 @@ function showPayDayDetails(id) {
     if(linkStr || nomeLuogo) {
         mapsBtn.style.display = "block";
         mapContainer.style.display = "block";
+        
+        // Pulsante
         mapsBtn.href = linkStr ? linkStr : "https://www.google.com/maps/search/" + encodeURIComponent(nomeLuogo + ", Italy");
-        const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
-        mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+        
+        // Iframe: Se c'è il link diretto lo forziamo, altrimenti fallback
+        if (linkStr) {
+            const embedLink = linkStr.includes('output=embed') ? linkStr : linkStr + (linkStr.includes('?') ? '&' : '?') + 'output=embed';
+            mapIframe.src = embedLink;
+        } else {
+            const queryEmbed = nomeLuogo ? encodeURIComponent(nomeLuogo + ", Italy") : "Italy";
+            mapIframe.src = "https://maps.google.com/maps?q=" + queryEmbed + "&t=m&z=14&output=embed&iwloc=near";
+        }
     } else {
         mapsBtn.style.display = "none";
         mapContainer.style.display = "none";
     }
 
+    // --- IL CERVELLO DEL TASTO ISCRIVITI ---
     const bookBtn = document.getElementById('od-modal-book');
-  
     const t = pd["Titolo"] || "Hike";
     const d = pd["Data Inizio"] || "";
     const pdBookingId = pd.bookingId || "";
@@ -4961,7 +5269,7 @@ function showPayDayDetails(id) {
         data: d
     });
 
-if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
+    if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey)) {
         bookBtn.style.display = "block";
         bookBtn.disabled = true;
         bookBtn.innerText = "🎒 GIÀ ISCRITTO!";
@@ -4991,12 +5299,12 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         bookBtn.onclick = function() {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
             document.getElementById('od-details-modal').style.display = 'none';
-            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
+            // Utilizza earnedXP già calcolato in alto in modo sicuro!
             openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId);
         };
     }
 
-// --- 🚀 MOTORE CLONE INTELLIGENTE ---
+    // --- 🚀 MOTORE CLONE INTELLIGENTE ---
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if(oldClone) oldClone.remove();
     
@@ -5010,7 +5318,7 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         clonedBtn.onclick = () => {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
             document.getElementById('od-details-modal').style.display = 'none';
-            const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
+            // Utilizza earnedXP già calcolato in alto!
             openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId, "TOP_SENZA_IMPEGNO");
         };
     }
@@ -5032,6 +5340,7 @@ if (myBookedTitles.includes(bookingKey) || pendingBookings.includes(bookingKey))
         descElForClone.parentNode.insertBefore(wrapper, descElForClone);
     }
 
+    // MOSTRA IL MODAL DETTAGLI
     document.getElementById('od-details-modal').style.display = 'block';
 }
     
@@ -5509,23 +5818,27 @@ document.addEventListener('DOMContentLoaded', () => {
             <span id="od-modal-dsl" style="background:#333; padding:6px 12px; border-radius:6px; font-size:14px; font-weight:bold;"></span>
         </div>
         
-        <div id="trip-modal-price-box" style="display:none; background:#222; padding:15px; border-radius:10px; margin-bottom:20px; border:1px solid #444;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+<div id="trip-modal-price-box" style="display:none; background:#222; padding:15px; border-radius:10px; margin-bottom:15px; border:1px solid #444;">
+            <div id="trip-modal-std-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <span style="color:#888; font-size:13px;">PREZZO STANDARD</span>
                 <span id="trip-modal-p-std" style="font-weight:bold; color:#fff;"></span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid #333;">
                 <div>
-                    <div style="color:var(--w-gold); font-size:10px; font-weight:bold; letter-spacing:1px;">ESCLUSIVO PRIME</div>
+                    <div id="trip-modal-prime-label" style="color:var(--w-gold); font-size:10px; font-weight:bold; letter-spacing:1px;">ESCLUSIVO PRIME</div>
                     <div id="trip-modal-p-prime" style="font-size:22px; font-weight:900; color:var(--w-gold);"></div>
                 </div>
-                <div style="text-align:right;">
+                <div id="trip-modal-xp-container" style="text-align:right;">
                     <div id="trip-modal-xp" style="font-size:14px; font-weight:bold; color:var(--w-gold);"></div>
                     <div style="font-size:9px; color:#666;">WILD XP GUADAGNATI</div>
                 </div>
             </div>
         </div>
-
+        
+        <a id="trip-modal-link-sito-discreto" href="#" target="_blank" style="display:none; text-align: center; color: var(--w-gold); font-size: 13px; font-weight: 800; text-decoration: none; margin-bottom: 25px; text-transform: uppercase; letter-spacing: 1px;">
+            Vai al sito ufficiale <i class="fas fa-external-link-alt" style="font-size: 11px; margin-left: 5px;"></i>
+        </a>
+        
         <p id="od-modal-desc" style="color:#eee; line-height:1.6; font-size:16px; margin-bottom:25px;"></p>
         
 
