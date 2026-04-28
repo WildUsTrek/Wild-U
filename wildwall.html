@@ -1,9 +1,164 @@
-<div class="card" style="border-left-color: var(--w-gold); text-align: center; margin-top: 20px;">
-    <h2 style="color: var(--w-gold);">wildwall</h2>
-    <p style="color: #ccc; font-size: 15px;">Gli spiriti stanno costruendo questa sezione...</p>
+<div class="card" style="border-left-color: var(--w-gold); margin-top: 20px;">
+    <div style="text-align:center; margin-bottom:18px;">
+        <h2 style="color: var(--w-gold); margin:0; text-transform:uppercase; letter-spacing:1px;">
+            WildWall
+        </h2>
+        <p style="color:#ccc; font-size:14px; line-height:1.5; margin:10px 0 0 0;">
+            Un mosaico vivo delle immagini già custodite nella cache Wild-U.
+        </p>
+    </div>
+
+    <div id="wildwall-cache-status" style="
+        color:#aaa;
+        text-align:center;
+        font-size:13px;
+        padding:20px;
+        border-radius:14px;
+        background:rgba(255,255,255,0.04);
+        border:1px solid rgba(255,255,255,0.08);
+        margin-bottom:16px;
+    ">
+        Gli spiriti stanno raccogliendo le immagini già viste...
+    </div>
+
+    <div id="wildwall-cache-gallery" class="wildwall-cache-gallery"></div>
 </div>
 
+<style>
+    .wildwall-cache-gallery {
+        column-count: 2;
+        column-gap: 10px;
+        width: 100%;
+    }
+
+    .wildwall-cache-item {
+        break-inside: avoid;
+        -webkit-column-break-inside: avoid;
+        margin: 0 0 10px 0;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #111;
+        border: 1px solid rgba(255,255,255,0.08);
+        box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+        position: relative;
+        animation: wildWallFadeIn 0.45s ease both;
+    }
+
+    .wildwall-cache-item img {
+        width: 100%;
+        height: auto;
+        min-height: 120px;
+        max-height: 260px;
+        object-fit: cover;
+        display: block;
+        transform: scale(1.01);
+        background: #111;
+    }
+
+    .wildwall-cache-caption {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 22px 9px 8px 9px;
+        background: linear-gradient(0deg, rgba(0,0,0,0.82), transparent);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        text-shadow: 0 1px 3px #000;
+        box-sizing: border-box;
+    }
+
+    .wildwall-cache-source {
+        color: var(--w-gold);
+        opacity: 0.9;
+        font-size: 9px;
+        display: block;
+        margin-top: 2px;
+    }
+
+    @media (min-width: 600px) {
+        .wildwall-cache-gallery {
+            column-count: 3;
+        }
+    }
+
+    @keyframes wildWallFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(8px) scale(0.98);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+</style>
+
 <script>
-    console.log("Modulo caricato con successo!");
+(async function renderWildWallFromWilduCache() {
+    console.log("[WILDWALL] Modulo cache immagini caricato.");
+
+    const statusBox = document.getElementById('wildwall-cache-status');
+    const gallery = document.getElementById('wildwall-cache-gallery');
+
+    if (!statusBox || !gallery) return;
+
+    try {
+        const api = window.WILDU_MODULE;
+
+        if (!api || typeof api.getCachedImages !== "function") {
+            statusBox.innerHTML = `
+                Cache immagini non disponibile.<br>
+                <span style="color:#777;">Completa prima lo Step 2/4 nel file principale.</span>
+            `;
+            gallery.innerHTML = "";
+            return;
+        }
+
+        const images = await api.getCachedImages({ max: 70 });
+
+        if (!Array.isArray(images) || images.length === 0) {
+            statusBox.innerHTML = `
+                Nessuna immagine trovata nella cache Wild-U.<br>
+                <span style="color:#777;">Apri qualche viaggio, Open Day o contenuto illustrato e poi torna qui.</span>
+            `;
+            gallery.innerHTML = "";
+            return;
+        }
+
+        statusBox.innerHTML = `
+            <span style="color:var(--w-gold); font-weight:900;">${images.length}</span>
+            immagini evocate dalla cache Wild-U.
+        `;
+
+        gallery.innerHTML = images.map((img, index) => {
+            const url = String(img.url || "").replace(/"/g, "&quot;");
+            const title = String(img.title || "Wild-U").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const source = String(img.source || "cache").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            const delay = Math.min(index * 18, 520);
+
+            return `
+                <div class="wildwall-cache-item" style="animation-delay:${delay}ms;">
+                    <img src="${url}" alt="${title}" loading="lazy">
+                    <div class="wildwall-cache-caption">
+                        ${title}
+                        <span class="wildwall-cache-source">${source}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch (e) {
+        console.error("[WILDWALL] Errore lettura cache immagini:", e);
+
+        statusBox.innerHTML = `
+            Errore durante la lettura della cache immagini.<br>
+            <span style="color:#777;">Il modulo non ha scritto né cancellato dati.</span>
+        `;
+        gallery.innerHTML = "";
+    }
+})();
 </script>
- 
