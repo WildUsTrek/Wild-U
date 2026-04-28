@@ -168,6 +168,17 @@
         }
     }
 
+
+
+        function canonicalTitleKey(rawTitle) {
+        return String(rawTitle || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+    }
+
     function buildForbiddenAssetKeys(cachePayload) {
         const forbidden = new Set();
 
@@ -260,17 +271,13 @@
             const finalUrl = fallbackFormatAssetLink(rawImg);
             if (!finalUrl || isUnsafeUrl(finalUrl)) return;
 
-            const key = canonicalImageKey(finalUrl);
-            if (!key) return;
+            const imageKey = canonicalImageKey(finalUrl);
+            if (!imageKey) return;
 
             // CENSURA ASSOLUTA ASSET:
             // se l'immagine coincide con header, logo, icone o altri asset globali,
             // non entra nel WildWall.
-            if (forbiddenAssetKeys.has(key)) return;
-
-            // ANTI-DOPPIONE:
-            // se due viaggi usano la stessa immagine, vince il primo inserito.
-            if (outputMap.has(key)) return;
+            if (forbiddenAssetKeys.has(imageKey)) return;
 
             const titolo = firstNonEmpty(item, [
                 "Titolo",
@@ -280,6 +287,9 @@
                 "nome"
             ]) || "Avventura Wild-U";
 
+            const titleKey = canonicalTitleKey(titolo);
+            if (!titleKey) return;
+
             const regione = firstNonEmpty(item, [
                 "Regione",
                 "regione",
@@ -287,23 +297,33 @@
                 "Area"
             ]);
 
-            const data = firstNonEmpty(item, [
-                "Data inizio",
-                "Data Inizio",
-                "dataInizio",
-                "data"
-            ]);
-
             let badge = "VIAGGIO";
             if (sourceName === "opendays") badge = "OPEN DAY";
             if (sourceName === "paydays") badge = "HIKE";
 
-            outputMap.set(key, {
-                key,
+            // ANTI-DOPPIONE PER TITOLO:
+            // stesso titolo = una sola card, anche se cambia data.
+            // Se ha immagini diverse, ne terremo una random nel render.
+            if (!outputMap.has(titleKey)) {
+                outputMap.set(titleKey, {
+                    titleKey,
+                    titolo,
+                    candidates: [],
+                    imageKeys: new Set()
+                });
+            }
+
+            const group = outputMap.get(titleKey);
+
+            // Dentro lo stesso titolo evitiamo immagini identiche duplicate.
+            if (group.imageKeys.has(imageKey)) return;
+
+            group.imageKeys.add(imageKey);
+            group.candidates.push({
+                key: imageKey,
                 url: finalUrl,
                 titolo,
                 regione,
-                data,
                 badge
             });
         });
@@ -326,21 +346,31 @@
         const cachePayload = readWildPublicCachePayload();
         const forbiddenAssetKeys = buildForbiddenAssetKeys(cachePayload);
 
-        const uniqueImages = new Map();
+        const uniqueTitleGroups = new Map();
 
         const runtimeLists = getRuntimeLists();
         const cachedLists = getCachedLists(cachePayload);
 
         // Prima runtime, poi cache: se l'app ha dati freschi, hanno priorità.
-        collectTravelImages("events", runtimeLists.events, forbiddenAssetKeys, uniqueImages);
-        collectTravelImages("opendays", runtimeLists.opendays, forbiddenAssetKeys, uniqueImages);
-        collectTravelImages("paydays", runtimeLists.paydays, forbiddenAssetKeys, uniqueImages);
+        collectTravelImages("events", runtimeLists.events, forbiddenAssetKeys, uniqueTitleGroups);
+        collectTravelImages("opendays", runtimeLists.opendays, forbiddenAssetKeys, uniqueTitleGroups);
+        collectTravelImages("paydays", runtimeLists.paydays, forbiddenAssetKeys, uniqueTitleGroups);
 
-        collectTravelImages("events", cachedLists.events, forbiddenAssetKeys, uniqueImages);
-        collectTravelImages("opendays", cachedLists.opendays, forbiddenAssetKeys, uniqueImages);
-        collectTravelImages("paydays", cachedLists.paydays, forbiddenAssetKeys, uniqueImages);
+        collectTravelImages("events", cachedLists.events, forbiddenAssetKeys, uniqueTitleGroups);
+        collectTravelImages("opendays", cachedLists.opendays, forbiddenAssetKeys, uniqueTitleGroups);
+        collectTravelImages("paydays", cachedLists.paydays, forbiddenAssetKeys, uniqueTitleGroups);
 
-        const images = shuffleList(Array.from(uniqueImages.values()));
+        const pickedImages = [];
+
+        uniqueTitleGroups.forEach(group => {
+            if (!group || !Array.isArray(group.candidates) || !group.candidates.length) return;
+
+            // Stesso titolo: una sola immagine random.
+            const pick = group.candidates[Math.floor(Math.random() * group.candidates.length)];
+            pickedImages.push(pick);
+        });
+
+        const images = shuffleList(pickedImages);
 
         if (!images.length) {
             gridEl.innerHTML = "";
@@ -350,17 +380,16 @@
         }
 
         emptyEl.style.display = "none";
-        countEl.innerText = images.length + " immagini viaggio uniche";
+        countEl.innerText = images.length + " avventure uniche";
 
         gridEl.innerHTML = images.map((img, index) => {
             const safeUrl = escapeHtml(img.url);
             const safeTitle = escapeHtml(img.titolo);
             const safeRegione = escapeHtml(img.regione);
-            const safeData = escapeHtml(img.data);
             const safeBadge = escapeHtml(img.badge);
 
             const tall = index % 5 === 0;
-            const height = tall ? "210px" : "145px";
+            const height = tall ? "214px" : "158px";
 
             return `
                 <div style="
@@ -372,15 +401,30 @@
                     border:1px solid rgba(255,255,255,0.08);
                     box-shadow:0 5px 16px rgba(0,0,0,0.35);
                 ">
+                    <div style="
+                        position:absolute;
+                        inset:-18px;
+                        background-image:url('${safeUrl}');
+                        background-size:cover;
+                        background-position:center;
+                        filter:blur(18px);
+                        transform:scale(1.08);
+                        opacity:0.45;
+                    "></div>
+
                     <img
                         src="${safeUrl}"
                         alt="${safeTitle}"
                         loading="lazy"
                         style="
+                            position:relative;
+                            z-index:1;
                             width:100%;
                             height:100%;
-                            object-fit:cover;
+                            object-fit:contain;
+                            object-position:center;
                             display:block;
+                            padding:6px;
                             filter:saturate(1.08) contrast(1.03);
                         "
                     >
@@ -388,12 +432,16 @@
                     <div style="
                         position:absolute;
                         inset:0;
-                        background:linear-gradient(180deg, rgba(0,0,0,0.05) 20%, rgba(0,0,0,0.82) 100%);
+                        z-index:2;
+                        background:
+                            linear-gradient(180deg, rgba(0,0,0,0.03) 20%, rgba(0,0,0,0.84) 100%),
+                            radial-gradient(circle at center, transparent 42%, rgba(0,0,0,0.22));
                         pointer-events:none;
                     "></div>
 
                     <div style="
                         position:absolute;
+                        z-index:3;
                         top:8px;
                         left:8px;
                         background:rgba(0,0,0,0.65);
@@ -409,6 +457,7 @@
 
                     <div style="
                         position:absolute;
+                        z-index:3;
                         left:10px;
                         right:10px;
                         bottom:10px;
@@ -420,7 +469,7 @@
                             font-weight:900;
                             line-height:1.15;
                             text-transform:uppercase;
-                            text-shadow:0 2px 8px rgba(0,0,0,0.8);
+                            text-shadow:0 2px 8px rgba(0,0,0,0.9);
                             display:-webkit-box;
                             -webkit-line-clamp:2;
                             -webkit-box-orient:vertical;
@@ -433,12 +482,12 @@
                             font-size:10px;
                             font-weight:700;
                             line-height:1.2;
-                            text-shadow:0 2px 8px rgba(0,0,0,0.8);
+                            text-shadow:0 2px 8px rgba(0,0,0,0.9);
                             white-space:nowrap;
                             overflow:hidden;
                             text-overflow:ellipsis;
                         ">
-                            ${safeRegione ? "📍 " + safeRegione : ""}${safeRegione && safeData ? " · " : ""}${safeData ? "📅 " + safeData : ""}
+                            ${safeRegione ? "📍 " + safeRegione : "Avventura Wild-U"}
                         </div>
                     </div>
                 </div>
@@ -446,7 +495,8 @@
         }).join("");
 
         console.log("[WILDU WILDWALL] Render completato", {
-            immaginiUniche: images.length,
+            avventureUnichePerTitolo: images.length,
+            gruppiTitoloTotali: uniqueTitleGroups.size,
             assetCensuratiPotenziali: forbiddenAssetKeys.size
         });
     }
