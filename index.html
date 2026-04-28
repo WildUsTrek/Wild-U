@@ -3709,20 +3709,29 @@ function showTripDetails(id) {
         discreteLink.style.display = 'none';
     }
 
-    // --- GESTIONE MAPPE (COSTRUZIONE STRINGA PER OFFICIAL) ---
+// --- GESTIONE MAPPE CHIRURGICHE (OFFICIAL) ---
     const mapContainer = document.getElementById('od-map-container');
     const mapsBtn = document.getElementById('od-modal-maps');
+    const linkMaps = ev.ritrovo?.luogoLink || ev.luogoLink || "";
     
-    if (luogoPulito && luogoPulito !== "Luogo da definire") {
+    if (linkMaps || (luogoPulito && luogoPulito !== "Luogo da definire")) {
         mapContainer.style.display = "block";
         mapsBtn.style.display = "block";
         
-        // Costruiamo la stringa di ricerca con Regione per precisione
-        const stringaRicerca = `${luogoPulito}, ${reg ? reg + ", " : ""}Italy`;
-        const queryEmbed = encodeURIComponent(stringaRicerca);
-
-        mapsBtn.href = `https://maps.google.com/?q={queryEmbed}`;
-        document.getElementById('od-map-iframe').src = `https://maps.google.com/maps?q=${queryEmbed}&t=m&z=16&output=embed&iwloc=near`;
+        // Se c'è un link diretto salvato nel DB, usa quello e fine della storia
+        if (linkMaps) {
+            mapsBtn.href = linkMaps;
+            const embedLink = linkMaps.includes('output=embed') ? linkMaps : linkMaps + (linkMaps.includes('?') ? '&' : '?') + 'output=embed';
+            document.getElementById('od-map-iframe').src = embedLink;
+        } else {
+            // Altrimenti, costruiamo la stringa infallibile con Luogo + Regione + Italia
+            const stringaRicerca = `${luogoPulito}, ${reg ? reg + ", " : ""}Italy`;
+            const queryEmbed = encodeURIComponent(stringaRicerca);
+            
+            // FIXATO: Concatenazione stringhe corretta, senza errori di template!
+            mapsBtn.href = "https://maps.google.com/?q=" + queryEmbed;
+            document.getElementById('od-map-iframe').src = "https://maps.google.com/maps?q=$" + queryEmbed + "&t=m&z=16&output=embed&iwloc=near";
+        }
     } else {
         mapContainer.style.display = "none";
         mapsBtn.style.display = "none";
