@@ -106,13 +106,57 @@
             </p>
 
             <div id="treasure-gear-count" style="
-                color:#777;
-                font-size:11px;
-                font-weight:900;
-                letter-spacing:1px;
-                text-transform:uppercase;
-                margin-top:12px;
-            "></div>
+    color:#777;
+    font-size:11px;
+    font-weight:900;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    margin-top:12px;
+"></div>
+
+<div id="treasure-gear-filters" style="
+    display:flex;
+    gap:8px;
+    justify-content:center;
+    flex-wrap:wrap;
+    margin-top:16px;
+">
+    <button type="button" data-gear-filter="all" style="
+        padding:9px 13px;
+        border-radius:999px;
+        border:1px solid rgba(212,175,55,0.65);
+        background:var(--w-gold);
+        color:#000;
+        font-size:11px;
+        font-weight:900;
+        cursor:pointer;
+        text-transform:uppercase;
+    ">Tutto</button>
+
+    <button type="button" data-gear-filter="gear" style="
+        padding:9px 13px;
+        border-radius:999px;
+        border:1px solid rgba(212,175,55,0.45);
+        background:rgba(212,175,55,0.10);
+        color:var(--w-gold);
+        font-size:11px;
+        font-weight:900;
+        cursor:pointer;
+        text-transform:uppercase;
+    ">Attrezzatura</button>
+
+    <button type="button" data-gear-filter="books" style="
+        padding:9px 13px;
+        border-radius:999px;
+        border:1px solid rgba(120,190,255,0.45);
+        background:rgba(120,190,255,0.10);
+        color:#7cc7ff;
+        font-size:11px;
+        font-weight:900;
+        cursor:pointer;
+        text-transform:uppercase;
+    ">Libri</button>
+</div>
         </div>
 
         <div id="treasure-books-section" style="display:none; margin-bottom:28px;">
@@ -126,8 +170,9 @@
 
             <div id="treasure-books-grid" style="
                 display:grid;
-                grid-template-columns:repeat(auto-fit, minmax(145px, 1fr));
-                gap:12px;
+                grid-template-columns:repeat(auto-fit, minmax(158px, 1fr));
+                gap:14px;
+                align-items:stretch;
             "></div>
         </div>
 
@@ -142,8 +187,9 @@
 
             <div id="treasure-gear-grid" style="
                 display:grid;
-                grid-template-columns:repeat(auto-fit, minmax(145px, 1fr));
-                gap:12px;
+                grid-template-columns:repeat(auto-fit, minmax(158px, 1fr));
+                gap:14px;
+                align-items:stretch;
             "></div>
         </div>
 
@@ -165,331 +211,6 @@
 </div>
 
 <script>
-(function () {
-    console.log("[WILDU TREASURE MAPS] Modulo Mappa dei Tesori caricato");
-
-    const root = document.getElementById("wildu-treasure-maps-module");
-    const listEl = document.getElementById("treasure-map-list");
-    const emptyEl = document.getElementById("treasure-map-empty");
-
-    if (!root || !listEl || !emptyEl) return;
-
-    function escapeHtml(value) {
-        return String(value || "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    function firstValue(obj, keys) {
-        if (!obj) return "";
-        for (let i = 0; i < keys.length; i++) {
-            const v = obj[keys[i]];
-            if (v !== undefined && v !== null && String(v).trim() !== "") {
-                return String(v).trim();
-            }
-        }
-        return "";
-    }
-
-    function extractUrl(item) {
-        if (!item || typeof item !== "object") return "";
-
-        return firstValue(item, [
-            "Link_Risorsa",
-            "link_risorsa",
-            "Link",
-            "link",
-            "URL",
-            "url",
-            "Href",
-            "href",
-            "Src",
-            "src",
-            "File",
-            "file",
-            "Percorso",
-            "percorso"
-        ]);
-    }
-
-    function normalizeTreasureUrl(rawUrl) {
-        const value = String(rawUrl || "").trim();
-        if (!value) return "";
-
-        const low = value.toLowerCase();
-
-        if (
-            low.startsWith("javascript:") ||
-            low.startsWith("data:") ||
-            low.startsWith("blob:") ||
-            low.startsWith("mailto:") ||
-            low.startsWith("tel:")
-        ) {
-            return "";
-        }
-
-        try {
-            const finalUrl = window.WILDU_MODULE && typeof window.WILDU_MODULE.getUrl === "function"
-                ? window.WILDU_MODULE.getUrl(value)
-                : value;
-
-            return String(finalUrl || "").trim();
-        } catch (e) {
-            return value;
-        }
-    }
-
-    function getTreasureKind(item, url) {
-        const raw = (
-            firstValue(item, ["Tipo", "tipo", "Categoria", "categoria", "Tag", "tag", "Formato", "formato"]) +
-            " " +
-            url
-        ).toLowerCase();
-
-        if (raw.includes(".gpx") || raw.includes("gpx")) {
-            return {
-                icon: "🥾",
-                label: "TRACCIA GPX",
-                color: "var(--w-gold)"
-            };
-        }
-
-        if (raw.includes(".kml") || raw.includes("kml") || raw.includes("kmz")) {
-            return {
-                icon: "🗺️",
-                label: "MAPPA KML",
-                color: "#00aaff"
-            };
-        }
-
-        if (raw.includes("maps.google") || raw.includes("google.com/maps") || raw.includes("maps.app.goo.gl")) {
-            return {
-                icon: "📍",
-                label: "GOOGLE MAPS",
-                color: "#25D366"
-            };
-        }
-
-        if (raw.includes(".pdf") || raw.includes("pdf")) {
-            return {
-                icon: "📄",
-                label: "PDF MAPPA",
-                color: "#ff6666"
-            };
-        }
-
-        return {
-            icon: "🧭",
-            label: "RISORSA MAPPA",
-            color: "var(--w-gold)"
-        };
-    }
-
-    function shouldShowTreasureItem(item, url) {
-        if (!url) return false;
-
-        const text = JSON.stringify(item || {}).toLowerCase() + " " + String(url || "").toLowerCase();
-
-        return (
-            text.includes("gpx") ||
-            text.includes("kml") ||
-            text.includes("kmz") ||
-            text.includes("mappa") ||
-            text.includes("map") ||
-            text.includes("maps.google") ||
-            text.includes("google.com/maps") ||
-            text.includes("maps.app.goo.gl") ||
-            text.includes("percorso") ||
-            text.includes("sentiero") ||
-            text.includes("traccia")
-        );
-    }
-
-    function getInternalLinks() {
-        if (window.WILDU_MODULE && Array.isArray(window.WILDU_MODULE.links)) {
-            return window.WILDU_MODULE.links;
-        }
-
-        if (Array.isArray(window.currentInternalLinks)) {
-            return window.currentInternalLinks;
-        }
-
-        return [];
-    }
-
-    function openTreasure(url) {
-        if (!url) return;
-        window.open(url, "_blank", "noopener");
-    }
-
-    function renderTreasureMaps() {
-        const rawLinks = getInternalLinks();
-
-        const items = rawLinks
-            .map((item) => {
-                const rawUrl = extractUrl(item);
-                const url = normalizeTreasureUrl(rawUrl);
-
-                return {
-                    item,
-                    url
-                };
-            })
-            .filter(entry => shouldShowTreasureItem(entry.item, entry.url));
-
-        if (!items.length) {
-            listEl.innerHTML = "";
-            emptyEl.style.display = "block";
-            return;
-        }
-
-        emptyEl.style.display = "none";
-
-        listEl.innerHTML = items.map((entry, index) => {
-            const item = entry.item || {};
-            const url = entry.url;
-            const kind = getTreasureKind(item, url);
-
-            const titolo = firstValue(item, [
-                "Titolo",
-                "titolo",
-                "Nome",
-                "nome",
-                "Title",
-                "title",
-                "Label",
-                "label"
-            ]) || kind.label;
-
-            const descrizione = firstValue(item, [
-                "Descrizione",
-                "descrizione",
-                "Description",
-                "description",
-                "Note",
-                "note"
-            ]) || "Apri questa risorsa per consultare il percorso o salvarlo sul dispositivo.";
-
-            const safeUrl = escapeHtml(url);
-            const safeTitle = escapeHtml(titolo);
-            const safeDesc = escapeHtml(descrizione);
-
-            return `
-                <div
-                    class="treasure-map-card"
-                    style="
-                        background:#181818;
-                        border:1px solid rgba(255,255,255,0.08);
-                        border-left:4px solid ${kind.color};
-                        border-radius:14px;
-                        padding:16px;
-                        box-shadow:0 4px 14px rgba(0,0,0,0.35);
-                    "
-                >
-                    <div style="display:flex; gap:12px; align-items:flex-start;">
-                        <div style="
-                            width:44px;
-                            height:44px;
-                            min-width:44px;
-                            border-radius:12px;
-                            display:flex;
-                            align-items:center;
-                            justify-content:center;
-                            background:rgba(255,255,255,0.06);
-                            font-size:24px;
-                            border:1px solid rgba(255,255,255,0.08);
-                        ">${kind.icon}</div>
-
-                        <div style="flex:1; min-width:0; text-align:left;">
-                            <div style="
-                                color:${kind.color};
-                                font-size:10px;
-                                font-weight:900;
-                                letter-spacing:1px;
-                                text-transform:uppercase;
-                                margin-bottom:5px;
-                            ">${kind.label}</div>
-
-                            <div style="
-                                color:#fff;
-                                font-size:16px;
-                                font-weight:900;
-                                line-height:1.2;
-                                margin-bottom:6px;
-                                text-transform:uppercase;
-                            ">${safeTitle}</div>
-
-                            <div style="
-                                color:#aaa;
-                                font-size:13px;
-                                line-height:1.45;
-                                margin-bottom:12px;
-                            ">${safeDesc}</div>
-
-                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                <button
-                                    type="button"
-                                    data-treasure-url="${safeUrl}"
-                                    data-treasure-action="open"
-                                    style="
-                                        flex:1;
-                                        min-width:130px;
-                                        background:${kind.color};
-                                        color:#000;
-                                        border:none;
-                                        border-radius:10px;
-                                        padding:11px 12px;
-                                        font-size:13px;
-                                        font-weight:900;
-                                        cursor:pointer;
-                                        text-transform:uppercase;
-                                    "
-                                >Apri</button>
-
-                                <a
-                                    href="${safeUrl}"
-                                    target="_blank"
-                                    rel="noopener"
-                                    style="
-                                        flex:1;
-                                        min-width:130px;
-                                        background:#2a2a2a;
-                                        color:#fff;
-                                        border:1px solid #444;
-                                        border-radius:10px;
-                                        padding:11px 12px;
-                                        font-size:13px;
-                                        font-weight:900;
-                                        text-decoration:none;
-                                        text-align:center;
-                                        box-sizing:border-box;
-                                        text-transform:uppercase;
-                                    "
-                                >Salva / Esporta</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join("");
-
-        listEl.querySelectorAll("[data-treasure-action='open']").forEach(btn => {
-            btn.addEventListener("click", function () {
-                openTreasure(this.getAttribute("data-treasure-url"));
-            });
-        });
-    }
-
-    renderTreasureMaps();
-
-    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
-        window.WILDU_MODULE.rewriteRoot(root);
-    }
-})();
-
 
 
 
@@ -506,14 +227,20 @@
     const gearModal = document.getElementById("treasure-gear-modal");
     const closeGearBtn = document.getElementById("treasure-close-gear");
 
-    const booksSection = document.getElementById("treasure-books-section");
-    const gearSection = document.getElementById("treasure-gear-section");
-    const booksGrid = document.getElementById("treasure-books-grid");
-    const gearGrid = document.getElementById("treasure-gear-grid");
-    const gearEmptyBox = document.getElementById("treasure-gear-empty");
-    const gearCountEl = document.getElementById("treasure-gear-count");
+   const booksSection = document.getElementById("treasure-books-section");
+const gearSection = document.getElementById("treasure-gear-section");
+const booksGrid = document.getElementById("treasure-books-grid");
+const gearGrid = document.getElementById("treasure-gear-grid");
+const emptyBox = document.getElementById("treasure-gear-empty");
+const countEl = document.getElementById("treasure-gear-count");
+const filterBtns = Array.from(document.querySelectorAll("[data-gear-filter]"));
 
-    const AMAZON_PRODUCTS_CACHE_KEY = "wildAmazonProductsCache";
+const AMAZON_PRODUCTS_CACHE_KEY = "wildAmazonProductsCache";
+
+let treasureGearFilter = "all";
+let treasureGearLastBooks = [];
+let treasureGearLastGear = [];
+let treasureAmazonPreviewItems = [];
 
     let treasureAudio = null;
     let treasureAudioUrl = "";
@@ -1167,152 +894,485 @@
     }
 
     function isBookProduct(p) {
-        const haystack = (String(p.title || "") + " " + String(p.description || "")).toLowerCase();
+    const haystack = (String(p.title || "") + " " + String(p.description || "")).toLowerCase();
 
-        return /(^|[\s,.;:!?()[\]{}"'«»_\-])(libro|libri|manuale|manuali|guida|guide|romanzo|romanzi)(?=$|[\s,.;:!?()[\]{}"'«»_\-])/i.test(haystack);
-    }
+    return /(^|[\s,.;:!?()[\]{}"'«»_\-])(libro|libri|manuale|manuali|guida|guide|romanzo|romanzi|volume|volumi|raccolta|raccolte|approfondimento|approfondimenti|saggio|saggi|atlante|atlanti|ebook|e-book|kindle|tascabile|racconto|racconti|diario|diari|enciclopedia|enciclopedie)(?=$|[\s,.;:!?()[\]{}"'«»_\-])/i.test(haystack);
+}
+    
+function renderAmazonProductCard(p) {
+    const safeTitle = escapeHtml(p.title);
+    const safeDesc = escapeHtml(p.description);
+    const safeImg = escapeHtml(p.img);
+    const safePrice = escapeHtml(p.price);
+    const previewIndex = String(Number.isFinite(Number(p.__previewIndex)) ? Number(p.__previewIndex) : -1);
 
-    function renderAmazonProductCard(p) {
-        const safeTitle = escapeHtml(p.title);
-        const safeDesc = escapeHtml(p.description);
-        const safeImg = escapeHtml(p.img);
-        const safeHref = escapeHtml(p.href);
-        const safePrice = escapeHtml(p.price);
+    const isBook = isBookProduct(p);
+    const accent = isBook ? "#7cc7ff" : "var(--w-gold)";
+    const badge = isBook ? "📚 LIBRO" : "🥾 GEAR";
+    const fallbackIcon = isBook ? "📚" : "🎒";
 
-        const imgHtml = p.img
-            ? `<img src="${safeImg}" alt="${safeTitle}" loading="lazy" style="
+    const imgHtml = p.img
+        ? `<div style="
+                position:relative;
+                height:132px;
+                border-radius:15px;
+                background:linear-gradient(135deg, #ffffff, #eeeeee);
+                border:1px solid rgba(255,255,255,0.16);
+                box-shadow:inset 0 0 16px rgba(0,0,0,0.10);
+                overflow:hidden;
+                margin-bottom:12px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+            ">
+                <img src="${safeImg}" alt="${safeTitle}" loading="lazy" style="
                     width:100%;
-                    height:112px;
+                    height:100%;
                     object-fit:contain;
                     display:block;
-                    background:#fff;
-                    border-radius:12px;
-                    padding:8px;
+                    padding:10px;
                     box-sizing:border-box;
-                    margin-bottom:10px;
-                ">`
-            : `<div style="
-                    height:112px;
-                    border-radius:12px;
-                    background:#111;
-                    border:1px solid #333;
+                ">
+
+                <span style="
+                    position:absolute;
+                    top:8px;
+                    left:8px;
+                    background:rgba(0,0,0,0.76);
+                    color:${accent};
+                    border:1px solid rgba(255,255,255,0.18);
+                    border-radius:999px;
+                    padding:4px 8px;
+                    font-size:9px;
+                    font-weight:900;
+                    letter-spacing:0.7px;
+                    text-transform:uppercase;
+                    box-shadow:0 3px 10px rgba(0,0,0,0.45);
+                ">${badge}</span>
+            </div>`
+        : `<div style="
+                position:relative;
+                height:132px;
+                border-radius:15px;
+                background:
+                    radial-gradient(circle at top, rgba(212,175,55,0.16), transparent 55%),
+                    #111;
+                border:1px solid rgba(255,255,255,0.12);
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-size:42px;
+                margin-bottom:12px;
+            ">
+                ${fallbackIcon}
+            </div>`;
+
+    return `
+        <article
+            data-amazon-preview-index="${previewIndex}"
+            style="
+                position:relative;
+                overflow:hidden;
+                background:
+                    radial-gradient(circle at top left, rgba(255,255,255,0.075), transparent 42%),
+                    linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025));
+                border:1px solid rgba(255,255,255,0.12);
+                border-top:1px solid ${accent};
+                border-radius:18px;
+                padding:11px;
+                box-shadow:0 8px 22px rgba(0,0,0,0.42);
+                display:flex;
+                flex-direction:column;
+                min-height:278px;
+                cursor:pointer;
+                transition:transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+            "
+            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 11px 28px rgba(0,0,0,0.55)';"
+            onmouseout="this.style.transform=''; this.style.boxShadow='0 8px 22px rgba(0,0,0,0.42)';"
+        >
+            ${imgHtml}
+
+            <div style="
+                color:#fff;
+                font-size:12.5px;
+                font-weight:900;
+                line-height:1.18;
+                text-transform:uppercase;
+                display:-webkit-box;
+                -webkit-line-clamp:2;
+                -webkit-box-orient:vertical;
+                overflow:hidden;
+                min-height:30px;
+                letter-spacing:0.2px;
+            ">${safeTitle}</div>
+
+            <div style="
+                color:#aaa;
+                font-size:11px;
+                line-height:1.28;
+                margin-top:7px;
+                display:-webkit-box;
+                -webkit-line-clamp:3;
+                -webkit-box-orient:vertical;
+                overflow:hidden;
+                min-height:42px;
+            ">${safeDesc || "Prodotto selezionato per le avventure Wild-U."}</div>
+
+            <div style="
+                margin-top:auto;
+                padding-top:11px;
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:8px;
+                border-top:1px solid rgba(255,255,255,0.07);
+            ">
+                <span style="
+                    color:#FF9900;
+                    font-weight:900;
+                    font-size:14px;
+                    white-space:nowrap;
+                    max-width:78px;
+                    overflow:hidden;
+                    text-overflow:ellipsis;
+                ">${safePrice || "Amazon"}</span>
+
+                <span style="
+                    background:${accent};
+                    color:#000;
+                    border-radius:999px;
+                    padding:8px 10px;
+                    font-size:10px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                    white-space:nowrap;
+                    box-shadow:0 0 14px rgba(255,255,255,0.08);
+                ">Dettagli ➔</span>
+            </div>
+        </article>
+    `;
+}
+
+
+function ensureTreasureAmazonPreviewModal() {
+    let modal = document.getElementById("treasure-amazon-preview-modal");
+    if (modal) return modal;
+
+    modal = document.createElement("div");
+    modal.id = "treasure-amazon-preview-modal";
+    modal.style.cssText = `
+        display:none;
+        position:fixed;
+        inset:0;
+        z-index:27000;
+        background:
+            radial-gradient(circle at top, rgba(255,153,0,0.13), transparent 36%),
+            rgba(0,0,0,0.96);
+        padding:calc(18px + env(safe-area-inset-top, 0px)) 14px calc(28px + env(safe-area-inset-bottom, 0px)) 14px;
+        box-sizing:border-box;
+        overflow-y:auto;
+        color:#fff;
+    `;
+
+    modal.innerHTML = `
+        <button id="treasure-amazon-preview-close" type="button" style="
+            position:fixed;
+            top:calc(12px + env(safe-area-inset-top, 0px));
+            right:14px;
+            width:50px;
+            height:50px;
+            border-radius:50%;
+            border:2px solid rgba(255,255,255,0.38);
+            background:#ff4444;
+            color:#fff;
+            font-size:28px;
+            font-weight:900;
+            z-index:27010;
+            cursor:pointer;
+            box-shadow:0 8px 24px rgba(0,0,0,0.75);
+        ">×</button>
+
+        <div style="
+            max-width:460px;
+            margin:0 auto;
+            padding-top:58px;
+        ">
+            <div style="
+                background:
+                    radial-gradient(circle at top left, rgba(255,153,0,0.12), transparent 44%),
+                    #161616;
+                border:2px solid rgba(255,153,0,0.32);
+                border-radius:24px;
+                padding:18px;
+                box-shadow:0 16px 44px rgba(0,0,0,0.78);
+                text-align:center;
+                overflow:hidden;
+            ">
+                <div style="
+                    color:#FF9900;
+                    font-size:11px;
+                    font-weight:900;
+                    letter-spacing:1px;
+                    text-transform:uppercase;
+                    margin-bottom:12px;
+                ">Selezionato per Wild-U</div>
+
+                <div id="treasure-amazon-preview-img-wrap" style="
+                    width:100%;
+                    min-height:230px;
+                    border-radius:18px;
+                    background:linear-gradient(135deg, #ffffff, #eeeeee);
                     display:flex;
                     align-items:center;
                     justify-content:center;
-                    font-size:34px;
-                    margin-bottom:10px;
-                ">🎒</div>`;
-
-        return `
-            <article style="
-                background:rgba(255,255,255,0.055);
-                border:1px solid rgba(255,255,255,0.10);
-                border-radius:16px;
-                padding:10px;
-                box-shadow:0 6px 18px rgba(0,0,0,0.38);
-                display:flex;
-                flex-direction:column;
-                min-height:245px;
-            ">
-                ${imgHtml}
-
-                <div style="
-                    color:#fff;
-                    font-size:12px;
-                    font-weight:900;
-                    line-height:1.18;
-                    text-transform:uppercase;
-                    display:-webkit-box;
-                    -webkit-line-clamp:2;
-                    -webkit-box-orient:vertical;
+                    margin-bottom:16px;
+                    box-shadow:inset 0 0 18px rgba(0,0,0,0.10);
                     overflow:hidden;
-                    min-height:29px;
-                ">${safeTitle}</div>
-
-                <div style="
-                    color:#aaa;
-                    font-size:11px;
-                    line-height:1.25;
-                    margin-top:6px;
-                    display:-webkit-box;
-                    -webkit-line-clamp:3;
-                    -webkit-box-orient:vertical;
-                    overflow:hidden;
-                    min-height:41px;
-                ">${safeDesc}</div>
-
-                <div style="
-                    margin-top:auto;
-                    padding-top:10px;
-                    display:flex;
-                    align-items:center;
-                    justify-content:space-between;
-                    gap:8px;
                 ">
-                    <span style="
-                        color:#FF9900;
-                        font-weight:900;
-                        font-size:14px;
-                        white-space:nowrap;
-                    ">${safePrice || "Amazon"}</span>
-
-                    <a href="${safeHref}" target="_blank" rel="noopener" style="
-                        background:#FF9900;
-                        color:#000;
-                        border-radius:999px;
-                        padding:8px 10px;
-                        font-size:10px;
-                        font-weight:900;
-                        text-decoration:none;
-                        text-transform:uppercase;
-                        white-space:nowrap;
-                    ">Apri ➔</a>
+                    <img id="treasure-amazon-preview-img" src="" alt="" style="
+                        width:100%;
+                        max-height:260px;
+                        object-fit:contain;
+                        padding:14px;
+                        box-sizing:border-box;
+                        display:none;
+                    ">
                 </div>
-            </article>
-        `;
+
+                <div id="treasure-amazon-preview-title" style="
+                    color:#fff;
+                    font-size:19px;
+                    font-weight:900;
+                    line-height:1.15;
+                    text-transform:uppercase;
+                    margin-bottom:10px;
+                    letter-spacing:0.2px;
+                "></div>
+
+                <div id="treasure-amazon-preview-desc" style="
+                    color:#ccc;
+                    font-size:14px;
+                    line-height:1.45;
+                    margin-bottom:16px;
+                    text-align:left;
+                    background:rgba(255,255,255,0.045);
+                    border:1px solid rgba(255,255,255,0.08);
+                    border-radius:14px;
+                    padding:12px;
+                "></div>
+
+                <div id="treasure-amazon-preview-price" style="
+                    color:#FF9900;
+                    font-size:25px;
+                    font-weight:900;
+                    margin-bottom:18px;
+                "></div>
+
+                <a id="treasure-amazon-preview-link" href="#" target="_blank" rel="noopener" style="
+                    display:block;
+                    background:linear-gradient(135deg, #FF9900, #ffb13b);
+                    color:#000;
+                    border-radius:15px;
+                    padding:15px 16px;
+                    font-size:14px;
+                    font-weight:900;
+                    text-decoration:none;
+                    text-transform:uppercase;
+                    box-shadow:0 0 20px rgba(255,153,0,0.25);
+                ">VEDI SU AMAZON ➔</a>
+
+                <div style="
+                    color:#777;
+                    font-size:10px;
+                    line-height:1.35;
+                    margin-top:12px;
+                ">
+                    Si apre una pagina esterna. La card resta consultabile qui prima del click.
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeBtn = document.getElementById("treasure-amazon-preview-close");
+    if (closeBtn) {
+        closeBtn.addEventListener("click", closeTreasureAmazonPreview);
     }
 
-    function renderTreasureGearPopup() {
-        if (!booksSection || !gearSection || !booksGrid || !gearGrid || !gearEmptyBox || !gearCountEl) {
-            console.warn("[WILDU MAPPA TESORI] Elementi popup attrezzatura mancanti");
+    modal.addEventListener("click", function (e) {
+        if (e.target === modal) closeTreasureAmazonPreview();
+    });
+
+    return modal;
+}
+
+function openTreasureAmazonPreview(index) {
+    const p = treasureAmazonPreviewItems[Number(index)];
+    if (!p) return;
+
+    const modal = ensureTreasureAmazonPreviewModal();
+
+    const imgWrap = document.getElementById("treasure-amazon-preview-img-wrap");
+    const imgEl = document.getElementById("treasure-amazon-preview-img");
+    const titleEl = document.getElementById("treasure-amazon-preview-title");
+    const descEl = document.getElementById("treasure-amazon-preview-desc");
+    const priceEl = document.getElementById("treasure-amazon-preview-price");
+    const linkEl = document.getElementById("treasure-amazon-preview-link");
+
+    if (imgEl && imgWrap) {
+        if (p.img) {
+            imgEl.src = p.img;
+            imgEl.alt = p.title || "Prodotto Amazon";
+            imgEl.style.display = "block";
+            imgWrap.style.display = "flex";
+        } else {
+            imgEl.removeAttribute("src");
+            imgEl.style.display = "none";
+            imgWrap.style.display = "none";
+        }
+    }
+
+    if (titleEl) titleEl.textContent = p.title || "Prodotto Amazon";
+    if (descEl) descEl.textContent = p.description || "Prodotto selezionato per le avventure Wild-U.";
+    if (priceEl) priceEl.textContent = p.price || "Amazon";
+
+    if (linkEl) {
+        linkEl.href = p.href || "#";
+        linkEl.style.display = p.href ? "block" : "none";
+    }
+
+    modal.style.display = "block";
+
+    try {
+        document.body.style.overflow = "hidden";
+    } catch (e) {}
+}
+
+function closeTreasureAmazonPreview() {
+    const modal = document.getElementById("treasure-amazon-preview-modal");
+    if (modal) modal.style.display = "none";
+
+    try {
+        if (gearModal && gearModal.style.display !== "none") {
+            document.body.style.overflow = "hidden";
+        } else {
+            document.body.style.overflow = "";
+        }
+    } catch (e) {}
+}
+
+function bindTreasureAmazonPreviewOpeners() {
+    [booksGrid, gearGrid].forEach(grid => {
+        if (!grid || grid.dataset.amazonPreviewBound === "1") return;
+
+        grid.dataset.amazonPreviewBound = "1";
+
+        grid.addEventListener("click", function (e) {
+            const card = e.target.closest("[data-amazon-preview-index]");
+            if (!card || !grid.contains(card)) return;
+
+            const index = card.getAttribute("data-amazon-preview-index");
+            openTreasureAmazonPreview(index);
+        });
+    });
+}
+
+    
+    function syncTreasureGearFilterButtons() {
+    filterBtns.forEach(btn => {
+        const mode = btn.getAttribute("data-gear-filter");
+
+        const active = mode === treasureGearFilter;
+
+        if (mode === "books") {
+            btn.style.background = active ? "#7cc7ff" : "rgba(120,190,255,0.10)";
+            btn.style.color = active ? "#000" : "#7cc7ff";
+            btn.style.borderColor = active ? "#7cc7ff" : "rgba(120,190,255,0.45)";
             return;
         }
 
-        const rawProducts = readTreasureAmazonProducts();
+        btn.style.background = active ? "var(--w-gold)" : "rgba(212,175,55,0.10)";
+        btn.style.color = active ? "#000" : "var(--w-gold)";
+        btn.style.borderColor = active ? "rgba(212,175,55,0.75)" : "rgba(212,175,55,0.45)";
+    });
+}
 
-        const products = rawProducts
-            .map(normalizeAmazonProduct)
-            .filter(isVisibleAmazonProduct);
+function applyTreasureGearFilter() {
+    const books = treasureGearLastBooks || [];
+    const gear = treasureGearLastGear || [];
+    const total = books.length + gear.length;
 
-        const books = [];
-        const gear = [];
+    const showBooks = treasureGearFilter === "all" || treasureGearFilter === "books";
+    const showGear = treasureGearFilter === "all" || treasureGearFilter === "gear";
 
-        products.forEach(p => {
-            if (isBookProduct(p)) books.push(p);
-            else gear.push(p);
-        });
+    booksSection.style.display = showBooks && books.length ? "block" : "none";
+    gearSection.style.display = showGear && gear.length ? "block" : "none";
+    emptyBox.style.display = total ? "none" : "block";
 
-        booksGrid.innerHTML = books.map(renderAmazonProductCard).join("");
-        gearGrid.innerHTML = gear.map(renderAmazonProductCard).join("");
-
-        booksSection.style.display = books.length ? "block" : "none";
-        gearSection.style.display = gear.length ? "block" : "none";
-        gearEmptyBox.style.display = products.length ? "none" : "block";
-
-        const parts = [];
-        if (gear.length) parts.push(gear.length + " attrezzature");
-        if (books.length) parts.push(books.length + " libri/manuali/guide");
-
-        gearCountEl.innerText = parts.length
-            ? parts.join(" · ")
-            : "0 prodotti Amazon in cache";
-
-        console.log("[WILDU MAPPA TESORI] Attrezzatura renderizzata", {
-            totale: products.length,
-            attrezzatura: gear.length,
-            libriManualiGuide: books.length
-        });
+    if (treasureGearFilter === "books" && !books.length) {
+        emptyBox.style.display = "block";
     }
+
+    if (treasureGearFilter === "gear" && !gear.length) {
+        emptyBox.style.display = "block";
+    }
+
+    syncTreasureGearFilterButtons();
+}
+
+function renderTreasureGearPopup() {
+    const rawProducts = readTreasureAmazonProducts();
+
+    const products = rawProducts
+        .map(normalizeAmazonProduct)
+        .filter(isVisibleAmazonProduct);
+
+    const books = [];
+    const gear = [];
+
+    products.forEach(p => {
+        if (isBookProduct(p)) books.push(p);
+        else gear.push(p);
+    });
+
+    treasureAmazonPreviewItems = [];
+
+    books.forEach(p => {
+        p.__previewIndex = treasureAmazonPreviewItems.length;
+        treasureAmazonPreviewItems.push(p);
+    });
+
+    gear.forEach(p => {
+        p.__previewIndex = treasureAmazonPreviewItems.length;
+        treasureAmazonPreviewItems.push(p);
+    });
+
+    treasureGearLastBooks = books;
+    treasureGearLastGear = gear;
+
+    booksGrid.innerHTML = books.map(renderAmazonProductCard).join("");
+    gearGrid.innerHTML = gear.map(renderAmazonProductCard).join("");
+
+    bindTreasureAmazonPreviewOpeners();
+
+    const parts = [];
+    if (gear.length) parts.push(gear.length + " attrezzature");
+    if (books.length) parts.push(books.length + " libri/manuali/guide");
+
+    countEl.innerText = parts.length
+        ? parts.join(" · ")
+        : "0 prodotti Amazon in cache";
+
+    applyTreasureGearFilter();
+
+    console.log("[WILDU MAPPA TESORI] Attrezzatura renderizzata", {
+        filtro: treasureGearFilter,
+        totale: products.length,
+        attrezzatura: gear.length,
+        libriManualiGuide: books.length
+    });
+}
 
     function openTreasureGearPopup() {
         if (!gearModal) return;
@@ -1346,14 +1406,21 @@
     }
 
     if (closeGearBtn) {
-        closeGearBtn.addEventListener("click", closeTreasureGearPopup);
-    }
+    closeGearBtn.addEventListener("click", closeTreasureGearPopup);
+}
 
-    if (gearModal) {
-        gearModal.addEventListener("click", function (e) {
-            if (e.target === gearModal) closeTreasureGearPopup();
-        });
-    }
+filterBtns.forEach(btn => {
+    btn.addEventListener("click", function () {
+        treasureGearFilter = this.getAttribute("data-gear-filter") || "all";
+        applyTreasureGearFilter();
+    });
+});
+
+if (gearModal) {
+    gearModal.addEventListener("click", function (e) {
+        if (e.target === gearModal) closeTreasureGearPopup();
+    });
+}
 
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
