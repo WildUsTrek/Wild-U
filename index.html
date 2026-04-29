@@ -29,27 +29,52 @@
         #toast-msg { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--w-green); color: #fff; padding: 12px 24px; border-radius: 25px; z-index: 9999; display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 14px; white-space: nowrap; }
         .hero-header { width: 100%; height: 160px; background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000'); background-size: cover; background-position: center; position: relative; border-bottom: 3px solid var(--w-green); } .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); } .hero-title { position: absolute; top: 40%; width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); z-index: 2; }
 
+/* --- WILDU NAVBAR FISSA REALE: NO BANDANA FLOTTANTE --- */
+
+/* Scudo nero solo per la safe-area fisica del telefono.
+   Serve a impedire che, su alcuni browser mobile, si vedano card
+   nello spazio sopra la navbar durante lo scroll. */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: #000;
+    z-index: 1199;
+    pointer-events: none;
+}
+
 .nav {
     display: flex;
     gap: 8px;
 
-    /* Altezza normale: niente safe-area dentro la nav quando è sotto l'header */
-    padding: 12px;
+    /* La safe-area resta DENTRO la navbar, non diventa distanza esterna */
+    padding: 10px 12px 10px 12px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
 
     background: #000;
 
     position: sticky;
     position: -webkit-sticky;
 
-    /* Safe-area applicata solo alla posizione sticky, non all'altezza */
-    top: env(safe-area-inset-top, 0px);
+    /* FONDAMENTALE:
+       mai usare env(safe-area-inset-top) come top,
+       altrimenti la navbar fluttua e lascia vedere le card sopra. */
+    top: 0 !important;
+
+    margin-top: 0 !important;
+    transform: none !important;
 
     z-index: 1200;
     border-bottom: 1px solid #222;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
 
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 
     box-sizing: border-box;
 }
@@ -4075,6 +4100,29 @@ function renderTrips(trips, targetId) {
         const dataPuraFine = (dataFine && dataFine !== dataInizio) ? ((dataFine.includes(anno)) ? dataFine : `${dataFine}/${anno}`) : "";
         const displayDate = dataPuraFine ? `${dataPura} - ${dataPuraFine}` : dataPura;
 
+        // Pillola anno futuro: solo card esterne, non dettagli.
+        const tripYear = parseInt(anno, 10);
+        const currentYear = new Date().getFullYear();
+
+        const futureYearBadge = (!isNaN(tripYear) && tripYear > currentYear)
+            ? `<span style="
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                padding:4px 10px;
+                border-radius:999px;
+                background:linear-gradient(135deg, #4aa8ff, #2e7df6);
+                color:#fff;
+                font-size:11px;
+                font-weight:900;
+                letter-spacing:0.4px;
+                text-transform:uppercase;
+                white-space:nowrap;
+                box-shadow:0 4px 14px rgba(46,125,246,0.28);
+                flex:0 0 auto;
+            ">${tripYear}!</span>`
+            : "";
+
         // --- 2. ORARIO E LUOGO ---
         const orario = ev["Orario Inizio"] || (ev.ritrovo ? ev.ritrovo.ora : "") || "";
         const reg = ev.Regione || ev.regione || "";
@@ -4128,7 +4176,10 @@ function renderTrips(trips, targetId) {
             // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo VIP Gigante Allineato a Fondo)
             return `<div class="card" style="border-left-color: #d4af37; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
-                <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
+                    <h3 style="color: #fff; margin: 0; font-size: 20px; line-height: 1.2; min-width:0; flex:1 1 auto;">${titolo}</h3>
+                    ${futureYearBadge}
+                </div>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
                     <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
                     ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
@@ -4155,7 +4206,10 @@ function renderTrips(trips, targetId) {
 
             return `<div class="card" style="border-left-color: var(--w-green);">
                 ${imgHtml}
-                <span class="card-title">${titolo}</span>
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px;">
+                    <span class="card-title" style="margin-bottom:0; min-width:0; flex:1 1 auto;">${titolo}</span>
+                    ${futureYearBadge}
+                </div>
                 <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
                     <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
                     ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
@@ -4567,7 +4621,10 @@ function renderPayDays() {
             html += `
             <div style="background: #111; border-left: 4px solid #d4af37; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(212, 175, 55, 0.12);">
                 ${imgHtml}
-                <h3 style="color: #fff; margin: 0 0 8px 0; font-size: 20px; line-height: 1.2;">${titolo}</h3>
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
+                    <h3 style="color: #fff; margin: 0; font-size: 20px; line-height: 1.2; min-width:0; flex:1 1 auto;">${titolo}</h3>
+                    ${futureYearBadge}
+                </div>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
                     <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
