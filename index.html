@@ -5774,8 +5774,107 @@ function renderDynamicResources(resources) {
 
     const gpxResources = [];
     const libriResources = [];
+    const radioResources = [];
     const hiddenResources = [];
     const visibleResources = [];
+
+    function isWilduRadioNaturaResource(res) {
+        if (!res) return false;
+
+        const title = String(
+            res.Titolo ||
+            res.titolo ||
+            res.Title ||
+            res.title ||
+            res.Nome ||
+            res.nome ||
+            res.Chiave ||
+            res.chiave ||
+            res.Key ||
+            res.key ||
+            res.Slug ||
+            res.slug ||
+            ""
+        ).trim().toLowerCase();
+
+        const category = String(
+            res.Categoria ||
+            res.categoria ||
+            res.Category ||
+            res.category ||
+            res.Tipo ||
+            res.tipo ||
+            ""
+        ).trim().toLowerCase();
+
+        const audio = String(
+            res.Audio ||
+            res.audio ||
+            res.Link_Risorsa ||
+            res.link_risorsa ||
+            res.Link ||
+            res.link ||
+            res.URL ||
+            res.url ||
+            ""
+        ).trim().toLowerCase();
+
+        return (
+            title === "radio natura" ||
+            title.includes("radio natura") ||
+            title.includes("radio del bosco") ||
+            title.includes("radio wild") ||
+            category.includes("radio") ||
+            category.includes("audio") ||
+            audio.includes("radio-natura") ||
+            audio.includes("radio_natura")
+        );
+    }
+
+    function buildWilduRadioLinksFromResource(res) {
+        const links = [];
+
+        try {
+            getWilduResourceLinks(res).forEach(link => {
+                if (!link) return;
+
+                const cloned = { ...link };
+
+                if (!cloned.Titolo && !cloned.titolo && !cloned.title && !cloned.Nome && !cloned.nome) {
+                    cloned.Titolo = "Radio Natura";
+                }
+
+                if (!cloned.Tipo && !cloned.tipo && !cloned.Categoria && !cloned.categoria) {
+                    cloned.Tipo = "audio";
+                }
+
+                links.push(cloned);
+            });
+        } catch (e) {}
+
+        const directUrl = String(
+            res.Audio ||
+            res.audio ||
+            res.Link_Risorsa ||
+            res.link_risorsa ||
+            res.Link ||
+            res.link ||
+            res.URL ||
+            res.url ||
+            ""
+        ).trim();
+
+        if (directUrl) {
+            links.push({
+                Titolo: res.Titolo || res.titolo || "Radio Natura",
+                Descrizione: res.Descrizione || res.descrizione || "Audio ambientale Wild-U.",
+                Tipo: "audio",
+                Link_Risorsa: directUrl
+            });
+        }
+
+        return links;
+    }
 
     sourceList.forEach(res => {
         if (!res) return;
@@ -5792,6 +5891,12 @@ function renderDynamicResources(resources) {
             return;
         }
 
+        if (isWilduRadioNaturaResource(res)) {
+            radioResources.push(res);
+            hiddenResources.push(res);
+            return;
+        }
+
         visibleResources.push(res);
     });
 
@@ -5800,20 +5905,41 @@ function renderDynamicResources(resources) {
         getWilduResourceLinks(res).forEach(link => gpxLinks.push(link));
     });
 
+    const radioLinks = [];
+    radioResources.forEach(res => {
+        buildWilduRadioLinksFromResource(res).forEach(link => radioLinks.push(link));
+    });
+
     const finalResources = visibleResources.map(res => {
         const cloned = { ...res };
 
         cloned.Titolo = getWilduDisplayResourceTitle(res);
 
-        // Se questa è "Mappa dei Tesori", ci innestiamo dentro i link GPX.
-        if (isWilduTreasureMapResource(res) && gpxLinks.length) {
-            cloned.link_interni = mergeWilduUniqueResourceLinks(
-                getWilduResourceLinks(res),
-                gpxLinks
-            );
+        // Se questa è "Mappa dei Tesori", ci innestiamo dentro GPX + Radio Natura.
+        if (isWilduTreasureMapResource(res)) {
+            let mergedLinks = getWilduResourceLinks(res);
 
-            cloned.__wilduMergedGpx = true;
-            cloned.__wilduMergedGpxCount = gpxLinks.length;
+            if (gpxLinks.length) {
+                mergedLinks = mergeWilduUniqueResourceLinks(
+                    mergedLinks,
+                    gpxLinks
+                );
+
+                cloned.__wilduMergedGpx = true;
+                cloned.__wilduMergedGpxCount = gpxLinks.length;
+            }
+
+            if (radioLinks.length) {
+                mergedLinks = mergeWilduUniqueResourceLinks(
+                    mergedLinks,
+                    radioLinks
+                );
+
+                cloned.__wilduMergedRadio = true;
+                cloned.__wilduMergedRadioCount = radioLinks.length;
+            }
+
+            cloned.link_interni = mergedLinks;
         }
 
         return cloned;
@@ -5822,6 +5948,7 @@ function renderDynamicResources(resources) {
     window.WILDU_RESOURCE_BUCKETS = {
         gpx: gpxResources,
         libri: libriResources,
+        radio: radioResources,
         hidden: hiddenResources,
         visible: finalResources
     };
