@@ -50,31 +50,22 @@ body::before {
     display: flex;
     gap: 8px;
 
-    /* La safe-area resta DENTRO la navbar, non diventa distanza esterna */
-    padding: 10px 12px 10px 12px;
-    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    /* Niente safe-area qui: la navbar sta sotto l'header all'apertura
+       e deve diventare intestazione piena, non bandana flottante. */
+    padding: 10px 12px;
 
     background: #000;
 
     position: sticky;
     position: -webkit-sticky;
-
-    /* FONDAMENTALE:
-       mai usare env(safe-area-inset-top) come top,
-       altrimenti la navbar fluttua e lascia vedere le card sopra. */
-    top: 0 !important;
-
-    margin-top: 0 !important;
-    transform: none !important;
+    top: 0;
 
     z-index: 1200;
     border-bottom: 1px solid #222;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
 
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
 
     box-sizing: border-box;
 }
@@ -650,25 +641,67 @@ body::before {
             <span style="color:var(--w-sub)">➔</span>
         </div>
 
-        <div class="card" style="margin-top: 25px; border-left-color: var(--w-gold);">
-            <h3 style="margin-top:0;">Community Wild-U</h3>
-            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Unisciti ai nostri canali ufficiali per non perderti nessun aggiornamento.</p>
-            <button class="btn-action-group wa" onclick="openGroupChoice('WhatsApp', WILD_ASSETS['link_whatsapp'])"><span>WhatsApp</span> <span>➔</span></button>
-            <button class="btn-action-group tg" onclick="openGroupChoice('Telegram', WILD_ASSETS['link_telegram'])"><span>Telegram</span> <span>➔</span></button>
+        <details class="guide-accordion" style="margin-top:25px; border-left-color: var(--w-gold);">
+    <summary class="guide-summary" style="border-left-color: var(--w-gold);">
+        <div style="display:flex; flex-direction:column;">
+            <span style="font-weight:900; font-size:16px; color:#fff;">🌐 Community Wild-U</span>
+            <span style="font-size:12px; color:#aaa; margin-top:4px;">WhatsApp e Telegram ufficiali</span>
         </div>
+        <span class="acc-icon">▼</span>
+    </summary>
 
-        <div id="sec-wheel" style="text-align:center; margin-top:25px;">
-            <div class="card" style="border-left-color: var(--w-gold);">
+    <div class="guide-content">
+        <p style="font-size:14px; color:#aaa; margin:0 0 16px 0; line-height:1.5;">
+            Unisciti ai nostri canali ufficiali per non perderti aggiornamenti, partenze e novità.
+        </p>
+
+        <button class="btn-action-group wa" onclick="openGroupChoice('WhatsApp', WILD_ASSETS['link_whatsapp'])">
+            <span>WhatsApp</span>
+            <span>➔</span>
+        </button>
+
+        <button class="btn-action-group tg" onclick="openGroupChoice('Telegram', WILD_ASSETS['link_telegram'])">
+            <span>Telegram</span>
+            <span>➔</span>
+        </button>
+    </div>
+</details>
+
+<details id="wildu-rewards-wheel-accordion" class="guide-accordion" style="margin-top:25px;">
+    <summary class="guide-summary" style="border-left-color: var(--w-gold);">
+        <div style="display:flex; flex-direction:column;">
+            <span style="font-weight:900; font-size:16px; color:#fff;">🎡 Ruota del Destino</span>
+            <span style="font-size:12px; color:#aaa; margin-top:4px;">Apri solo quando vuoi invocare gli spiriti</span>
+        </div>
+        <span class="acc-icon">▼</span>
+    </summary>
+
+    <div class="guide-content" style="background:#181818;">
+        <div id="sec-wheel" style="text-align:center; margin-top:5px;">
+            <div class="card" style="border-left-color: var(--w-gold); margin-bottom:15px;">
                 <h3 style="margin:0; font-size:26px;">Ruota del Destino</h3>
+
                 <div class="wheel-container">
                     <div class="wheel-pointer"></div>
-                    <div id="wheel-graphics" class="visual-wheel"><div class="wheel-label l-wild">🌲</div><div class="wheel-label l-mare">🌊</div><div class="wheel-label l-jolly">🎁</div><div class="wheel-label l-monti">🏔️</div></div>
+                    <div id="wheel-graphics" class="visual-wheel">
+                        <div class="wheel-label l-wild">🌲</div>
+                        <div class="wheel-label l-mare">🌊</div>
+                        <div class="wheel-label l-jolly">🎁</div>
+                        <div class="wheel-label l-monti">🏔️</div>
+                    </div>
                 </div>
+
                 <div id="spirit-msg" class="spirit-msg"></div>
-                <button id="wheel-button" onclick="spinWheel()" class="btn-book btn-destiny" style="margin-top:20px;">INVOCA IL DESTINO</button>
+
+                <button id="wheel-button" onclick="spinWheel()" class="btn-book btn-destiny" style="margin-top:20px;">
+                    INVOCA IL DESTINO
+                </button>
             </div>
+
             <div id="wheel-result-container"></div>
         </div>
+    </div>
+</details>
    
    </div>
 
