@@ -33,6 +33,21 @@
     🎒 Attrezzatura
 </button>
 
+<button id="treasure-open-radio" type="button" style="
+    flex:1;
+    min-width:140px;
+    padding:12px 14px;
+    border-radius:14px;
+    border:1px solid rgba(120,190,255,0.55);
+    background:rgba(120,190,255,0.12);
+    color:#7cc7ff;
+    font-size:13px;
+    font-weight:900;
+    cursor:pointer;
+    text-transform:uppercase;
+">
+    🎧 Radio Natura
+</button>
 
 <div id="treasure-gear-modal" style="
     display:none;
@@ -479,23 +494,33 @@
 
 <script>
 (function () {
-    console.log("[WILDU MAPPA TESORI] Popup attrezzatura Amazon attivo");
+    console.log("[WILDU TREASURE MAPS] Modulo Mappa dei Tesori caricato");
 
-    const openBtn = document.getElementById("treasure-open-gear");
-    const modal = document.getElementById("treasure-gear-modal");
-    const closeBtn = document.getElementById("treasure-close-gear");
+    const root = document.getElementById("wildu-treasure-maps-module");
+    const listEl = document.getElementById("treasure-map-list");
+    const emptyEl = document.getElementById("treasure-map-empty");
+
+    const openGearBtn = document.getElementById("treasure-open-gear");
+    const openRadioBtn = document.getElementById("treasure-open-radio");
+
+    const gearModal = document.getElementById("treasure-gear-modal");
+    const closeGearBtn = document.getElementById("treasure-close-gear");
 
     const booksSection = document.getElementById("treasure-books-section");
     const gearSection = document.getElementById("treasure-gear-section");
     const booksGrid = document.getElementById("treasure-books-grid");
     const gearGrid = document.getElementById("treasure-gear-grid");
-    const emptyBox = document.getElementById("treasure-gear-empty");
-    const countEl = document.getElementById("treasure-gear-count");
+    const gearEmptyBox = document.getElementById("treasure-gear-empty");
+    const gearCountEl = document.getElementById("treasure-gear-count");
 
     const AMAZON_PRODUCTS_CACHE_KEY = "wildAmazonProductsCache";
 
-    if (!openBtn || !modal || !closeBtn || !booksGrid || !gearGrid || !emptyBox || !countEl) {
-        console.warn("[WILDU MAPPA TESORI] Elementi popup attrezzatura mancanti");
+    let treasureAudio = null;
+    let treasureAudioUrl = "";
+    let treasureAudioPlaying = false;
+
+    if (!root || !listEl || !emptyEl) {
+        console.warn("[WILDU TREASURE MAPS] Elementi base mancanti");
         return;
     }
 
@@ -506,6 +531,570 @@
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+
+    function firstValue(obj, keys) {
+        if (!obj || typeof obj !== "object") return "";
+
+        for (let i = 0; i < keys.length; i++) {
+            const v = obj[keys[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== "") {
+                return String(v).trim();
+            }
+        }
+
+        return "";
+    }
+
+    function extractUrl(item) {
+        if (!item || typeof item !== "object") return "";
+
+        return firstValue(item, [
+            "Link_Risorsa",
+            "link_risorsa",
+            "Link",
+            "link",
+            "URL",
+            "url",
+            "Href",
+            "href",
+            "Src",
+            "src",
+            "File",
+            "file",
+            "Percorso",
+            "percorso",
+            "Audio",
+            "audio"
+        ]);
+    }
+
+    function normalizeTreasureUrl(rawUrl) {
+        const value = String(rawUrl || "").trim();
+        if (!value) return "";
+
+        const low = value.toLowerCase();
+
+        if (
+            low.startsWith("javascript:") ||
+            low.startsWith("data:") ||
+            low.startsWith("blob:") ||
+            low.startsWith("mailto:") ||
+            low.startsWith("tel:")
+        ) {
+            return "";
+        }
+
+        try {
+            if (window.WILDU_MODULE && typeof window.WILDU_MODULE.getUrl === "function") {
+                return String(window.WILDU_MODULE.getUrl(value) || "").trim();
+            }
+        } catch (e) {}
+
+        try {
+            if (typeof window.getVersionedModuleUrl === "function") {
+                return String(window.getVersionedModuleUrl(value) || "").trim();
+            }
+        } catch (e) {}
+
+        return value;
+    }
+
+    function getUrlExtension(url) {
+        try {
+            const u = new URL(url, window.location.href);
+            const clean = String(u.pathname || "").split("/").pop() || "";
+            const dot = clean.lastIndexOf(".");
+            return dot >= 0 ? clean.substring(dot + 1).toLowerCase() : "";
+        } catch (e) {
+            const clean = String(url || "").toLowerCase().split("?")[0].split("#")[0];
+            const dot = clean.lastIndexOf(".");
+            return dot >= 0 ? clean.substring(dot + 1) : "";
+        }
+    }
+
+    function getInternalLinks() {
+        if (window.WILDU_MODULE && Array.isArray(window.WILDU_MODULE.links)) {
+            return window.WILDU_MODULE.links;
+        }
+
+        if (Array.isArray(window.currentInternalLinks)) {
+            return window.currentInternalLinks;
+        }
+
+        return [];
+    }
+
+    function getItemTitle(item, fallbackLabel) {
+        return firstValue(item, [
+            "Titolo",
+            "titolo",
+            "Nome",
+            "nome",
+            "Title",
+            "title",
+            "Label",
+            "label",
+            "Chiave",
+            "chiave",
+            "Key",
+            "key"
+        ]) || fallbackLabel || "Risorsa Wild-U";
+    }
+
+    function getItemDescription(item, fallbackText) {
+        return firstValue(item, [
+            "Descrizione",
+            "descrizione",
+            "Description",
+            "description",
+            "Note",
+            "note"
+        ]) || fallbackText || "";
+    }
+
+    function classifyTreasureItem(item) {
+        const rawUrl = extractUrl(item);
+        const url = normalizeTreasureUrl(rawUrl);
+
+        if (!url) return null;
+
+        const ext = getUrlExtension(url);
+
+        const title = getItemTitle(item, "");
+        const description = getItemDescription(item, "");
+
+        const text = (
+            JSON.stringify(item || {}) +
+            " " +
+            rawUrl +
+            " " +
+            url +
+            " " +
+            title +
+            " " +
+            description
+        ).toLowerCase();
+
+        const isGpx =
+            ext === "gpx" ||
+            text.includes("gpx") ||
+            text.includes("traccia") ||
+            text.includes("percorso") ||
+            text.includes("sentiero");
+
+        const isKml =
+            ext === "kml" ||
+            ext === "kmz" ||
+            text.includes("kml") ||
+            text.includes("kmz");
+
+        const isGoogleMap =
+            text.includes("maps.google") ||
+            text.includes("google.com/maps") ||
+            text.includes("maps.app.goo.gl");
+
+        const isMapPdf =
+            ext === "pdf" &&
+            (
+                text.includes("mappa") ||
+                text.includes("map") ||
+                text.includes("percorso") ||
+                text.includes("sentiero") ||
+                text.includes("traccia")
+            );
+
+        const isAudio =
+            ["mp3", "m4a", "ogg", "wav", "aac", "flac", "webm"].includes(ext) ||
+            text.includes("audio") ||
+            text.includes("radio") ||
+            text.includes("natura") ||
+            text.includes("suono") ||
+            text.includes("musica");
+
+        let type = "other";
+
+        // Priorità: mappe/tracce prima dell’audio.
+        // Se un file viene chiamato "audio traccia gpx", per sicurezza operativa resta mappa.
+        if (isGpx || isKml || isGoogleMap || isMapPdf) {
+            type = "map";
+        } else if (isAudio) {
+            type = "audio";
+        }
+
+        return {
+            type,
+            item,
+            url,
+            ext,
+            title,
+            description
+        };
+    }
+
+    function splitTreasureLinks() {
+        const buckets = {
+            map: [],
+            audio: [],
+            other: []
+        };
+
+        getInternalLinks().forEach(item => {
+            const classified = classifyTreasureItem(item);
+            if (!classified) return;
+
+            buckets[classified.type].push(classified);
+        });
+
+        window.WILDU_TREASURE_BUCKETS = buckets;
+
+        return buckets;
+    }
+
+    function getTreasureKind(entry) {
+        const url = String(entry.url || "").toLowerCase();
+        const ext = String(entry.ext || "").toLowerCase();
+        const text = JSON.stringify(entry.item || {}).toLowerCase() + " " + url;
+
+        if (entry.type === "audio") {
+            return {
+                icon: "🎧",
+                label: "RADIO / AUDIO",
+                color: "#7cc7ff",
+                actionLabel: "Ascolta"
+            };
+        }
+
+        if (entry.type === "other") {
+            if (ext === "pdf") {
+                return {
+                    icon: "📄",
+                    label: "PDF / FILE",
+                    color: "#aaa",
+                    actionLabel: "Apri"
+                };
+            }
+
+            if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) {
+                return {
+                    icon: "🖼️",
+                    label: "IMMAGINE / FILE",
+                    color: "#aaa",
+                    actionLabel: "Apri"
+                };
+            }
+
+            return {
+                icon: "📦",
+                label: "ALTRO FILE",
+                color: "#aaa",
+                actionLabel: "Apri"
+            };
+        }
+
+        if (ext === "gpx" || text.includes("gpx")) {
+            return {
+                icon: "🥾",
+                label: "TRACCIA GPX",
+                color: "var(--w-gold)",
+                actionLabel: "Apri"
+            };
+        }
+
+        if (ext === "kml" || ext === "kmz" || text.includes("kml") || text.includes("kmz")) {
+            return {
+                icon: "🗺️",
+                label: "MAPPA KML",
+                color: "#00aaff",
+                actionLabel: "Apri"
+            };
+        }
+
+        if (text.includes("maps.google") || text.includes("google.com/maps") || text.includes("maps.app.goo.gl")) {
+            return {
+                icon: "📍",
+                label: "GOOGLE MAPS",
+                color: "#25D366",
+                actionLabel: "Apri"
+            };
+        }
+
+        if (ext === "pdf") {
+            return {
+                icon: "📄",
+                label: "PDF MAPPA",
+                color: "#ff6666",
+                actionLabel: "Apri"
+            };
+        }
+
+        return {
+            icon: "🧭",
+            label: "RISORSA MAPPA",
+            color: "var(--w-gold)",
+            actionLabel: "Apri"
+        };
+    }
+
+    function openExternalTreasure(url) {
+        if (!url) return;
+        window.open(url, "_blank", "noopener");
+    }
+
+    function stopTreasureAudio() {
+        if (treasureAudio) {
+            try {
+                treasureAudio.pause();
+                treasureAudio.currentTime = 0;
+            } catch (e) {}
+        }
+
+        treasureAudioPlaying = false;
+
+        if (openRadioBtn) {
+            openRadioBtn.innerHTML = "🎧 Radio Natura";
+        }
+    }
+
+    function playTreasureAudio(url, title) {
+        if (!url) return;
+
+        if (treasureAudio && treasureAudioUrl === url && treasureAudioPlaying) {
+            stopTreasureAudio();
+            return;
+        }
+
+        if (treasureAudio && treasureAudioUrl !== url) {
+            stopTreasureAudio();
+        }
+
+        treasureAudioUrl = url;
+        treasureAudio = new Audio(url);
+        treasureAudio.loop = true;
+        treasureAudio.volume = 0.8;
+
+        treasureAudio.play().then(() => {
+            treasureAudioPlaying = true;
+
+            if (openRadioBtn) {
+                openRadioBtn.innerHTML = "⏸ Ferma Radio";
+            }
+
+            if (typeof showToast === "function") {
+                showToast("Radio Natura avviata: " + (title || "audio"));
+            }
+        }).catch(() => {
+            treasureAudioPlaying = false;
+
+            if (typeof showToast === "function") {
+                showToast("Tocca di nuovo per avviare l’audio.");
+            } else {
+                alert("Tocca di nuovo per avviare l’audio.");
+            }
+        });
+    }
+
+    function renderTreasureCard(entry) {
+        const kind = getTreasureKind(entry);
+
+        const titolo = getItemTitle(entry.item, kind.label);
+        const descrizione = getItemDescription(
+            entry.item,
+            entry.type === "audio"
+                ? "File audio collegato alla Mappa dei Tesori."
+                : entry.type === "other"
+                    ? "File utile collegato a questa sezione."
+                    : "Apri questa risorsa per consultare il percorso o salvarlo sul dispositivo."
+        );
+
+        const safeUrl = escapeHtml(entry.url);
+        const safeTitle = escapeHtml(titolo);
+        const safeDesc = escapeHtml(descrizione);
+        const safeType = escapeHtml(entry.type);
+
+        return `
+            <div
+                class="treasure-map-card"
+                style="
+                    background:#181818;
+                    border:1px solid rgba(255,255,255,0.08);
+                    border-left:4px solid ${kind.color};
+                    border-radius:14px;
+                    padding:16px;
+                    box-shadow:0 4px 14px rgba(0,0,0,0.35);
+                "
+            >
+                <div style="display:flex; gap:12px; align-items:flex-start;">
+                    <div style="
+                        width:44px;
+                        height:44px;
+                        min-width:44px;
+                        border-radius:12px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        background:rgba(255,255,255,0.06);
+                        font-size:24px;
+                        border:1px solid rgba(255,255,255,0.08);
+                    ">${kind.icon}</div>
+
+                    <div style="flex:1; min-width:0; text-align:left;">
+                        <div style="
+                            color:${kind.color};
+                            font-size:10px;
+                            font-weight:900;
+                            letter-spacing:1px;
+                            text-transform:uppercase;
+                            margin-bottom:5px;
+                        ">${kind.label}</div>
+
+                        <div style="
+                            color:#fff;
+                            font-size:16px;
+                            font-weight:900;
+                            line-height:1.2;
+                            margin-bottom:6px;
+                            text-transform:uppercase;
+                        ">${safeTitle}</div>
+
+                        <div style="
+                            color:#aaa;
+                            font-size:13px;
+                            line-height:1.45;
+                            margin-bottom:12px;
+                        ">${safeDesc}</div>
+
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button
+                                type="button"
+                                data-treasure-url="${safeUrl}"
+                                data-treasure-title="${safeTitle}"
+                                data-treasure-type="${safeType}"
+                                data-treasure-action="open"
+                                style="
+                                    flex:1;
+                                    min-width:130px;
+                                    background:${kind.color};
+                                    color:#000;
+                                    border:none;
+                                    border-radius:10px;
+                                    padding:11px 12px;
+                                    font-size:13px;
+                                    font-weight:900;
+                                    cursor:pointer;
+                                    text-transform:uppercase;
+                                "
+                            >${kind.actionLabel}</button>
+
+                            <a
+                                href="${safeUrl}"
+                                target="_blank"
+                                rel="noopener"
+                                style="
+                                    flex:1;
+                                    min-width:130px;
+                                    background:#2a2a2a;
+                                    color:#fff;
+                                    border:1px solid #444;
+                                    border-radius:10px;
+                                    padding:11px 12px;
+                                    font-size:13px;
+                                    font-weight:900;
+                                    text-decoration:none;
+                                    text-align:center;
+                                    box-sizing:border-box;
+                                    text-transform:uppercase;
+                                "
+                            >Salva / Esporta</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderTreasureSection(title, icon, entries, color) {
+        if (!entries.length) return "";
+
+        return `
+            <div style="margin-bottom:20px;">
+                <h3 style="
+                    color:${color};
+                    margin:0 0 10px 0;
+                    font-size:15px;
+                    text-transform:uppercase;
+                    letter-spacing:0.6px;
+                ">${icon} ${title}</h3>
+
+                <div style="display:flex; flex-direction:column; gap:14px;">
+                    ${entries.map(renderTreasureCard).join("")}
+                </div>
+            </div>
+        `;
+    }
+
+    function bindTreasureCardActions() {
+        listEl.querySelectorAll("[data-treasure-action='open']").forEach(btn => {
+            btn.addEventListener("click", function () {
+                const url = this.getAttribute("data-treasure-url") || "";
+                const type = this.getAttribute("data-treasure-type") || "";
+                const title = this.getAttribute("data-treasure-title") || "";
+
+                if (type === "audio") {
+                    playTreasureAudio(url, title);
+                    return;
+                }
+
+                openExternalTreasure(url);
+            });
+        });
+    }
+
+    function renderTreasureMaps() {
+        const buckets = splitTreasureLinks();
+
+        const hasSomething =
+            buckets.map.length ||
+            buckets.audio.length ||
+            buckets.other.length;
+
+        if (!hasSomething) {
+            listEl.innerHTML = "";
+            emptyEl.style.display = "block";
+            return;
+        }
+
+        emptyEl.style.display = "none";
+
+        listEl.innerHTML = `
+            ${renderTreasureSection("Tracce, mappe e percorsi", "🧭", buckets.map, "var(--w-gold)")}
+            ${renderTreasureSection("Radio Natura e audio", "🎧", buckets.audio, "#7cc7ff")}
+            ${renderTreasureSection("Altri file utili", "📦", buckets.other, "#aaa")}
+        `;
+
+        bindTreasureCardActions();
+
+        console.log("[WILDU TREASURE MAPS] Link interni classificati", {
+            mappe: buckets.map.length,
+            audio: buckets.audio.length,
+            altriFile: buckets.other.length
+        });
+    }
+
+    function toggleFirstRadioAudio() {
+        const buckets = window.WILDU_TREASURE_BUCKETS || splitTreasureLinks();
+        const firstAudio = buckets.audio && buckets.audio[0];
+
+        if (!firstAudio) {
+            if (typeof showToast === "function") {
+                showToast("Radio Natura non configurata nella Mappa dei Tesori.");
+            } else {
+                alert("Radio Natura non configurata.");
+            }
+            return;
+        }
+
+        playTreasureAudio(firstAudio.url, getItemTitle(firstAudio.item, "Radio Natura"));
     }
 
     function safeUrl(rawUrl) {
@@ -570,8 +1159,9 @@
         if (p.isTravel === true) return false;
         if (!p.title || !p.href) return false;
 
-        // Mostra tutti i prodotti Amazon validi, ma esclude bozze disattivate.
-        if (p.active === false || String(p.active).toLowerCase() === "false") return false;
+        if (p.active === false || String(p.active).toLowerCase() === "false") {
+            return false;
+        }
 
         return true;
     }
@@ -683,6 +1273,11 @@
     }
 
     function renderTreasureGearPopup() {
+        if (!booksSection || !gearSection || !booksGrid || !gearGrid || !gearEmptyBox || !gearCountEl) {
+            console.warn("[WILDU MAPPA TESORI] Elementi popup attrezzatura mancanti");
+            return;
+        }
+
         const rawProducts = readTreasureAmazonProducts();
 
         const products = rawProducts
@@ -702,13 +1297,13 @@
 
         booksSection.style.display = books.length ? "block" : "none";
         gearSection.style.display = gear.length ? "block" : "none";
-        emptyBox.style.display = products.length ? "none" : "block";
+        gearEmptyBox.style.display = products.length ? "none" : "block";
 
         const parts = [];
         if (gear.length) parts.push(gear.length + " attrezzature");
         if (books.length) parts.push(books.length + " libri/manuali/guide");
 
-        countEl.innerText = parts.length
+        gearCountEl.innerText = parts.length
             ? parts.join(" · ")
             : "0 prodotti Amazon in cache";
 
@@ -720,8 +1315,10 @@
     }
 
     function openTreasureGearPopup() {
+        if (!gearModal) return;
+
         renderTreasureGearPopup();
-        modal.style.display = "block";
+        gearModal.style.display = "block";
 
         try {
             document.body.style.overflow = "hidden";
@@ -729,27 +1326,45 @@
     }
 
     function closeTreasureGearPopup() {
-        modal.style.display = "none";
+        if (!gearModal) return;
+
+        gearModal.style.display = "none";
 
         try {
             document.body.style.overflow = "";
         } catch (e) {}
     }
 
-    openBtn.addEventListener("click", openTreasureGearPopup);
-    closeBtn.addEventListener("click", closeTreasureGearPopup);
+    renderTreasureMaps();
 
-    modal.addEventListener("click", function (e) {
-        if (e.target === modal) closeTreasureGearPopup();
-    });
+    if (openRadioBtn) {
+        openRadioBtn.addEventListener("click", toggleFirstRadioAudio);
+    }
+
+    if (openGearBtn) {
+        openGearBtn.addEventListener("click", openTreasureGearPopup);
+    }
+
+    if (closeGearBtn) {
+        closeGearBtn.addEventListener("click", closeTreasureGearPopup);
+    }
+
+    if (gearModal) {
+        gearModal.addEventListener("click", function (e) {
+            if (e.target === gearModal) closeTreasureGearPopup();
+        });
+    }
 
     document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape" && modal.style.display !== "none") {
-            closeTreasureGearPopup();
+        if (e.key === "Escape") {
+            if (gearModal && gearModal.style.display !== "none") {
+                closeTreasureGearPopup();
+            }
         }
     });
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
+        window.WILDU_MODULE.rewriteRoot(root);
+    }
 })();
- 
-    
-    
 </script>
