@@ -50,9 +50,8 @@ body::before {
     display: flex;
     gap: 8px;
 
-    /* Niente safe-area qui: la navbar sta sotto l'header all'apertura
-       e deve diventare intestazione piena, non bandana flottante. */
-    padding: 10px 12px;
+    /* Stato normale: sotto l'header NON deve creare spazio extra */
+    padding: 12px;
 
     background: #000;
 
@@ -68,6 +67,15 @@ body::before {
     -webkit-overflow-scrolling: touch;
 
     box-sizing: border-box;
+    box-shadow: none;
+
+    transition: padding-top 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Stato sticky reale: solo quando la navbar è attaccata al bordo alto */
+.nav.nav-is-stuck {
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    box-shadow: 0 8px 18px rgba(0,0,0,0.55);
 }
 
 .nav::-webkit-scrollbar {
@@ -6777,9 +6785,59 @@ document.addEventListener('dragstart', function(e) {
     
     
     
+function bindWilduStickyNavSafeArea() {
+    const nav = document.querySelector('.nav');
+    if (!nav || nav.dataset.wilduStickySafeBound === '1') return;
+
+    nav.dataset.wilduStickySafeBound = '1';
+
+    let sentinel = document.getElementById('wildu-nav-sticky-sentinel');
+
+    if (!sentinel) {
+        sentinel = document.createElement('div');
+        sentinel.id = 'wildu-nav-sticky-sentinel';
+        sentinel.setAttribute('aria-hidden', 'true');
+        sentinel.style.cssText = 'height:1px;width:1px;margin:0;padding:0;pointer-events:none;opacity:0;';
+        nav.parentNode.insertBefore(sentinel, nav);
+    }
+
+    let ticking = false;
+
+    function updateStickyState() {
+        ticking = false;
+
+        const rect = sentinel.getBoundingClientRect();
+
+        /*
+            Quando il sentinel supera il bordo alto, la nav è realmente sticky.
+            Solo allora aggiungiamo safe-area.
+            Così:
+            - all'apertura sotto header: niente spazio extra
+            - durante scroll: sfondo nero pieno + bottoni sotto notch/status bar
+        */
+        const shouldBeStuck = window.scrollY > 0 && rect.top <= 0;
+
+        nav.classList.toggle('nav-is-stuck', shouldBeStuck);
+    }
+
+    function requestStickyUpdate() {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(updateStickyState);
+    }
+
+    window.addEventListener('scroll', requestStickyUpdate, { passive: true });
+    window.addEventListener('resize', requestStickyUpdate);
+    window.addEventListener('orientationchange', requestStickyUpdate);
+    window.addEventListener('pageshow', requestStickyUpdate);
+
+    requestStickyUpdate();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     syncAmazonFooterViewportOffset();
     bindPublicCacheSecretTrigger();
+    bindWilduStickyNavSafeArea();
     init();
     initAmazonSponsors();
 });
