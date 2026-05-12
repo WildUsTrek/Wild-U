@@ -133,6 +133,27 @@ body::before {
 
 /* --- WILDU AMAZON FOOTER SLIDER --- */
 
+
+.amazon-ad-pill {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 153, 0, 0.15);
+    border: 1px solid rgba(255, 153, 0, 0.4);
+    border-top: none;
+    color: #FF9900;
+    font-size: 8px;
+    font-weight: 900;
+    padding: 3px 10px;
+    border-radius: 0 0 8px 8px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    z-index: 20;
+    pointer-events: none;
+}
+        
+
 #amazon-footer-wrapper {
     --amazon-card-w: clamp(250px, 72vw, 292px);
     --amazon-bleed: clamp(72px, 22vw, 110px);
@@ -801,10 +822,19 @@ body::before {
         <div id="my-bookings-list"></div>
 
         <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
-        <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
-        <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Scrivici direttamente su WhatsApp per qualsiasi dubbio o informazione sui nostri viaggi.</p>
-        <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
-    </div>
+            <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
+            <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Scrivici direttamente su WhatsApp per qualsiasi dubbio o informazione sui nostri viaggi.</p>
+            <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
+        </div>
+        
+        <!-- INIZIO DISCLOSURE TATTICA LATO CLIENTE -->
+        <div style="text-align: center; opacity: 0.5; margin-top: 30px; padding-top: 20px; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 20px;">
+            <b style="color:var(--w-gold);">TRASPARENZA COMMERCIALE</b><br>
+            Sosteniamo la community consigliando l'attrezzatura che amiamo.<br>
+            In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
+        </div>
+        <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
+
     </div>
 </div>
 </div>
@@ -6577,7 +6607,7 @@ function renderAmazonSponsors(products) {
                 </div>
             `;
         } else {
-            // 📦 CARD STANDARD: AMAZON (Mantiene la tua logica intatta col parametro index esatto)
+// 📦 CARD STANDARD: AMAZON (Mantiene la tua logica intatta col parametro index esatto)
             html += `
                 <div class="amazon-card" onclick="openAmazonDetail(${index})">
                     <img src="${p.img_url}" alt="${p.title}" style="object-fit: cover !important; background: #111 !important;">
@@ -6594,6 +6624,11 @@ function renderAmazonSponsors(products) {
 
     slider.innerHTML = html;
     wrapper.style.display = 'flex';
+
+    // INSERIMENTO PILLOLA AMAZON AD
+    if(!wrapper.querySelector('.amazon-ad-pill')) {
+        wrapper.insertAdjacentHTML('afterbegin', '<div class="amazon-ad-pill">Amazon Ad</div>');
+    }
 
     // 5. IL TUO PRELOAD DELLE IMMAGINI (Recuperato e applicato a tutta la mixedList)
     mixedList.forEach(p => {
@@ -6727,12 +6762,16 @@ function openAmazonDetail(index) {
         <div class="amazon-det-price-row">
             <span class="amazon-det-price">€${p.price}</span>
         </div>
+        
+        <!-- NOTA LEGALE INSERITA CON SPAZIO PER I BOTTONI -->
+        <div style="font-size: 0.58rem; color: #666; line-height: 1.3; margin-top: 20px; margin-bottom: 30px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); font-style: italic;">
+            * In qualità di Affiliato Amazon, Wildu riceve un guadagno dagli acquisti idonei.
+        </div>
     `;
 
     linkBtn.href = p.affiliate_url;
     document.getElementById('amazon-detail-overlay').classList.add('amazon-overlay-visible');
 }
-
 
 
 function startAmazonAutoScroll() {
