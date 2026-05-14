@@ -468,12 +468,10 @@ function syncHikingRoutesLayer() {
   const baseOpacity = Number(cfg.opacity ?? 0.85);
   const z = state.map.getZoom();
 
-  const shouldShow =
-    state.hikingUserEnabled &&
-    cfg.enabled !== false &&
-    z >= minZoom;
-
-  state.hikingAutoChanging = true;
+  // I sentieri sono automatici:
+  // se l’overlay è abilitato e lo zoom lo permette, si vedono.
+  // Nessun toggle manuale, nessuno stato utente che può bloccarli.
+  const shouldShow = cfg.enabled !== false && z >= minZoom;
 
   if (shouldShow && !state.map.hasLayer(state.hikingRoutesLayer)) {
     state.hikingRoutesLayer.addTo(state.map);
@@ -482,8 +480,6 @@ function syncHikingRoutesLayer() {
   if (!shouldShow && state.map.hasLayer(state.hikingRoutesLayer)) {
     state.map.removeLayer(state.hikingRoutesLayer);
   }
-
-  state.hikingAutoChanging = false;
 
   if (shouldShow && typeof state.hikingRoutesLayer.setOpacity === "function") {
     if (z <= minZoom) {
@@ -527,18 +523,8 @@ function initMap() {
 
     state.map.on("zoomend", syncHikingRoutesLayer);
 
-    state.map.on("overlayadd", function(e) {
-      if (e.layer === state.hikingRoutesLayer && !state.hikingAutoChanging) {
-        state.hikingUserEnabled = true;
-        syncHikingRoutesLayer();
-      }
-    });
-
-    state.map.on("overlayremove", function(e) {
-      if (e.layer === state.hikingRoutesLayer && !state.hikingAutoChanging) {
-        state.hikingUserEnabled = false;
-      }
-    });
+// Overlay sentieri gestito automaticamente da syncHikingRoutesLayer()
+// in base allo zoom e alla configurazione Firestore.
   }
 
   state.waypointsLayer.addTo(state.map);
