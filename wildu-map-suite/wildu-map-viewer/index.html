@@ -376,84 +376,190 @@
       return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
     }
 
+function fallbackViewerConfig() {
+  return {
+    baseMap: WILDU_MAP_CONFIG.baseMapFallback || {
+      enabled: true,
+      providerId: "opentopomap",
+      label: "OpenTopoMap",
+      tileUrl: WILDU_MAP_CONFIG.tileUrl,
+      attribution: WILDU_MAP_CONFIG.tileAttribution,
+      maxZoom: WILDU_MAP_CONFIG.tileMaxZoom || 17
+    },
+    hikingOverlay: WILDU_MAP_CONFIG.hikingOverlayFallback || {
+      enabled: true,
+      providerId: "waymarkedtrails_hiking",
+      label: "Sentieri escursionistici",
+      tileUrl: "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png",
+      attribution: 'Hiking routes © <a href="https://waymarkedtrails.org/" target="_blank" rel="noopener">Waymarked Trails</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>',
+      minZoom: 12,
+      maxZoom: 18,
+      opacity: 0.85
+    }
+  };
+}
+
+function normalizeTileSettings(raw, fallback, kind) {
+  const out = { ...(fallback || {}) };
+
+  if (raw && typeof raw === "object") {
+    if (typeof raw.enabled === "boolean") out.enabled = raw.enabled;
+    if (String(raw.providerId || "").trim()) out.providerId = String(raw.providerId).trim();
+    if (String(raw.label || "").trim()) out.label = String(raw.label).trim();
+    if (safeUrl(raw.tileUrl)) out.tileUrl = safeUrl(raw.tileUrl);
+    if (String(raw.attribution || "").trim()) out.attribution = String(raw.attribution).trim();
+
+    if (Number.isFinite(Number(raw.maxZoom))) {
+      out.maxZoom = Math.max(1, Math.min(22, Number(raw.maxZoom)));
+    }
+
+    if (kind === "overlay") {
+      if (Number.isFinite(Number(raw.minZoom))) {
+        out.minZoom = Math.max(1, Math.min(22, Number(raw.minZoom)));
+      }
+
+      if (Number.isFinite(Number(raw.opacity))) {
+        out.opacity = Math.max(0, Math.min(1, Number(raw.opacity)));
+      }
+    }
+  }
+
+  if (!safeUrl(out.tileUrl)) out.tileUrl = fallback.tileUrl;
+  if (!String(out.attribution || "").trim()) {
+    out.attribution = fallback.attribution || "© OpenStreetMap contributors";
+  }
+
+  return out;
+}
+
+async function loadViewerMapConfig() {
+  const fallback = fallbackViewerConfig();
+
+  try {
+    const ref = doc(
+      db,
+      WILDU_MAP_COLLECTIONS.SETTINGS || "wildu_map_settings",
+      WILDU_MAP_CONFIG.mapSettingsDocId || "viewer_public_config"
+    );
+
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) return fallback;
+
+    const data = snap.data() || {};
+
+    if (data.status && data.status !== "ACTIVE") return fallback;
+
+    return {
+      baseMap: normalizeTileSettings(data.baseMap, fallback.baseMap, "base"),
+      hikingOverlay: normalizeTileSettings(data.hikingOverlay, fallback.hikingOverlay, "overlay")
+    };
+  } catch (e) {
+    console.warn("[Wildu Map] Config mappa non disponibile, uso fallback.", e);
+    return fallback;
+  }
+}
+
+function syncHikingRoutesLayer() {
+  if (!state.map || !state.hikingRoutesLayer) return;
+
+  const cfg = (state.viewerConfig || fallbackViewerConfig()).hikingOverlay || {};
+  const minZoom = Number(cfg.minZoom || 12);
+  const baseOpacity = Number(cfg.opacity ?? 0.85);
+  const z = state.map.getZoom();
+
+  const shouldShow =
+    state.hikingUserEnabled &&
+    cfg.enabled !== false &&
+    z >= minZoom;
+
+  state.hikingAutoChanging = true;
+
+  if (shouldShow && !state.map.hasLayer(state.hikingRoutesLayer)) {
+    state.hikingRoutesLayer.addTo(state.map);
+  }
+
+  if (!shouldShow && state.map.hasLayer(state.hikingRoutesLayer)) {
+    state.map.removeLayer(state.hikingRoutesLayer);
+  }
+
+  state.hikingAutoChanging = false;
+
+  if (shouldShow && typeof state.hikingRoutesLayer.setOpacity === "function") {
+    if (z <= minZoom) {
+      state.hikingRoutesLayer.setOpacity(Math.max(0.3, baseOpacity * 0.55));
+    } else if (z === minZoom + 1) {
+      state.hikingRoutesLayer.setOpacity(Math.max(0.45, baseOpacity * 0.75));
+    } else {
+      state.hikingRoutesLayer.setOpacity(baseOpacity);
+    }
+  }
+}
+
 function initMap() {
+  const cfg = state.viewerConfig || fallbackViewerConfig();
+  const fallback = fallbackViewerConfig();
+
   state.map = L.map("map", { zoomControl: true }).setView(
     WILDU_MAP_CONFIG.defaultCenter,
     WILDU_MAP_CONFIG.defaultZoom
   );
 
-  // Base topografica: rilievi, curve, terreno.
-  const topoBaseLayer = L.tileLayer(WILDU_MAP_CONFIG.tileUrl, {
-    maxZoom: WILDU_MAP_CONFIG.tileMaxZoom,
-    attribution: WILDU_MAP_CONFIG.tileAttribution
+  // La base map non deve mai lasciare il viewer senza sfondo:
+  // se da admin viene disabilitata o rotta, usiamo il fallback sicuro.
+  const baseCfg = cfg.baseMap && cfg.baseMap.enabled !== false
+    ? cfg.baseMap
+    : fallback.baseMap;
+
+  const topoBaseLayer = L.tileLayer(baseCfg.tileUrl, {
+    maxZoom: Number(baseCfg.maxZoom || 17),
+    attribution: baseCfg.attribution || "© OpenStreetMap contributors"
   }).addTo(state.map);
 
-  // Overlay escursionistico: sentieri/route hiking numerate quando disponibili in OSM.
-  // Nota: è raster, quindi non possiamo cambiare lo spessore reale delle linee.
-  // Lo rendiamo meno invasivo nascondendolo agli zoom bassi e attenuandolo agli zoom intermedi.
-  const hikingRoutesLayer = L.tileLayer("https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png", {
-    maxZoom: 18,
-    opacity: 0.85,
-    attribution: 'Hiking routes © <a href="https://waymarkedtrails.org/" target="_blank" rel="noopener">Waymarked Trails</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
-  });
+  const hikingCfg = cfg.hikingOverlay || fallback.hikingOverlay;
 
-  const HIKING_MIN_ZOOM = 12;
-  let hikingUserEnabled = true;
-  let hikingAutoChanging = false;
+  if (hikingCfg.enabled !== false && safeUrl(hikingCfg.tileUrl)) {
+    state.hikingRoutesLayer = L.tileLayer(hikingCfg.tileUrl, {
+      maxZoom: Number(hikingCfg.maxZoom || 18),
+      opacity: Number(hikingCfg.opacity ?? 0.85),
+      attribution: hikingCfg.attribution || "© OpenStreetMap contributors"
+    });
 
-  function syncHikingRoutesLayer() {
-    const z = state.map.getZoom();
-    const shouldShow = hikingUserEnabled && z >= HIKING_MIN_ZOOM;
+    state.map.on("zoomend", syncHikingRoutesLayer);
 
-    hikingAutoChanging = true;
+    state.map.on("overlayadd", function(e) {
+      if (e.layer === state.hikingRoutesLayer && !state.hikingAutoChanging) {
+        state.hikingUserEnabled = true;
+        syncHikingRoutesLayer();
+      }
+    });
 
-    if (shouldShow && !state.map.hasLayer(hikingRoutesLayer)) {
-      hikingRoutesLayer.addTo(state.map);
-    }
-
-    if (!shouldShow && state.map.hasLayer(hikingRoutesLayer)) {
-      state.map.removeLayer(hikingRoutesLayer);
-    }
-
-    hikingAutoChanging = false;
-
-    if (shouldShow) {
-      if (z <= 12) hikingRoutesLayer.setOpacity(0.45);
-      else if (z === 13) hikingRoutesLayer.setOpacity(0.65);
-      else hikingRoutesLayer.setOpacity(0.85);
-    }
+    state.map.on("overlayremove", function(e) {
+      if (e.layer === state.hikingRoutesLayer && !state.hikingAutoChanging) {
+        state.hikingUserEnabled = false;
+      }
+    });
   }
 
-  state.map.on("zoomend", syncHikingRoutesLayer);
-
-  state.map.on("overlayadd", function(e) {
-    if (e.layer === hikingRoutesLayer && !hikingAutoChanging) {
-      hikingUserEnabled = true;
-      syncHikingRoutesLayer();
-    }
-  });
-
-  state.map.on("overlayremove", function(e) {
-    if (e.layer === hikingRoutesLayer && !hikingAutoChanging) {
-      hikingUserEnabled = false;
-    }
-  });
-
-  // Layer Wildu e tracce sopra la mappa.
   state.waypointsLayer.addTo(state.map);
   state.tracksLayer.addTo(state.map);
   state.localTracksLayer.addTo(state.map);
 
+  const overlays = {
+    "Wildu Waypoints": state.waypointsLayer,
+    "Tracce GPX Wildu": state.tracksLayer,
+    "GPX personali": state.localTracksLayer
+  };
+
+  if (state.hikingRoutesLayer) {
+    overlays[hikingCfg.label || "Sentieri escursionistici"] = state.hikingRoutesLayer;
+  }
+
   L.control.layers(
     {
-      "Mappa topografica": topoBaseLayer
+      [baseCfg.label || "Mappa topografica"]: topoBaseLayer
     },
-    {
-      "Sentieri escursionistici": hikingRoutesLayer,
-      "Wildu Waypoints": state.waypointsLayer,
-      "Tracce GPX Wildu": state.tracksLayer,
-      "GPX personali": state.localTracksLayer
-    },
+    overlays,
     {
       collapsed: true
     }
@@ -826,9 +932,14 @@ showGpsToast("Tracking GPS non autorizzato", "err");
       window.addEventListener("resize", () => setTimeout(() => state.map.invalidateSize(), 120));
     }
 
-    initMap();
-    bind();
-    loadAreas().catch(e => setStatus(e.message, true));
+async function boot() {
+  state.viewerConfig = await loadViewerMapConfig();
+  initMap();
+  bind();
+  await loadAreas();
+}
+
+boot().catch(e => setStatus(e.message, true));
   </script>
 </body>
 </html>
