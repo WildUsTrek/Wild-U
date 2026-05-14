@@ -372,9 +372,19 @@ import {
       const v = String(s || "").trim();
       return /^https:\/\//i.test(v) ? v : "";
     }
-    function sortByOrderTitle(a, b) {
-      return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
-    }
+    
+function sortByOrderTitle(a, b) {
+  return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
+}
+
+function clampZoom(value, maxZoom = 17) {
+  const z = Number(value);
+  const max = Number(maxZoom);
+
+  if (!Number.isFinite(z)) return Math.min(13, Number.isFinite(max) ? max : 17);
+
+  return Math.max(1, Math.min(z, Number.isFinite(max) ? max : 17));
+}
 
 function fallbackViewerConfig() {
   return {
@@ -496,16 +506,22 @@ function initMap() {
   const cfg = state.viewerConfig || fallbackViewerConfig();
   const fallback = fallbackViewerConfig();
 
-  state.map = L.map("map", { zoomControl: true }).setView(
-    WILDU_MAP_CONFIG.defaultCenter,
-    WILDU_MAP_CONFIG.defaultZoom
-  );
-
   // La base map non deve mai lasciare il viewer senza sfondo:
   // se da admin viene disabilitata o rotta, usiamo il fallback sicuro.
   const baseCfg = cfg.baseMap && cfg.baseMap.enabled !== false
     ? cfg.baseMap
     : fallback.baseMap;
+
+  const baseMaxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+  const startZoom = clampZoom(WILDU_MAP_CONFIG.defaultZoom, baseMaxZoom);
+
+  state.map = L.map("map", {
+    zoomControl: true,
+    maxZoom: baseMaxZoom
+  }).setView(
+    WILDU_MAP_CONFIG.defaultCenter,
+    startZoom
+  );
 
   const topoBaseLayer = L.tileLayer(baseCfg.tileUrl, {
     maxZoom: Number(baseCfg.maxZoom || 17),
@@ -585,8 +601,14 @@ function initMap() {
       $("area-subtitle").textContent = area.subtitle || area.description || "Mappa escursionistica con Wildu Waypoints e tracce GPX.";
       const lat = Number(area.centerLat || WILDU_MAP_CONFIG.defaultCenter[0]);
       const lng = Number(area.centerLng || WILDU_MAP_CONFIG.defaultCenter[1]);
-      const zoom = Number(area.defaultZoom || 13);
-      state.map.setView([lat, lng], zoom);
+      
+      const cfg = state.viewerConfig || fallbackViewerConfig();
+const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
+const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+const zoom = clampZoom(area.defaultZoom || 13, maxZoom);
+
+state.map.setView([lat, lng], zoom);
+      
       await Promise.all([loadWaypoints(area.areaSlug || area.id), loadTracks(area.areaSlug || area.id)]);
       fitUsefulBounds();
     }
