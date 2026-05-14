@@ -26,18 +26,11 @@ export const WILDU_MAP_CONFIG = Object.freeze({
   defaultCenter: [42.5, 12.5],
   defaultZoom: 6,
 
-  // Fallback viewer: base topografica.
-  // Più avanti lo renderemo configurabile da wildu_map_settings/viewer_public_config.
   tileUrl: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
   tileAttribution: "Map data © OpenStreetMap contributors, SRTM | Style © OpenTopoMap (CC-BY-SA)",
   tileMaxZoom: 17,
 
-  // I file pesanti non vanno su Firebase Storage:
-  // GPX, immagini, audio e PDF verranno serviti da Cloudflare R2/CDN.
-  // Firestore salverà solo metadati + URL pubblici.
   mediaBaseUrl: "https://media.wildu.it",
 
-  // Compatibilità temporanea col codice attuale.
-  // Verrà neutralizzata nello step GPX/R2.
   storageTrackRoot: "wildu-map-tracks"
 });
