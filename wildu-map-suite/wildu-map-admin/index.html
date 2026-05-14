@@ -633,20 +633,26 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
             <br>${escapeHtml(w.lat)}, ${escapeHtml(w.lng)}
             <br>${escapeHtml(w.description || "")}
           </div>
-          <div class="item-actions">
-            <button class="ghost" data-edit-waypoint='${escapeHtml(JSON.stringify(w))}'>Modifica</button>
-            <button class="ghost" data-focus-waypoint='${escapeHtml(JSON.stringify({lat:w.lat,lng:w.lng}))}'>Vedi su mappa</button>
-          </div>
+<div class="item-actions">
+  <button class="ghost" data-edit-waypoint='${escapeHtml(JSON.stringify(w))}'>Modifica</button>
+  <button class="ghost" data-focus-waypoint='${escapeHtml(JSON.stringify({lat:w.lat,lng:w.lng}))}'>Vedi su mappa</button>
+  <button class="danger" data-delete-waypoint="${escapeHtml(w.id)}">Elimina</button>
+</div>
         </div>
       `).join("");
-      box.querySelectorAll("[data-edit-waypoint]").forEach(btn => btn.onclick = () => fillWaypointForm(JSON.parse(btn.dataset.editWaypoint)));
-      box.querySelectorAll("[data-focus-waypoint]").forEach(btn => btn.onclick = () => {
-        const p = JSON.parse(btn.dataset.focusWaypoint);
-        if (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))) {
-          state.map.setView([Number(p.lat), Number(p.lng)], 16);
-          placePickMarker(Number(p.lat), Number(p.lng));
-        }
-      });
+      
+box.querySelectorAll("[data-edit-waypoint]").forEach(btn => btn.onclick = () => fillWaypointForm(JSON.parse(btn.dataset.editWaypoint)));
+box.querySelectorAll("[data-focus-waypoint]").forEach(btn => btn.onclick = () => {
+  const p = JSON.parse(btn.dataset.focusWaypoint);
+  if (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))) {
+    state.map.setView([Number(p.lat), Number(p.lng)], 16);
+    placePickMarker(Number(p.lat), Number(p.lng));
+  }
+});
+box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
+  btn.onclick = () => deleteWaypoint(btn.dataset.deleteWaypoint).catch(e => setStatus(e.message, true));
+});
+      
     }
 
     function fillWaypointForm(w) {
@@ -717,6 +723,33 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
       await loadWaypointsForSelectedArea();
     }
 
+
+    async function deleteWaypoint(id) {
+  requireUser();
+
+  if (!id) {
+    throw new Error("ID waypoint mancante.");
+  }
+
+  const ok = window.confirm(
+    `Vuoi eliminare definitivamente questo Wildu Waypoint?\n\n` +
+    `Verrà cancellato il documento Firestore wildu_map_waypoints/${id}.`
+  );
+
+  if (!ok) return;
+
+  await deleteDoc(doc(db, WILDU_MAP_COLLECTIONS.WAYPOINTS, id));
+
+  if (val("waypoint-id") === id) {
+    clearWaypointForm();
+  }
+
+  setStatus(`Waypoint eliminato: ${id}`);
+  await loadWaypointsForSelectedArea();
+}
+
+
+    
     async function loadTracksForSelectedArea() {
       if (!state.user) return;
       const areaSlug = val("track-area");
