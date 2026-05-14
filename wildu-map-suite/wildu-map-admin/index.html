@@ -248,7 +248,15 @@
     const storage = getStorage(app);
 
     const $ = (id) => document.getElementById(id);
-    const state = { user: null, areas: [], activeTab: "areas", map: null, pickMarker: null };
+    const state = {
+  user: null,
+  isMaster: false,
+  masterUid: "z5jE639FZsaWG59AgeFd2i8ovtT2",
+  areas: [],
+  activeTab: "areas",
+  map: null,
+  pickMarker: null
+};
 
     function setStatus(msg, isError = false) {
       const el = $("status");
@@ -277,10 +285,21 @@
       return /^https:\/\//i.test(v) ? v : "";
     }
 
-    function requireUser() {
-      if (!state.user) throw new Error("Devi fare login Google.");
-      return state.user;
-    }
+    function isMasterUser(user) {
+  return !!user && user.uid === state.masterUid;
+}
+
+function requireUser() {
+  if (!state.user) {
+    throw new Error("Devi fare login Google.");
+  }
+
+  if (!isMasterUser(state.user)) {
+    throw new Error("Accesso non autorizzato: questo pannello è riservato all’admin master.");
+  }
+
+  return state.user;
+}
 
     function initMap() {
       state.map = L.map("admin-map", { zoomControl: true }).setView(WILDU_MAP_CONFIG.defaultCenter, WILDU_MAP_CONFIG.defaultZoom);
@@ -680,17 +699,40 @@
     }
 
     onAuthStateChanged(auth, async (user) => {
-      state.user = user;
-      $("btn-login").classList.toggle("hidden", !!user);
-      $("btn-logout").classList.toggle("hidden", !user);
-      $("auth-state").textContent = user ? `${user.email || user.uid}` : "Non autenticato";
-      if (user) {
-        setStatus("Login riuscito. Carico dati mappa...");
-        try { await reloadAll(); setStatus("Dati caricati."); } catch (e) { setStatus(e.message, true); }
-      } else {
-        setStatus("Fai login Google per gestire le mappe.");
-      }
-    });
+  state.user = user;
+  state.isMaster = isMasterUser(user);
+
+  $("btn-login").classList.toggle("hidden", !!user);
+  $("btn-logout").classList.toggle("hidden", !user);
+
+  if (!user) {
+    $("auth-state").textContent = "Non autenticato";
+    setStatus("Fai login Google per gestire le mappe.");
+    return;
+  }
+
+  const label = user.email || user.uid;
+
+  if (!state.isMaster) {
+    $("auth-state").textContent = `NON AUTORIZZATO · ${label}`;
+    setStatus(
+      `Login riuscito, ma questo account non è autorizzato. UID rilevato: ${user.uid}`,
+      true
+    );
+    return;
+  }
+
+  $("auth-state").textContent = `ADMIN · ${label}`;
+
+  setStatus("Login admin riuscito. Carico dati mappa...");
+
+  try {
+    await reloadAll();
+    setStatus("Dati mappa caricati. Accesso admin verificato.");
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+});
 
     initMap();
     bind();
