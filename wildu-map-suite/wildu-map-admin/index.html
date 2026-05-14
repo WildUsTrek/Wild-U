@@ -128,16 +128,23 @@
             <div><label>Status</label><select id="area-status"><option>ACTIVE</option><option>HIDDEN</option></select></div>
             <div><label>Ordine</label><input id="area-sort-order" type="number" value="10" /></div>
           </div>
-          <div class="bar" style="margin-top:14px;">
-            <button id="btn-save-area" class="primary">Salva area</button>
-            <button id="btn-new-area" class="ghost">Nuova</button>
-            <button id="btn-area-from-map" class="ghost">Usa centro mappa</button>
-          </div>
+          
+<div class="bar" style="margin-top:14px;">
+  <button id="btn-save-area" class="primary">Salva area</button>
+  <button id="btn-new-area" class="ghost">Nuova</button>
+  <button id="btn-area-from-map" class="ghost">Usa centro mappa</button>
+  <button id="btn-area-draw" class="gold">Disegna confine</button>
+  <button id="btn-area-stop-draw" class="ghost">Ferma disegno</button>
+  <button id="btn-area-clear-polygon" class="danger">Pulisci confine</button>
+</div>
+          
           <p class="hint">Il documento area usa come ID lo slug: comodo, leggibile e stabile.</p>
         </div>
       </div>
       <div>
-        <div id="admin-map"></div>
+        <div id="map-host-areas">
+  <div id="admin-map"></div>
+</div>
         <div class="card" style="margin-top:14px;">
           <h2>Aree salvate</h2>
           <div class="body"><div id="areas-list" class="list"></div></div>
@@ -179,12 +186,34 @@
           <p class="hint">Puoi anche cliccare sulla mappa per compilare latitudine e longitudine.</p>
         </div>
       </div>
-      <div>
-        <div class="card">
-          <h2>Waypoints dell’area selezionata</h2>
-          <div class="body"><div id="waypoints-list" class="list"></div></div>
-        </div>
+      
+<div>
+  <div class="card" style="margin-bottom:14px;">
+    <h2>Mappa waypoint</h2>
+    <div class="body">
+      <div id="map-host-waypoints"></div>
+
+      <label>Trova coordinate</label>
+      <input id="coord-search" placeholder="Incolla coordinate Google Maps: 44.325123, 11.245678" />
+
+      <div class="bar" style="margin-top:10px;">
+        <button id="btn-find-coords" class="ghost">Trova coordinate</button>
+        <button id="btn-use-found-waypoint" class="primary">Usa come waypoint</button>
       </div>
+
+      <p class="hint">
+        Puoi incollare coordinate pure oppure un link Google Maps che contiene coordinate.
+        Il pulsante “Usa come waypoint” compila latitudine e longitudine del waypoint.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Waypoints dell’area selezionata</h2>
+    <div class="body"><div id="waypoints-list" class="list"></div></div>
+  </div>
+</div>
+      
     </section>
 
     <section id="tab-tracks" class="grid hidden">
@@ -371,8 +400,14 @@ const state = {
   areas: [],
   activeTab: "areas",
   viewerConfig: null,
+
   map: null,
-  pickMarker: null
+  pickMarker: null,
+  foundCoord: null,
+
+  areaDrawMode: false,
+  areaPolygonPoints: [],
+  areaPolygonLayer: null
 };
 
     function setStatus(msg, isError = false) {
@@ -424,11 +459,18 @@ function requireUser() {
         maxZoom: WILDU_MAP_CONFIG.tileMaxZoom,
         attribution: WILDU_MAP_CONFIG.tileAttribution
       }).addTo(state.map);
-      state.map.on("click", (e) => {
-        setWaypointLatLng(e.latlng.lat, e.latlng.lng);
-        placePickMarker(e.latlng.lat, e.latlng.lng);
-        setStatus("Coordinate waypoint compilate dal click sulla mappa.");
-      });
+      
+state.map.on("click", (e) => {
+  if (state.areaDrawMode) {
+    addAreaPolygonPoint(e.latlng.lat, e.latlng.lng);
+    return;
+  }
+
+  setWaypointLatLng(e.latlng.lat, e.latlng.lng);
+  placePickMarker(e.latlng.lat, e.latlng.lng);
+  setStatus("Coordinate waypoint compilate dal click sulla mappa.");
+});
+      
     }
 
     function placePickMarker(lat, lng) {
@@ -438,15 +480,261 @@ function requireUser() {
         state.pickMarker.setLatLng([lat, lng]);
       }
     }
-    function setWaypointLatLng(lat, lng) {
-      $("waypoint-lat").value = Number(lat).toFixed(6);
-      $("waypoint-lng").value = Number(lng).toFixed(6);
+
+function setWaypointLatLng(lat, lng) {
+  $("waypoint-lat").value = Number(lat).toFixed(6);
+  $("waypoint-lng").value = Number(lng).toFixed(6);
+}
+
+function moveAdminMapToTab(tab) {
+  const mapEl = $("admin-map");
+  const areaHost = $("map-host-areas");
+  const waypointHost = $("map-host-waypoints");
+
+  if (!mapEl || !areaHost || !waypointHost) return;
+
+  const target = tab === "waypoints" ? waypointHost : areaHost;
+
+  if (mapEl.parentElement !== target) {
+    target.appendChild(mapEl);
+  }
+
+  setTimeout(() => state.map && state.map.invalidateSize(), 150);
+}
+
+function parseCoordinateInput(raw) {
+  const text = decodeURIComponent(String(raw || "").trim());
+
+  if (!text) return null;
+
+  const patterns = [
+    /@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i,
+    /[?&]q=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i,
+    /[?&]ll=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i,
+    /(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)/i
+  ];
+
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (!m) continue;
+
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+
+    if (
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180
+    ) {
+      return { lat, lng };
     }
+  }
+
+  return null;
+}
+
+function centerMapOnCoordinate(lat, lng, fillWaypoint = false) {
+  const cleanLat = Number(lat);
+  const cleanLng = Number(lng);
+
+  if (!Number.isFinite(cleanLat) || !Number.isFinite(cleanLng)) {
+    throw new Error("Coordinate non valide.");
+  }
+
+  state.foundCoord = {
+    lat: cleanLat,
+    lng: cleanLng
+  };
+
+  state.map.setView([cleanLat, cleanLng], 17);
+  placePickMarker(cleanLat, cleanLng);
+
+  if (fillWaypoint) {
+    setWaypointLatLng(cleanLat, cleanLng);
+  }
+}
+
+function findCoordinateOnMap() {
+  const parsed = parseCoordinateInput(val("coord-search"));
+
+  if (!parsed) {
+    throw new Error("Coordinate non riconosciute. Usa formato tipo: 44.325123, 11.245678");
+  }
+
+  centerMapOnCoordinate(parsed.lat, parsed.lng, false);
+  setStatus(`Coordinate trovate: ${parsed.lat.toFixed(6)}, ${parsed.lng.toFixed(6)}. Clicca “Usa come waypoint” per compilare il form.`);
+}
+
+function useFoundCoordinateAsWaypoint() {
+  let parsed = state.foundCoord;
+
+  if (!parsed) {
+    parsed = parseCoordinateInput(val("coord-search"));
+  }
+
+  if (!parsed) {
+    throw new Error("Prima cerca o incolla coordinate valide.");
+  }
+
+  centerMapOnCoordinate(parsed.lat, parsed.lng, true);
+  setStatus(`Coordinate waypoint compilate: ${parsed.lat.toFixed(6)}, ${parsed.lng.toFixed(6)}.`);
+}
+
+function normalizeAreaPolygon(raw) {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .map(p => ({
+      lat: Number(p.lat),
+      lng: Number(p.lng)
+    }))
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+}
+
+function computeAreaBounds(points) {
+  const clean = normalizeAreaPolygon(points);
+
+  if (!clean.length) return null;
+
+  const lats = clean.map(p => p.lat);
+  const lngs = clean.map(p => p.lng);
+
+  return {
+    minLat: Math.min(...lats),
+    minLng: Math.min(...lngs),
+    maxLat: Math.max(...lats),
+    maxLng: Math.max(...lngs)
+  };
+}
+
+function updateAreaPolygonLayer(fit = false) {
+  if (!state.map) return;
+
+  if (state.areaPolygonLayer) {
+    state.map.removeLayer(state.areaPolygonLayer);
+    state.areaPolygonLayer = null;
+  }
+
+  const points = normalizeAreaPolygon(state.areaPolygonPoints);
+  if (!points.length) return;
+
+  const latlngs = points.map(p => [p.lat, p.lng]);
+
+  if (latlngs.length >= 3) {
+    state.areaPolygonLayer = L.polygon(latlngs, {
+      color: "#a7d129",
+      weight: 3,
+      opacity: 0.9,
+      fillColor: "#a7d129",
+      fillOpacity: 0.13
+    }).addTo(state.map);
+  } else {
+    state.areaPolygonLayer = L.polyline(latlngs, {
+      color: "#a7d129",
+      weight: 3,
+      opacity: 0.9,
+      dashArray: "6,6"
+    }).addTo(state.map);
+  }
+
+  if (fit && state.areaPolygonLayer && typeof state.areaPolygonLayer.getBounds === "function") {
+    try {
+      const b = state.areaPolygonLayer.getBounds();
+      if (b && b.isValid && b.isValid()) {
+        state.map.fitBounds(b.pad(0.2));
+      }
+    } catch (_) {}
+  }
+}
+
+function setAreaPolygon(points, fit = false) {
+  state.areaPolygonPoints = normalizeAreaPolygon(points);
+  updateAreaPolygonLayer(fit);
+}
+
+function loadAreaPolygonFromArea(area, fit = false) {
+  setAreaPolygon(area && area.polygon ? area.polygon : [], fit);
+}
+
+function addAreaPolygonPoint(lat, lng) {
+  const point = {
+    lat: Number(Number(lat).toFixed(6)),
+    lng: Number(Number(lng).toFixed(6))
+  };
+
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return;
+
+  state.areaPolygonPoints.push(point);
+  updateAreaPolygonLayer(false);
+
+  const count = state.areaPolygonPoints.length;
+
+  if (count < 3) {
+    setStatus(`Vertice area aggiunto (${count}). Servono almeno 3 punti per creare un confine.`);
+  } else {
+    setStatus(`Vertice area aggiunto (${count}). Il confine verrà salvato con l’area.`);
+  }
+}
+
+function startAreaPolygonDraw() {
+  state.areaDrawMode = true;
+  setStatus("Disegno confine attivo: clicca sulla mappa per aggiungere vertici all’area.");
+}
+
+function stopAreaPolygonDraw() {
+  state.areaDrawMode = false;
+  setStatus("Disegno confine fermato.");
+}
+
+function clearAreaPolygon() {
+  state.areaDrawMode = false;
+  state.areaPolygonPoints = [];
+
+  if (state.areaPolygonLayer) {
+    state.map.removeLayer(state.areaPolygonLayer);
+    state.areaPolygonLayer = null;
+  }
+
+  setStatus("Confine area pulito. Salva area per rimuoverlo anche da Firestore.");
+}
+
+function getAreaPolygonPayload() {
+  const points = normalizeAreaPolygon(state.areaPolygonPoints);
+
+  if (points.length < 3) {
+    return {
+      polygon: [],
+      bounds: null
+    };
+  }
+
+  return {
+    polygon: points,
+    bounds: computeAreaBounds(points)
+  };
+}
 
 function switchTab(tab) {
   state.activeTab = tab;
-  document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
-  ["areas", "waypoints", "tracks", "settings"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== tab));
+
+  document.querySelectorAll(".tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+
+  ["areas", "waypoints", "tracks", "settings"].forEach(name => {
+    $("tab-" + name).classList.toggle("hidden", name !== tab);
+  });
+
+  if (tab !== "areas" && state.areaDrawMode) {
+    state.areaDrawMode = false;
+    setStatus("Disegno confine fermato: sei uscito dalla tab Aree.");
+  }
+
+  moveAdminMapToTab(tab);
+
   setTimeout(() => state.map && state.map.invalidateSize(), 150);
 }
 
@@ -529,17 +817,21 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
       $("area-center-lng").value = a.centerLng ?? "";
       $("area-default-zoom").value = a.defaultZoom ?? 13;
       $("area-cover-image-url").value = a.coverImageUrl || "";
-      $("area-status").value = a.status || "ACTIVE";
-      $("area-sort-order").value = a.sortOrder ?? 10;
-      focusArea(id);
+      
+$("area-status").value = a.status || "ACTIVE";
+$("area-sort-order").value = a.sortOrder ?? 10;
+focusArea(id);
+loadAreaPolygonFromArea(a, true);
+      
     }
 
-    function clearAreaForm() {
-      ["area-id","area-slug","area-title","area-subtitle","area-description","area-regione","area-provincia","area-comune","area-center-lat","area-center-lng","area-cover-image-url"].forEach(id => $(id).value = "");
-      $("area-default-zoom").value = 13;
-      $("area-status").value = "ACTIVE";
-      $("area-sort-order").value = 10;
-    }
+function clearAreaForm() {
+  ["area-id","area-slug","area-title","area-subtitle","area-description","area-regione","area-provincia","area-comune","area-center-lat","area-center-lng","area-cover-image-url"].forEach(id => $(id).value = "");
+  $("area-default-zoom").value = 13;
+  $("area-status").value = "ACTIVE";
+  $("area-sort-order").value = 10;
+  clearAreaPolygon();
+}
 
     function focusArea(id) {
       const a = state.areas.find(x => x.id === id);
@@ -550,9 +842,12 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
     async function saveArea() {
       const user = requireUser();
       const rawSlug = val("area-slug") || val("area-title");
-      const areaSlug = slugify(rawSlug);
-      if (!areaSlug) throw new Error("Area slug obbligatorio.");
-      const payload = {
+const areaSlug = slugify(rawSlug);
+if (!areaSlug) throw new Error("Area slug obbligatorio.");
+
+const polygonPayload = getAreaPolygonPayload();
+
+const payload = {
         schemaVersion: 1,
         status: val("area-status") || "ACTIVE",
         visibility: "PUBLIC",
@@ -566,9 +861,10 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
         centerLat: num("area-center-lat", WILDU_MAP_CONFIG.defaultCenter[0]),
         centerLng: num("area-center-lng", WILDU_MAP_CONFIG.defaultCenter[1]),
         defaultZoom: num("area-default-zoom", 13),
-        coverImageUrl: safeUrl(val("area-cover-image-url")),
-        sortOrder: num("area-sort-order", 10),
-        updatedByUid: user.uid,
+coverImageUrl: safeUrl(val("area-cover-image-url")),
+sortOrder: num("area-sort-order", 10),
+...polygonPayload,
+updatedByUid: user.uid,
         updatedByEmail: user.email || "",
         updatedAt: serverTimestamp()
       };
@@ -1044,20 +1340,53 @@ function bind() {
       document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => switchTab(btn.dataset.tab));
       $("btn-save-area").onclick = () => saveArea().catch(e => setStatus(e.message, true));
       $("btn-new-area").onclick = clearAreaForm;
-      $("btn-area-from-map").onclick = () => {
-        const c = state.map.getCenter();
-        $("area-center-lat").value = c.lat.toFixed(6);
-        $("area-center-lng").value = c.lng.toFixed(6);
-        $("area-default-zoom").value = state.map.getZoom();
-      };
+$("btn-area-from-map").onclick = () => {
+  const c = state.map.getCenter();
+  $("area-center-lat").value = c.lat.toFixed(6);
+  $("area-center-lng").value = c.lng.toFixed(6);
+  $("area-default-zoom").value = state.map.getZoom();
+};
+
+$("btn-area-draw").onclick = startAreaPolygonDraw;
+$("btn-area-stop-draw").onclick = stopAreaPolygonDraw;
+$("btn-area-clear-polygon").onclick = clearAreaPolygon;
       $("area-title").addEventListener("input", () => { if (!val("area-slug")) $("area-slug").value = slugify(val("area-title")); });
       $("btn-save-waypoint").onclick = () => saveWaypoint().catch(e => setStatus(e.message, true));
       $("btn-new-waypoint").onclick = clearWaypointForm;
-      $("btn-waypoint-from-map").onclick = () => {
-        const c = state.map.getCenter();
-        setWaypointLatLng(c.lat, c.lng);
-        placePickMarker(c.lat, c.lng);
-      };
+  
+$("btn-waypoint-from-map").onclick = () => {
+  const c = state.map.getCenter();
+  setWaypointLatLng(c.lat, c.lng);
+  placePickMarker(c.lat, c.lng);
+};
+
+$("btn-find-coords").onclick = () => {
+  try {
+    findCoordinateOnMap();
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+};
+
+$("btn-use-found-waypoint").onclick = () => {
+  try {
+    useFoundCoordinateAsWaypoint();
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+};
+
+$("coord-search").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    try {
+      findCoordinateOnMap();
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  }
+});
+  
       $("waypoint-area").onchange = () => { loadWaypointsForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("waypoint-area")); };
       $("track-area").onchange = () => { loadTracksForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("track-area")); };
       $("btn-save-track").onclick = () => saveTrack().catch(e => setStatus(e.message, true));
