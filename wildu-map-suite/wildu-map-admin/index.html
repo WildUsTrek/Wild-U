@@ -235,7 +235,7 @@
       getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
     import {
-      getFirestore, collection, doc, setDoc, addDoc, updateDoc, getDocs, query, where, serverTimestamp
+      getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, getDocs, query, where, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     import {
       getStorage, ref, uploadBytes, getDownloadURL
@@ -380,14 +380,20 @@ async function login() {
             <strong>${escapeHtml(a.areaSlug || a.id)}</strong> · ${escapeHtml(a.status || "")} · ${escapeHtml(a.regione || "")}
             <br>${escapeHtml(a.description || "")}
           </div>
-          <div class="item-actions">
-            <button class="ghost" data-edit-area="${escapeHtml(a.id)}">Modifica</button>
-            <button class="ghost" data-focus-area="${escapeHtml(a.id)}">Centra mappa</button>
-          </div>
+          
+<div class="item-actions">
+  <button class="ghost" data-edit-area="${escapeHtml(a.id)}">Modifica</button>
+  <button class="ghost" data-focus-area="${escapeHtml(a.id)}">Centra mappa</button>
+  <button class="danger" data-delete-area="${escapeHtml(a.id)}">Elimina</button>
+</div>
+          
         </div>
       `).join("");
-      box.querySelectorAll("[data-edit-area]").forEach(btn => btn.onclick = () => fillAreaForm(btn.dataset.editArea));
-      box.querySelectorAll("[data-focus-area]").forEach(btn => btn.onclick = () => focusArea(btn.dataset.focusArea));
+box.querySelectorAll("[data-edit-area]").forEach(btn => btn.onclick = () => fillAreaForm(btn.dataset.editArea));
+box.querySelectorAll("[data-focus-area]").forEach(btn => btn.onclick = () => focusArea(btn.dataset.focusArea));
+box.querySelectorAll("[data-delete-area]").forEach(btn => {
+  btn.onclick = () => deleteArea(btn.dataset.deleteArea).catch(e => setStatus(e.message, true));
+});
     }
 
     function fillAreaForm(id) {
@@ -459,6 +465,34 @@ async function login() {
       await loadAreas();
     }
 
+
+    async function deleteArea(id) {
+  const user = requireUser();
+
+  const area = state.areas.find(a => a.id === id);
+  const label = area ? (area.title || area.areaSlug || id) : id;
+
+  const ok = window.confirm(
+    `Vuoi eliminare definitivamente l’area "${label}"?\n\n` +
+    `Verrà cancellato il documento Firestore wildu_map_areas/${id}.\n` +
+    `Questa azione non elimina automaticamente eventuali waypoint o tracce già collegate.`
+  );
+
+  if (!ok) return;
+
+  await deleteDoc(doc(db, WILDU_MAP_COLLECTIONS.AREAS, id));
+
+  if (val("area-id") === id || val("area-slug") === id) {
+    clearAreaForm();
+  }
+
+  setStatus(`Area eliminata: ${id}`);
+  await loadAreas();
+  await loadWaypointsForSelectedArea();
+  await loadTracksForSelectedArea();
+}
+
+    
     async function loadWaypointsForSelectedArea() {
       if (!state.user) return;
       const areaSlug = val("waypoint-area");
