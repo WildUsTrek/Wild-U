@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Wildu Map Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <style>
+    :root {
+      --bg: #0f1712;
+      --panel: rgba(18, 28, 21, .92);
+      --text: #f3f8f1;
+      --muted: #aab8a8;
+      --line: rgba(255,255,255,.14);
+      --accent: #a7d129;
+      --gold: #f5b400;
+      --danger: #ff6b6b;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body, #map { width: 100%; height: 100%; margin: 0; background: var(--bg); }
+    body { color: var(--text); overflow: hidden; }
+    #map { position: absolute; inset: 0; z-index: 1; }
+    .topbar {
+      position: absolute; left: 10px; right: 10px; top: 10px; z-index: 500;
+      display: flex; gap: 8px; align-items: center; justify-content: space-between;
+      pointer-events: none;
+    }
+    .panel {
+      pointer-events: auto;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+      box-shadow: 0 16px 40px rgba(0,0,0,.26); backdrop-filter: blur(12px);
+    }
+    .titlebox { padding: 10px 12px; min-width: 0; max-width: min(540px, calc(100vw - 24px)); }
+    .title { font-size: 14px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .subtitle { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; justify-content: flex-end; }
+    button, label.file-btn, select {
+      border: 0; border-radius: 13px; padding: 9px 10px; background: rgba(255,255,255,.08); color: var(--text);
+      font-weight: 800; font-size: 12px; cursor: pointer;
+    }
+    button.active { background: var(--accent); color: #142008; }
+    button.gold { background: var(--gold); color: #231800; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input[type="file"] { display: none; }
+    #area-select { max-width: 200px; border: 1px solid var(--line); }
+    .status {
+      position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 500;
+      pointer-events: none; display: flex; justify-content: center;
+    }
+    .status > div {
+      pointer-events: auto; max-width: 720px; padding: 9px 12px; color: var(--muted);
+      background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+      font-size: 12px; box-shadow: 0 14px 34px rgba(0,0,0,.22); backdrop-filter: blur(12px);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .waypoint-popup { min-width: 220px; max-width: 280px; }
+    .waypoint-popup h3 { margin: 0 0 6px; font-size: 15px; }
+    .waypoint-popup p { margin: 6px 0; line-height: 1.35; }
+    .waypoint-popup img { width: 100%; max-height: 150px; object-fit: cover; border-radius: 12px; margin-top: 8px; display: block; }
+    .waypoint-popup small { color: #667; display: block; margin-top: 6px; }
+    .leaflet-control-attribution { font-size: 10px; }
+    .leaflet-popup-content-wrapper { border-radius: 16px; }
+    @media (max-width: 760px) {
+      .topbar { flex-direction: column; align-items: stretch; }
+      .titlebox { max-width: none; }
+      .controls { justify-content: flex-start; }
+      button, label.file-btn, select { font-size: 11px; padding: 8px 9px; }
+      .status > div { border-radius: 16px; white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="topbar">
+    <div class="panel titlebox">
+      <div id="area-title" class="title">Wildu Map</div>
+      <div id="area-subtitle" class="subtitle">Caricamento area...</div>
+    </div>
+    <div class="panel controls">
+      <select id="area-select" title="Scegli area"></select>
+      <button id="btn-waypoints" class="active">Wildu Waypoints</button>
+      <button id="btn-tracks" class="active">Tracce</button>
+      <label class="file-btn" for="local-gpx">Carica GPX</label>
+      <input id="local-gpx" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
+      <button id="btn-gps" class="gold">GPS</button>
+    </div>
+  </div>
+
+  <div class="status"><div id="status">Avvio mappa...</div></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.2.0/gpx.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import {
+      getFirestore, collection, getDocs, query, where
+    } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { firebaseConfig, WILDU_MAP_COLLECTIONS, WILDU_MAP_CONFIG } from "../shared/firebase-config.js";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const $ = (id) => document.getElementById(id);
+
+    const params = new URLSearchParams(location.search);
+    const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
+
+    const state = {
+      map: null,
+      areas: [],
+      area: null,
+      waypointsLayer: L.layerGroup(),
+      tracksLayer: L.layerGroup(),
+      localTracksLayer: L.layerGroup(),
+      gpsMarker: null,
+      gpsCircle: null,
+      showWaypoints: true,
+      showTracks: true
+    };
+
+    function setStatus(msg, isError = false) {
+      const el = $("status");
+      el.textContent = msg;
+      el.style.color = isError ? "#ffd4d4" : "#aab8a8";
+      el.parentElement.style.display = msg ? "flex" : "none";
+    }
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+    }
+    function safeUrl(s) {
+      const v = String(s || "").trim();
+      return /^https:\/\//i.test(v) ? v : "";
+    }
+    function sortByOrderTitle(a, b) {
+      return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
+    }
+
+    function initMap() {
+      state.map = L.map("map", { zoomControl: true }).setView(WILDU_MAP_CONFIG.defaultCenter, WILDU_MAP_CONFIG.defaultZoom);
+      L.tileLayer(WILDU_MAP_CONFIG.tileUrl, {
+        maxZoom: WILDU_MAP_CONFIG.tileMaxZoom,
+        attribution: WILDU_MAP_CONFIG.tileAttribution
+      }).addTo(state.map);
+      state.waypointsLayer.addTo(state.map);
+      state.tracksLayer.addTo(state.map);
+      state.localTracksLayer.addTo(state.map);
+    }
+
+    async function loadAreas() {
+      const q = query(
+        collection(db, WILDU_MAP_COLLECTIONS.AREAS),
+        where("status", "==", "ACTIVE"),
+        where("visibility", "==", "PUBLIC")
+      );
+      const snap = await getDocs(q);
+      state.areas = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByOrderTitle);
+      renderAreaSelect();
+      if (!state.areas.length) throw new Error("Nessuna area mappa pubblica trovata.");
+      const selected = state.areas.find(a => a.areaSlug === initialAreaSlug || a.id === initialAreaSlug) || state.areas[0];
+      await selectArea(selected.areaSlug || selected.id);
+    }
+
+    function renderAreaSelect() {
+      $("area-select").innerHTML = state.areas.map(a => {
+        const slug = a.areaSlug || a.id;
+        return `<option value="${escapeHtml(slug)}">${escapeHtml(a.title || slug)}</option>`;
+      }).join("");
+      $("area-select").style.display = state.areas.length > 1 ? "block" : "none";
+    }
+
+    async function selectArea(areaSlug) {
+      const area = state.areas.find(a => a.areaSlug === areaSlug || a.id === areaSlug);
+      if (!area) return;
+      state.area = area;
+      $("area-select").value = area.areaSlug || area.id;
+      $("area-title").textContent = area.title || area.areaSlug || "Wildu Map";
+      $("area-subtitle").textContent = area.subtitle || area.description || "Mappa escursionistica con Wildu Waypoints e tracce GPX.";
+      const lat = Number(area.centerLat || WILDU_MAP_CONFIG.defaultCenter[0]);
+      const lng = Number(area.centerLng || WILDU_MAP_CONFIG.defaultCenter[1]);
+      const zoom = Number(area.defaultZoom || 13);
+      state.map.setView([lat, lng], zoom);
+      await Promise.all([loadWaypoints(area.areaSlug || area.id), loadTracks(area.areaSlug || area.id)]);
+      fitUsefulBounds();
+    }
+
+    async function loadWaypoints(areaSlug) {
+      state.waypointsLayer.clearLayers();
+      const q = query(
+        collection(db, WILDU_MAP_COLLECTIONS.WAYPOINTS),
+        where("areaSlug", "==", areaSlug),
+        where("status", "==", "ACTIVE"),
+        where("visibility", "==", "PUBLIC")
+      );
+      const snap = await getDocs(q);
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByOrderTitle);
+      items.forEach(addWaypointMarker);
+      setStatus(`${items.length} Wildu Waypoints caricati.`);
+    }
+
+    function waypointIcon(type) {
+      const label = ({
+        VIEWPOINT: "⛰️", WATER: "💧", PARKING: "🅿️", NATURE: "🌿", INFO: "📍", CUSTOM: "⭐"
+      })[String(type || "INFO").toUpperCase()] || "📍";
+      return L.divIcon({
+        className: "wildu-waypoint-icon",
+        html: `<div style="width:30px;height:30px;border-radius:999px;display:grid;place-items:center;background:#a7d129;color:#142008;border:2px solid white;box-shadow:0 4px 14px rgba(0,0,0,.35);font-size:15px;">${label}</div>`,
+        iconSize: [30,30], iconAnchor: [15,30], popupAnchor: [0,-28]
+      });
+    }
+
+    function addWaypointMarker(w) {
+      const lat = Number(w.lat), lng = Number(w.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const img = safeUrl(w.imageUrl)
+        ? `<img loading="lazy" src="${escapeHtml(safeUrl(w.imageUrl))}" alt="${escapeHtml(w.imageAlt || w.title || "Wildu Waypoint")}" />`
+        : "";
+      const credit = w.imageCredit ? `<small>${escapeHtml(w.imageCredit)}</small>` : "";
+      const html = `
+        <div class="waypoint-popup">
+          <h3>${escapeHtml(w.title || "Wildu Waypoint")}</h3>
+          <p>${escapeHtml(w.description || "")}</p>
+          ${img}
+          ${credit}
+        </div>`;
+      L.marker([lat, lng], { icon: waypointIcon(w.iconType) }).bindPopup(html).addTo(state.waypointsLayer);
+    }
+
+    async function loadTracks(areaSlug) {
+      state.tracksLayer.clearLayers();
+      const q = query(
+        collection(db, WILDU_MAP_COLLECTIONS.TRACKS),
+        where("areaSlug", "==", areaSlug),
+        where("status", "==", "ACTIVE"),
+        where("visibility", "==", "PUBLIC")
+      );
+      const snap = await getDocs(q);
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByOrderTitle);
+      let loaded = 0;
+      items.forEach(t => {
+        const url = safeUrl(t.fileUrl);
+        if (!url || !window.L.GPX) return;
+        const layer = new L.GPX(url, {
+          async: true,
+          polyline_options: { color: "#f5b400", weight: 4, opacity: 0.9 }
+        });
+        layer.on("loaded", () => { loaded++; setStatus(`${loaded}/${items.length} tracce GPX caricate.`); });
+        layer.on("error", () => setStatus(`Errore caricamento GPX: ${t.title || t.id}`, true));
+        layer.addTo(state.tracksLayer);
+      });
+      if (!items.length) setStatus("Nessuna traccia GPX pubblica per quest’area.");
+    }
+
+    function fitUsefulBounds() {
+      const group = L.featureGroup();
+      state.waypointsLayer.eachLayer(l => group.addLayer(l));
+      state.tracksLayer.eachLayer(l => {
+        if (typeof l.getBounds === "function") group.addLayer(l);
+      });
+      try {
+        const b = group.getBounds();
+        if (b.isValid()) state.map.fitBounds(b.pad(0.2));
+      } catch (_) {}
+    }
+
+    function toggleLayer(kind) {
+      if (kind === "waypoints") {
+        state.showWaypoints = !state.showWaypoints;
+        if (state.showWaypoints) state.waypointsLayer.addTo(state.map); else state.map.removeLayer(state.waypointsLayer);
+        $("btn-waypoints").classList.toggle("active", state.showWaypoints);
+      }
+      if (kind === "tracks") {
+        state.showTracks = !state.showTracks;
+        if (state.showTracks) state.tracksLayer.addTo(state.map); else state.map.removeLayer(state.tracksLayer);
+        $("btn-tracks").classList.toggle("active", state.showTracks);
+      }
+    }
+
+    function loadLocalGpx(file) {
+      if (!file) return;
+      if (!/\.gpx$/i.test(file.name)) { setStatus("Carica un file .gpx.", true); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const blob = new Blob([reader.result], { type: "application/gpx+xml" });
+        const url = URL.createObjectURL(blob);
+        const layer = new L.GPX(url, {
+          async: true,
+          polyline_options: { color: "#ff6b6b", weight: 4, opacity: 0.9 }
+        });
+        layer.on("loaded", (e) => {
+          state.localTracksLayer.addLayer(layer);
+          try { state.map.fitBounds(e.target.getBounds().pad(0.2)); } catch (_) {}
+          setStatus("GPX personale caricato solo localmente, senza invio al server.");
+        });
+        layer.on("error", () => setStatus("Errore lettura GPX locale.", true));
+      };
+      reader.onerror = () => setStatus("Errore lettura file locale.", true);
+      reader.readAsText(file);
+    }
+
+    function locateUser() {
+      if (!navigator.geolocation) { setStatus("GPS non disponibile su questo browser.", true); return; }
+      setStatus("Ricerca posizione GPS...");
+      navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy || 0;
+        if (!state.gpsMarker) {
+          state.gpsMarker = L.marker([lat, lng]).addTo(state.map).bindPopup("Sei qui");
+          state.gpsCircle = L.circle([lat, lng], { radius: acc, weight: 1, opacity: .5, fillOpacity: .08 }).addTo(state.map);
+        } else {
+          state.gpsMarker.setLatLng([lat, lng]);
+          state.gpsCircle.setLatLng([lat, lng]).setRadius(acc);
+        }
+        state.map.setView([lat, lng], Math.max(state.map.getZoom(), 15));
+        setStatus(`Posizione GPS aggiornata. Precisione circa ${Math.round(acc)} m.`);
+      }, err => {
+        setStatus(err.message || "Permesso GPS negato o posizione non disponibile.", true);
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 });
+    }
+
+    function bind() {
+      $("btn-waypoints").onclick = () => toggleLayer("waypoints");
+      $("btn-tracks").onclick = () => toggleLayer("tracks");
+      $("btn-gps").onclick = locateUser;
+      $("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
+      $("area-select").onchange = () => selectArea($("area-select").value).catch(e => setStatus(e.message, true));
+      window.addEventListener("resize", () => setTimeout(() => state.map.invalidateSize(), 120));
+    }
+
+    initMap();
+    bind();
+    loadAreas().catch(e => setStatus(e.message, true));
+  </script>
+</body>
+</html>

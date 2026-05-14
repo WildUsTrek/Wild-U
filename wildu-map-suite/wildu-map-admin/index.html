@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Wildu Map Admin</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <style>
+    :root {
+      --bg: #0f1712;
+      --panel: #172319;
+      --panel2: #203226;
+      --text: #f3f8f1;
+      --muted: #aab8a8;
+      --line: rgba(255,255,255,.12);
+      --accent: #a7d129;
+      --danger: #ff6b6b;
+      --gold: #f5b400;
+      --input: #0b120e;
+      --shadow: 0 18px 60px rgba(0,0,0,.28);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); }
+    header {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; gap: 12px; align-items: center; justify-content: space-between;
+      padding: 12px 16px; background: rgba(15,23,18,.92); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0; font-size: 18px; letter-spacing: .2px; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    main { max-width: 1320px; margin: 0 auto; padding: 16px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button, .button {
+      border: 0; border-radius: 12px; padding: 10px 12px; cursor: pointer;
+      background: var(--panel2); color: var(--text); font-weight: 700;
+      box-shadow: none; transition: transform .08s ease, opacity .12s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+    .primary { background: var(--accent); color: #142008; }
+    .danger { background: rgba(255,107,107,.16); color: #ffd4d4; }
+    .ghost { background: transparent; border: 1px solid var(--line); }
+    .gold { background: var(--gold); color: #201600; }
+    .grid { display: grid; grid-template-columns: minmax(340px, 430px) 1fr; gap: 16px; align-items: start; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); overflow: hidden; }
+    .card h2 { margin: 0; padding: 14px 16px; font-size: 15px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.03); }
+    .card .body { padding: 14px; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tab.active { background: var(--accent); color: #142008; }
+    label { display: block; margin: 10px 0 5px; font-size: 12px; color: var(--muted); font-weight: 700; }
+    input, textarea, select {
+      width: 100%; border: 1px solid var(--line); background: var(--input); color: var(--text);
+      border-radius: 12px; padding: 10px 11px; outline: none; font: inherit;
+    }
+    textarea { min-height: 92px; resize: vertical; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    #admin-map { height: 420px; width: 100%; border-radius: 18px; border: 1px solid var(--line); background: #0b120e; }
+    .list { display: grid; gap: 10px; margin-top: 12px; }
+    .item { border: 1px solid var(--line); background: rgba(255,255,255,.035); padding: 12px; border-radius: 16px; }
+    .item-title { font-weight: 800; margin-bottom: 4px; }
+    .item-meta { color: var(--muted); font-size: 12px; line-height: 1.45; word-break: break-word; }
+    .item-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .status { padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+    .hidden { display: none !important; }
+    .pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+      #admin-map { height: 340px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Wildu Map Admin</h1>
+      <div class="sub">Aree territoriali, Wildu Waypoints e tracce GPX — collection nuove e indipendenti.</div>
+    </div>
+    <div class="bar">
+      <span id="auth-state" class="pill">Non autenticato</span>
+      <button id="btn-login" class="primary">Login Google</button>
+      <button id="btn-logout" class="ghost hidden">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="boot-warning" class="status" style="margin-bottom:14px;">
+      Configura <strong>shared/firebase-config.js</strong>, poi abilita le regole Firestore/Storage suggerite.
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="areas">Aree</button>
+      <button class="tab" data-tab="waypoints">Wildu Waypoints</button>
+      <button class="tab" data-tab="tracks">Tracce GPX</button>
+    </div>
+
+    <section id="tab-areas" class="grid">
+      <div class="card">
+        <h2>Area territoriale</h2>
+        <div class="body">
+          <input type="hidden" id="area-id" />
+          <label>Area slug</label>
+          <input id="area-slug" placeholder="monte-adone" />
+          <label>Titolo</label>
+          <input id="area-title" placeholder="Monte Adone" />
+          <label>Sottotitolo</label>
+          <input id="area-subtitle" placeholder="Contrafforti pliocenici dell’Appennino bolognese" />
+          <label>Descrizione</label>
+          <textarea id="area-description" placeholder="Descrizione breve dell’area..."></textarea>
+          <div class="three">
+            <div><label>Regione</label><input id="area-regione" placeholder="Emilia-Romagna" /></div>
+            <div><label>Provincia</label><input id="area-provincia" placeholder="Bologna" /></div>
+            <div><label>Comune</label><input id="area-comune" placeholder="Monzuno" /></div>
+          </div>
+          <div class="three">
+            <div><label>Lat centro</label><input id="area-center-lat" type="number" step="0.000001" /></div>
+            <div><label>Lng centro</label><input id="area-center-lng" type="number" step="0.000001" /></div>
+            <div><label>Zoom</label><input id="area-default-zoom" type="number" min="1" max="19" value="13" /></div>
+          </div>
+          <label>Cover image URL opzionale</label>
+          <input id="area-cover-image-url" placeholder="https://..." />
+          <div class="two">
+            <div><label>Status</label><select id="area-status"><option>ACTIVE</option><option>HIDDEN</option></select></div>
+            <div><label>Ordine</label><input id="area-sort-order" type="number" value="10" /></div>
+          </div>
+          <div class="bar" style="margin-top:14px;">
+            <button id="btn-save-area" class="primary">Salva area</button>
+            <button id="btn-new-area" class="ghost">Nuova</button>
+            <button id="btn-area-from-map" class="ghost">Usa centro mappa</button>
+          </div>
+          <p class="hint">Il documento area usa come ID lo slug: comodo, leggibile e stabile.</p>
+        </div>
+      </div>
+      <div>
+        <div id="admin-map"></div>
+        <div class="card" style="margin-top:14px;">
+          <h2>Aree salvate</h2>
+          <div class="body"><div id="areas-list" class="list"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-waypoints" class="grid hidden">
+      <div class="card">
+        <h2>Wildu Waypoint</h2>
+        <div class="body">
+          <input type="hidden" id="waypoint-id" />
+          <label>Area</label>
+          <select id="waypoint-area"></select>
+          <label>Titolo</label>
+          <input id="waypoint-title" placeholder="Belvedere Monte Adone" />
+          <label>Descrizione</label>
+          <textarea id="waypoint-description" placeholder="Descrizione del waypoint..."></textarea>
+          <div class="two">
+            <div><label>Latitudine</label><input id="waypoint-lat" type="number" step="0.000001" /></div>
+            <div><label>Longitudine</label><input id="waypoint-lng" type="number" step="0.000001" /></div>
+          </div>
+          <label>Image URL opzionale</label>
+          <input id="waypoint-image-url" placeholder="https://..." />
+          <div class="two">
+            <div><label>Image alt</label><input id="waypoint-image-alt" /></div>
+            <div><label>Image credit</label><input id="waypoint-image-credit" /></div>
+          </div>
+          <div class="three">
+            <div><label>Tipo icona</label><select id="waypoint-icon-type"><option>INFO</option><option>VIEWPOINT</option><option>WATER</option><option>PARKING</option><option>NATURE</option><option>CUSTOM</option></select></div>
+            <div><label>Status</label><select id="waypoint-status"><option>ACTIVE</option><option>HIDDEN</option></select></div>
+            <div><label>Ordine</label><input id="waypoint-sort-order" type="number" value="10" /></div>
+          </div>
+          <div class="bar" style="margin-top:14px;">
+            <button id="btn-save-waypoint" class="primary">Salva waypoint</button>
+            <button id="btn-new-waypoint" class="ghost">Nuovo</button>
+            <button id="btn-waypoint-from-map" class="ghost">Usa centro mappa</button>
+          </div>
+          <p class="hint">Puoi anche cliccare sulla mappa per compilare latitudine e longitudine.</p>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>Waypoints dell’area selezionata</h2>
+          <div class="body"><div id="waypoints-list" class="list"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-tracks" class="grid hidden">
+      <div class="card">
+        <h2>Traccia GPX</h2>
+        <div class="body">
+          <input type="hidden" id="track-id" />
+          <label>Area</label>
+          <select id="track-area"></select>
+          <label>Titolo</label>
+          <input id="track-title" placeholder="Anello Monte Adone" />
+          <label>Descrizione</label>
+          <textarea id="track-description" placeholder="Descrizione della traccia..."></textarea>
+          <label>File GPX opzionale</label>
+          <input id="track-file" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
+          <label>Oppure GPX file URL esterno</label>
+          <input id="track-file-url" placeholder="https://.../traccia.gpx" />
+          <div class="three">
+            <div><label>Distanza km</label><input id="track-distance-km" type="number" step="0.1" /></div>
+            <div><label>Dislivello + m</label><input id="track-elevation-gain-m" type="number" step="1" /></div>
+            <div><label>Difficoltà</label><input id="track-difficulty" placeholder="E" /></div>
+          </div>
+          <div class="two">
+            <div><label>Status</label><select id="track-status"><option>ACTIVE</option><option>HIDDEN</option></select></div>
+            <div><label>Ordine</label><input id="track-sort-order" type="number" value="10" /></div>
+          </div>
+          <div class="bar" style="margin-top:14px;">
+            <button id="btn-save-track" class="primary">Salva traccia</button>
+            <button id="btn-new-track" class="ghost">Nuova</button>
+          </div>
+          <p class="hint">Il file GPX va su Storage; Firestore salva solo metadati e URL.</p>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>Tracce dell’area selezionata</h2>
+          <div class="body"><div id="tracks-list" class="list"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <div id="status" class="status" style="margin-top:16px;">Pronto.</div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import {
+      getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    import {
+      getFirestore, collection, doc, setDoc, addDoc, updateDoc, getDocs, query, where, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import {
+      getStorage, ref, uploadBytes, getDownloadURL
+    } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
+    import { firebaseConfig, WILDU_MAP_COLLECTIONS, WILDU_MAP_CONFIG } from "../shared/firebase-config.js";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+
+    const $ = (id) => document.getElementById(id);
+    const state = { user: null, areas: [], activeTab: "areas", map: null, pickMarker: null };
+
+    function setStatus(msg, isError = false) {
+      const el = $("status");
+      el.textContent = msg;
+      el.style.color = isError ? "#ffd4d4" : "#aab8a8";
+      el.style.borderColor = isError ? "rgba(255,107,107,.45)" : "rgba(255,255,255,.12)";
+    }
+
+    function val(id) { return ($(id).value || "").trim(); }
+    function num(id, fallback = null) {
+      const raw = val(id);
+      if (raw === "") return fallback;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : fallback;
+    }
+    function slugify(input) {
+      return String(input || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    }
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+    }
+    function safeUrl(s) {
+      const v = String(s || "").trim();
+      return /^https:\/\//i.test(v) ? v : "";
+    }
+
+    function requireUser() {
+      if (!state.user) throw new Error("Devi fare login Google.");
+      return state.user;
+    }
+
+    function initMap() {
+      state.map = L.map("admin-map", { zoomControl: true }).setView(WILDU_MAP_CONFIG.defaultCenter, WILDU_MAP_CONFIG.defaultZoom);
+      L.tileLayer(WILDU_MAP_CONFIG.tileUrl, {
+        maxZoom: WILDU_MAP_CONFIG.tileMaxZoom,
+        attribution: WILDU_MAP_CONFIG.tileAttribution
+      }).addTo(state.map);
+      state.map.on("click", (e) => {
+        setWaypointLatLng(e.latlng.lat, e.latlng.lng);
+        placePickMarker(e.latlng.lat, e.latlng.lng);
+        setStatus("Coordinate waypoint compilate dal click sulla mappa.");
+      });
+    }
+
+    function placePickMarker(lat, lng) {
+      if (!state.pickMarker) {
+        state.pickMarker = L.marker([lat, lng]).addTo(state.map);
+      } else {
+        state.pickMarker.setLatLng([lat, lng]);
+      }
+    }
+    function setWaypointLatLng(lat, lng) {
+      $("waypoint-lat").value = Number(lat).toFixed(6);
+      $("waypoint-lng").value = Number(lng).toFixed(6);
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
+      ["areas", "waypoints", "tracks"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== tab));
+      setTimeout(() => state.map && state.map.invalidateSize(), 150);
+    }
+
+    async function login() {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    }
+
+    async function reloadAll() {
+      await loadAreas();
+      await loadWaypointsForSelectedArea();
+      await loadTracksForSelectedArea();
+    }
+
+    async function loadAreas() {
+      requireUser();
+      const snap = await getDocs(collection(db, WILDU_MAP_COLLECTIONS.AREAS));
+      state.areas = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || "")));
+      renderAreas();
+      renderAreaSelects();
+    }
+
+    function renderAreaSelects() {
+      const options = state.areas.map(a => `<option value="${escapeHtml(a.areaSlug || a.id)}">${escapeHtml(a.title || a.areaSlug || a.id)}</option>`).join("");
+      ["waypoint-area", "track-area"].forEach(id => {
+        const old = $(id).value;
+        $(id).innerHTML = options || `<option value="">Crea prima un’area</option>`;
+        if (old) $(id).value = old;
+      });
+    }
+
+    function renderAreas() {
+      const box = $("areas-list");
+      if (!state.areas.length) {
+        box.innerHTML = `<div class="hint">Nessuna area trovata.</div>`;
+        return;
+      }
+      box.innerHTML = state.areas.map(a => `
+        <div class="item">
+          <div class="item-title">${escapeHtml(a.title || a.areaSlug || a.id)}</div>
+          <div class="item-meta">
+            <strong>${escapeHtml(a.areaSlug || a.id)}</strong> · ${escapeHtml(a.status || "")} · ${escapeHtml(a.regione || "")}
+            <br>${escapeHtml(a.description || "")}
+          </div>
+          <div class="item-actions">
+            <button class="ghost" data-edit-area="${escapeHtml(a.id)}">Modifica</button>
+            <button class="ghost" data-focus-area="${escapeHtml(a.id)}">Centra mappa</button>
+          </div>
+        </div>
+      `).join("");
+      box.querySelectorAll("[data-edit-area]").forEach(btn => btn.onclick = () => fillAreaForm(btn.dataset.editArea));
+      box.querySelectorAll("[data-focus-area]").forEach(btn => btn.onclick = () => focusArea(btn.dataset.focusArea));
+    }
+
+    function fillAreaForm(id) {
+      const a = state.areas.find(x => x.id === id);
+      if (!a) return;
+      $("area-id").value = a.id || "";
+      $("area-slug").value = a.areaSlug || a.id || "";
+      $("area-title").value = a.title || "";
+      $("area-subtitle").value = a.subtitle || "";
+      $("area-description").value = a.description || "";
+      $("area-regione").value = a.regione || "";
+      $("area-provincia").value = a.provincia || "";
+      $("area-comune").value = a.comune || "";
+      $("area-center-lat").value = a.centerLat ?? "";
+      $("area-center-lng").value = a.centerLng ?? "";
+      $("area-default-zoom").value = a.defaultZoom ?? 13;
+      $("area-cover-image-url").value = a.coverImageUrl || "";
+      $("area-status").value = a.status || "ACTIVE";
+      $("area-sort-order").value = a.sortOrder ?? 10;
+      focusArea(id);
+    }
+
+    function clearAreaForm() {
+      ["area-id","area-slug","area-title","area-subtitle","area-description","area-regione","area-provincia","area-comune","area-center-lat","area-center-lng","area-cover-image-url"].forEach(id => $(id).value = "");
+      $("area-default-zoom").value = 13;
+      $("area-status").value = "ACTIVE";
+      $("area-sort-order").value = 10;
+    }
+
+    function focusArea(id) {
+      const a = state.areas.find(x => x.id === id);
+      if (!a || !Number.isFinite(Number(a.centerLat)) || !Number.isFinite(Number(a.centerLng))) return;
+      state.map.setView([Number(a.centerLat), Number(a.centerLng)], Number(a.defaultZoom || 13));
+    }
+
+    async function saveArea() {
+      const user = requireUser();
+      const rawSlug = val("area-slug") || val("area-title");
+      const areaSlug = slugify(rawSlug);
+      if (!areaSlug) throw new Error("Area slug obbligatorio.");
+      const payload = {
+        schemaVersion: 1,
+        status: val("area-status") || "ACTIVE",
+        visibility: "PUBLIC",
+        areaSlug,
+        title: val("area-title") || areaSlug,
+        subtitle: val("area-subtitle"),
+        description: val("area-description"),
+        regione: val("area-regione"),
+        provincia: val("area-provincia"),
+        comune: val("area-comune"),
+        centerLat: num("area-center-lat", WILDU_MAP_CONFIG.defaultCenter[0]),
+        centerLng: num("area-center-lng", WILDU_MAP_CONFIG.defaultCenter[1]),
+        defaultZoom: num("area-default-zoom", 13),
+        coverImageUrl: safeUrl(val("area-cover-image-url")),
+        sortOrder: num("area-sort-order", 10),
+        updatedByUid: user.uid,
+        updatedByEmail: user.email || "",
+        updatedAt: serverTimestamp()
+      };
+      const existing = state.areas.find(a => a.id === areaSlug);
+      if (!existing) {
+        payload.createdByUid = user.uid;
+        payload.createdByEmail = user.email || "";
+        payload.createdAt = serverTimestamp();
+      }
+      await setDoc(doc(db, WILDU_MAP_COLLECTIONS.AREAS, areaSlug), payload, { merge: true });
+      setStatus("Area salvata: " + areaSlug);
+      await loadAreas();
+    }
+
+    async function loadWaypointsForSelectedArea() {
+      if (!state.user) return;
+      const areaSlug = val("waypoint-area");
+      if (!areaSlug) { $("waypoints-list").innerHTML = `<div class="hint">Seleziona un’area.</div>`; return; }
+      const q = query(collection(db, WILDU_MAP_COLLECTIONS.WAYPOINTS), where("areaSlug", "==", areaSlug));
+      const snap = await getDocs(q);
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || "")));
+      renderWaypoints(items);
+    }
+
+    function renderWaypoints(items) {
+      const box = $("waypoints-list");
+      if (!items.length) { box.innerHTML = `<div class="hint">Nessun waypoint per quest’area.</div>`; return; }
+      box.innerHTML = items.map(w => `
+        <div class="item">
+          <div class="item-title">${escapeHtml(w.title || w.id)}</div>
+          <div class="item-meta">
+            ${escapeHtml(w.areaSlug || "")} · ${escapeHtml(w.status || "")} · ${escapeHtml(w.iconType || "INFO")}
+            <br>${escapeHtml(w.lat)}, ${escapeHtml(w.lng)}
+            <br>${escapeHtml(w.description || "")}
+          </div>
+          <div class="item-actions">
+            <button class="ghost" data-edit-waypoint='${escapeHtml(JSON.stringify(w))}'>Modifica</button>
+            <button class="ghost" data-focus-waypoint='${escapeHtml(JSON.stringify({lat:w.lat,lng:w.lng}))}'>Vedi su mappa</button>
+          </div>
+        </div>
+      `).join("");
+      box.querySelectorAll("[data-edit-waypoint]").forEach(btn => btn.onclick = () => fillWaypointForm(JSON.parse(btn.dataset.editWaypoint)));
+      box.querySelectorAll("[data-focus-waypoint]").forEach(btn => btn.onclick = () => {
+        const p = JSON.parse(btn.dataset.focusWaypoint);
+        if (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))) {
+          state.map.setView([Number(p.lat), Number(p.lng)], 16);
+          placePickMarker(Number(p.lat), Number(p.lng));
+        }
+      });
+    }
+
+    function fillWaypointForm(w) {
+      $("waypoint-id").value = w.id || "";
+      $("waypoint-area").value = w.areaSlug || "";
+      $("waypoint-title").value = w.title || "";
+      $("waypoint-description").value = w.description || "";
+      $("waypoint-lat").value = w.lat ?? "";
+      $("waypoint-lng").value = w.lng ?? "";
+      $("waypoint-image-url").value = w.imageUrl || "";
+      $("waypoint-image-alt").value = w.imageAlt || "";
+      $("waypoint-image-credit").value = w.imageCredit || "";
+      $("waypoint-icon-type").value = w.iconType || "INFO";
+      $("waypoint-status").value = w.status || "ACTIVE";
+      $("waypoint-sort-order").value = w.sortOrder ?? 10;
+      if (Number.isFinite(Number(w.lat)) && Number.isFinite(Number(w.lng))) {
+        placePickMarker(Number(w.lat), Number(w.lng));
+        state.map.setView([Number(w.lat), Number(w.lng)], 16);
+      }
+    }
+
+    function clearWaypointForm() {
+      ["waypoint-id","waypoint-title","waypoint-description","waypoint-lat","waypoint-lng","waypoint-image-url","waypoint-image-alt","waypoint-image-credit"].forEach(id => $(id).value = "");
+      $("waypoint-icon-type").value = "INFO";
+      $("waypoint-status").value = "ACTIVE";
+      $("waypoint-sort-order").value = 10;
+    }
+
+    async function saveWaypoint() {
+      const user = requireUser();
+      const areaSlug = val("waypoint-area");
+      const title = val("waypoint-title");
+      const lat = num("waypoint-lat");
+      const lng = num("waypoint-lng");
+      if (!areaSlug) throw new Error("Area obbligatoria.");
+      if (!title) throw new Error("Titolo waypoint obbligatorio.");
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error("Latitudine/longitudine non valide.");
+      const payload = {
+        schemaVersion: 1,
+        status: val("waypoint-status") || "ACTIVE",
+        visibility: "PUBLIC",
+        areaSlug,
+        title,
+        description: val("waypoint-description"),
+        lat,
+        lng,
+        imageUrl: safeUrl(val("waypoint-image-url")),
+        imageAlt: val("waypoint-image-alt"),
+        imageCredit: val("waypoint-image-credit"),
+        iconType: val("waypoint-icon-type") || "INFO",
+        sortOrder: num("waypoint-sort-order", 10),
+        updatedByUid: user.uid,
+        updatedByEmail: user.email || "",
+        updatedAt: serverTimestamp()
+      };
+      const id = val("waypoint-id");
+      if (id) {
+        await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.WAYPOINTS, id), payload);
+        setStatus("Waypoint aggiornato.");
+      } else {
+        payload.createdByUid = user.uid;
+        payload.createdByEmail = user.email || "";
+        payload.createdAt = serverTimestamp();
+        const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.WAYPOINTS), payload);
+        $("waypoint-id").value = added.id;
+        setStatus("Waypoint creato.");
+      }
+      await loadWaypointsForSelectedArea();
+    }
+
+    async function loadTracksForSelectedArea() {
+      if (!state.user) return;
+      const areaSlug = val("track-area");
+      if (!areaSlug) { $("tracks-list").innerHTML = `<div class="hint">Seleziona un’area.</div>`; return; }
+      const q = query(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), where("areaSlug", "==", areaSlug));
+      const snap = await getDocs(q);
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || "")));
+      renderTracks(items);
+    }
+
+    function renderTracks(items) {
+      const box = $("tracks-list");
+      if (!items.length) { box.innerHTML = `<div class="hint">Nessuna traccia per quest’area.</div>`; return; }
+      box.innerHTML = items.map(t => `
+        <div class="item">
+          <div class="item-title">${escapeHtml(t.title || t.id)}</div>
+          <div class="item-meta">
+            ${escapeHtml(t.areaSlug || "")} · ${escapeHtml(t.status || "")} · ${escapeHtml(t.fileType || "GPX")}
+            <br>${escapeHtml(t.description || "")}
+            <br>${escapeHtml(t.fileUrl || "")}
+          </div>
+          <div class="item-actions">
+            <button class="ghost" data-edit-track='${escapeHtml(JSON.stringify(t))}'>Modifica</button>
+          </div>
+        </div>
+      `).join("");
+      box.querySelectorAll("[data-edit-track]").forEach(btn => btn.onclick = () => fillTrackForm(JSON.parse(btn.dataset.editTrack)));
+    }
+
+    function fillTrackForm(t) {
+      $("track-id").value = t.id || "";
+      $("track-area").value = t.areaSlug || "";
+      $("track-title").value = t.title || "";
+      $("track-description").value = t.description || "";
+      $("track-file-url").value = t.fileUrl || "";
+      $("track-distance-km").value = t.distanceKm ?? "";
+      $("track-elevation-gain-m").value = t.elevationGainM ?? "";
+      $("track-difficulty").value = t.difficulty || "";
+      $("track-status").value = t.status || "ACTIVE";
+      $("track-sort-order").value = t.sortOrder ?? 10;
+    }
+
+    function clearTrackForm() {
+      ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-difficulty"].forEach(id => $(id).value = "");
+      $("track-file").value = "";
+      $("track-status").value = "ACTIVE";
+      $("track-sort-order").value = 10;
+    }
+
+    async function uploadTrackFile(areaSlug, file) {
+      const safeName = slugify(file.name.replace(/\.gpx$/i, "")) + "-" + Date.now() + ".gpx";
+      const storagePath = `${WILDU_MAP_CONFIG.storageTrackRoot}/${areaSlug}/${safeName}`;
+      const fileRef = ref(storage, storagePath);
+      await uploadBytes(fileRef, file, { contentType: "application/gpx+xml" });
+      const url = await getDownloadURL(fileRef);
+      return { storagePath, fileUrl: url, originalFileName: file.name, sizeBytes: file.size };
+    }
+
+    async function saveTrack() {
+      const user = requireUser();
+      const areaSlug = val("track-area");
+      const title = val("track-title");
+      if (!areaSlug) throw new Error("Area obbligatoria.");
+      if (!title) throw new Error("Titolo traccia obbligatorio.");
+      const file = $("track-file").files[0] || null;
+      let fileFields = {};
+      if (file) {
+        if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
+        setStatus("Upload GPX in corso...");
+        fileFields = await uploadTrackFile(areaSlug, file);
+      } else if (safeUrl(val("track-file-url"))) {
+        fileFields.fileUrl = safeUrl(val("track-file-url"));
+      }
+      const payload = {
+        schemaVersion: 1,
+        status: val("track-status") || "ACTIVE",
+        visibility: "PUBLIC",
+        areaSlug,
+        title,
+        description: val("track-description"),
+        fileType: "GPX",
+        distanceKm: num("track-distance-km"),
+        elevationGainM: num("track-elevation-gain-m"),
+        difficulty: val("track-difficulty"),
+        sortOrder: num("track-sort-order", 10),
+        updatedByUid: user.uid,
+        updatedByEmail: user.email || "",
+        updatedAt: serverTimestamp(),
+        ...fileFields
+      };
+      const id = val("track-id");
+      if (id) {
+        await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
+        setStatus("Traccia aggiornata.");
+      } else {
+        payload.createdByUid = user.uid;
+        payload.createdByEmail = user.email || "";
+        payload.createdAt = serverTimestamp();
+        const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), payload);
+        $("track-id").value = added.id;
+        setStatus("Traccia creata.");
+      }
+      $("track-file").value = "";
+      await loadTracksForSelectedArea();
+    }
+
+    function bind() {
+      $("btn-login").onclick = () => login().catch(e => setStatus(e.message, true));
+      $("btn-logout").onclick = () => signOut(auth).catch(e => setStatus(e.message, true));
+      document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => switchTab(btn.dataset.tab));
+      $("btn-save-area").onclick = () => saveArea().catch(e => setStatus(e.message, true));
+      $("btn-new-area").onclick = clearAreaForm;
+      $("btn-area-from-map").onclick = () => {
+        const c = state.map.getCenter();
+        $("area-center-lat").value = c.lat.toFixed(6);
+        $("area-center-lng").value = c.lng.toFixed(6);
+        $("area-default-zoom").value = state.map.getZoom();
+      };
+      $("area-title").addEventListener("input", () => { if (!val("area-slug")) $("area-slug").value = slugify(val("area-title")); });
+      $("btn-save-waypoint").onclick = () => saveWaypoint().catch(e => setStatus(e.message, true));
+      $("btn-new-waypoint").onclick = clearWaypointForm;
+      $("btn-waypoint-from-map").onclick = () => {
+        const c = state.map.getCenter();
+        setWaypointLatLng(c.lat, c.lng);
+        placePickMarker(c.lat, c.lng);
+      };
+      $("waypoint-area").onchange = () => { loadWaypointsForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("waypoint-area")); };
+      $("track-area").onchange = () => { loadTracksForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("track-area")); };
+      $("btn-save-track").onclick = () => saveTrack().catch(e => setStatus(e.message, true));
+      $("btn-new-track").onclick = clearTrackForm;
+    }
+
+    function focusAreaBySlug(areaSlug) {
+      const a = state.areas.find(x => x.areaSlug === areaSlug || x.id === areaSlug);
+      if (a) focusArea(a.id);
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      state.user = user;
+      $("btn-login").classList.toggle("hidden", !!user);
+      $("btn-logout").classList.toggle("hidden", !user);
+      $("auth-state").textContent = user ? `${user.email || user.uid}` : "Non autenticato";
+      if (user) {
+        setStatus("Login riuscito. Carico dati mappa...");
+        try { await reloadAll(); setStatus("Dati caricati."); } catch (e) { setStatus(e.message, true); }
+      } else {
+        setStatus("Fai login Google per gestire le mappe.");
+      }
+    });
+
+    initMap();
+    bind();
+  </script>
+</body>
+</html>
