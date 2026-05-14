@@ -1033,22 +1033,34 @@ function bind() {
 $("btn-autofill-base").onclick = () => applyPresetToForm("base");
 
 $("btn-reset-base").onclick = () => {
-  const cfg = state.viewerConfig || getFallbackViewerConfig();
-  fillMapSettingsForm({
-    ...cfg,
-    baseMap: WILDU_MAP_CONFIG.baseMapFallback || cfg.baseMap
-  });
+  const fallback = getFallbackViewerConfig();
+  const base = fallback.baseMap || {};
+
+  $("base-enabled").checked = base.enabled !== false;
+  $("base-tile-url").value = base.tileUrl || "";
+  $("base-provider-id").value = base.providerId || "";
+  $("base-label").value = base.label || "";
+  $("base-attribution").value = base.attribution || "";
+  $("base-max-zoom").value = base.maxZoom ?? 17;
+
   setStatus("Fallback base ripristinato nel form. Salva per applicarlo al viewer.");
 };
 
 $("btn-autofill-hiking").onclick = () => applyPresetToForm("hiking");
 
 $("btn-reset-hiking").onclick = () => {
-  const cfg = state.viewerConfig || getFallbackViewerConfig();
-  fillMapSettingsForm({
-    ...cfg,
-    hikingOverlay: WILDU_MAP_CONFIG.hikingOverlayFallback || cfg.hikingOverlay
-  });
+  const fallback = getFallbackViewerConfig();
+  const hiking = fallback.hikingOverlay || {};
+
+  $("hiking-enabled").checked = hiking.enabled !== false;
+  $("hiking-tile-url").value = hiking.tileUrl || "";
+  $("hiking-provider-id").value = hiking.providerId || "";
+  $("hiking-label").value = hiking.label || "";
+  $("hiking-attribution").value = hiking.attribution || "";
+  $("hiking-min-zoom").value = hiking.minZoom ?? 12;
+  $("hiking-max-zoom").value = hiking.maxZoom ?? 18;
+  $("hiking-opacity").value = hiking.opacity ?? 0.85;
+
   setStatus("Fallback sentieri ripristinato nel form. Salva per applicarlo al viewer.");
 };
 
