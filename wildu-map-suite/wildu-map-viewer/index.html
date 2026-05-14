@@ -21,20 +21,21 @@
     html, body, #map { width: 100%; height: 100%; margin: 0; background: var(--bg); }
     body { color: var(--text); overflow: hidden; }
     #map { position: absolute; inset: 0; z-index: 1; }
-    .topbar {
-      position: absolute; left: 10px; right: 10px; top: 10px; z-index: 500;
-      display: flex; gap: 8px; align-items: center; justify-content: space-between;
-      pointer-events: none;
-    }
+.topbar {
+  position: absolute; left: 10px; right: 10px; top: 10px; z-index: 500;
+  display: flex; gap: 8px; align-items: center; justify-content: flex-start;
+  pointer-events: none;
+}
     .panel {
       pointer-events: auto;
       background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
       box-shadow: 0 16px 40px rgba(0,0,0,.26); backdrop-filter: blur(12px);
     }
-    .titlebox { padding: 10px 12px; min-width: 0; max-width: min(540px, calc(100vw - 24px)); }
+    .titlebox-hidden { display: none !important; }
+.titlebox { padding: 10px 12px; min-width: 0; max-width: min(540px, calc(100vw - 24px)); }
     .title { font-size: 14px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .subtitle { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-    .controls { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; justify-content: flex-end; }
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; justify-content: flex-start; }
     button, label.file-btn, select {
       border: 0; border-radius: 13px; padding: 9px 10px; background: rgba(255,255,255,.08); color: var(--text);
       font-weight: 800; font-size: 12px; cursor: pointer;
@@ -124,19 +125,34 @@
       font-weight: 750;
     }
 
-    .safety-note {
-      pointer-events: auto;
-      max-width: 500px;
-      padding: 8px 10px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.10);
-      background: rgba(10, 16, 12, .72);
-      color: rgba(243,248,241,.72);
-      font-size: 10.5px;
-      line-height: 1.3;
-      box-shadow: 0 10px 24px rgba(0,0,0,.18);
-      backdrop-filter: blur(10px);
-    }
+.safety-note {
+  pointer-events: auto;
+  max-width: 500px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(10, 16, 12, .72);
+  color: rgba(243,248,241,.72);
+  font-size: 10.5px;
+  line-height: 1.3;
+  box-shadow: 0 10px 24px rgba(0,0,0,.18);
+  backdrop-filter: blur(10px);
+  transition: opacity .35s ease, transform .35s ease;
+}
+
+.safety-note.is-hidden {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.exit-btn {
+  border: 1px solid rgba(255,255,255,.16);
+}
 
     .gps-toast {
       position: absolute;
@@ -253,20 +269,28 @@
 <body>
   <div id="map"></div>
 
-  <div class="topbar">
-    <div class="panel titlebox">
-      <div id="area-title" class="title">Wildu Map</div>
-      <div id="area-subtitle" class="subtitle">Caricamento area...</div>
-    </div>
-    <div class="panel controls">
-      <select id="area-select" title="Scegli area"></select>
-      <button id="btn-waypoints" class="active">Wildu Waypoints</button>
-      <button id="btn-tracks" class="active">Tracce</button>
-      <label class="file-btn" for="local-gpx">Carica GPX</label>
-      <input id="local-gpx" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
-     <button id="btn-gps" class="gold" title="Attiva/disattiva tracking GPS">📍 Posizione GPS</button>
-    </div>
+<div class="topbar">
+  <div class="titlebox-hidden" aria-hidden="true">
+    <div id="area-title" class="title">Wildu Map</div>
+    <div id="area-subtitle" class="subtitle">Caricamento area...</div>
   </div>
+
+  <div class="panel controls">
+    <select id="area-select" title="Scegli area"></select>
+    <button id="btn-waypoints" class="active">Waypoints</button>
+    <button id="btn-tracks" class="active">Tracce Wildu</button>
+
+    <label class="file-btn" for="local-gpx" title="Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online">
+      GPX personale
+    </label>
+    <input id="local-gpx" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
+    <button id="btn-local-gpx-toggle" class="hidden" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
+    <button id="btn-local-gpx-clear" class="hidden" title="Rimuovi la traccia GPX personale dalla mappa">Rimuovi GPX</button>
+
+    <button id="btn-gps" class="gold" title="Attiva/disattiva tracking GPS">📍 GPS</button>
+    <button id="btn-exit-mother" class="ghost exit-btn" title="Torna all’app Wildu">Esci</button>
+  </div>
+</div>
 
   <div class="gps-hud">
     <div id="gps-status-chip" class="gps-chip off" aria-live="polite">
@@ -275,9 +299,9 @@
       <span id="gps-precision-value" class="gps-precision">Precisione: —</span>
     </div>
 
-    <div class="safety-note">
-      Serve internet per funzionare. L’attività all’aperto va svolta con prudenza e in modo coerente con le proprie abilità, sotto la propria responsabilità.
-    </div>
+<div id="safety-note" class="safety-note">
+  Serve internet per funzionare. L’attività all’aperto va svolta con prudenza e in modo coerente con le proprie abilità, sotto la propria responsabilità.
+</div>
   </div>
 
   <div id="gps-toast" class="gps-toast" aria-live="polite"></div>
@@ -301,6 +325,10 @@ const params = new URLSearchParams(location.search);
 const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
 const ALL_AREAS_VALUE = "__ALL__";
 
+// Ritorno all’app madre. Se la sezione premi usa un hash diverso,
+// in futuro basta cambiare questa singola costante.
+const MOTHER_APP_PREMI_URL = "https://wildustrek.github.io/Wild-U/?";
+
 const state = {
   map: null,
   areas: [],
@@ -320,9 +348,12 @@ const state = {
   gpsTrackingActive: false,
   gpsLastFix: null,
   gpsInitialCenterDone: false,
-  gpsToastTimer: null,
-  showWaypoints: true,
-  showTracks: true
+gpsToastTimer: null,
+safetyNoteTimer: null,
+localGpxLayer: null,
+localGpxVisible: true,
+showWaypoints: true,
+showTracks: true
 };
 
     function setStatus(msg, isError = false) {
@@ -618,7 +649,7 @@ function renderAreaSelect() {
   }).join("");
 
   $("area-select").innerHTML = `
-    <option value="${ALL_AREAS_VALUE}">Italia / Tutte le aree</option>
+    <option value="${ALL_AREAS_VALUE}">Scegli area</option>
     ${areaOptions}
   `;
 
@@ -885,6 +916,30 @@ function fitUsefulBounds() {
   } catch (_) {}
 }
 
+
+function scheduleSafetyNoteHide() {
+  const note = $("safety-note");
+  if (!note) return;
+
+  if (state.safetyNoteTimer) {
+    clearTimeout(state.safetyNoteTimer);
+  }
+
+  state.safetyNoteTimer = setTimeout(() => {
+    note.classList.add("is-hidden");
+  }, 30000);
+}
+
+function exitToMotherApp() {
+  try {
+    window.top.location.href = MOTHER_APP_PREMI_URL;
+  } catch (_) {
+    window.location.href = MOTHER_APP_PREMI_URL;
+  }
+}    
+
+
+    
     function toggleLayer(kind) {
       if (kind === "waypoints") {
         state.showWaypoints = !state.showWaypoints;
@@ -898,27 +953,104 @@ function fitUsefulBounds() {
       }
     }
 
-    function loadLocalGpx(file) {
-      if (!file) return;
-      if (!/\.gpx$/i.test(file.name)) { setStatus("Carica un file .gpx.", true); return; }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const blob = new Blob([reader.result], { type: "application/gpx+xml" });
-        const url = URL.createObjectURL(blob);
-        const layer = new L.GPX(url, {
-          async: true,
-          polyline_options: { color: "#ff6b6b", weight: 4, opacity: 0.9 }
-        });
-        layer.on("loaded", (e) => {
-          state.localTracksLayer.addLayer(layer);
-          try { state.map.fitBounds(e.target.getBounds().pad(0.2)); } catch (_) {}
-          setStatus("GPX personale caricato solo localmente, senza invio al server.");
-        });
-        layer.on("error", () => setStatus("Errore lettura GPX locale.", true));
-      };
-      reader.onerror = () => setStatus("Errore lettura file locale.", true);
-      reader.readAsText(file);
+function updateLocalGpxControls() {
+  const hasLocal = !!state.localGpxLayer;
+  const toggleBtn = $("btn-local-gpx-toggle");
+  const clearBtn = $("btn-local-gpx-clear");
+
+  if (toggleBtn) {
+    toggleBtn.classList.toggle("hidden", !hasLocal);
+    toggleBtn.textContent = state.localGpxVisible ? "Nascondi GPX" : "Mostra GPX";
+    toggleBtn.classList.toggle("active", state.localGpxVisible);
+  }
+
+  if (clearBtn) {
+    clearBtn.classList.toggle("hidden", !hasLocal);
+  }
+}
+
+function setLocalGpxVisible(visible) {
+  state.localGpxVisible = !!visible;
+
+  if (!state.localGpxLayer) {
+    updateLocalGpxControls();
+    return;
+  }
+
+  if (state.localGpxVisible) {
+    if (!state.map.hasLayer(state.localTracksLayer)) {
+      state.localTracksLayer.addTo(state.map);
     }
+  } else {
+    if (state.map.hasLayer(state.localTracksLayer)) {
+      state.map.removeLayer(state.localTracksLayer);
+    }
+  }
+
+  updateLocalGpxControls();
+  setStatus(state.localGpxVisible ? "GPX personale visibile." : "GPX personale nascosto.");
+}
+
+function clearLocalGpx() {
+  state.localTracksLayer.clearLayers();
+  state.localGpxLayer = null;
+  state.localGpxVisible = true;
+
+  const input = $("local-gpx");
+  if (input) input.value = "";
+
+  if (!state.map.hasLayer(state.localTracksLayer)) {
+    state.localTracksLayer.addTo(state.map);
+  }
+
+  updateLocalGpxControls();
+  setStatus("GPX personale rimosso dalla mappa. Nessun file era stato inviato online.");
+}
+
+function loadLocalGpx(file) {
+  if (!file) return;
+
+  if (!/\.gpx$/i.test(file.name)) {
+    setStatus("Carica un file .gpx.", true);
+    return;
+  }
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    const blob = new Blob([reader.result], { type: "application/gpx+xml" });
+    const url = URL.createObjectURL(blob);
+
+    state.localTracksLayer.clearLayers();
+
+    if (!state.map.hasLayer(state.localTracksLayer)) {
+      state.localTracksLayer.addTo(state.map);
+    }
+
+    const layer = new L.GPX(url, {
+      async: true,
+      polyline_options: { color: "#ff6b6b", weight: 4, opacity: 0.9 }
+    });
+
+    layer.on("loaded", (e) => {
+      state.localGpxLayer = layer;
+      state.localGpxVisible = true;
+      state.localTracksLayer.addLayer(layer);
+
+      try {
+        state.map.fitBounds(e.target.getBounds().pad(0.2));
+      } catch (_) {}
+
+      updateLocalGpxControls();
+      setStatus("GPX personale aperto solo sul tuo dispositivo. Non viene inviato ai server Wildu.");
+    });
+
+    layer.on("error", () => setStatus("Errore lettura GPX locale.", true));
+  };
+
+  reader.onerror = () => setStatus("Errore lettura file locale.", true);
+  reader.readAsText(file);
+}
 
 
 function distanceMetersBetweenCoords(aLat, aLng, bLat, bLng) {
@@ -1237,8 +1369,13 @@ showGpsToast("Tracking GPS non autorizzato", "err");
     function bind() {
       $("btn-waypoints").onclick = () => toggleLayer("waypoints");
       $("btn-tracks").onclick = () => toggleLayer("tracks");
-      $("btn-gps").onclick = locateUser;
-      $("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
+      
+$("btn-gps").onclick = locateUser;
+$("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
+$("btn-local-gpx-toggle").onclick = () => setLocalGpxVisible(!state.localGpxVisible);
+$("btn-local-gpx-clear").onclick = clearLocalGpx;
+$("btn-exit-mother").onclick = exitToMotherApp;
+      
       $("area-select").onchange = () => {
   const value = $("area-select").value;
 
@@ -1255,6 +1392,8 @@ async function boot() {
   state.viewerConfig = await loadViewerMapConfig();
   initMap();
   bind();
+  scheduleSafetyNoteHide();
+  updateLocalGpxControls();
   await loadAreas();
 }
 
