@@ -26,11 +26,35 @@ export const WILDU_MAP_CONFIG = Object.freeze({
   defaultCenter: [42.5, 12.5],
   defaultZoom: 6,
 
+  mapSettingsDocId: "viewer_public_config",
+
+  baseMapFallback: {
+    enabled: true,
+    providerId: "opentopomap",
+    label: "OpenTopoMap",
+    tileUrl: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attribution: "Map data © OpenStreetMap contributors, SRTM | Style © OpenTopoMap (CC-BY-SA)",
+    maxZoom: 17
+  },
+
+  hikingOverlayFallback: {
+    enabled: true,
+    providerId: "waymarkedtrails_hiking",
+    label: "Sentieri escursionistici",
+    tileUrl: "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png",
+    attribution: "Hiking routes © Waymarked Trails, © OpenStreetMap contributors",
+    minZoom: 12,
+    maxZoom: 18,
+    opacity: 0.85
+  },
+
+  // Compatibilità temporanea col codice viewer/admin attuale.
   tileUrl: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
   tileAttribution: "Map data © OpenStreetMap contributors, SRTM | Style © OpenTopoMap (CC-BY-SA)",
   tileMaxZoom: 17,
 
   mediaBaseUrl: "https://media.wildu.it",
 
+  // Compatibilità temporanea: verrà neutralizzato nello step GPX/R2.
   storageTrackRoot: "wildu-map-tracks"
 });
