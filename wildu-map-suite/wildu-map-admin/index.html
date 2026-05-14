@@ -235,7 +235,7 @@
       getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
     import {
-      getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, getDocs, query, where, serverTimestamp
+      getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     import {
       getStorage, ref, uploadBytes, getDownloadURL
@@ -343,11 +343,12 @@ async function login() {
   await signInWithPopup(auth, provider);
 }
 
-    async function reloadAll() {
-      await loadAreas();
-      await loadWaypointsForSelectedArea();
-      await loadTracksForSelectedArea();
-    }
+async function reloadAll() {
+  await loadAreas();
+  await loadWaypointsForSelectedArea();
+  await loadTracksForSelectedArea();
+  await loadViewerSettings();
+}
 
     async function loadAreas() {
       requireUser();
@@ -706,7 +707,188 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
       await loadTracksForSelectedArea();
     }
 
-    function bind() {
+    const MAP_PROVIDER_PRESETS = [
+  {
+    match: "tile.opentopomap.org",
+    providerId: "opentopomap",
+    label: "OpenTopoMap",
+    attribution: "Map data © OpenStreetMap contributors, SRTM | Style © OpenTopoMap (CC-BY-SA)",
+    maxZoom: 17
+  },
+  {
+    match: "tile.waymarkedtrails.org/hiking",
+    providerId: "waymarkedtrails_hiking",
+    label: "Sentieri escursionistici",
+    attribution: "Hiking routes © Waymarked Trails, © OpenStreetMap contributors",
+    minZoom: 12,
+    maxZoom: 18,
+    opacity: 0.85
+  }
+];
+
+function getMapSettingsDocRef() {
+  return doc(
+    db,
+    WILDU_MAP_COLLECTIONS.SETTINGS,
+    WILDU_MAP_CONFIG.mapSettingsDocId || "viewer_public_config"
+  );
+}
+
+function getFallbackViewerConfig() {
+  return {
+    schemaVersion: 1,
+    status: "ACTIVE",
+    baseMap: {
+      ...(WILDU_MAP_CONFIG.baseMapFallback || {
+        enabled: true,
+        providerId: "opentopomap",
+        label: "OpenTopoMap",
+        tileUrl: WILDU_MAP_CONFIG.tileUrl,
+        attribution: WILDU_MAP_CONFIG.tileAttribution,
+        maxZoom: WILDU_MAP_CONFIG.tileMaxZoom || 17
+      })
+    },
+    hikingOverlay: {
+      ...(WILDU_MAP_CONFIG.hikingOverlayFallback || {
+        enabled: true,
+        providerId: "waymarkedtrails_hiking",
+        label: "Sentieri escursionistici",
+        tileUrl: "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png",
+        attribution: "Hiking routes © Waymarked Trails, © OpenStreetMap contributors",
+        minZoom: 12,
+        maxZoom: 18,
+        opacity: 0.85
+      })
+    }
+  };
+}
+
+function findProviderPreset(tileUrl) {
+  const url = String(tileUrl || "").trim().toLowerCase();
+  return MAP_PROVIDER_PRESETS.find(p => url.includes(String(p.match || "").toLowerCase())) || null;
+}
+
+function applyPresetToForm(kind) {
+  const prefix = kind === "base" ? "base" : "hiking";
+  const preset = findProviderPreset(val(prefix + "-tile-url"));
+
+  if (!preset) {
+    setStatus("Provider non riconosciuto: compila manualmente attribution e zoom leggendo le condizioni del provider.", true);
+    return;
+  }
+
+  $(prefix + "-provider-id").value = preset.providerId || "";
+  $(prefix + "-label").value = preset.label || "";
+  $(prefix + "-attribution").value = preset.attribution || "";
+
+  if (kind === "base") {
+    $("base-max-zoom").value = preset.maxZoom ?? 17;
+  } else {
+    $("hiking-min-zoom").value = preset.minZoom ?? 12;
+    $("hiking-max-zoom").value = preset.maxZoom ?? 18;
+    $("hiking-opacity").value = preset.opacity ?? 0.85;
+  }
+
+  setStatus("Campi autocompilati da preset riconosciuto: " + (preset.label || preset.providerId));
+}
+
+function fillMapSettingsForm(config) {
+  const cfg = config || getFallbackViewerConfig();
+  const base = cfg.baseMap || {};
+  const hiking = cfg.hikingOverlay || {};
+
+  $("base-enabled").checked = base.enabled !== false;
+  $("base-tile-url").value = base.tileUrl || "";
+  $("base-provider-id").value = base.providerId || "";
+  $("base-label").value = base.label || "";
+  $("base-attribution").value = base.attribution || "";
+  $("base-max-zoom").value = base.maxZoom ?? 17;
+
+  $("hiking-enabled").checked = hiking.enabled !== false;
+  $("hiking-tile-url").value = hiking.tileUrl || "";
+  $("hiking-provider-id").value = hiking.providerId || "";
+  $("hiking-label").value = hiking.label || "";
+  $("hiking-attribution").value = hiking.attribution || "";
+  $("hiking-min-zoom").value = hiking.minZoom ?? 12;
+  $("hiking-max-zoom").value = hiking.maxZoom ?? 18;
+  $("hiking-opacity").value = hiking.opacity ?? 0.85;
+}
+
+async function loadViewerSettings() {
+  requireUser();
+
+  const fallback = getFallbackViewerConfig();
+  const snap = await getDoc(getMapSettingsDocRef());
+
+  state.viewerConfig = snap.exists() ? { ...fallback, ...snap.data() } : fallback;
+
+  fillMapSettingsForm(state.viewerConfig);
+
+  return state.viewerConfig;
+}
+
+function readMapSettingsForm() {
+  const baseTileUrl = safeUrl(val("base-tile-url"));
+  const hikingTileUrl = safeUrl(val("hiking-tile-url"));
+
+  if ($("base-enabled").checked && !baseTileUrl) {
+    throw new Error("Tile URL base obbligatoria e deve iniziare con https:// se la base map è attiva.");
+  }
+
+  if ($("base-enabled").checked && !val("base-attribution")) {
+    throw new Error("Attribution base obbligatoria se la base map è attiva.");
+  }
+
+  if ($("hiking-enabled").checked && !hikingTileUrl) {
+    throw new Error("Tile URL overlay sentieri obbligatoria se l’overlay è attivo.");
+  }
+
+  if ($("hiking-enabled").checked && !val("hiking-attribution")) {
+    throw new Error("Attribution overlay sentieri obbligatoria se l’overlay è attivo.");
+  }
+
+  return {
+    schemaVersion: 1,
+    status: "ACTIVE",
+
+    baseMap: {
+      enabled: $("base-enabled").checked,
+      providerId: val("base-provider-id"),
+      label: val("base-label") || "Mappa topografica",
+      tileUrl: baseTileUrl,
+      attribution: val("base-attribution"),
+      maxZoom: num("base-max-zoom", 17)
+    },
+
+    hikingOverlay: {
+      enabled: $("hiking-enabled").checked,
+      providerId: val("hiking-provider-id"),
+      label: val("hiking-label") || "Sentieri escursionistici",
+      tileUrl: hikingTileUrl,
+      attribution: val("hiking-attribution"),
+      minZoom: num("hiking-min-zoom", 12),
+      maxZoom: num("hiking-max-zoom", 18),
+      opacity: Math.max(0, Math.min(1, Number(num("hiking-opacity", 0.85))))
+    }
+  };
+}
+
+async function saveViewerSettings() {
+  const user = requireUser();
+  const payload = readMapSettingsForm();
+
+  payload.updatedByUid = user.uid;
+  payload.updatedByEmail = user.email || "";
+  payload.updatedAt = serverTimestamp();
+
+  await setDoc(getMapSettingsDocRef(), payload, { merge: true });
+
+  state.viewerConfig = payload;
+
+  setStatus("Configurazione viewer mappa salvata.");
+}
+
+function bind() {
       $("btn-login").onclick = () => login().catch(e => setStatus(e.message, true));
       $("btn-logout").onclick = () => signOut(auth).catch(e => setStatus(e.message, true));
       document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => switchTab(btn.dataset.tab));
@@ -730,6 +912,36 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
       $("track-area").onchange = () => { loadTracksForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("track-area")); };
       $("btn-save-track").onclick = () => saveTrack().catch(e => setStatus(e.message, true));
       $("btn-new-track").onclick = clearTrackForm;
+
+$("btn-autofill-base").onclick = () => applyPresetToForm("base");
+
+$("btn-reset-base").onclick = () => {
+  const cfg = state.viewerConfig || getFallbackViewerConfig();
+  fillMapSettingsForm({
+    ...cfg,
+    baseMap: WILDU_MAP_CONFIG.baseMapFallback || cfg.baseMap
+  });
+  setStatus("Fallback base ripristinato nel form. Salva per applicarlo al viewer.");
+};
+
+$("btn-autofill-hiking").onclick = () => applyPresetToForm("hiking");
+
+$("btn-reset-hiking").onclick = () => {
+  const cfg = state.viewerConfig || getFallbackViewerConfig();
+  fillMapSettingsForm({
+    ...cfg,
+    hikingOverlay: WILDU_MAP_CONFIG.hikingOverlayFallback || cfg.hikingOverlay
+  });
+  setStatus("Fallback sentieri ripristinato nel form. Salva per applicarlo al viewer.");
+};
+
+$("btn-save-map-settings").onclick = () => saveViewerSettings().catch(e => setStatus(e.message, true));
+
+$("btn-load-map-settings").onclick = () => {
+  loadViewerSettings()
+    .then(() => setStatus("Configurazione mappa ricaricata."))
+    .catch(e => setStatus(e.message, true));
+};
     }
 
     function focusAreaBySlug(areaSlug) {
