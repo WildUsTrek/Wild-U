@@ -69,21 +69,31 @@
       max-width: min(520px, calc(100vw - 20px));
     }
 
-    .gps-chip {
-      pointer-events: auto;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 11px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(18, 28, 21, .92);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 850;
-      box-shadow: 0 12px 30px rgba(0,0,0,.24);
-      backdrop-filter: blur(12px);
-    }
+.gps-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(18, 28, 21, .92);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  box-shadow: 0 12px 30px rgba(0,0,0,.24);
+  backdrop-filter: blur(12px);
+}
+
+button.gps-chip {
+  width: auto;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+button.gps-chip:hover {
+  transform: translateY(-1px);
+}
 
     .gps-chip .gps-dot {
       width: 9px;
@@ -280,29 +290,29 @@
     <button id="btn-waypoints" class="active">Waypoints</button>
     <button id="btn-tracks" class="active">Tracce Wildu</button>
 
-    <label class="file-btn" for="local-gpx" title="Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online">
-      GPX personale
-    </label>
-    <input id="local-gpx" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
-    <button id="btn-local-gpx-toggle" class="hidden" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
-    <button id="btn-local-gpx-clear" class="hidden" title="Rimuovi la traccia GPX personale dalla mappa">Rimuovi GPX</button>
+<label class="file-btn" for="local-gpx" title="Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online">
+  GPX personale
+</label>
+<input id="local-gpx" type="file" accept=".gpx" />
+<button id="btn-local-gpx-toggle" class="hidden" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
+<button id="btn-local-gpx-clear" class="hidden" title="Rimuovi la traccia GPX personale dalla mappa">Rimuovi GPX</button>
 
-    <button id="btn-gps" class="gold" title="Attiva/disattiva tracking GPS">📍 GPS</button>
-    <button id="btn-exit-mother" class="ghost exit-btn" title="Torna all’app Wildu">Esci</button>
+<button id="gps-status-chip" class="gps-chip off" type="button" aria-live="polite" title="Attiva/disattiva tracking GPS">
+  <span class="gps-dot"></span>
+  <span id="gps-status-text">GPS spento</span>
+  <span id="gps-precision-value" class="gps-precision">Precisione: —</span>
+</button>
+
+<button id="btn-exit-mother" class="ghost exit-btn" title="Torna all’app Wildu">Esci</button>
+    
   </div>
 </div>
 
-  <div class="gps-hud">
-    <div id="gps-status-chip" class="gps-chip off" aria-live="polite">
-      <span class="gps-dot"></span>
-      <span id="gps-status-text">GPS spento</span>
-      <span id="gps-precision-value" class="gps-precision">Precisione: —</span>
-    </div>
-
-<div id="safety-note" class="safety-note">
-  Serve internet per funzionare. L’attività all’aperto va svolta con prudenza e in modo coerente con le proprie abilità, sotto la propria responsabilità.
-</div>
+<div class="gps-hud">
+  <div id="safety-note" class="safety-note">
+    Serve internet per funzionare. L’attività all’aperto va svolta con prudenza e in modo coerente con le proprie abilità, sotto la propria responsabilità.
   </div>
+</div>
 
   <div id="gps-toast" class="gps-toast" aria-live="polite"></div>
 
@@ -327,7 +337,7 @@ const ALL_AREAS_VALUE = "__ALL__";
 
 // Ritorno all’app madre. Se la sezione premi usa un hash diverso,
 // in futuro basta cambiare questa singola costante.
-const MOTHER_APP_PREMI_URL = "https://wildustrek.github.io/Wild-U/?";
+//const MOTHER_APP_PREMI_URL = "https://wildustrek.github.io/Wild-U/?";
 
 const state = {
   map: null,
@@ -348,20 +358,38 @@ const state = {
   gpsTrackingActive: false,
   gpsLastFix: null,
   gpsInitialCenterDone: false,
+  
 gpsToastTimer: null,
 safetyNoteTimer: null,
+statusHideTimer: null,
 localGpxLayer: null,
 localGpxVisible: true,
 showWaypoints: true,
 showTracks: true
+  
 };
 
-    function setStatus(msg, isError = false) {
-      const el = $("status");
-      el.textContent = msg;
-      el.style.color = isError ? "#ffd4d4" : "#aab8a8";
-      el.parentElement.style.display = msg ? "flex" : "none";
-    }
+function setStatus(msg, isError = false, sticky = false) {
+  const el = $("status");
+  if (!el || !el.parentElement) return;
+
+  if (state.statusHideTimer) {
+    clearTimeout(state.statusHideTimer);
+    state.statusHideTimer = null;
+  }
+
+  el.textContent = msg || "";
+  el.style.color = isError ? "#ffd4d4" : "#aab8a8";
+  el.parentElement.style.display = msg ? "flex" : "none";
+
+  // I messaggi informativi non devono restare a sporcare la mappa.
+  // Gli errori restano visibili.
+  if (msg && !isError && !sticky) {
+    state.statusHideTimer = setTimeout(() => {
+      el.parentElement.style.display = "none";
+    }, 6500);
+  }
+}
 
     function setGpsHud(mode, label, accuracyMeters) {
       const chip = $("gps-status-chip");
@@ -930,15 +958,31 @@ function scheduleSafetyNoteHide() {
   }, 30000);
 }
 
-function exitToMotherApp() {
+/*function exitToMotherApp() {
   try {
     window.top.location.href = MOTHER_APP_PREMI_URL;
   } catch (_) {
     window.location.href = MOTHER_APP_PREMI_URL;
   }
-}    
+}    */
 
 
+function exitToMotherApp() {
+  // Se la mini-app vive dentro l'app madre, usiamo il metodo nativo e fluido
+  if (typeof window.closeModule === 'function') {
+    window.closeModule();
+    
+    // Assicuriamoci che l'utente atterri nella tab Premi e Giochi
+    if (typeof window.show === 'function') {
+      window.show('rewards');
+    }
+  } else {
+    // Fallback d'emergenza nel caso qualcuno apra il file HTML da solo (es. test locale)
+    window.location.href = "https://wildustrek.github.io/Wild-U/";
+  }
+}
+
+    
     
     function toggleLayer(kind) {
       if (kind === "waypoints") {
@@ -1156,7 +1200,7 @@ async function autoLoadNearestAreaFromGps(fix) {
 }    
     
 function locateUser() {
-  const btn = $("btn-gps");
+  const btn = $("gps-status-chip");
 
 if (!navigator.geolocation) {
   setGpsHud("warn", "GPS non disponibile", null);
@@ -1171,8 +1215,7 @@ if (!navigator.geolocation) {
     state.gpsWatchId = null;
     state.gpsTrackingActive = false;
 
-btn.classList.remove("active");
-btn.textContent = "📍 Posizione GPS";
+if (btn) btn.classList.remove("active");
 
 setGpsHud("off", "GPS spento", null);
 showGpsToast("Tracking GPS disattivato", "warn");
@@ -1184,11 +1227,13 @@ return;
   state.gpsLastFix = null;
   state.gpsInitialCenterDone = false;
 
-btn.disabled = false;
-btn.classList.add("active");
-btn.textContent = "📍 GPS attivo";
+if (btn) {
+  btn.disabled = false;
+  btn.classList.add("active");
+}
 
 setGpsHud("warn", "Aggancio GPS...", null);
+  
 showGpsToast("Tracking GPS attivato", "ok");
 setStatus("Tracking GPS attivo. Il browser può chiederti il permesso di usare la posizione.");
 
@@ -1353,10 +1398,10 @@ setStatus(msg, true);
       }
 
 state.gpsTrackingActive = false;
-btn.classList.remove("active");
-btn.textContent = "📍 Posizione GPS";
+if (btn) btn.classList.remove("active");
 
 setGpsHud("off", "GPS spento", null);
+      
 showGpsToast("Tracking GPS non autorizzato", "err");
     }
   }, {
@@ -1370,7 +1415,7 @@ showGpsToast("Tracking GPS non autorizzato", "err");
       $("btn-waypoints").onclick = () => toggleLayer("waypoints");
       $("btn-tracks").onclick = () => toggleLayer("tracks");
       
-$("btn-gps").onclick = locateUser;
+$("gps-status-chip").onclick = locateUser;
 $("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
 $("btn-local-gpx-toggle").onclick = () => setLocalGpxVisible(!state.localGpxVisible);
 $("btn-local-gpx-clear").onclick = clearLocalGpx;
