@@ -54,6 +54,129 @@
       font-size: 12px; box-shadow: 0 14px 34px rgba(0,0,0,.22); backdrop-filter: blur(12px);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
+
+    .gps-hud {
+      position: absolute;
+      left: 10px;
+      bottom: 56px;
+      z-index: 520;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      align-items: flex-start;
+      pointer-events: none;
+      max-width: min(520px, calc(100vw - 20px));
+    }
+
+    .gps-chip {
+      pointer-events: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(18, 28, 21, .92);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      box-shadow: 0 12px 30px rgba(0,0,0,.24);
+      backdrop-filter: blur(12px);
+    }
+
+    .gps-chip .gps-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #778078;
+      box-shadow: 0 0 0 4px rgba(255,255,255,.06);
+      flex: 0 0 auto;
+    }
+
+    .gps-chip.active {
+      color: #eaffd8;
+      border-color: rgba(167, 209, 41, .42);
+      background: rgba(28, 48, 24, .94);
+    }
+
+    .gps-chip.active .gps-dot {
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(167, 209, 41, .18);
+    }
+
+    .gps-chip.warn {
+      color: #ffe8a8;
+      border-color: rgba(245, 180, 0, .42);
+      background: rgba(52, 39, 14, .92);
+    }
+
+    .gps-chip.warn .gps-dot {
+      background: var(--gold);
+      box-shadow: 0 0 0 5px rgba(245, 180, 0, .16);
+    }
+
+    .gps-chip.off {
+      color: var(--muted);
+    }
+
+    .gps-precision {
+      opacity: .82;
+      font-weight: 750;
+    }
+
+    .safety-note {
+      pointer-events: auto;
+      max-width: 500px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(10, 16, 12, .72);
+      color: rgba(243,248,241,.72);
+      font-size: 10.5px;
+      line-height: 1.3;
+      box-shadow: 0 10px 24px rgba(0,0,0,.18);
+      backdrop-filter: blur(10px);
+    }
+
+    .gps-toast {
+      position: absolute;
+      left: 50%;
+      top: 78px;
+      transform: translateX(-50%) translateY(-8px);
+      z-index: 900;
+      max-width: min(520px, calc(100vw - 24px));
+      padding: 11px 15px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(18, 28, 21, .96);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 900;
+      text-align: center;
+      box-shadow: 0 16px 44px rgba(0,0,0,.32);
+      backdrop-filter: blur(14px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .22s ease, transform .22s ease;
+    }
+
+    .gps-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .gps-toast.ok {
+      border-color: rgba(167, 209, 41, .45);
+    }
+
+    .gps-toast.warn {
+      border-color: rgba(245, 180, 0, .50);
+    }
+
+    .gps-toast.err {
+      border-color: rgba(255, 107, 107, .55);
+      color: #ffd4d4;
+    }
     .waypoint-popup { min-width: 220px; max-width: 280px; }
     .waypoint-popup h3 { margin: 0 0 6px; font-size: 15px; }
     .waypoint-popup p { margin: 6px 0; line-height: 1.35; }
@@ -84,9 +207,23 @@
       <button id="btn-tracks" class="active">Tracce</button>
       <label class="file-btn" for="local-gpx">Carica GPX</label>
       <input id="local-gpx" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
-      <button id="btn-gps" class="gold" title="Mostra la mia posizione GPS">📍 Posizione GPS</button>
+     <button id="btn-gps" class="gold" title="Attiva/disattiva tracking GPS">📍 Posizione GPS</button>
     </div>
   </div>
+
+  <div class="gps-hud">
+    <div id="gps-status-chip" class="gps-chip off" aria-live="polite">
+      <span class="gps-dot"></span>
+      <span id="gps-status-text">GPS spento</span>
+      <span id="gps-precision-value" class="gps-precision">Precisione: —</span>
+    </div>
+
+    <div class="safety-note">
+      Serve internet per funzionare. L’attività all’aperto va svolta con prudenza e in modo coerente con le proprie abilità, sotto la propria responsabilità.
+    </div>
+  </div>
+
+  <div id="gps-toast" class="gps-toast" aria-live="polite"></div>
 
   <div class="status"><div id="status">Avvio mappa...</div></div>
 
@@ -115,6 +252,11 @@
       localTracksLayer: L.layerGroup(),
       gpsMarker: null,
       gpsCircle: null,
+      gpsWatchId: null,
+      gpsTrackingActive: false,
+      gpsLastFix: null,
+      gpsInitialCenterDone: false,
+      gpsToastTimer: null,
       showWaypoints: true,
       showTracks: true
     };
@@ -124,6 +266,47 @@
       el.textContent = msg;
       el.style.color = isError ? "#ffd4d4" : "#aab8a8";
       el.parentElement.style.display = msg ? "flex" : "none";
+    }
+
+    function setGpsHud(mode, label, accuracyMeters) {
+      const chip = $("gps-status-chip");
+      const text = $("gps-status-text");
+      const precision = $("gps-precision-value");
+
+      if (!chip || !text || !precision) return;
+
+      chip.classList.remove("active", "warn", "off");
+      chip.classList.add(mode || "off");
+
+      text.textContent = label || "GPS spento";
+
+      if (Number.isFinite(Number(accuracyMeters))) {
+        precision.textContent = `Precisione: ~${Math.round(Number(accuracyMeters))} m`;
+      } else {
+        precision.textContent = "Precisione: —";
+      }
+    }
+
+    function showGpsToast(message, type = "ok") {
+      const toast = $("gps-toast");
+      if (!toast) return;
+
+      toast.textContent = message;
+      toast.classList.remove("ok", "warn", "err", "show");
+      toast.classList.add(type);
+
+      if (state.gpsToastTimer) {
+        clearTimeout(state.gpsToastTimer);
+        state.gpsToastTimer = null;
+      }
+
+      requestAnimationFrame(() => {
+        toast.classList.add("show");
+      });
+
+      state.gpsToastTimer = setTimeout(() => {
+        toast.classList.remove("show");
+      }, 2800);
     }
     function escapeHtml(s) {
       return String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -376,28 +559,39 @@ function initMap() {
 function locateUser() {
   const btn = $("btn-gps");
 
-  if (!navigator.geolocation) {
-    setStatus("GPS non disponibile su questo browser.", true);
-    return;
-  }
+if (!navigator.geolocation) {
+  setGpsHud("warn", "GPS non disponibile", null);
+  showGpsToast("GPS non disponibile su questo browser", "err");
+  setStatus("GPS non disponibile su questo browser.", true);
+  return;
+}
 
-  // Se era già attivo un ascolto precedente, lo chiudiamo.
-  if (state.gpsWatchId) {
+  // Se il tracking è già attivo, il click lo spegne.
+  if (state.gpsWatchId != null) {
     navigator.geolocation.clearWatch(state.gpsWatchId);
     state.gpsWatchId = null;
+    state.gpsTrackingActive = false;
+
+btn.classList.remove("active");
+btn.textContent = "📍 Posizione GPS";
+
+setGpsHud("off", "GPS spento", null);
+showGpsToast("Tracking GPS disattivato", "warn");
+setStatus("Tracking GPS disattivato.");
+return;
   }
 
-  if (state.gpsWatchTimeout) {
-    clearTimeout(state.gpsWatchTimeout);
-    state.gpsWatchTimeout = null;
-  }
+  state.gpsTrackingActive = true;
+  state.gpsLastFix = null;
+  state.gpsInitialCenterDone = false;
 
-  const MAX_WAIT_MS = 30000;        // tempo massimo di aggancio
-  const GOOD_ACCURACY_M = 35;       // sotto questa soglia chiudiamo subito
-  const DECENT_ACCURACY_M = 90;     // accettabile per centrare senza esagerare
+btn.disabled = false;
+btn.classList.add("active");
+btn.textContent = "📍 GPS attivo";
 
-  let bestFix = null;
-  let finished = false;
+setGpsHud("warn", "Aggancio GPS...", null);
+showGpsToast("Tracking GPS attivato", "ok");
+setStatus("Tracking GPS attivo. Il browser può chiederti il permesso di usare la posizione.");
 
   function getGpsIcon() {
     return L.divIcon({
@@ -424,8 +618,6 @@ function locateUser() {
   }
 
   function zoomForAccuracy(acc) {
-    // Non zoomiamo troppo se la precisione è cattiva:
-    // altrimenti sembra che il punto sia "preciso", ma non lo è.
     if (acc <= 25) return 16;
     if (acc <= 60) return 15;
     if (acc <= 150) return 14;
@@ -433,7 +625,24 @@ function locateUser() {
     return 12;
   }
 
-  function renderFix(fix, finalRender) {
+  function distanceMeters(a, b) {
+    if (!a || !b) return 999999;
+
+    const R = 6371000;
+    const lat1 = a.lat * Math.PI / 180;
+    const lat2 = b.lat * Math.PI / 180;
+    const dLat = (b.lat - a.lat) * Math.PI / 180;
+    const dLng = (b.lng - a.lng) * Math.PI / 180;
+
+    const x =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+
+  function renderGpsFix(fix) {
     const lat = fix.lat;
     const lng = fix.lng;
     const acc = fix.acc;
@@ -459,90 +668,96 @@ function locateUser() {
 
     state.gpsMarker.bindPopup(`📍 Sei qui<br>Precisione circa ${Math.round(acc)} m`);
 
-    if (finalRender || acc <= DECENT_ACCURACY_M) {
-      state.map.flyTo([lat, lng], zoomForAccuracy(acc), {
+if (acc <= 60) {
+  setGpsHud("active", "GPS preciso", acc);
+} else if (acc <= 250) {
+  setGpsHud("warn", "GPS approssimativo", acc);
+} else {
+  setGpsHud("warn", "GPS poco preciso", acc);
+}
+  }
+
+  function centerOnFix(fix, mode) {
+    const targetZoom = zoomForAccuracy(fix.acc);
+
+    if (mode === "first") {
+      state.map.flyTo([fix.lat, fix.lng], targetZoom, {
         animate: true,
         duration: 0.8
       });
       state.gpsMarker.openPopup();
+      return;
     }
 
-    btn.classList.add("active");
+    // Durante la camminata non zoomiamo di continuo:
+    // ci limitiamo a seguire dolcemente la posizione.
+    state.map.panTo([fix.lat, fix.lng], {
+      animate: true,
+      duration: 0.5
+    });
   }
-
-  function finishGps(reason) {
-    if (finished) return;
-    finished = true;
-
-    if (state.gpsWatchId) {
-      navigator.geolocation.clearWatch(state.gpsWatchId);
-      state.gpsWatchId = null;
-    }
-
-    if (state.gpsWatchTimeout) {
-      clearTimeout(state.gpsWatchTimeout);
-      state.gpsWatchTimeout = null;
-    }
-
-    btn.disabled = false;
-    btn.textContent = "📍 Posizione GPS";
-
-    if (bestFix) {
-      renderFix(bestFix, true);
-      setStatus(`${reason} Precisione migliore rilevata: circa ${Math.round(bestFix.acc)} m.`);
-    } else {
-      btn.classList.remove("active");
-      setStatus("Posizione non trovata. Controlla GPS, rete e permessi del sito.", true);
-    }
-  }
-
-  btn.disabled = true;
-  btn.textContent = "📍 Aggancio GPS...";
-  setStatus("Aggancio GPS in corso: resto in ascolto qualche secondo per cercare una posizione più precisa.");
 
   state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-    const acc = pos.coords.accuracy || 9999;
+    const fix = {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      acc: pos.coords.accuracy || 9999,
+      timestamp: Date.now()
+    };
 
-    const fix = { lat, lng, acc, timestamp: Date.now() };
+    const moved = distanceMeters(state.gpsLastFix, fix);
 
-    if (!bestFix || fix.acc < bestFix.acc) {
-      bestFix = fix;
-      renderFix(bestFix, false);
-      setStatus(`GPS in miglioramento... precisione attuale circa ${Math.round(bestFix.acc)} m.`);
+    state.gpsLastFix = fix;
+    renderGpsFix(fix);
+
+    if (!state.gpsInitialCenterDone) {
+      state.gpsInitialCenterDone = true;
+      centerOnFix(fix, "first");
+      setStatus(`GPS attivo. Precisione circa ${Math.round(fix.acc)} m.`);
+      return;
     }
 
-    if (bestFix.acc <= GOOD_ACCURACY_M) {
-      finishGps("Posizione GPS agganciata bene.");
+    // Aggiorna la visuale solo se ti sei mosso davvero.
+    // Evita tremolii quando il GPS balla da fermo.
+    if (moved >= 8) {
+      centerOnFix(fix, "follow");
+      setStatus(`GPS aggiornato. Spostamento rilevato: circa ${Math.round(moved)} m. Precisione circa ${Math.round(fix.acc)} m.`);
+    } else {
+      setStatus(`GPS attivo. Precisione circa ${Math.round(fix.acc)} m.`);
     }
+
   }, err => {
     let msg = "Errore GPS.";
 
     if (err && err.code === 1) {
       msg = "Permesso GPS negato. Abilita la posizione dalle impostazioni del sito.";
-      finishGps(msg);
-      return;
+    } else if (err && err.code === 2) {
+      msg = "Posizione non disponibile. Controlla GPS, rete o permessi del dispositivo.";
+    } else if (err && err.code === 3) {
+      msg = "Timeout GPS. Riprovo automaticamente finché il tracking resta attivo.";
     }
 
-    if (err && err.code === 2) {
-      msg = "Posizione non disponibile. Provo ancora qualche secondo...";
-    }
+    setGpsHud("warn", "GPS in errore", null);
+setStatus(msg, true);
 
-    if (err && err.code === 3) {
-      msg = "Timeout GPS parziale. Provo ancora qualche secondo...";
-    }
+    if (err && err.code === 1) {
+      if (state.gpsWatchId != null) {
+        navigator.geolocation.clearWatch(state.gpsWatchId);
+        state.gpsWatchId = null;
+      }
 
-    setStatus(msg, true);
+state.gpsTrackingActive = false;
+btn.classList.remove("active");
+btn.textContent = "📍 Posizione GPS";
+
+setGpsHud("off", "GPS spento", null);
+showGpsToast("Tracking GPS non autorizzato", "err");
+    }
   }, {
     enableHighAccuracy: true,
     timeout: 20000,
-    maximumAge: 0
+    maximumAge: 5000
   });
-
-  state.gpsWatchTimeout = setTimeout(() => {
-    finishGps("Aggancio GPS terminato.");
-  }, MAX_WAIT_MS);
 }
 
     function bind() {
