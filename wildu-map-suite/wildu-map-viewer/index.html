@@ -84,7 +84,7 @@
       <button id="btn-tracks" class="active">Tracce</button>
       <label class="file-btn" for="local-gpx">Carica GPX</label>
       <input id="local-gpx" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
-      <button id="btn-gps" class="gold">GPS</button>
+      <button id="btn-gps" class="gold" title="Mostra la mia posizione GPS">📍 Posizione GPS</button>
     </div>
   </div>
 
@@ -136,7 +136,7 @@
       return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
     }
 
-    function initMap() {
+function initMap() {
   state.map = L.map("map", { zoomControl: true }).setView(
     WILDU_MAP_CONFIG.defaultCenter,
     WILDU_MAP_CONFIG.defaultZoom
@@ -149,18 +149,61 @@
   }).addTo(state.map);
 
   // Overlay escursionistico: sentieri/route hiking numerate quando disponibili in OSM.
+  // Nota: è raster, quindi non possiamo cambiare lo spessore reale delle linee.
+  // Lo rendiamo meno invasivo nascondendolo agli zoom bassi e attenuandolo agli zoom intermedi.
   const hikingRoutesLayer = L.tileLayer("https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png", {
     maxZoom: 18,
-    opacity: 0.9,
+    opacity: 0.85,
     attribution: 'Hiking routes © <a href="https://waymarkedtrails.org/" target="_blank" rel="noopener">Waymarked Trails</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
-  }).addTo(state.map);
+  });
+
+  const HIKING_MIN_ZOOM = 12;
+  let hikingUserEnabled = true;
+  let hikingAutoChanging = false;
+
+  function syncHikingRoutesLayer() {
+    const z = state.map.getZoom();
+    const shouldShow = hikingUserEnabled && z >= HIKING_MIN_ZOOM;
+
+    hikingAutoChanging = true;
+
+    if (shouldShow && !state.map.hasLayer(hikingRoutesLayer)) {
+      hikingRoutesLayer.addTo(state.map);
+    }
+
+    if (!shouldShow && state.map.hasLayer(hikingRoutesLayer)) {
+      state.map.removeLayer(hikingRoutesLayer);
+    }
+
+    hikingAutoChanging = false;
+
+    if (shouldShow) {
+      if (z <= 12) hikingRoutesLayer.setOpacity(0.45);
+      else if (z === 13) hikingRoutesLayer.setOpacity(0.65);
+      else hikingRoutesLayer.setOpacity(0.85);
+    }
+  }
+
+  state.map.on("zoomend", syncHikingRoutesLayer);
+
+  state.map.on("overlayadd", function(e) {
+    if (e.layer === hikingRoutesLayer && !hikingAutoChanging) {
+      hikingUserEnabled = true;
+      syncHikingRoutesLayer();
+    }
+  });
+
+  state.map.on("overlayremove", function(e) {
+    if (e.layer === hikingRoutesLayer && !hikingAutoChanging) {
+      hikingUserEnabled = false;
+    }
+  });
 
   // Layer Wildu e tracce sopra la mappa.
   state.waypointsLayer.addTo(state.map);
   state.tracksLayer.addTo(state.map);
   state.localTracksLayer.addTo(state.map);
 
-  // Controllo layer nativo Leaflet: utile se vuoi spegnere/accendere i sentieri.
   L.control.layers(
     {
       "Mappa topografica": topoBaseLayer
@@ -175,6 +218,8 @@
       collapsed: true
     }
   ).addTo(state.map);
+
+  syncHikingRoutesLayer();
 }
 
     async function loadAreas() {
@@ -328,26 +373,177 @@
       reader.readAsText(file);
     }
 
-    function locateUser() {
-      if (!navigator.geolocation) { setStatus("GPS non disponibile su questo browser.", true); return; }
-      setStatus("Ricerca posizione GPS...");
-      navigator.geolocation.getCurrentPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const acc = pos.coords.accuracy || 0;
-        if (!state.gpsMarker) {
-          state.gpsMarker = L.marker([lat, lng]).addTo(state.map).bindPopup("Sei qui");
-          state.gpsCircle = L.circle([lat, lng], { radius: acc, weight: 1, opacity: .5, fillOpacity: .08 }).addTo(state.map);
-        } else {
-          state.gpsMarker.setLatLng([lat, lng]);
-          state.gpsCircle.setLatLng([lat, lng]).setRadius(acc);
-        }
-        state.map.setView([lat, lng], Math.max(state.map.getZoom(), 15));
-        setStatus(`Posizione GPS aggiornata. Precisione circa ${Math.round(acc)} m.`);
-      }, err => {
-        setStatus(err.message || "Permesso GPS negato o posizione non disponibile.", true);
-      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 });
+function locateUser() {
+  const btn = $("btn-gps");
+
+  if (!navigator.geolocation) {
+    setStatus("GPS non disponibile su questo browser.", true);
+    return;
+  }
+
+  // Se era già attivo un ascolto precedente, lo chiudiamo.
+  if (state.gpsWatchId) {
+    navigator.geolocation.clearWatch(state.gpsWatchId);
+    state.gpsWatchId = null;
+  }
+
+  if (state.gpsWatchTimeout) {
+    clearTimeout(state.gpsWatchTimeout);
+    state.gpsWatchTimeout = null;
+  }
+
+  const MAX_WAIT_MS = 30000;        // tempo massimo di aggancio
+  const GOOD_ACCURACY_M = 35;       // sotto questa soglia chiudiamo subito
+  const DECENT_ACCURACY_M = 90;     // accettabile per centrare senza esagerare
+
+  let bestFix = null;
+  let finished = false;
+
+  function getGpsIcon() {
+    return L.divIcon({
+      className: "wildu-gps-position-icon",
+      html: `
+        <div style="
+          width:34px;
+          height:34px;
+          border-radius:999px;
+          background:#2f80ff;
+          border:3px solid white;
+          box-shadow:0 0 0 8px rgba(47,128,255,.22), 0 6px 18px rgba(0,0,0,.45);
+          display:grid;
+          place-items:center;
+          color:white;
+          font-size:16px;
+          font-weight:900;
+        ">●</div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -18]
+    });
+  }
+
+  function zoomForAccuracy(acc) {
+    // Non zoomiamo troppo se la precisione è cattiva:
+    // altrimenti sembra che il punto sia "preciso", ma non lo è.
+    if (acc <= 25) return 16;
+    if (acc <= 60) return 15;
+    if (acc <= 150) return 14;
+    if (acc <= 400) return 13;
+    return 12;
+  }
+
+  function renderFix(fix, finalRender) {
+    const lat = fix.lat;
+    const lng = fix.lng;
+    const acc = fix.acc;
+
+    if (!state.gpsMarker) {
+      state.gpsMarker = L.marker([lat, lng], {
+        icon: getGpsIcon(),
+        zIndexOffset: 5000
+      }).addTo(state.map);
+
+      state.gpsCircle = L.circle([lat, lng], {
+        radius: acc,
+        color: "#2f80ff",
+        weight: 2,
+        opacity: 0.75,
+        fillColor: "#2f80ff",
+        fillOpacity: 0.12
+      }).addTo(state.map);
+    } else {
+      state.gpsMarker.setLatLng([lat, lng]);
+      state.gpsCircle.setLatLng([lat, lng]).setRadius(acc);
     }
+
+    state.gpsMarker.bindPopup(`📍 Sei qui<br>Precisione circa ${Math.round(acc)} m`);
+
+    if (finalRender || acc <= DECENT_ACCURACY_M) {
+      state.map.flyTo([lat, lng], zoomForAccuracy(acc), {
+        animate: true,
+        duration: 0.8
+      });
+      state.gpsMarker.openPopup();
+    }
+
+    btn.classList.add("active");
+  }
+
+  function finishGps(reason) {
+    if (finished) return;
+    finished = true;
+
+    if (state.gpsWatchId) {
+      navigator.geolocation.clearWatch(state.gpsWatchId);
+      state.gpsWatchId = null;
+    }
+
+    if (state.gpsWatchTimeout) {
+      clearTimeout(state.gpsWatchTimeout);
+      state.gpsWatchTimeout = null;
+    }
+
+    btn.disabled = false;
+    btn.textContent = "📍 Posizione GPS";
+
+    if (bestFix) {
+      renderFix(bestFix, true);
+      setStatus(`${reason} Precisione migliore rilevata: circa ${Math.round(bestFix.acc)} m.`);
+    } else {
+      btn.classList.remove("active");
+      setStatus("Posizione non trovata. Controlla GPS, rete e permessi del sito.", true);
+    }
+  }
+
+  btn.disabled = true;
+  btn.textContent = "📍 Aggancio GPS...";
+  setStatus("Aggancio GPS in corso: resto in ascolto qualche secondo per cercare una posizione più precisa.");
+
+  state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const acc = pos.coords.accuracy || 9999;
+
+    const fix = { lat, lng, acc, timestamp: Date.now() };
+
+    if (!bestFix || fix.acc < bestFix.acc) {
+      bestFix = fix;
+      renderFix(bestFix, false);
+      setStatus(`GPS in miglioramento... precisione attuale circa ${Math.round(bestFix.acc)} m.`);
+    }
+
+    if (bestFix.acc <= GOOD_ACCURACY_M) {
+      finishGps("Posizione GPS agganciata bene.");
+    }
+  }, err => {
+    let msg = "Errore GPS.";
+
+    if (err && err.code === 1) {
+      msg = "Permesso GPS negato. Abilita la posizione dalle impostazioni del sito.";
+      finishGps(msg);
+      return;
+    }
+
+    if (err && err.code === 2) {
+      msg = "Posizione non disponibile. Provo ancora qualche secondo...";
+    }
+
+    if (err && err.code === 3) {
+      msg = "Timeout GPS parziale. Provo ancora qualche secondo...";
+    }
+
+    setStatus(msg, true);
+  }, {
+    enableHighAccuracy: true,
+    timeout: 20000,
+    maximumAge: 0
+  });
+
+  state.gpsWatchTimeout = setTimeout(() => {
+    finishGps("Aggancio GPS terminato.");
+  }, MAX_WAIT_MS);
+}
 
     function bind() {
       $("btn-waypoints").onclick = () => toggleLayer("waypoints");
