@@ -137,15 +137,45 @@
     }
 
     function initMap() {
-      state.map = L.map("map", { zoomControl: true }).setView(WILDU_MAP_CONFIG.defaultCenter, WILDU_MAP_CONFIG.defaultZoom);
-      L.tileLayer(WILDU_MAP_CONFIG.tileUrl, {
-        maxZoom: WILDU_MAP_CONFIG.tileMaxZoom,
-        attribution: WILDU_MAP_CONFIG.tileAttribution
-      }).addTo(state.map);
-      state.waypointsLayer.addTo(state.map);
-      state.tracksLayer.addTo(state.map);
-      state.localTracksLayer.addTo(state.map);
+  state.map = L.map("map", { zoomControl: true }).setView(
+    WILDU_MAP_CONFIG.defaultCenter,
+    WILDU_MAP_CONFIG.defaultZoom
+  );
+
+  // Base topografica: rilievi, curve, terreno.
+  const topoBaseLayer = L.tileLayer(WILDU_MAP_CONFIG.tileUrl, {
+    maxZoom: WILDU_MAP_CONFIG.tileMaxZoom,
+    attribution: WILDU_MAP_CONFIG.tileAttribution
+  }).addTo(state.map);
+
+  // Overlay escursionistico: sentieri/route hiking numerate quando disponibili in OSM.
+  const hikingRoutesLayer = L.tileLayer("https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    opacity: 0.9,
+    attribution: 'Hiking routes © <a href="https://waymarkedtrails.org/" target="_blank" rel="noopener">Waymarked Trails</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
+  }).addTo(state.map);
+
+  // Layer Wildu e tracce sopra la mappa.
+  state.waypointsLayer.addTo(state.map);
+  state.tracksLayer.addTo(state.map);
+  state.localTracksLayer.addTo(state.map);
+
+  // Controllo layer nativo Leaflet: utile se vuoi spegnere/accendere i sentieri.
+  L.control.layers(
+    {
+      "Mappa topografica": topoBaseLayer
+    },
+    {
+      "Sentieri escursionistici": hikingRoutesLayer,
+      "Wildu Waypoints": state.waypointsLayer,
+      "Tracce GPX Wildu": state.tracksLayer,
+      "GPX personali": state.localTracksLayer
+    },
+    {
+      collapsed: true
     }
+  ).addTo(state.map);
+}
 
     async function loadAreas() {
       const q = query(
