@@ -92,11 +92,12 @@
       Configura <strong>shared/firebase-config.js</strong>, poi abilita le regole Firestore/Storage suggerite.
     </div>
 
-    <div class="tabs">
-      <button class="tab active" data-tab="areas">Aree</button>
-      <button class="tab" data-tab="waypoints">Wildu Waypoints</button>
-      <button class="tab" data-tab="tracks">Tracce GPX</button>
-    </div>
+<div class="tabs">
+  <button class="tab active" data-tab="areas">Aree</button>
+  <button class="tab" data-tab="waypoints">Wildu Waypoints</button>
+  <button class="tab" data-tab="tracks">Tracce GPX</button>
+  <button class="tab" data-tab="settings">Config Mappa</button>
+</div>
 
     <section id="tab-areas" class="grid">
       <div class="card">
@@ -225,8 +226,122 @@
       </div>
     </section>
 
-    <div id="status" class="status" style="margin-top:16px;">Pronto.</div>
-  </main>
+<section id="tab-settings" class="grid hidden">
+  <div class="card">
+    <h2>Configurazione viewer mappa</h2>
+    <div class="body">
+      <p class="hint">
+        Questi dati vengono salvati in <strong>wildu_map_settings/viewer_public_config</strong>.
+        Il viewer li leggerà all’avvio. Se mancano o sono invalidi, userà il fallback sicuro nel codice.
+      </p>
+
+      <h3 style="margin:16px 0 6px; font-size:14px;">Base map</h3>
+
+      <label>
+        <input id="base-enabled" type="checkbox" checked style="width:auto; margin-right:6px;" />
+        Base map attiva
+      </label>
+
+      <label>Tile URL base</label>
+      <input id="base-tile-url" placeholder="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png" />
+
+      <div class="bar" style="margin-top:8px;">
+        <button id="btn-autofill-base" class="ghost">✨ Autocompila base da URL</button>
+        <button id="btn-reset-base" class="ghost">Ripristina fallback base</button>
+      </div>
+
+      <div class="two">
+        <div>
+          <label>Provider ID</label>
+          <input id="base-provider-id" placeholder="opentopomap" />
+        </div>
+        <div>
+          <label>Nome provider</label>
+          <input id="base-label" placeholder="OpenTopoMap" />
+        </div>
+      </div>
+
+      <label>Attribution</label>
+      <textarea id="base-attribution" placeholder="Attribution obbligatoria del provider"></textarea>
+
+      <div class="two">
+        <div>
+          <label>Max zoom</label>
+          <input id="base-max-zoom" type="number" min="1" max="22" value="17" />
+        </div>
+        <div></div>
+      </div>
+
+      <h3 style="margin:18px 0 6px; font-size:14px;">Overlay sentieri</h3>
+
+      <label>
+        <input id="hiking-enabled" type="checkbox" checked style="width:auto; margin-right:6px;" />
+        Overlay sentieri attivo
+      </label>
+
+      <label>Tile URL overlay sentieri</label>
+      <input id="hiking-tile-url" placeholder="https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png" />
+
+      <div class="bar" style="margin-top:8px;">
+        <button id="btn-autofill-hiking" class="ghost">✨ Autocompila sentieri da URL</button>
+        <button id="btn-reset-hiking" class="ghost">Ripristina fallback sentieri</button>
+      </div>
+
+      <div class="two">
+        <div>
+          <label>Provider ID</label>
+          <input id="hiking-provider-id" placeholder="waymarkedtrails_hiking" />
+        </div>
+        <div>
+          <label>Nome overlay</label>
+          <input id="hiking-label" placeholder="Sentieri escursionistici" />
+        </div>
+      </div>
+
+      <label>Attribution overlay</label>
+      <textarea id="hiking-attribution" placeholder="Attribution obbligatoria del provider overlay"></textarea>
+
+      <div class="three">
+        <div>
+          <label>Min zoom</label>
+          <input id="hiking-min-zoom" type="number" min="1" max="22" value="12" />
+        </div>
+        <div>
+          <label>Max zoom</label>
+          <input id="hiking-max-zoom" type="number" min="1" max="22" value="18" />
+        </div>
+        <div>
+          <label>Opacity</label>
+          <input id="hiking-opacity" type="number" min="0" max="1" step="0.05" value="0.85" />
+        </div>
+      </div>
+
+      <div class="bar" style="margin-top:14px;">
+        <button id="btn-save-map-settings" class="primary">Salva configurazione mappa</button>
+        <button id="btn-load-map-settings" class="ghost">Ricarica configurazione</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Guida rapida</h2>
+      <div class="body">
+        <p class="hint">
+          Incolla una Tile URL e usa “Autocompila”. Se il provider è riconosciuto, il sistema compila nome,
+          attribution e zoom suggeriti. Se non è riconosciuto, non inventa dati: completa manualmente leggendo
+          le condizioni del provider.
+        </p>
+        <p class="hint">
+          Non inserire secret key private. Sono accettabili solo URL o chiavi pubbliche pensate per frontend e protette da dominio/referrer.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="status" class="status" style="margin-top:16px;">Pronto.</div>
+</main>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
   <script type="module">
@@ -248,12 +363,14 @@
     const storage = getStorage(app);
 
     const $ = (id) => document.getElementById(id);
-    const state = {
+
+const state = {
   user: null,
   isMaster: false,
   masterUid: "z5jE639FZsaWG59AgeFd2i8ovtT2",
   areas: [],
   activeTab: "areas",
+  viewerConfig: null,
   map: null,
   pickMarker: null
 };
@@ -326,12 +443,12 @@ function requireUser() {
       $("waypoint-lng").value = Number(lng).toFixed(6);
     }
 
-    function switchTab(tab) {
-      state.activeTab = tab;
-      document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
-      ["areas", "waypoints", "tracks"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== tab));
-      setTimeout(() => state.map && state.map.invalidateSize(), 150);
-    }
+function switchTab(tab) {
+  state.activeTab = tab;
+  document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === tab));
+  ["areas", "waypoints", "tracks", "settings"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== tab));
+  setTimeout(() => state.map && state.map.invalidateSize(), 150);
+}
 
 async function login() {
   const provider = new GoogleAuthProvider();
