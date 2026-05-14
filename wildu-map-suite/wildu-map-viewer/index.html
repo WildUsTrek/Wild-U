@@ -297,26 +297,33 @@ import {
     const db = getFirestore(app);
     const $ = (id) => document.getElementById(id);
 
-    const params = new URLSearchParams(location.search);
-    const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
+const params = new URLSearchParams(location.search);
+const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
+const ALL_AREAS_VALUE = "__ALL__";
 
-    const state = {
-      map: null,
-      areas: [],
-      area: null,
-      waypointsLayer: L.layerGroup(),
-      tracksLayer: L.layerGroup(),
-      localTracksLayer: L.layerGroup(),
-      gpsMarker: null,
-      gpsCircle: null,
-      gpsWatchId: null,
-      gpsTrackingActive: false,
-      gpsLastFix: null,
-      gpsInitialCenterDone: false,
-      gpsToastTimer: null,
-      showWaypoints: true,
-      showTracks: true
-    };
+const state = {
+  map: null,
+  areas: [],
+  area: null,
+
+  // Cache RAM della sessione: evita nuove letture Firestore
+  // quando l’utente riapre la stessa area nella stessa pagina.
+  areaContentCache: new Map(),
+  gpsAreaAutoLoaded: false,
+
+  waypointsLayer: L.layerGroup(),
+  tracksLayer: L.layerGroup(),
+  localTracksLayer: L.layerGroup(),
+  gpsMarker: null,
+  gpsCircle: null,
+  gpsWatchId: null,
+  gpsTrackingActive: false,
+  gpsLastFix: null,
+  gpsInitialCenterDone: false,
+  gpsToastTimer: null,
+  showWaypoints: true,
+  showTracks: true
+};
 
     function setStatus(msg, isError = false) {
       const el = $("status");
@@ -570,48 +577,221 @@ function initMap() {
   syncHikingRoutesLayer();
 }
 
-    async function loadAreas() {
-      const q = query(
-        collection(db, WILDU_MAP_COLLECTIONS.AREAS),
-        where("status", "==", "ACTIVE"),
-        where("visibility", "==", "PUBLIC")
-      );
-      const snap = await getDocs(q);
-      state.areas = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByOrderTitle);
-      renderAreaSelect();
-      if (!state.areas.length) throw new Error("Nessuna area mappa pubblica trovata.");
-      const selected = state.areas.find(a => a.areaSlug === initialAreaSlug || a.id === initialAreaSlug) || state.areas[0];
-      await selectArea(selected.areaSlug || selected.id);
-    }
+async function loadAreas() {
+  const q = query(
+    collection(db, WILDU_MAP_COLLECTIONS.AREAS),
+    where("status", "==", "ACTIVE"),
+    where("visibility", "==", "PUBLIC")
+  );
 
-    function renderAreaSelect() {
-      $("area-select").innerHTML = state.areas.map(a => {
-        const slug = a.areaSlug || a.id;
-        return `<option value="${escapeHtml(slug)}">${escapeHtml(a.title || slug)}</option>`;
-      }).join("");
-      $("area-select").style.display = state.areas.length > 1 ? "block" : "none";
-    }
+  const snap = await getDocs(q);
 
-    async function selectArea(areaSlug) {
-      const area = state.areas.find(a => a.areaSlug === areaSlug || a.id === areaSlug);
-      if (!area) return;
-      state.area = area;
-      $("area-select").value = area.areaSlug || area.id;
-      $("area-title").textContent = area.title || area.areaSlug || "Wildu Map";
-      $("area-subtitle").textContent = area.subtitle || area.description || "Mappa escursionistica con Wildu Waypoints e tracce GPX.";
-      const lat = Number(area.centerLat || WILDU_MAP_CONFIG.defaultCenter[0]);
-      const lng = Number(area.centerLng || WILDU_MAP_CONFIG.defaultCenter[1]);
-      
-      const cfg = state.viewerConfig || fallbackViewerConfig();
-const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
-const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
-const zoom = clampZoom(area.defaultZoom || 13, maxZoom);
+  state.areas = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort(sortByOrderTitle);
 
-state.map.setView([lat, lng], zoom);
-      
-      await Promise.all([loadWaypoints(area.areaSlug || area.id), loadTracks(area.areaSlug || area.id)]);
-      fitUsefulBounds();
-    }
+  renderAreaSelect();
+
+  if (!state.areas.length) {
+    $("area-title").textContent = "Wildu Map";
+    $("area-subtitle").textContent = "Mappa escursionistica libera. Nessuna area pubblica trovata.";
+    setStatus("Nessuna area mappa pubblica trovata.", true);
+    return;
+  }
+
+  const selectedByUrl = initialAreaSlug
+    ? state.areas.find(a => a.areaSlug === initialAreaSlug || a.id === initialAreaSlug)
+    : null;
+
+  if (selectedByUrl) {
+    await selectArea(selectedByUrl.areaSlug || selectedByUrl.id);
+    return;
+  }
+
+  await selectAllAreas();
+}
+
+function renderAreaSelect() {
+  const areaOptions = state.areas.map(a => {
+    const slug = a.areaSlug || a.id;
+    return `<option value="${escapeHtml(slug)}">${escapeHtml(a.title || slug)}</option>`;
+  }).join("");
+
+  $("area-select").innerHTML = `
+    <option value="${ALL_AREAS_VALUE}">Italia / Tutte le aree</option>
+    ${areaOptions}
+  `;
+
+  $("area-select").style.display = "block";
+}
+
+
+
+async function selectAllAreas() {
+  state.area = null;
+
+  $("area-select").value = ALL_AREAS_VALUE;
+  $("area-title").textContent = "Wildu Map Italia";
+  $("area-subtitle").textContent = "Vista libera: scegli un’area o attiva il GPS per caricare i contenuti vicini.";
+
+  // Vista Italia leggera:
+  // non scarica tutti i waypoint e non scarica tutte le tracce.
+  state.waypointsLayer.clearLayers();
+  state.tracksLayer.clearLayers();
+
+  const cfg = state.viewerConfig || fallbackViewerConfig();
+  const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
+  const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+  const startZoom = clampZoom(WILDU_MAP_CONFIG.defaultZoom || 6, Math.min(8, maxZoom));
+
+  state.map.setView(
+    WILDU_MAP_CONFIG.defaultCenter,
+    startZoom
+  );
+
+  setStatus("Vista Italia caricata. Scegli un’area o attiva il GPS per caricare i contenuti vicini.");
+}
+
+async function queryWaypointsForArea(areaSlug) {
+  const q = query(
+    collection(db, WILDU_MAP_COLLECTIONS.WAYPOINTS),
+    where("areaSlug", "==", areaSlug),
+    where("status", "==", "ACTIVE"),
+    where("visibility", "==", "PUBLIC")
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort(sortByOrderTitle);
+}
+
+async function queryTracksForArea(areaSlug) {
+  const q = query(
+    collection(db, WILDU_MAP_COLLECTIONS.TRACKS),
+    where("areaSlug", "==", areaSlug),
+    where("status", "==", "ACTIVE"),
+    where("visibility", "==", "PUBLIC")
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort(sortByOrderTitle);
+}
+
+async function getAreaContent(areaSlug) {
+  if (state.areaContentCache.has(areaSlug)) {
+    return {
+      ...state.areaContentCache.get(areaSlug),
+      fromCache: true
+    };
+  }
+
+  const [waypoints, tracks] = await Promise.all([
+    queryWaypointsForArea(areaSlug),
+    queryTracksForArea(areaSlug)
+  ]);
+
+  const payload = {
+    waypoints,
+    tracks,
+    loadedAt: Date.now()
+  };
+
+  state.areaContentCache.set(areaSlug, payload);
+
+  return {
+    ...payload,
+    fromCache: false
+  };
+}
+
+function renderWaypointsOnMap(items) {
+  state.waypointsLayer.clearLayers();
+
+  items.forEach(addWaypointMarker);
+
+  return items.length;
+}
+
+function renderTracksOnMap(items) {
+  state.tracksLayer.clearLayers();
+
+  let loaded = 0;
+
+  items.forEach(t => {
+    const url = safeUrl(t.fileUrl);
+    if (!url || !window.L.GPX) return;
+
+    const layer = new L.GPX(url, {
+      async: true,
+      polyline_options: { color: "#f5b400", weight: 4, opacity: 0.9 }
+    });
+
+    layer.on("loaded", () => {
+      loaded++;
+      setStatus(`${loaded}/${items.length} tracce GPX caricate.`);
+    });
+
+    layer.on("error", () => setStatus(`Errore caricamento GPX: ${t.title || t.id}`, true));
+
+    layer.addTo(state.tracksLayer);
+  });
+
+  return items.length;
+}
+
+async function loadAreaContent(areaSlug) {
+  const data = await getAreaContent(areaSlug);
+
+  const waypointCount = renderWaypointsOnMap(data.waypoints);
+  const trackCount = renderTracksOnMap(data.tracks);
+
+  const sourceLabel = data.fromCache ? "da cache sessione" : "da Firestore";
+
+  if (!trackCount) {
+    setStatus(`${waypointCount} Wildu Waypoints caricati ${sourceLabel}. Nessuna traccia GPX pubblica per quest’area.`);
+  } else {
+    setStatus(`${waypointCount} Wildu Waypoints e ${trackCount} tracce caricate ${sourceLabel}.`);
+  }
+}
+
+
+    
+async function selectArea(areaSlug) {
+  if (areaSlug === ALL_AREAS_VALUE) {
+    await selectAllAreas();
+    return;
+  }
+
+  const area = state.areas.find(a => a.areaSlug === areaSlug || a.id === areaSlug);
+  if (!area) return;
+
+  state.area = area;
+
+  const slug = area.areaSlug || area.id;
+
+  $("area-select").value = slug;
+  $("area-title").textContent = area.title || area.areaSlug || "Wildu Map";
+  $("area-subtitle").textContent = area.subtitle || area.description || "Mappa escursionistica con Wildu Waypoints e tracce GPX.";
+
+  const lat = Number(area.centerLat || WILDU_MAP_CONFIG.defaultCenter[0]);
+  const lng = Number(area.centerLng || WILDU_MAP_CONFIG.defaultCenter[1]);
+
+  const cfg = state.viewerConfig || fallbackViewerConfig();
+  const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
+  const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+  const zoom = clampZoom(area.defaultZoom || 13, maxZoom);
+
+  state.map.setView([lat, lng], zoom);
+
+  await loadAreaContent(slug);
+
+  fitUsefulBounds();
+}
 
     async function loadWaypoints(areaSlug) {
       state.waypointsLayer.clearLayers();
@@ -680,17 +860,30 @@ state.map.setView([lat, lng], zoom);
       if (!items.length) setStatus("Nessuna traccia GPX pubblica per quest’area.");
     }
 
-    function fitUsefulBounds() {
-      const group = L.featureGroup();
-      state.waypointsLayer.eachLayer(l => group.addLayer(l));
-      state.tracksLayer.eachLayer(l => {
-        if (typeof l.getBounds === "function") group.addLayer(l);
+function fitUsefulBounds() {
+  const group = L.featureGroup();
+
+  state.waypointsLayer.eachLayer(l => group.addLayer(l));
+
+  state.tracksLayer.eachLayer(l => {
+    if (typeof l.getBounds === "function") group.addLayer(l);
+  });
+
+  try {
+    const b = group.getBounds();
+
+    if (b.isValid()) {
+      const cfg = state.viewerConfig || fallbackViewerConfig();
+      const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
+      const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+
+      state.map.fitBounds(b.pad(0.2), {
+        maxZoom: Math.min(15, maxZoom),
+        animate: false
       });
-      try {
-        const b = group.getBounds();
-        if (b.isValid()) state.map.fitBounds(b.pad(0.2));
-      } catch (_) {}
     }
+  } catch (_) {}
+}
 
     function toggleLayer(kind) {
       if (kind === "waypoints") {
@@ -727,6 +920,109 @@ state.map.setView([lat, lng], zoom);
       reader.readAsText(file);
     }
 
+
+function distanceMetersBetweenCoords(aLat, aLng, bLat, bLng) {
+  const R = 6371000;
+  const lat1 = Number(aLat) * Math.PI / 180;
+  const lat2 = Number(bLat) * Math.PI / 180;
+  const dLat = (Number(bLat) - Number(aLat)) * Math.PI / 180;
+  const dLng = (Number(bLng) - Number(aLng)) * Math.PI / 180;
+
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function pointInPolygon(point, polygon) {
+  const pts = Array.isArray(polygon) ? polygon : [];
+  const lat = Number(point.lat);
+  const lng = Number(point.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || pts.length < 3) {
+    return false;
+  }
+
+  let inside = false;
+
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const yi = Number(pts[i].lat);
+    const xi = Number(pts[i].lng);
+    const yj = Number(pts[j].lat);
+    const xj = Number(pts[j].lng);
+
+    if (
+      Number.isFinite(xi) &&
+      Number.isFinite(yi) &&
+      Number.isFinite(xj) &&
+      Number.isFinite(yj)
+    ) {
+      const intersect =
+        ((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 0.0000001) + xi);
+
+      if (intersect) inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
+function findNearestAreaForPoint(lat, lng) {
+  if (!state.areas.length) return null;
+
+  const point = {
+    lat: Number(lat),
+    lng: Number(lng)
+  };
+
+  const containing = state.areas.find(a => pointInPolygon(point, a.polygon));
+  if (containing) return containing;
+
+  let best = null;
+  let bestDistance = Infinity;
+
+  state.areas.forEach(a => {
+    const centerLat = Number(a.centerLat);
+    const centerLng = Number(a.centerLng);
+
+    if (!Number.isFinite(centerLat) || !Number.isFinite(centerLng)) return;
+
+    const d = distanceMetersBetweenCoords(point.lat, point.lng, centerLat, centerLng);
+
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = a;
+    }
+  });
+
+  return best;
+}
+
+async function autoLoadNearestAreaFromGps(fix) {
+  const area = findNearestAreaForPoint(fix.lat, fix.lng);
+
+  if (!area) {
+    setStatus(`GPS attivo. Precisione circa ${Math.round(fix.acc)} m. Nessuna area vicina trovata.`);
+    return;
+  }
+
+  const slug = area.areaSlug || area.id;
+
+  // Non spostiamo la mappa lontano dal GPS:
+  // carichiamo i contenuti dell’area vicina, ma lasciamo la vista centrata sulla posizione.
+  state.area = area;
+  $("area-select").value = slug;
+  $("area-title").textContent = area.title || area.areaSlug || "Wildu Map";
+  $("area-subtitle").textContent = area.subtitle || area.description || "Contenuti caricati vicino alla tua posizione.";
+
+  await loadAreaContent(slug);
+
+  setStatus(`GPS attivo. Area vicina caricata: ${area.title || slug}. Precisione circa ${Math.round(fix.acc)} m.`);
+}    
+    
 function locateUser() {
   const btn = $("btn-gps");
 
@@ -881,12 +1177,19 @@ if (acc <= 60) {
     state.gpsLastFix = fix;
     renderGpsFix(fix);
 
-    if (!state.gpsInitialCenterDone) {
-      state.gpsInitialCenterDone = true;
-      centerOnFix(fix, "first");
-      setStatus(`GPS attivo. Precisione circa ${Math.round(fix.acc)} m.`);
-      return;
-    }
+if (!state.gpsInitialCenterDone) {
+  state.gpsInitialCenterDone = true;
+  centerOnFix(fix, "first");
+
+  if (!state.area && !state.gpsAreaAutoLoaded) {
+    state.gpsAreaAutoLoaded = true;
+    autoLoadNearestAreaFromGps(fix).catch(e => setStatus(e.message, true));
+  } else {
+    setStatus(`GPS attivo. Precisione circa ${Math.round(fix.acc)} m.`);
+  }
+
+  return;
+}
 
     // Aggiorna la visuale solo se ti sei mosso davvero.
     // Evita tremolii quando il GPS balla da fermo.
@@ -936,7 +1239,15 @@ showGpsToast("Tracking GPS non autorizzato", "err");
       $("btn-tracks").onclick = () => toggleLayer("tracks");
       $("btn-gps").onclick = locateUser;
       $("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
-      $("area-select").onchange = () => selectArea($("area-select").value).catch(e => setStatus(e.message, true));
+      $("area-select").onchange = () => {
+  const value = $("area-select").value;
+
+  const action = value === ALL_AREAS_VALUE
+    ? selectAllAreas()
+    : selectArea(value);
+
+  action.catch(e => setStatus(e.message, true));
+};
       window.addEventListener("resize", () => setTimeout(() => state.map.invalidateSize(), 120));
     }
 
