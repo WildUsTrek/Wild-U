@@ -333,10 +333,15 @@ function requireUser() {
       setTimeout(() => state.map && state.map.invalidateSize(), 150);
     }
 
-    async function login() {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    }
+async function login() {
+  const provider = new GoogleAuthProvider();
+
+  provider.setCustomParameters({
+    prompt: "select_account"
+  });
+
+  await signInWithPopup(auth, provider);
+}
 
     async function reloadAll() {
       await loadAreas();
