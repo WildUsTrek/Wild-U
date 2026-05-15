@@ -2269,6 +2269,210 @@ window.wilduMapCacheDebug = async function wilduMapCacheDebug() {
 
   return report;
 };
+
+ window.wilduMapCacheDebug9B = function wilduMapCacheDebug9B() {
+  const PREFIX = "wildu_map_viewer_v1:";
+  const TTL_MS = 48 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  function safeJson(raw) {
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  }
+
+  function ageLabel(savedAt) {
+    const n = Number(savedAt || 0);
+    if (!n) return "N/D";
+    const min = Math.round((now - n) / 60000);
+    if (min < 60) return `${min} min fa`;
+    return `${Math.round(min / 60)} ore fa`;
+  }
+
+  function inspectKey(key) {
+    const raw = localStorage.getItem(key);
+    const parsed = safeJson(raw);
+
+    if (!raw || !parsed) {
+      return {
+        key,
+        exists: !!raw,
+        validJson: !!parsed,
+        expired: true,
+        age: "N/D",
+        summary: null
+      };
+    }
+
+    const savedAt = Number(parsed.savedAt || 0);
+    const expired = !savedAt || (now - savedAt > TTL_MS);
+    const value = parsed.value;
+
+    let summary = null;
+
+    if (key.endsWith(":viewerConfig")) {
+      summary = {
+        baseProvider: value && value.baseMap && value.baseMap.providerId,
+        baseUrl: value && value.baseMap && value.baseMap.tileUrl,
+        hikingProvider: value && value.hikingOverlay && value.hikingOverlay.providerId,
+        hikingEnabled: value && value.hikingOverlay && value.hikingOverlay.enabled
+      };
+    }
+
+    if (key.endsWith(":areas")) {
+      const arr = Array.isArray(value) ? value : [];
+      summary = {
+        count: arr.length,
+        slugs: arr.map(a => a.areaSlug || a.id || a.title || "NO_SLUG")
+      };
+    }
+
+    if (key.includes(":areaContent:")) {
+      summary = {
+        areaSlug: key.split(":areaContent:")[1],
+        waypoints: Array.isArray(value && value.waypoints) ? value.waypoints.length : null,
+        tracks: Array.isArray(value && value.tracks) ? value.tracks.length : null,
+        loadedAt: value && value.loadedAt,
+        loadedAge: value && value.loadedAt ? ageLabel(value.loadedAt) : "N/D",
+        firstTrack: value && value.tracks && value.tracks[0]
+          ? {
+              title: value.tracks[0].title,
+              fileUrl: value.tracks[0].fileUrl,
+              distanceKm: value.tracks[0].distanceKm,
+              elevationGainM: value.tracks[0].elevationGainM
+            }
+          : null,
+        firstWaypoint: value && value.waypoints && value.waypoints[0]
+          ? {
+              title: value.waypoints[0].title,
+              lat: value.waypoints[0].lat,
+              lng: value.waypoints[0].lng
+            }
+          : null
+      };
+    }
+
+    return {
+      key,
+      exists: true,
+      validJson: true,
+      version: parsed.version,
+      savedAt,
+      age: ageLabel(savedAt),
+      expired,
+      summary
+    };
+  }
+
+  const allKeys = Object.keys(localStorage)
+    .filter(k => k.startsWith(PREFIX))
+    .sort();
+
+  const viewerConfig = inspectKey(PREFIX + "viewerConfig");
+  const areas = inspectKey(PREFIX + "areas");
+  const areaContentKeys = allKeys.filter(k => k.includes(":areaContent:"));
+  const areaContents = areaContentKeys.map(inspectKey);
+
+  const selectedArea = document.getElementById("area-select")?.value || null;
+  const statusText = document.getElementById("status")?.textContent || "";
+
+  const firestoreResources = performance
+    .getEntriesByType("resource")
+    .filter(r =>
+      String(r.name).includes("firestore.googleapis.com") ||
+      String(r.name).includes("google.firestore")
+    )
+    .slice(-20)
+    .map(r => ({
+      name: r.name,
+      initiatorType: r.initiatorType,
+      durationMs: Math.round(r.duration)
+    }));
+
+  const selectedAreaCacheKey =
+    selectedArea && selectedArea !== "__ALL__"
+      ? PREFIX + "areaContent:" + selectedArea
+      : null;
+
+  const selectedAreaCache = selectedAreaCacheKey
+    ? inspectKey(selectedAreaCacheKey)
+    : null;
+
+  const verdict = {
+    viewerConfigOk: viewerConfig.exists && viewerConfig.validJson && !viewerConfig.expired,
+    areasOk: areas.exists && areas.validJson && !areas.expired && areas.summary && areas.summary.count > 0,
+    selectedArea,
+    selectedAreaIsRealArea: !!selectedArea && selectedArea !== "__ALL__",
+    selectedAreaContentOk: selectedAreaCache
+      ? selectedAreaCache.exists && selectedAreaCache.validJson && !selectedAreaCache.expired
+      : null,
+    areaContentCacheCount: areaContents.length,
+    firestoreResourceEntriesRecenti: firestoreResources.length
+  };
+
+  const report = {
+    title: "WILDU MAP VIEWER — CACHE DEBUG STEP 9B",
+    generatedAt: new Date().toISOString(),
+    url: location.href,
+    selectedArea,
+    statusText,
+    keys: allKeys,
+    viewerConfig,
+    areas,
+    areaContents,
+    selectedAreaCache,
+    firestoreResources,
+    verdict,
+    interpretation: {
+      testRefresh:
+        "Con ?refresh=1 è normale vedere Firestore. Dopo aver selezionato un’area deve comparire areaContent:<slug>.",
+      testSecondOpen:
+        "Senza ?refresh=1, selezionando la stessa area deve risultare selectedAreaContentOk true.",
+      testSession:
+        "Nella stessa sessione, tornando sulla stessa area, lo status dovrebbe dire cache sessione.",
+      note:
+        "Se selectedArea è __ALL__, è normale che selectedAreaContentOk sia null: la vista Scegli area non carica contenuti."
+    }
+  };
+
+  console.log("✅ WILDU MAP CACHE DEBUG 9B", report);
+
+  console.table([
+    {
+      item: "viewerConfig",
+      ok: verdict.viewerConfigOk,
+      age: viewerConfig.age
+    },
+    {
+      item: "areas",
+      ok: verdict.areasOk,
+      age: areas.age,
+      count: areas.summary && areas.summary.count
+    },
+    {
+      item: "selected area",
+      ok: verdict.selectedAreaIsRealArea,
+      value: selectedArea
+    },
+    {
+      item: "selected areaContent",
+      ok: verdict.selectedAreaContentOk,
+      age: selectedAreaCache && selectedAreaCache.age,
+      waypoints: selectedAreaCache && selectedAreaCache.summary && selectedAreaCache.summary.waypoints,
+      tracks: selectedAreaCache && selectedAreaCache.summary && selectedAreaCache.summary.tracks
+    },
+    {
+      item: "areaContent caches total",
+      ok: areaContents.length > 0,
+      count: areaContents.length
+    },
+    {
+      item: "Firestore resource entries",
+      ok: true,
+      count: firestoreResources.length
+    }
+  ]);
+
+  return report;
+};   
     
   </script>
 </body>
