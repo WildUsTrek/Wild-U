@@ -227,10 +227,22 @@
           <input id="track-title" placeholder="Anello Monte Adone" />
           <label>Descrizione</label>
           <textarea id="track-description" placeholder="Descrizione della traccia..."></textarea>
-          <label>File GPX opzionale</label>
-          <input id="track-file" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
-          <label>Oppure GPX file URL esterno</label>
-          <input id="track-file-url" placeholder="https://.../traccia.gpx" />
+<label>File GPX opzionale</label>
+<input id="track-file" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" />
+
+<label style="display:flex; gap:8px; align-items:flex-start; margin-top:10px;">
+  <input id="track-replace-r2" type="checkbox" style="width:auto; margin-top:2px;" />
+  <span>
+    Sostituisci anche il file su R2 quando modifico una traccia esistente
+    <br>
+    <small class="hint">
+      Se non spuntato, in modifica il GPX selezionato serve solo per ricalcolare km, dislivello e bounds senza creare un nuovo file nel bucket.
+    </small>
+  </span>
+</label>
+
+<label>Oppure GPX file URL esterno</label>
+<input id="track-file-url" placeholder="https://.../traccia.gpx" />
           <div class="three">
             <div><label>Distanza km</label><input id="track-distance-km" type="number" step="0.1" /></div>
             <div><label>Dislivello + m</label><input id="track-elevation-gain-m" type="number" step="1" /></div>
@@ -1091,16 +1103,25 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
       $("track-distance-km").value = t.distanceKm ?? "";
       $("track-elevation-gain-m").value = t.elevationGainM ?? "";
       $("track-difficulty").value = t.difficulty || "";
-      $("track-status").value = t.status || "ACTIVE";
-      $("track-sort-order").value = t.sortOrder ?? 10;
+$("track-status").value = t.status || "ACTIVE";
+$("track-sort-order").value = t.sortOrder ?? 10;
+
+if ($("track-replace-r2")) {
+  $("track-replace-r2").checked = false;
+}
     }
 
-    function clearTrackForm() {
-      ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-difficulty"].forEach(id => $(id).value = "");
-      $("track-file").value = "";
-      $("track-status").value = "ACTIVE";
-      $("track-sort-order").value = 10;
-    }
+function clearTrackForm() {
+  ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-difficulty"].forEach(id => $(id).value = "");
+  $("track-file").value = "";
+
+  if ($("track-replace-r2")) {
+    $("track-replace-r2").checked = false;
+  }
+
+  $("track-status").value = "ACTIVE";
+  $("track-sort-order").value = 10;
+}
 
 
 function haversineMeters(a, b) {
@@ -1290,12 +1311,13 @@ async function analyzeGpxFile(file) {
 function applyGpxAnalysisToForm(analysis) {
   if (!analysis) return;
 
-  // Se hai compilato a mano, non ti sovrascrivo il campo.
-  if (!val("track-distance-km") && Number.isFinite(Number(analysis.distanceKm))) {
+  // Se sto analizzando un GPX appena selezionato, il dato calcolato
+  // deve sostituire quello vecchio già presente nel form.
+  if (Number.isFinite(Number(analysis.distanceKm))) {
     $("track-distance-km").value = analysis.distanceKm;
   }
 
-  if (!val("track-elevation-gain-m") && Number.isFinite(Number(analysis.elevationGainM))) {
+  if (Number.isFinite(Number(analysis.elevationGainM))) {
     $("track-elevation-gain-m").value = analysis.elevationGainM;
   }
 }
@@ -1400,6 +1422,7 @@ async function saveTrack() {
 
   const id = val("track-id");
   const file = $("track-file").files[0] || null;
+  const replaceR2File = !!($("track-replace-r2") && $("track-replace-r2").checked);
 
   let fileFields = {};
   let gpxAnalysis = null;
@@ -1414,8 +1437,12 @@ async function saveTrack() {
     gpxAnalysis = await analyzeGpxFile(file);
     applyGpxAnalysisToForm(gpxAnalysis);
 
-    setStatus("Richiedo URL sicuro e carico GPX su R2...");
-    fileFields = await uploadTrackFile(areaSlug, file);
+    if (!id || replaceR2File) {
+      setStatus("Richiedo URL sicuro e carico GPX su R2...");
+      fileFields = await uploadTrackFile(areaSlug, file);
+    } else {
+      setStatus("GPX analizzato. In modifica non carico un nuovo file su R2 perché “Sostituisci file R2” non è spuntato.");
+    }
 
   } else if (safeUrl(val("track-file-url"))) {
     const externalUrl = safeUrl(val("track-file-url"));
@@ -1445,13 +1472,15 @@ async function saveTrack() {
 
     fileType: "GPX",
 
-    distanceKm: num("track-distance-km"),
-    elevationGainM: num("track-elevation-gain-m"),
+    distanceKm: gpxAnalysis ? gpxAnalysis.distanceKm : num("track-distance-km"),
+    elevationGainM: gpxAnalysis ? gpxAnalysis.elevationGainM : num("track-elevation-gain-m"),
     elevationLossM: gpxAnalysis ? gpxAnalysis.elevationLossM : null,
 
     bounds: gpxAnalysis ? gpxAnalysis.bounds : null,
     centerLat: gpxAnalysis ? gpxAnalysis.centerLat : null,
     centerLng: gpxAnalysis ? gpxAnalysis.centerLng : null,
+    minElevationM: gpxAnalysis ? gpxAnalysis.minElevationM : null,
+    maxElevationM: gpxAnalysis ? gpxAnalysis.maxElevationM : null,
     pointCount: gpxAnalysis ? gpxAnalysis.pointCount : null,
     analysisSource: gpxAnalysis ? gpxAnalysis.analysisSource : "",
     analyzedAtIso: gpxAnalysis ? gpxAnalysis.analyzedAtIso : "",
@@ -1464,9 +1493,8 @@ async function saveTrack() {
     updatedAt: serverTimestamp()
   };
 
-  // Se ho caricato/scelto un nuovo file, salvo i metadati del file.
-  // Se sto modificando una traccia esistente senza nuovo GPX/URL,
-  // non sovrascrivo fileUrl/objectKey esistenti con valori vuoti.
+  // Se ho caricato/scelto un nuovo file, salvo i metadati file.
+  // Se sto modificando senza sostituire file R2, NON tocco fileUrl/objectKey esistenti.
   if (fileFields.fileUrl) {
     payload.storageProvider = fileFields.storageProvider || "external_url";
     payload.uploadMode = fileFields.uploadMode || "";
@@ -1477,13 +1505,15 @@ async function saveTrack() {
     payload.contentType = fileFields.contentType || "";
   }
 
-  // Se sto modificando una traccia esistente senza nuovo file,
-  // non cancellare bounds/analisi già presenti.
+  // Se sto modificando senza nuovo GPX analizzato, non cancellare analisi esistente.
+  // Se invece ho selezionato un GPX, anche senza upload R2, l’analisi va aggiornata.
   if (id && !gpxAnalysis) {
     delete payload.elevationLossM;
     delete payload.bounds;
     delete payload.centerLat;
     delete payload.centerLng;
+    delete payload.minElevationM;
+    delete payload.maxElevationM;
     delete payload.pointCount;
     delete payload.analysisSource;
     delete payload.analyzedAtIso;
@@ -1491,7 +1521,11 @@ async function saveTrack() {
 
   if (id) {
     await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
-    setStatus("Traccia aggiornata.");
+    setStatus(
+      file && !replaceR2File
+        ? "Traccia aggiornata: km/dislivello ricalcolati senza creare un nuovo file R2."
+        : "Traccia aggiornata."
+    );
   } else {
     payload.createdByUid = user.uid;
     payload.createdByEmail = user.email || "";
@@ -1504,6 +1538,11 @@ async function saveTrack() {
   }
 
   $("track-file").value = "";
+
+  if ($("track-replace-r2")) {
+    $("track-replace-r2").checked = false;
+  }
+
   await loadTracksForSelectedArea();
 }
 
