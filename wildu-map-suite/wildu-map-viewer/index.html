@@ -579,6 +579,19 @@ const params = new URLSearchParams(location.search);
 const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
 const ALL_AREAS_VALUE = "__ALL__";
 
+// Cache persistente leggera del viewer.
+// Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
+const WILDU_MAP_CACHE_VERSION = 1;
+const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
+const WILDU_MAP_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ore
+
+// Bypass manuale per test/urgenze:
+// ?nocache=1 oppure ?refresh=1 oppure ?cache=off
+const WILDU_MAP_CACHE_BYPASS =
+  params.has("nocache") ||
+  params.has("refresh") ||
+  params.get("cache") === "off";
+
 const WILDU_TRACK_STYLE = {
   color: "#ffb000",
   weight: 6,
@@ -700,6 +713,63 @@ function setGpsHud(mode, label, accuracyMeters) {
       const v = String(s || "").trim();
       return /^https:\/\//i.test(v) ? v : "";
     }
+
+
+function getMapCacheKey(name) {
+  return WILDU_MAP_CACHE_PREFIX + name;
+}
+
+function readMapCache(name, ttlMs = WILDU_MAP_CACHE_TTL_MS) {
+  if (WILDU_MAP_CACHE_BYPASS) return null;
+
+  try {
+    const raw = localStorage.getItem(getMapCacheKey(name));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    if (!parsed || parsed.version !== WILDU_MAP_CACHE_VERSION) {
+      localStorage.removeItem(getMapCacheKey(name));
+      return null;
+    }
+
+    const savedAt = Number(parsed.savedAt || 0);
+    if (!savedAt || Date.now() - savedAt > ttlMs) {
+      localStorage.removeItem(getMapCacheKey(name));
+      return null;
+    }
+
+    return parsed.value ?? null;
+  } catch (_) {
+    localStorage.removeItem(getMapCacheKey(name));
+    return null;
+  }
+}
+
+function writeMapCache(name, value) {
+  try {
+    localStorage.setItem(
+      getMapCacheKey(name),
+      JSON.stringify({
+        version: WILDU_MAP_CACHE_VERSION,
+        savedAt: Date.now(),
+        value
+      })
+    );
+  } catch (_) {
+    // Se storage pieno/bloccato, non rompiamo il viewer.
+  }
+}
+
+function clearMapCache(name) {
+  try {
+    localStorage.removeItem(getMapCacheKey(name));
+  } catch (_) {}
+}
+
+function getCacheSourceLabel(fromPersistentCache) {
+  return fromPersistentCache ? "da cache dispositivo" : "da Firestore";
+}
     
 function sortByOrderTitle(a, b) {
   return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
@@ -772,6 +842,15 @@ function normalizeTileSettings(raw, fallback, kind) {
 
 async function loadViewerMapConfig() {
   const fallback = fallbackViewerConfig();
+  const cached = readMapCache("viewerConfig");
+
+  if (cached) {
+    return {
+      baseMap: normalizeTileSettings(cached.baseMap, fallback.baseMap, "base"),
+      hikingOverlay: normalizeTileSettings(cached.hikingOverlay, fallback.hikingOverlay, "overlay"),
+      _fromPersistentCache: true
+    };
+  }
 
   try {
     const ref = doc(
@@ -782,22 +861,43 @@ async function loadViewerMapConfig() {
 
     const snap = await getDoc(ref);
 
-    if (!snap.exists()) return fallback;
+    if (!snap.exists()) {
+      writeMapCache("viewerConfig", fallback);
+      return fallback;
+    }
 
     const data = snap.data() || {};
 
-    if (data.status && data.status !== "ACTIVE") return fallback;
+    if (data.status && data.status !== "ACTIVE") {
+      writeMapCache("viewerConfig", fallback);
+      return fallback;
+    }
 
-    return {
+    const normalized = {
       baseMap: normalizeTileSettings(data.baseMap, fallback.baseMap, "base"),
-      hikingOverlay: normalizeTileSettings(data.hikingOverlay, fallback.hikingOverlay, "overlay")
+      hikingOverlay: normalizeTileSettings(data.hikingOverlay, fallback.hikingOverlay, "overlay"),
+      _fromPersistentCache: false
     };
+
+    writeMapCache("viewerConfig", normalized);
+
+    return normalized;
   } catch (e) {
-    console.warn("[Wildu Map] Config mappa non disponibile, uso fallback.", e);
+    console.warn("[Wildu Map] Config mappa non disponibile, uso fallback/cache.", e);
+
+    const emergencyCached = readMapCache("viewerConfig", 30 * 24 * 60 * 60 * 1000);
+    if (emergencyCached) {
+      return {
+        baseMap: normalizeTileSettings(emergencyCached.baseMap, fallback.baseMap, "base"),
+        hikingOverlay: normalizeTileSettings(emergencyCached.hikingOverlay, fallback.hikingOverlay, "overlay"),
+        _fromPersistentCache: true
+      };
+    }
+
     return fallback;
   }
 }
-
+    
 function syncHikingRoutesLayer() {
   if (!state.map || !state.hikingRoutesLayer) return;
 
@@ -899,37 +999,75 @@ function initMap() {
 }
 
 async function loadAreas() {
-  const q = query(
-    collection(db, WILDU_MAP_COLLECTIONS.AREAS),
-    where("status", "==", "ACTIVE"),
-    where("visibility", "==", "PUBLIC")
-  );
+  const cachedAreas = readMapCache("areas");
 
-  const snap = await getDocs(q);
+  if (Array.isArray(cachedAreas) && cachedAreas.length) {
+    state.areas = cachedAreas.sort(sortByOrderTitle);
+    renderAreaSelect();
 
-  state.areas = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .sort(sortByOrderTitle);
+    const selectedByUrl = initialAreaSlug
+      ? state.areas.find(a => a.areaSlug === initialAreaSlug || a.id === initialAreaSlug)
+      : null;
 
-  renderAreaSelect();
+    if (selectedByUrl) {
+      await selectArea(selectedByUrl.areaSlug || selectedByUrl.id);
+      setStatus("Aree caricate da cache dispositivo.");
+      return;
+    }
 
-  if (!state.areas.length) {
-    $("area-title").textContent = "Wildu Map";
-    $("area-subtitle").textContent = "Mappa escursionistica libera. Nessuna area pubblica trovata.";
-    setStatus("Nessuna area mappa pubblica trovata.", true);
+    await selectAllAreas();
+    setStatus("Aree caricate da cache dispositivo. Scegli un’area o attiva il GPS.");
     return;
   }
 
-  const selectedByUrl = initialAreaSlug
-    ? state.areas.find(a => a.areaSlug === initialAreaSlug || a.id === initialAreaSlug)
-    : null;
+  try {
+    const q = query(
+      collection(db, WILDU_MAP_COLLECTIONS.AREAS),
+      where("status", "==", "ACTIVE"),
+      where("visibility", "==", "PUBLIC")
+    );
 
-  if (selectedByUrl) {
-    await selectArea(selectedByUrl.areaSlug || selectedByUrl.id);
-    return;
+    const snap = await getDocs(q);
+
+    state.areas = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort(sortByOrderTitle);
+
+    writeMapCache("areas", state.areas);
+
+    renderAreaSelect();
+
+    if (!state.areas.length) {
+      clearMapCache("areas");
+      $("area-title").textContent = "Wildu Map";
+      $("area-subtitle").textContent = "Mappa escursionistica libera. Nessuna area pubblica trovata.";
+      setStatus("Nessuna area mappa pubblica trovata.", true);
+      return;
+    }
+
+    const selectedByUrl = initialAreaSlug
+      ? state.areas.find(a => a.areaSlug === initialAreaSlug || a.id === initialAreaSlug)
+      : null;
+
+    if (selectedByUrl) {
+      await selectArea(selectedByUrl.areaSlug || selectedByUrl.id);
+      return;
+    }
+
+    await selectAllAreas();
+  } catch (e) {
+    const emergencyAreas = readMapCache("areas", 30 * 24 * 60 * 60 * 1000);
+
+    if (Array.isArray(emergencyAreas) && emergencyAreas.length) {
+      state.areas = emergencyAreas.sort(sortByOrderTitle);
+      renderAreaSelect();
+      await selectAllAreas();
+      setStatus("Firestore non disponibile: uso aree salvate sul dispositivo.", true);
+      return;
+    }
+
+    throw e;
   }
-
-  await selectAllAreas();
 }
 
 function renderAreaSelect() {
@@ -1811,6 +1949,277 @@ async function boot() {
 }
 
 boot().catch(e => setStatus(e.message, true));
+
+window.wilduMapCacheDebug = async function wilduMapCacheDebug() {
+  const now = Date.now();
+  const CACHE_PREFIX = "wildu_map_viewer_v1:";
+  const TTL_MS = 6 * 60 * 60 * 1000;
+
+  function safeJson(raw) {
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  }
+
+  function ageLabel(savedAt) {
+    const n = Number(savedAt || 0);
+    if (!n) return "N/D";
+    const diff = now - n;
+    const min = Math.round(diff / 60000);
+    if (min < 60) return `${min} min fa`;
+    const h = Math.round(min / 60);
+    return `${h} ore fa`;
+  }
+
+  function inspectCacheItem(name) {
+    const key = CACHE_PREFIX + name;
+    const raw = localStorage.getItem(key);
+    const parsed = safeJson(raw);
+
+    if (!raw) {
+      return {
+        name,
+        key,
+        exists: false,
+        validJson: false,
+        version: null,
+        savedAt: null,
+        age: null,
+        expired: null,
+        summary: "ASSENTE"
+      };
+    }
+
+    const savedAt = parsed ? Number(parsed.savedAt || 0) : 0;
+    const expired = savedAt ? (now - savedAt > TTL_MS) : true;
+
+    let valueSummary = "N/D";
+
+    if (parsed && name === "viewerConfig") {
+      valueSummary = {
+        hasBaseMap: !!(parsed.value && parsed.value.baseMap),
+        baseProvider: parsed.value && parsed.value.baseMap && parsed.value.baseMap.providerId,
+        baseUrl: parsed.value && parsed.value.baseMap && parsed.value.baseMap.tileUrl,
+        hasHiking: !!(parsed.value && parsed.value.hikingOverlay),
+        hikingProvider: parsed.value && parsed.value.hikingOverlay && parsed.value.hikingOverlay.providerId,
+        hikingEnabled: parsed.value && parsed.value.hikingOverlay && parsed.value.hikingOverlay.enabled
+      };
+    }
+
+    if (parsed && name === "areas") {
+      const arr = Array.isArray(parsed.value) ? parsed.value : [];
+      valueSummary = {
+        count: arr.length,
+        slugs: arr.slice(0, 10).map(a => a.areaSlug || a.id || a.title || "NO_SLUG"),
+        firstArea: arr[0] || null
+      };
+    }
+
+    return {
+      name,
+      key,
+      exists: true,
+      validJson: !!parsed,
+      version: parsed && parsed.version,
+      savedAt: parsed && parsed.savedAt,
+      age: ageLabel(savedAt),
+      expired,
+      summary: valueSummary
+    };
+  }
+
+  async function inspectCacheStorage() {
+    if (!("caches" in window)) {
+      return { supported: false };
+    }
+
+    const names = await caches.keys();
+    const result = [];
+
+    for (const name of names) {
+      try {
+        const cache = await caches.open(name);
+        const keys = await cache.keys();
+        result.push({
+          name,
+          entries: keys.length,
+          sample: keys.slice(0, 8).map(req => req.url)
+        });
+      } catch (e) {
+        result.push({
+          name,
+          error: e.message
+        });
+      }
+    }
+
+    return {
+      supported: true,
+      caches: result
+    };
+  }
+
+  const params = new URLSearchParams(location.search);
+
+  const bypass = {
+    nocache: params.has("nocache"),
+    refresh: params.has("refresh"),
+    cacheOff: params.get("cache") === "off",
+    active: params.has("nocache") || params.has("refresh") || params.get("cache") === "off"
+  };
+
+  const areaSelect = document.getElementById("area-select");
+  const statusEl = document.getElementById("status");
+  const gpsText = document.getElementById("gps-status-text");
+  const safetyNote = document.getElementById("safety-note");
+
+  const localStorageReport = {
+    viewerConfig: inspectCacheItem("viewerConfig"),
+    areas: inspectCacheItem("areas"),
+    allWilduMapKeys: Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX))
+  };
+
+  const firestoreResources = performance
+    .getEntriesByType("resource")
+    .filter(r =>
+      String(r.name).includes("firestore.googleapis.com") ||
+      String(r.name).includes("googleapis.com/google.firestore")
+    )
+    .slice(-20)
+    .map(r => ({
+      name: r.name,
+      initiatorType: r.initiatorType,
+      durationMs: Math.round(r.duration)
+    }));
+
+  const viewerDom = {
+    url: location.href,
+    bypass,
+    selectedAreaValue: areaSelect ? areaSelect.value : null,
+    areaOptionsCount: areaSelect ? areaSelect.options.length : 0,
+    areaOptions: areaSelect ? Array.from(areaSelect.options).map(o => ({
+      value: o.value,
+      text: o.textContent
+    })) : [],
+    statusText: statusEl ? statusEl.textContent : null,
+    gpsButtonText: gpsText ? gpsText.textContent : null,
+    safetyNoteHidden: safetyNote ? safetyNote.classList.contains("is-hidden") : null,
+    hasMap: !!document.getElementById("map"),
+    hasLeaflet: !!window.L,
+    hasGpxPlugin: !!(window.L && window.L.GPX)
+  };
+
+  const swReport = {
+    hasServiceWorker: "serviceWorker" in navigator,
+    controlledBySW: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+    controllerScript: navigator.serviceWorker && navigator.serviceWorker.controller
+      ? navigator.serviceWorker.controller.scriptURL
+      : null,
+    registrations: []
+  };
+
+  if ("serviceWorker" in navigator) {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      swReport.registrations = regs.map(r => ({
+        scope: r.scope,
+        active: r.active && r.active.scriptURL,
+        waiting: r.waiting && r.waiting.scriptURL,
+        installing: r.installing && r.installing.scriptURL
+      }));
+    } catch (e) {
+      swReport.error = e.message;
+    }
+  }
+
+  const cacheStorageReport = await inspectCacheStorage();
+
+  const verdict = {
+    viewerConfigCacheOk:
+      localStorageReport.viewerConfig.exists &&
+      localStorageReport.viewerConfig.validJson &&
+      !localStorageReport.viewerConfig.expired,
+
+    areasCacheOk:
+      localStorageReport.areas.exists &&
+      localStorageReport.areas.validJson &&
+      !localStorageReport.areas.expired &&
+      localStorageReport.areas.summary &&
+      localStorageReport.areas.summary.count > 0,
+
+    bypassActive: bypass.active,
+
+    likelyStep9AOk: false
+  };
+
+  verdict.likelyStep9AOk =
+    verdict.viewerConfigCacheOk &&
+    verdict.areasCacheOk &&
+    !verdict.bypassActive;
+
+  const report = {
+    title: "WILDU MAP VIEWER — CACHE DEBUG STEP 9A",
+    generatedAt: new Date().toISOString(),
+    viewerDom,
+    localStorageReport,
+    firestoreResources,
+    swReport,
+    cacheStorageReport,
+    verdict,
+    nextInterpretation: {
+      ifFirstRunWithRefresh:
+        "Con ?refresh=1 è normale che bypassActive sia true: serve solo a popolare/riscrivere cache.",
+      ifSecondRunWithoutRefresh:
+        "Senza ?refresh=1, viewerConfigCacheOk e areasCacheOk devono essere true.",
+      ifFirestoreResourcesEmpty:
+        "Se in seconda apertura non vedi chiamate Firestore recenti, la cache sta evitando letture per config+aree.",
+      ifLikelyStep9AOkTrue:
+        "Step 9A probabilmente OK.",
+      ifLikelyStep9AOkFalse:
+        "Controlla viewerConfigCacheOk, areasCacheOk e bypassActive."
+    }
+  };
+
+  console.log("✅ WILDU MAP CACHE DEBUG REPORT", report);
+  console.table([
+    {
+      item: "viewerConfig cache",
+      ok: verdict.viewerConfigCacheOk,
+      age: localStorageReport.viewerConfig.age,
+      expired: localStorageReport.viewerConfig.expired
+    },
+    {
+      item: "areas cache",
+      ok: verdict.areasCacheOk,
+      age: localStorageReport.areas.age,
+      expired: localStorageReport.areas.expired,
+      count: localStorageReport.areas.summary && localStorageReport.areas.summary.count
+    },
+    {
+      item: "bypass cache active",
+      ok: !verdict.bypassActive,
+      active: verdict.bypassActive
+    },
+    {
+      item: "controlled by SW",
+      ok: swReport.controlledBySW,
+      script: swReport.controllerScript
+    },
+    {
+      item: "Firestore resource entries recenti",
+      ok: true,
+      count: firestoreResources.length
+    }
+  ]);
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    console.log("📋 Report copiato negli appunti.");
+  } catch (_) {
+    console.log("ℹ️ Non sono riuscito a copiare negli appunti. Puoi copiare l’oggetto report dalla console.");
+  }
+
+  return report;
+};
+    
   </script>
 </body>
 </html>
