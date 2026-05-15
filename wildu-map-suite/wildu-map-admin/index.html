@@ -824,7 +824,9 @@ box.querySelectorAll("[data-delete-area]").forEach(btn => {
       const a = state.areas.find(x => x.id === id);
       if (!a) return;
       $("area-id").value = a.id || "";
-      $("area-slug").value = a.areaSlug || a.id || "";
+$("area-slug").value = a.areaSlug || a.id || "";
+$("area-slug").readOnly = true;
+$("area-slug").title = "Slug bloccato in modifica: crea una nuova area se vuoi un altro ID.";
       $("area-title").value = a.title || "";
       $("area-subtitle").value = a.subtitle || "";
       $("area-description").value = a.description || "";
@@ -845,6 +847,10 @@ loadAreaPolygonFromArea(a, true);
 
 function clearAreaForm() {
   ["area-id","area-slug","area-title","area-subtitle","area-description","area-regione","area-provincia","area-comune","area-center-lat","area-center-lng","area-cover-image-url"].forEach(id => $(id).value = "");
+
+  $("area-slug").readOnly = false;
+  $("area-slug").title = "";
+
   $("area-default-zoom").value = 13;
   $("area-status").value = "ACTIVE";
   $("area-sort-order").value = 10;
@@ -859,8 +865,10 @@ function clearAreaForm() {
 
     async function saveArea() {
       const user = requireUser();
-      const rawSlug = val("area-slug") || val("area-title");
+const editingId = val("area-id");
+const rawSlug = editingId || val("area-slug") || val("area-title");
 const areaSlug = slugify(rawSlug);
+
 if (!areaSlug) throw new Error("Area slug obbligatorio.");
 
 const polygonPayload = getAreaPolygonPayload();
@@ -1555,12 +1563,31 @@ async function saveTrack() {
   if (!areaSlug) throw new Error("Area obbligatoria.");
   if (!title) throw new Error("Titolo traccia obbligatorio.");
 
-  const id = val("track-id");
-  const file = $("track-file").files[0] || null;
-  const replaceR2File = !!($("track-replace-r2") && $("track-replace-r2").checked);
+const id = val("track-id");
+const file = $("track-file").files[0] || null;
+const replaceR2File = !!($("track-replace-r2") && $("track-replace-r2").checked);
+const manualUrlCandidate = safeUrl(val("track-file-url"));
 
-  let fileFields = {};
-  let gpxAnalysis = null;
+let previousR2ObjectKey = "";
+let fileFields = {};
+let gpxAnalysis = null;
+
+if (id && ((file && replaceR2File) || manualUrlCandidate)) {
+  try {
+    const oldSnap = await getDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id));
+    const oldData = oldSnap.exists() ? oldSnap.data() : null;
+
+    if (
+      oldData &&
+      String(oldData.storageProvider || "") === "cloudflare_r2" &&
+      String(oldData.objectKey || "").trim()
+    ) {
+      previousR2ObjectKey = String(oldData.objectKey).trim();
+    }
+  } catch (e) {
+    setStatus("Attenzione: non sono riuscito a leggere il vecchio objectKey R2 prima della sostituzione.", true);
+  }
+}
 
   if (file) {
     if (!/\.gpx$/i.test(file.name)) {
@@ -1579,8 +1606,8 @@ async function saveTrack() {
       setStatus("GPX analizzato. In modifica non carico un nuovo file su R2 perché “Sostituisci file R2” non è spuntato.");
     }
 
-  } else if (safeUrl(val("track-file-url"))) {
-    const externalUrl = safeUrl(val("track-file-url"));
+} else if (manualUrlCandidate) {
+  const externalUrl = manualUrlCandidate;
 
     fileFields = {
       storageProvider: externalUrl.startsWith(WILDU_MEDIA_BASE_URL) ? "cloudflare_r2" : "external_url",
@@ -1654,23 +1681,42 @@ async function saveTrack() {
     delete payload.analyzedAtIso;
   }
 
-  if (id) {
-    await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
-    setStatus(
-      file && !replaceR2File
-        ? "Traccia aggiornata: km/dislivello ricalcolati senza creare un nuovo file R2."
-        : "Traccia aggiornata."
-    );
-  } else {
-    payload.createdByUid = user.uid;
-    payload.createdByEmail = user.email || "";
-    payload.createdAt = serverTimestamp();
+if (id) {
+  await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
 
-    const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), payload);
-    $("track-id").value = added.id;
+  let replaceCleanupMessage = "";
 
-    setStatus("Traccia creata.");
+  if (
+    previousR2ObjectKey &&
+    fileFields.fileUrl &&
+    previousR2ObjectKey !== String(fileFields.objectKey || "").trim()
+  ) {
+    try {
+      const oldDelete = await deleteR2ObjectByKey(previousR2ObjectKey);
+      replaceCleanupMessage = ` Vecchio file R2 eliminato: ${oldDelete.deletedKey || previousR2ObjectKey}.`;
+    } catch (e) {
+      replaceCleanupMessage = ` Traccia aggiornata, ma il vecchio file R2 è rimasto nel bucket: ${previousR2ObjectKey}. Errore: ${e.message}`;
+      setStatus(replaceCleanupMessage, true);
+      await loadTracksForSelectedArea();
+      return;
+    }
   }
+
+  setStatus(
+    file && !replaceR2File
+      ? "Traccia aggiornata: km/dislivello ricalcolati senza creare un nuovo file R2."
+      : `Traccia aggiornata.${replaceCleanupMessage}`
+  );
+} else {
+  payload.createdByUid = user.uid;
+  payload.createdByEmail = user.email || "";
+  payload.createdAt = serverTimestamp();
+
+  const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), payload);
+  $("track-id").value = added.id;
+
+  setStatus("Traccia creata.");
+}
 
   $("track-file").value = "";
 
