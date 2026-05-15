@@ -1258,18 +1258,36 @@ const layer = new L.GPX(url, {
 async function loadAreaContent(areaSlug) {
   const data = await getAreaContent(areaSlug);
 
-  const waypointCount = renderWaypointsOnMap(data.waypoints);
-  const trackCount = renderTracksOnMap(data.tracks);
+  const waypoints = Array.isArray(data.waypoints) ? data.waypoints : [];
+  const tracks = Array.isArray(data.tracks) ? data.tracks : [];
 
-  const sourceLabel = data.cacheSource
-    ? `da cache ${data.cacheSource}`
-    : (data.fromCache ? "da cache" : "da Firestore");
+  const waypointCount = renderWaypointsOnMap(waypoints);
+  const renderedTrackCount = renderTracksOnMap(tracks);
+  const trackMetaCount = tracks.length;
 
-  if (!trackCount) {
-    setStatus(`${waypointCount} Wildu Waypoints caricati ${sourceLabel}. Nessuna traccia GPX pubblica per quest’area.`);
-  } else {
-    setStatus(`${waypointCount} Wildu Waypoints e ${trackCount} tracce caricate ${sourceLabel}.`);
+  let sourceLabel = "da Firestore";
+
+  if (data.cacheSource === "sessione") {
+    sourceLabel = "da cache sessione";
+  } else if (data.cacheSource === "dispositivo") {
+    sourceLabel = "da cache dispositivo";
+  } else if (data.cacheSource === "Firestore") {
+    sourceLabel = "da Firestore";
+  } else if (data.fromCache) {
+    sourceLabel = "da cache";
   }
+
+  if (!trackMetaCount) {
+    setStatus(`${waypointCount} Wildu Waypoints caricati ${sourceLabel}. Nessuna traccia GPX pubblica per quest’area.`);
+    return;
+  }
+
+  if (!renderedTrackCount) {
+    setStatus(`${waypointCount} Wildu Waypoints caricati ${sourceLabel}. ${trackMetaCount} traccia presente nei metadati, ma nessun GPX renderizzabile trovato.`, true);
+    return;
+  }
+
+  setStatus(`${waypointCount} Wildu Waypoints e ${trackMetaCount} tracce caricate ${sourceLabel}.`);
 }
 
 
