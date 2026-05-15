@@ -1102,6 +1102,150 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
       $("track-sort-order").value = 10;
     }
 
+
+function haversineMeters(a, b) {
+  if (!a || !b) return 0;
+
+  const R = 6371000;
+  const lat1 = Number(a.lat) * Math.PI / 180;
+  const lat2 = Number(b.lat) * Math.PI / 180;
+  const dLat = (Number(b.lat) - Number(a.lat)) * Math.PI / 180;
+  const dLng = (Number(b.lng) - Number(a.lng)) * Math.PI / 180;
+
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Errore lettura file GPX."));
+
+    reader.readAsText(file);
+  });
+}
+
+function parseGpxPoints(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+
+  const parserError = doc.querySelector("parsererror");
+  if (parserError) {
+    throw new Error("GPX non valido o non leggibile.");
+  }
+
+  const nodes = [
+    ...Array.from(doc.getElementsByTagName("trkpt")),
+    ...Array.from(doc.getElementsByTagName("rtept"))
+  ];
+
+  const points = nodes
+    .map(node => {
+      const lat = Number(node.getAttribute("lat"));
+      const lng = Number(node.getAttribute("lon"));
+      const eleNode = node.getElementsByTagName("ele")[0];
+      const ele = eleNode ? Number(eleNode.textContent) : null;
+
+      return {
+        lat,
+        lng,
+        ele: Number.isFinite(ele) ? ele : null
+      };
+    })
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+  if (points.length < 2) {
+    throw new Error("Il GPX contiene troppo pochi punti per calcolare la traccia.");
+  }
+
+  return points;
+}
+
+function analyzeGpxPoints(points) {
+  let distanceM = 0;
+  let elevationGainM = 0;
+  let elevationLossM = 0;
+
+  const lats = [];
+  const lngs = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+
+    lats.push(p.lat);
+    lngs.push(p.lng);
+
+    if (i > 0) {
+      const prev = points[i - 1];
+
+      distanceM += haversineMeters(prev, p);
+
+      if (Number.isFinite(prev.ele) && Number.isFinite(p.ele)) {
+        const delta = p.ele - prev.ele;
+
+        // Piccola soglia anti-rumore GPS: evita micro-oscillazioni inutili.
+        if (delta > 1) elevationGainM += delta;
+        if (delta < -1) elevationLossM += Math.abs(delta);
+      }
+    }
+  }
+
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+
+  return {
+    distanceKm: Number((distanceM / 1000).toFixed(2)),
+    elevationGainM: Math.round(elevationGainM),
+    elevationLossM: Math.round(elevationLossM),
+
+    bounds: {
+      minLat,
+      minLng,
+      maxLat,
+      maxLng
+    },
+
+    centerLat: Number(((minLat + maxLat) / 2).toFixed(6)),
+    centerLng: Number(((minLng + maxLng) / 2).toFixed(6)),
+
+    pointCount: points.length,
+    analysisSource: "client_gpx_domparser",
+    analyzedAtIso: new Date().toISOString()
+  };
+}
+
+async function analyzeGpxFile(file) {
+  if (!file) return null;
+
+  if (!/\.gpx$/i.test(file.name)) {
+    throw new Error("Carica un file .gpx.");
+  }
+
+  const xmlText = await readFileAsText(file);
+  const points = parseGpxPoints(xmlText);
+  return analyzeGpxPoints(points);
+}
+
+function applyGpxAnalysisToForm(analysis) {
+  if (!analysis) return;
+
+  // Se hai compilato a mano, non ti sovrascrivo il campo.
+  if (!val("track-distance-km") && Number.isFinite(Number(analysis.distanceKm))) {
+    $("track-distance-km").value = analysis.distanceKm;
+  }
+
+  if (!val("track-elevation-gain-m") && Number.isFinite(Number(analysis.elevationGainM))) {
+    $("track-elevation-gain-m").value = analysis.elevationGainM;
+  }
+}
+    
 async function readJsonResponse(res) {
   const text = await res.text();
 
@@ -1192,78 +1336,122 @@ async function uploadTrackFile(areaSlug, file) {
   };
 }
 
-    async function saveTrack() {
-      const user = requireUser();
-      const areaSlug = val("track-area");
-      const title = val("track-title");
-      if (!areaSlug) throw new Error("Area obbligatoria.");
-      if (!title) throw new Error("Titolo traccia obbligatorio.");
-      const file = $("track-file").files[0] || null;
-      let fileFields = {};
-      if (file) {
-        if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
-        setStatus("Richiedo URL sicuro e carico GPX su R2...");
-        fileFields = await uploadTrackFile(areaSlug, file);
-} else if (safeUrl(val("track-file-url"))) {
-  const externalUrl = safeUrl(val("track-file-url"));
+async function saveTrack() {
+  const user = requireUser();
+  const areaSlug = val("track-area");
+  const title = val("track-title");
 
-  fileFields = {
-    storageProvider: externalUrl.startsWith(WILDU_MEDIA_BASE_URL) ? "cloudflare_r2" : "external_url",
-    uploadMode: "manual_url",
-    objectKey: "",
-    fileUrl: externalUrl,
-    originalFileName: "",
-    sizeBytes: null,
-    contentType: "application/gpx+xml"
-  };
-}
+  if (!areaSlug) throw new Error("Area obbligatoria.");
+  if (!title) throw new Error("Titolo traccia obbligatorio.");
 
-const id = val("track-id");
+  const id = val("track-id");
+  const file = $("track-file").files[0] || null;
 
-if (!id && !fileFields.fileUrl) {
-  throw new Error("Per creare una nuova traccia devi caricare un GPX o indicare un fileUrl pubblico.");
-}
-      
-const payload = {
-  schemaVersion: 1,
-  status: val("track-status") || "ACTIVE",
-  visibility: "PUBLIC",
-  areaSlug,
-  title,
-  description: val("track-description"),
+  let fileFields = {};
+  let gpxAnalysis = null;
 
-  fileType: "GPX",
-  storageProvider: fileFields.storageProvider || (fileFields.fileUrl ? "external_url" : ""),
-  uploadMode: fileFields.uploadMode || "",
-  objectKey: fileFields.objectKey || "",
-  fileUrl: fileFields.fileUrl || "",
-  originalFileName: fileFields.originalFileName || "",
-  sizeBytes: fileFields.sizeBytes ?? null,
-  contentType: fileFields.contentType || "",
-
-  distanceKm: num("track-distance-km"),
-  elevationGainM: num("track-elevation-gain-m"),
-  difficulty: val("track-difficulty"),
-  sortOrder: num("track-sort-order", 10),
-  updatedByUid: user.uid,
-  updatedByEmail: user.email || "",
-  updatedAt: serverTimestamp()
-};
-      //const id = val("track-id");DISATTIVATO GIA' DICHIARATA
-      if (id) {
-        await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
-        setStatus("Traccia aggiornata.");
-      } else {
-        payload.createdByUid = user.uid;
-        payload.createdByEmail = user.email || "";
-        payload.createdAt = serverTimestamp();
-        const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), payload);
-        $("track-id").value = added.id;
-        setStatus("Traccia creata.");
-      }
-      $("track-file").value = "";
-      await loadTracksForSelectedArea();
+  if (file) {
+    if (!/\.gpx$/i.test(file.name)) {
+      throw new Error("Carica un file .gpx.");
     }
+
+    setStatus("Analizzo GPX: km, dislivello e bounds...");
+
+    gpxAnalysis = await analyzeGpxFile(file);
+    applyGpxAnalysisToForm(gpxAnalysis);
+
+    setStatus("Richiedo URL sicuro e carico GPX su R2...");
+    fileFields = await uploadTrackFile(areaSlug, file);
+
+  } else if (safeUrl(val("track-file-url"))) {
+    const externalUrl = safeUrl(val("track-file-url"));
+
+    fileFields = {
+      storageProvider: externalUrl.startsWith(WILDU_MEDIA_BASE_URL) ? "cloudflare_r2" : "external_url",
+      uploadMode: "manual_url",
+      objectKey: "",
+      fileUrl: externalUrl,
+      originalFileName: "",
+      sizeBytes: null,
+      contentType: "application/gpx+xml"
+    };
+  }
+
+  if (!id && !fileFields.fileUrl) {
+    throw new Error("Per creare una nuova traccia devi caricare un GPX o indicare un fileUrl pubblico.");
+  }
+
+  const payload = {
+    schemaVersion: 1,
+    status: val("track-status") || "ACTIVE",
+    visibility: "PUBLIC",
+    areaSlug,
+    title,
+    description: val("track-description"),
+
+    fileType: "GPX",
+
+    distanceKm: num("track-distance-km"),
+    elevationGainM: num("track-elevation-gain-m"),
+    elevationLossM: gpxAnalysis ? gpxAnalysis.elevationLossM : null,
+
+    bounds: gpxAnalysis ? gpxAnalysis.bounds : null,
+    centerLat: gpxAnalysis ? gpxAnalysis.centerLat : null,
+    centerLng: gpxAnalysis ? gpxAnalysis.centerLng : null,
+    pointCount: gpxAnalysis ? gpxAnalysis.pointCount : null,
+    analysisSource: gpxAnalysis ? gpxAnalysis.analysisSource : "",
+    analyzedAtIso: gpxAnalysis ? gpxAnalysis.analyzedAtIso : "",
+
+    difficulty: val("track-difficulty"),
+    sortOrder: num("track-sort-order", 10),
+
+    updatedByUid: user.uid,
+    updatedByEmail: user.email || "",
+    updatedAt: serverTimestamp()
+  };
+
+  // Se ho caricato/scelto un nuovo file, salvo i metadati del file.
+  // Se sto modificando una traccia esistente senza nuovo GPX/URL,
+  // non sovrascrivo fileUrl/objectKey esistenti con valori vuoti.
+  if (fileFields.fileUrl) {
+    payload.storageProvider = fileFields.storageProvider || "external_url";
+    payload.uploadMode = fileFields.uploadMode || "";
+    payload.objectKey = fileFields.objectKey || "";
+    payload.fileUrl = fileFields.fileUrl || "";
+    payload.originalFileName = fileFields.originalFileName || "";
+    payload.sizeBytes = fileFields.sizeBytes ?? null;
+    payload.contentType = fileFields.contentType || "";
+  }
+
+  // Se sto modificando una traccia esistente senza nuovo file,
+  // non cancellare bounds/analisi già presenti.
+  if (id && !gpxAnalysis) {
+    delete payload.elevationLossM;
+    delete payload.bounds;
+    delete payload.centerLat;
+    delete payload.centerLng;
+    delete payload.pointCount;
+    delete payload.analysisSource;
+    delete payload.analyzedAtIso;
+  }
+
+  if (id) {
+    await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
+    setStatus("Traccia aggiornata.");
+  } else {
+    payload.createdByUid = user.uid;
+    payload.createdByEmail = user.email || "";
+    payload.createdAt = serverTimestamp();
+
+    const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), payload);
+    $("track-id").value = added.id;
+
+    setStatus("Traccia creata.");
+  }
+
+  $("track-file").value = "";
+  await loadTracksForSelectedArea();
+}
 
     const MAP_PROVIDER_PRESETS = [
   {
