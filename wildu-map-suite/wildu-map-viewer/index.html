@@ -216,20 +216,21 @@ button.gps-chip:hover {
 .exit-btn {
   position: fixed;
   right: max(12px, env(safe-area-inset-right));
-  bottom: calc(14px + env(safe-area-inset-bottom));
+  top: 64px;
   z-index: 900;
 
   pointer-events: auto;
-  border: 1px solid rgba(255,107,107,.68);
-  background: rgba(128, 28, 28, .96);
+  border: 1px solid rgba(255,107,107,.72);
+  background: rgba(128, 28, 28, .97);
   color: #ffffff;
   border-radius: 999px;
-  padding: 10px 15px;
+  padding: 12px 18px;
   white-space: nowrap;
-  box-shadow: 0 14px 34px rgba(0,0,0,.36);
+  box-shadow: 0 16px 38px rgba(0,0,0,.38);
   backdrop-filter: blur(12px);
   font-weight: 950;
-  font-size: 13px;
+  font-size: 15px;
+  letter-spacing: .2px;
 }
 
 .exit-btn:hover {
@@ -381,8 +382,10 @@ button.gps-chip:hover {
   }
 
 .exit-btn {
-  font-size: 12px;
-  padding: 9px 13px;
+  top: 58px;
+  right: max(10px, env(safe-area-inset-right));
+  font-size: 14px;
+  padding: 11px 16px;
 }
 
 .leaflet-control-zoom,
@@ -447,6 +450,13 @@ button.gps-chip:hover {
     padding: 7px 10px;
   }
 
+  .exit-btn {
+  top: 56px;
+  right: max(8px, env(safe-area-inset-right));
+  font-size: 13.5px;
+  padding: 10px 15px;
+}
+
   .gps-toast {
     top: 64px;
     font-size: 12px;
@@ -479,7 +489,7 @@ button.gps-chip:hover {
 
 <button id="gps-status-chip" class="gps-chip off" type="button" aria-live="polite" title="Attiva/disattiva tracking GPS">
   <span class="gps-dot"></span>
-  <span id="gps-status-text">GPS spento</span>
+  <span id="gps-status-text">GPS OFF</span>
   <span id="gps-precision-value" class="gps-precision">Precisione: —</span>
 </button>
     
@@ -584,24 +594,29 @@ function setStatus(msg, isError = false, sticky = false) {
   }
 }
 
-    function setGpsHud(mode, label, accuracyMeters) {
-      const chip = $("gps-status-chip");
-      const text = $("gps-status-text");
-      const precision = $("gps-precision-value");
+function setGpsHud(mode, label, accuracyMeters) {
+  const chip = $("gps-status-chip");
+  const text = $("gps-status-text");
+  const precision = $("gps-precision-value");
 
-      if (!chip || !text || !precision) return;
+  if (!chip || !text || !precision) return;
 
-      chip.classList.remove("active", "warn", "off");
-      chip.classList.add(mode || "off");
+  chip.classList.remove("active", "warn", "off");
+  chip.classList.add(mode || "off");
 
-      text.textContent = label || "GPS spento";
+  // Il bottone deve essere un comando chiaro, non un messaggio lungo:
+  // i dettagli restano nei toast/status sotto.
+  text.textContent = state.gpsTrackingActive ? "GPS ON" : "GPS OFF";
 
-      if (Number.isFinite(Number(accuracyMeters))) {
-        precision.textContent = `Precisione: ~${Math.round(Number(accuracyMeters))} m`;
-      } else {
-        precision.textContent = "Precisione: —";
-      }
-    }
+  // Manteniamo comunque il dettaglio tecnico in title/accessibilità.
+  chip.title = label || (state.gpsTrackingActive ? "GPS attivo" : "GPS spento");
+
+  if (Number.isFinite(Number(accuracyMeters))) {
+    precision.textContent = `Precisione: ~${Math.round(Number(accuracyMeters))} m`;
+  } else {
+    precision.textContent = "Precisione: —";
+  }
+}
 
     function showGpsToast(message, type = "ok") {
       const toast = $("gps-toast");
