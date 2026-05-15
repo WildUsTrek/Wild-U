@@ -232,6 +232,49 @@ button.gps-chip:hover {
     .waypoint-popup p { margin: 6px 0; line-height: 1.35; }
     .waypoint-popup img { width: 100%; max-height: 150px; object-fit: cover; border-radius: 12px; margin-top: 8px; display: block; }
     .waypoint-popup small { color: #667; display: block; margin-top: 6px; }
+    .track-popup {
+  min-width: 230px;
+  max-width: 300px;
+}
+
+.track-popup h3 {
+  margin: 0 0 7px;
+  font-size: 15px;
+}
+
+.track-popup p {
+  margin: 7px 0;
+  line-height: 1.35;
+}
+
+.track-popup .track-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.track-popup .track-metric {
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(167, 209, 41, .12);
+  border: 1px solid rgba(167, 209, 41, .25);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.track-popup .track-metric strong {
+  display: block;
+  color: #142008;
+  font-size: 11px;
+  opacity: .75;
+}
+
+.track-popup small {
+  color: #667;
+  display: block;
+  margin-top: 6px;
+}
     .leaflet-control-attribution { font-size: 10px; }
     .leaflet-popup-content-wrapper { border-radius: 16px; }
     @media (max-width: 760px) {
@@ -379,6 +422,19 @@ import {
 const params = new URLSearchParams(location.search);
 const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
 const ALL_AREAS_VALUE = "__ALL__";
+
+const WILDU_TRACK_STYLE = {
+  color: "#ffb000",
+  weight: 6,
+  opacity: 0.98
+};
+
+const USER_TRACK_STYLE = {
+  color: "#00e5ff",
+  weight: 6,
+  opacity: 0.95,
+  dashArray: "10,8"
+};    
 
 // Ritorno all’app madre. Se la sezione premi usa un hash diverso,
 // in futuro basta cambiare questa singola costante.
@@ -830,13 +886,16 @@ function renderTracksOnMap(items) {
     const url = safeUrl(t.fileUrl);
     if (!url || !window.L.GPX) return;
 
-    const layer = new L.GPX(url, {
-      async: true,
-      polyline_options: { color: "#f5b400", weight: 4, opacity: 0.9 }
-    });
+const layer = new L.GPX(url, {
+  async: true,
+  polyline_options: WILDU_TRACK_STYLE
+});
+
+    bindTrackPopup(layer, t);
 
     layer.on("loaded", () => {
       loaded++;
+      bindTrackPopup(layer, t);
       setStatus(`${loaded}/${items.length} tracce GPX caricate.`);
     });
 
@@ -939,30 +998,111 @@ async function selectArea(areaSlug) {
       L.marker([lat, lng], { icon: waypointIcon(w.iconType) }).bindPopup(html).addTo(state.waypointsLayer);
     }
 
-    async function loadTracks(areaSlug) {
-      state.tracksLayer.clearLayers();
-      const q = query(
-        collection(db, WILDU_MAP_COLLECTIONS.TRACKS),
-        where("areaSlug", "==", areaSlug),
-        where("status", "==", "ACTIVE"),
-        where("visibility", "==", "PUBLIC")
-      );
-      const snap = await getDocs(q);
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByOrderTitle);
-      let loaded = 0;
-      items.forEach(t => {
-        const url = safeUrl(t.fileUrl);
-        if (!url || !window.L.GPX) return;
-        const layer = new L.GPX(url, {
-          async: true,
-          polyline_options: { color: "#f5b400", weight: 4, opacity: 0.9 }
-        });
-        layer.on("loaded", () => { loaded++; setStatus(`${loaded}/${items.length} tracce GPX caricate.`); });
-        layer.on("error", () => setStatus(`Errore caricamento GPX: ${t.title || t.id}`, true));
-        layer.addTo(state.tracksLayer);
-      });
-      if (!items.length) setStatus("Nessuna traccia GPX pubblica per quest’area.");
-    }
+
+    function formatTrackMetric(value, suffix) {
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) {
+    return "—";
+  }
+
+  if (suffix === "km") {
+    return `${n.toFixed(n % 1 === 0 ? 0 : 1)} km`;
+  }
+
+  return `${Math.round(n)} ${suffix}`;
+}
+
+function buildTrackPopupHtml(t) {
+  const title = escapeHtml(t.title || "Traccia GPX Wildu");
+  const desc = escapeHtml(t.description || "");
+  const difficulty = escapeHtml(t.difficulty || "N/D");
+
+  const distance = formatTrackMetric(t.distanceKm, "km");
+  const gain = formatTrackMetric(t.elevationGainM, "m");
+  const loss = formatTrackMetric(t.elevationLossM, "m");
+
+  const hasDescription = !!String(t.description || "").trim();
+
+  return `
+    <div class="track-popup">
+      <h3>${title}</h3>
+
+      <div class="track-metrics">
+        <div class="track-metric">
+          <strong>Distanza</strong>
+          ${escapeHtml(distance)}
+        </div>
+        <div class="track-metric">
+          <strong>Dislivello +</strong>
+          ${escapeHtml(gain)}
+        </div>
+        <div class="track-metric">
+          <strong>Dislivello -</strong>
+          ${escapeHtml(loss)}
+        </div>
+        <div class="track-metric">
+          <strong>Difficoltà</strong>
+          ${difficulty}
+        </div>
+      </div>
+
+      ${hasDescription ? `<p>${desc}</p>` : ""}
+
+      <small>Traccia caricata da Wildu. Consulta sempre il percorso con prudenza.</small>
+    </div>
+  `;
+}
+
+function bindTrackPopup(layer, track) {
+  if (!layer || typeof layer.bindPopup !== "function") return;
+
+  layer.bindPopup(buildTrackPopupHtml(track), {
+    maxWidth: 320
+  });
+}
+
+async function loadTracks(areaSlug) {
+  state.tracksLayer.clearLayers();
+
+  const q = query(
+    collection(db, WILDU_MAP_COLLECTIONS.TRACKS),
+    where("areaSlug", "==", areaSlug),
+    where("status", "==", "ACTIVE"),
+    where("visibility", "==", "PUBLIC")
+  );
+
+  const snap = await getDocs(q);
+  const items = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByOrderTitle);
+
+  let loaded = 0;
+
+  items.forEach(t => {
+    const url = safeUrl(t.fileUrl);
+    if (!url || !window.L.GPX) return;
+
+const layer = new L.GPX(url, {
+  async: true,
+  polyline_options: WILDU_TRACK_STYLE
+});
+
+    bindTrackPopup(layer, t);
+
+    layer.on("loaded", () => {
+      loaded++;
+      bindTrackPopup(layer, t);
+      setStatus(`${loaded}/${items.length} tracce GPX caricate.`);
+    });
+
+    layer.on("error", () => setStatus(`Errore caricamento GPX: ${t.title || t.id}`, true));
+
+    layer.addTo(state.tracksLayer);
+  });
+
+  if (!items.length) {
+    setStatus("Nessuna traccia GPX pubblica per quest’area.");
+  }
+}
 
 function fitUsefulBounds() {
   const group = L.featureGroup();
@@ -1116,10 +1256,10 @@ function loadLocalGpx(file) {
       state.localTracksLayer.addTo(state.map);
     }
 
-    const layer = new L.GPX(url, {
-      async: true,
-      polyline_options: { color: "#ff6b6b", weight: 4, opacity: 0.9 }
-    });
+const layer = new L.GPX(url, {
+  async: true,
+  polyline_options: USER_TRACK_STYLE
+});
 
     layer.on("loaded", (e) => {
       state.localGpxLayer = layer;
