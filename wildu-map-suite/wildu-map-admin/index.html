@@ -1168,11 +1168,11 @@ function parseGpxPoints(xmlText) {
 
 function analyzeGpxPoints(points) {
   let distanceM = 0;
-  let elevationGainM = 0;
-  let elevationLossM = 0;
 
   const lats = [];
   const lngs = [];
+
+  const elevations = [];
 
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
@@ -1180,20 +1180,16 @@ function analyzeGpxPoints(points) {
     lats.push(p.lat);
     lngs.push(p.lng);
 
+    if (Number.isFinite(Number(p.ele))) {
+      elevations.push(Number(p.ele));
+    }
+
     if (i > 0) {
-      const prev = points[i - 1];
-
-      distanceM += haversineMeters(prev, p);
-
-      if (Number.isFinite(prev.ele) && Number.isFinite(p.ele)) {
-        const delta = p.ele - prev.ele;
-
-        // Piccola soglia anti-rumore GPS: evita micro-oscillazioni inutili.
-        if (delta > 1) elevationGainM += delta;
-        if (delta < -1) elevationLossM += Math.abs(delta);
-      }
+      distanceM += haversineMeters(points[i - 1], p);
     }
   }
+
+  const elevationStats = analyzeElevationGainLoss(points);
 
   const minLat = Math.min(...lats);
   const maxLat = Math.max(...lats);
@@ -1202,8 +1198,11 @@ function analyzeGpxPoints(points) {
 
   return {
     distanceKm: Number((distanceM / 1000).toFixed(2)),
-    elevationGainM: Math.round(elevationGainM),
-    elevationLossM: Math.round(elevationLossM),
+    elevationGainM: Math.round(elevationStats.gain),
+    elevationLossM: Math.round(elevationStats.loss),
+
+    minElevationM: elevations.length ? Math.round(Math.min(...elevations)) : null,
+    maxElevationM: elevations.length ? Math.round(Math.max(...elevations)) : null,
 
     bounds: {
       minLat,
@@ -1216,9 +1215,64 @@ function analyzeGpxPoints(points) {
     centerLng: Number(((minLng + maxLng) / 2).toFixed(6)),
 
     pointCount: points.length,
-    analysisSource: "client_gpx_domparser",
+    analysisSource: "client_gpx_domparser_elevation_accumulated_v2",
     analyzedAtIso: new Date().toISOString()
   };
+}
+
+function analyzeElevationGainLoss(points) {
+  const elePoints = points
+    .map(p => Number(p.ele))
+    .filter(ele => Number.isFinite(ele));
+
+  if (elePoints.length < 2) {
+    return { gain: 0, loss: 0 };
+  }
+
+  // Soglia anti-rumore per “blocco” di salita/discesa.
+  // Non scarta i micro-incrementi singoli: li accumula e conta il blocco
+  // solo se supera questa soglia.
+  const MIN_BLOCK_M = 3;
+
+  let gain = 0;
+  let loss = 0;
+
+  let last = elePoints[0];
+  let pendingUp = 0;
+  let pendingDown = 0;
+
+  for (let i = 1; i < elePoints.length; i++) {
+    const current = elePoints[i];
+    const delta = current - last;
+
+    if (delta > 0) {
+      if (pendingDown >= MIN_BLOCK_M) {
+        loss += pendingDown;
+      }
+
+      pendingDown = 0;
+      pendingUp += delta;
+    } else if (delta < 0) {
+      if (pendingUp >= MIN_BLOCK_M) {
+        gain += pendingUp;
+      }
+
+      pendingUp = 0;
+      pendingDown += Math.abs(delta);
+    }
+
+    last = current;
+  }
+
+  if (pendingUp >= MIN_BLOCK_M) {
+    gain += pendingUp;
+  }
+
+  if (pendingDown >= MIN_BLOCK_M) {
+    loss += pendingDown;
+  }
+
+  return { gain, loss };
 }
 
 async function analyzeGpxFile(file) {
