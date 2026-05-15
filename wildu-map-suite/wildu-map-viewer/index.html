@@ -188,6 +188,12 @@ button.gps-chip:hover {
   background: rgba(255,107,107,.32);
 }
 
+.local-gpx-remove {
+  background: rgba(255,107,107,.22) !important;
+  color: #ffd4d4 !important;
+  border: 1px solid rgba(255,107,107,.38) !important;
+}
+    
     .gps-toast {
       position: absolute;
       left: 50%;
@@ -378,12 +384,11 @@ button.gps-chip:hover {
     <button id="btn-waypoints" class="active">Waypoints</button>
     <button id="btn-tracks" class="active">Tracce Wildu</button>
 
-<label class="file-btn" for="local-gpx" title="Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online">
-  GPX personale
+<label id="btn-local-gpx-main" class="file-btn" for="local-gpx" title="Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online">
+  Apri GPX
 </label>
 <input id="local-gpx" type="file" accept=".gpx" />
 <button id="btn-local-gpx-toggle" class="hidden" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
-<button id="btn-local-gpx-clear" class="hidden" title="Rimuovi la traccia GPX personale dalla mappa">Rimuovi GPX</button>
 
 <button id="gps-status-chip" class="gps-chip off" type="button" aria-live="polite" title="Attiva/disattiva tracking GPS">
   <span class="gps-dot"></span>
@@ -1184,17 +1189,30 @@ function exitToMotherApp() {
 
 function updateLocalGpxControls() {
   const hasLocal = !!state.localGpxLayer;
+  const mainBtn = $("btn-local-gpx-main");
   const toggleBtn = $("btn-local-gpx-toggle");
-  const clearBtn = $("btn-local-gpx-clear");
+
+  if (mainBtn) {
+    mainBtn.textContent = hasLocal ? "Rimuovi GPX" : "Apri GPX";
+    mainBtn.title = hasLocal
+      ? "Rimuovi la traccia GPX personale dalla mappa"
+      : "Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online";
+
+    mainBtn.classList.toggle("local-gpx-remove", hasLocal);
+
+    // Quando c’è già un GPX, il label non deve più aprire il file picker:
+    // diventa un vero comando di rimozione.
+    if (hasLocal) {
+      mainBtn.removeAttribute("for");
+    } else {
+      mainBtn.setAttribute("for", "local-gpx");
+    }
+  }
 
   if (toggleBtn) {
     toggleBtn.classList.toggle("hidden", !hasLocal);
     toggleBtn.textContent = state.localGpxVisible ? "Nascondi GPX" : "Mostra GPX";
     toggleBtn.classList.toggle("active", state.localGpxVisible);
-  }
-
-  if (clearBtn) {
-    clearBtn.classList.toggle("hidden", !hasLocal);
   }
 }
 
@@ -1602,8 +1620,15 @@ showGpsToast("Tracking GPS non autorizzato", "err");
       
 $("gps-status-chip").onclick = locateUser;
 $("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
+
+$("btn-local-gpx-main").onclick = (e) => {
+  if (state.localGpxLayer) {
+    e.preventDefault();
+    clearLocalGpx();
+  }
+};
+
 $("btn-local-gpx-toggle").onclick = () => setLocalGpxVisible(!state.localGpxVisible);
-$("btn-local-gpx-clear").onclick = clearLocalGpx;
 $("btn-exit-mother").onclick = exitToMotherApp;
       
       $("area-select").onchange = () => {
