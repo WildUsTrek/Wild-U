@@ -583,7 +583,7 @@ const ALL_AREAS_VALUE = "__ALL__";
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
 const WILDU_MAP_CACHE_VERSION = 1;
 const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
-const WILDU_MAP_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 ore
+const WILDU_MAP_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 ore
 
 // Bypass manuale per test/urgenze:
 // ?nocache=1 oppure ?refresh=1 oppure ?cache=off
@@ -1142,31 +1142,79 @@ async function queryTracksForArea(areaSlug) {
     .sort(sortByOrderTitle);
 }
 
+function getAreaContentCacheName(areaSlug) {
+  return "areaContent:" + String(areaSlug || "").trim();
+}
+
+function isValidAreaContentPayload(data) {
+  return !!data &&
+    Array.isArray(data.waypoints) &&
+    Array.isArray(data.tracks);
+}
+
+    
 async function getAreaContent(areaSlug) {
-  if (state.areaContentCache.has(areaSlug)) {
+  const slug = String(areaSlug || "").trim();
+
+  if (!slug) {
+    throw new Error("Area mancante: impossibile caricare waypoint e tracce.");
+  }
+
+  // 1) Cache RAM della sessione: zero localStorage, zero Firestore.
+  if (state.areaContentCache.has(slug)) {
     return {
-      ...state.areaContentCache.get(areaSlug),
-      fromCache: true
+      ...state.areaContentCache.get(slug),
+      fromCache: true,
+      cacheSource: "sessione"
     };
   }
 
-  const [waypoints, tracks] = await Promise.all([
-    queryWaypointsForArea(areaSlug),
-    queryTracksForArea(areaSlug)
-  ]);
+  // 2) Cache persistente dispositivo: stesso TTL globale della mappa.
+  const persistentCacheName = getAreaContentCacheName(slug);
+  const cached = readMapCache(persistentCacheName);
 
-  const payload = {
-    waypoints,
-    tracks,
-    loadedAt: Date.now()
-  };
+  if (isValidAreaContentPayload(cached)) {
+    const payload = {
+      waypoints: cached.waypoints,
+      tracks: cached.tracks,
+      loadedAt: cached.loadedAt || Date.now()
+    };
 
-  state.areaContentCache.set(areaSlug, payload);
+    state.areaContentCache.set(slug, payload);
 
-  return {
-    ...payload,
-    fromCache: false
-  };
+    return {
+      ...payload,
+      fromCache: true,
+      cacheSource: "dispositivo"
+    };
+  }
+
+  // 3) Firestore: solo se RAM e cache persistente non bastano.
+  try {
+    const [waypoints, tracks] = await Promise.all([
+      queryWaypointsForArea(slug),
+      queryTracksForArea(slug)
+    ]);
+
+    const payload = {
+      waypoints,
+      tracks,
+      loadedAt: Date.now()
+    };
+
+    state.areaContentCache.set(slug, payload);
+    writeMapCache(persistentCacheName, payload);
+
+    return {
+      ...payload,
+      fromCache: false,
+      cacheSource: "Firestore"
+    };
+  } catch (e) {
+    // Non usiamo TTL speciali: stesso TTL sempre.
+    // Se la cache è scaduta, è giusto non usarla come dato affidabile.
+    throw e;
+  }
 }
 
 function renderWaypointsOnMap(items) {
@@ -1213,7 +1261,9 @@ async function loadAreaContent(areaSlug) {
   const waypointCount = renderWaypointsOnMap(data.waypoints);
   const trackCount = renderTracksOnMap(data.tracks);
 
-  const sourceLabel = data.fromCache ? "da cache sessione" : "da Firestore";
+  const sourceLabel = data.cacheSource
+    ? `da cache ${data.cacheSource}`
+    : (data.fromCache ? "da cache" : "da Firestore");
 
   if (!trackCount) {
     setStatus(`${waypointCount} Wildu Waypoints caricati ${sourceLabel}. Nessuna traccia GPX pubblica per quest’area.`);
