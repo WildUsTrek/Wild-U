@@ -244,7 +244,10 @@
             <button id="btn-save-track" class="primary">Salva traccia</button>
             <button id="btn-new-track" class="ghost">Nuova</button>
           </div>
-          <p class="hint">Il file GPX va su Storage; Firestore salva solo metadati e URL.</p>
+          <p class="hint">
+  Il file GPX viene caricato su Cloudflare R2 tramite Worker sicuro.
+  Firestore salva solo metadati, URL pubblico e chiave oggetto.
+</p>
         </div>
       </div>
       <div>
@@ -381,15 +384,18 @@
     import {
       getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where, serverTimestamp
     } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-    import {
-      getStorage, ref, uploadBytes, getDownloadURL
-    } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
+    
+// GPX upload: Cloudflare R2 tramite Worker presigned URL.
+// Non usiamo Firebase Storage per i file media.
+    
     import { firebaseConfig, WILDU_MAP_COLLECTIONS, WILDU_MAP_CONFIG } from "../shared/firebase-config.js";
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
+    
+    const WILDU_UPLOAD_WORKER_URL = "https://wildu-upload-manager.baffiwild.workers.dev";
+    const WILDU_MEDIA_BASE_URL = "https://media.baffiwild.it/";
 
     const $ = (id) => document.getElementById(id);
 
@@ -1096,14 +1102,95 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
       $("track-sort-order").value = 10;
     }
 
-    async function uploadTrackFile(areaSlug, file) {
-      const safeName = slugify(file.name.replace(/\.gpx$/i, "")) + "-" + Date.now() + ".gpx";
-      const storagePath = `${WILDU_MAP_CONFIG.storageTrackRoot}/${areaSlug}/${safeName}`;
-      const fileRef = ref(storage, storagePath);
-      await uploadBytes(fileRef, file, { contentType: "application/gpx+xml" });
-      const url = await getDownloadURL(fileRef);
-      return { storagePath, fileUrl: url, originalFileName: file.name, sizeBytes: file.size };
+async function readJsonResponse(res) {
+  const text = await res.text();
+
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (_) {
+    throw new Error("Risposta non valida dal Worker upload.");
+  }
+}
+
+function validateR2PublicUrl(url) {
+  const clean = safeUrl(url);
+
+  if (!clean) {
+    throw new Error("Il Worker non ha restituito un fileUrl pubblico valido.");
+  }
+
+  if (!clean.startsWith(WILDU_MEDIA_BASE_URL)) {
+    throw new Error("fileUrl R2 non coerente con il dominio media Wildu.");
+  }
+
+  return clean;
+}
+
+async function uploadTrackFile(areaSlug, file) {
+  const user = requireUser();
+
+  if (!file) {
+    throw new Error("File GPX mancante.");
+  }
+
+  if (!/\.gpx$/i.test(file.name)) {
+    throw new Error("Carica un file .gpx.");
+  }
+
+  const contentType = file.type || "application/gpx+xml";
+  const idToken = await user.getIdToken();
+
+  const requestPayload = {
+    kind: "gpx",
+    areaSlug: areaSlug || "",
+    fileName: file.name,
+    contentType,
+    sizeBytes: file.size
+  };
+
+  const signRes = await fetch(WILDU_UPLOAD_WORKER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`
+    },
+    body: JSON.stringify(requestPayload)
+  });
+
+  const data = await readJsonResponse(signRes);
+
+  if (!signRes.ok || !data.ok) {
+    throw new Error(data.error || "Upload non autorizzato o validazione Worker fallita.");
+  }
+
+  if (!safeUrl(data.uploadUrl)) {
+    throw new Error("Il Worker non ha restituito un uploadUrl valido.");
+  }
+
+  const uploadRes = await fetch(data.uploadUrl, {
+    method: "PUT",
+    body: file,
+    headers: {
+      "Content-Type": contentType
     }
+  });
+
+  if (!uploadRes.ok) {
+    throw new Error(`Upload R2 fallito. Status: ${uploadRes.status}`);
+  }
+
+  const fileUrl = validateR2PublicUrl(data.publicUrl);
+
+  return {
+    storageProvider: "cloudflare_r2",
+    uploadMode: "worker_presigned_put",
+    objectKey: String(data.objectKey || ""),
+    fileUrl,
+    originalFileName: file.name,
+    sizeBytes: file.size,
+    contentType
+  };
+}
 
     async function saveTrack() {
       const user = requireUser();
@@ -1115,29 +1202,54 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
       let fileFields = {};
       if (file) {
         if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
-        setStatus("Upload GPX in corso...");
+        setStatus("Richiedo URL sicuro e carico GPX su R2...");
         fileFields = await uploadTrackFile(areaSlug, file);
-      } else if (safeUrl(val("track-file-url"))) {
-        fileFields.fileUrl = safeUrl(val("track-file-url"));
-      }
-      const payload = {
-        schemaVersion: 1,
-        status: val("track-status") || "ACTIVE",
-        visibility: "PUBLIC",
-        areaSlug,
-        title,
-        description: val("track-description"),
-        fileType: "GPX",
-        distanceKm: num("track-distance-km"),
-        elevationGainM: num("track-elevation-gain-m"),
-        difficulty: val("track-difficulty"),
-        sortOrder: num("track-sort-order", 10),
-        updatedByUid: user.uid,
-        updatedByEmail: user.email || "",
-        updatedAt: serverTimestamp(),
-        ...fileFields
-      };
-      const id = val("track-id");
+} else if (safeUrl(val("track-file-url"))) {
+  const externalUrl = safeUrl(val("track-file-url"));
+
+  fileFields = {
+    storageProvider: externalUrl.startsWith(WILDU_MEDIA_BASE_URL) ? "cloudflare_r2" : "external_url",
+    uploadMode: "manual_url",
+    objectKey: "",
+    fileUrl: externalUrl,
+    originalFileName: "",
+    sizeBytes: null,
+    contentType: "application/gpx+xml"
+  };
+}
+
+const id = val("track-id");
+
+if (!id && !fileFields.fileUrl) {
+  throw new Error("Per creare una nuova traccia devi caricare un GPX o indicare un fileUrl pubblico.");
+}
+      
+const payload = {
+  schemaVersion: 1,
+  status: val("track-status") || "ACTIVE",
+  visibility: "PUBLIC",
+  areaSlug,
+  title,
+  description: val("track-description"),
+
+  fileType: "GPX",
+  storageProvider: fileFields.storageProvider || (fileFields.fileUrl ? "external_url" : ""),
+  uploadMode: fileFields.uploadMode || "",
+  objectKey: fileFields.objectKey || "",
+  fileUrl: fileFields.fileUrl || "",
+  originalFileName: fileFields.originalFileName || "",
+  sizeBytes: fileFields.sizeBytes ?? null,
+  contentType: fileFields.contentType || "",
+
+  distanceKm: num("track-distance-km"),
+  elevationGainM: num("track-elevation-gain-m"),
+  difficulty: val("track-difficulty"),
+  sortOrder: num("track-sort-order", 10),
+  updatedByUid: user.uid,
+  updatedByEmail: user.email || "",
+  updatedAt: serverTimestamp()
+};
+      //const id = val("track-id");DISATTIVATO GIA' DICHIARATA
       if (id) {
         await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, id), payload);
         setStatus("Traccia aggiornata.");
