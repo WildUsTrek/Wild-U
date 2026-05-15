@@ -48,12 +48,15 @@
 .controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 5px;
+  gap: 5px;
+  padding: 7px;
   justify-content: flex-start;
   align-items: center;
   flex: 1 1 auto;
-  max-width: calc(100% - 54px);
+
+  /* Ora Esci non occupa più spazio nella topbar */
+  width: min(760px, calc(100vw - 20px));
+  max-width: calc(100vw - 20px);
 }
     
 button, label.file-btn, select {
@@ -211,24 +214,28 @@ button.gps-chip:hover {
 }
 
 .exit-btn {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 900;
+
   pointer-events: auto;
-  flex: 0 0 auto;
-  margin-left: auto;
-  border: 1px solid rgba(255,107,107,.62);
+  border: 1px solid rgba(255,107,107,.68);
   background: rgba(128, 28, 28, .96);
   color: #ffffff;
   border-radius: 999px;
-  padding: 7px 9px;
+  padding: 10px 15px;
   white-space: nowrap;
-  box-shadow: 0 12px 30px rgba(0,0,0,.30);
+  box-shadow: 0 14px 34px rgba(0,0,0,.36);
   backdrop-filter: blur(12px);
-  font-weight: 900;
+  font-weight: 950;
+  font-size: 13px;
 }
 
 .exit-btn:hover {
   background: rgba(165, 38, 38, .98);
 }
-
+    
 .local-gpx-remove {
   background: rgba(255,107,107,.22) !important;
   color: #ffd4d4 !important;
@@ -323,15 +330,15 @@ button.gps-chip:hover {
   margin-top: 6px;
 }
     .leaflet-control-attribution { font-size: 10px; }
-    /* Evita che zoom/layers Leaflet finiscano sotto la navbar Wildu */
-.leaflet-top.leaflet-left,
-.leaflet-top.leaflet-right {
-  top: 96px;
-}
-
+    
+/* Viewer Wildu: i controlli nativi Leaflet non devono confondere l’utente.
+   Zoom: si usa pinch/scroll.
+   Layer: si usano i pulsanti Wildu WP/Tracce/GPX. */
+.leaflet-control-zoom,
 .leaflet-control-layers {
-  margin-top: 0;
+  display: none !important;
 }
+    
 @media (max-width: 760px) {
   .topbar {
     flex-direction: row;
@@ -341,12 +348,13 @@ button.gps-chip:hover {
 
   .titlebox { max-width: none; }
 
-  .controls {
-    justify-content: flex-start;
-    max-width: calc(100% - 48px);
-    gap: 3px;
-    padding: 4px;
-  }
+.controls {
+  justify-content: flex-start;
+  width: calc(100vw - 20px);
+  max-width: calc(100vw - 20px);
+  gap: 4px;
+  padding: 6px;
+}
 
   button, label.file-btn, select {
     font-size: 10px;
@@ -372,15 +380,15 @@ button.gps-chip:hover {
     display: none;
   }
 
-  .exit-btn {
-    font-size: 10px;
-    padding: 6px 7px;
-  }
+.exit-btn {
+  font-size: 12px;
+  padding: 9px 13px;
+}
 
-  .leaflet-top.leaflet-left,
-  .leaflet-top.leaflet-right {
-    top: 104px;
-  }
+.leaflet-control-zoom,
+.leaflet-control-layers {
+  display: none !important;
+}
 
   .status > div {
     border-radius: 16px;
@@ -392,15 +400,17 @@ button.gps-chip:hover {
     
 @media (max-width: 640px) {
 .topbar {
-  gap: 4px;
+  gap: 0;
   padding: 0;
+  left: 8px;
+  right: 8px;
 }
 
 .topbar button,
 .topbar select,
 .topbar label.file-btn {
-  font-size: 9.5px;
-  padding: 5px 5px;
+  font-size: 10.5px;
+  padding: 6px 7px;
 }
 
   .gps-hud {
