@@ -1075,41 +1075,76 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
       renderTracks(items);
     }
 
-    function renderTracks(items) {
-      const box = $("tracks-list");
-      if (!items.length) { box.innerHTML = `<div class="hint">Nessuna traccia per quest’area.</div>`; return; }
-      box.innerHTML = items.map(t => `
-        <div class="item">
-          <div class="item-title">${escapeHtml(t.title || t.id)}</div>
-          <div class="item-meta">
-            ${escapeHtml(t.areaSlug || "")} · ${escapeHtml(t.status || "")} · ${escapeHtml(t.fileType || "GPX")}
-            <br>${escapeHtml(t.description || "")}
-            <br>${escapeHtml(t.fileUrl || "")}
-          </div>
-          <div class="item-actions">
-            <button class="ghost" data-edit-track='${escapeHtml(JSON.stringify(t))}'>Modifica</button>
-          </div>
-        </div>
-      `).join("");
-      box.querySelectorAll("[data-edit-track]").forEach(btn => btn.onclick = () => fillTrackForm(JSON.parse(btn.dataset.editTrack)));
-    }
+function renderTracks(items) {
+  const box = $("tracks-list");
 
-    function fillTrackForm(t) {
-      $("track-id").value = t.id || "";
-      $("track-area").value = t.areaSlug || "";
-      $("track-title").value = t.title || "";
-      $("track-description").value = t.description || "";
-      $("track-file-url").value = t.fileUrl || "";
-      $("track-distance-km").value = t.distanceKm ?? "";
-      $("track-elevation-gain-m").value = t.elevationGainM ?? "";
-      $("track-difficulty").value = t.difficulty || "";
-$("track-status").value = t.status || "ACTIVE";
-$("track-sort-order").value = t.sortOrder ?? 10;
+  if (!items.length) {
+    box.innerHTML = `<div class="hint">Nessuna traccia per quest’area.</div>`;
+    return;
+  }
 
-if ($("track-replace-r2")) {
-  $("track-replace-r2").checked = false;
+  box.innerHTML = items.map(t => `
+    <div class="item">
+      <div class="item-title">${escapeHtml(t.title || t.id)}</div>
+
+      <div class="item-meta">
+        ${escapeHtml(t.areaSlug || "")} · ${escapeHtml(t.status || "")} · ${escapeHtml(t.fileType || "GPX")}
+        ${t.distanceKm ? `<br>Distanza: ${escapeHtml(t.distanceKm)} km` : ""}
+        ${t.elevationGainM ? ` · Dislivello +: ${escapeHtml(t.elevationGainM)} m` : ""}
+        ${t.elevationLossM ? ` · Dislivello -: ${escapeHtml(t.elevationLossM)} m` : ""}
+        <br>${escapeHtml(t.description || "")}
+        <br>${escapeHtml(t.fileUrl || "")}
+        ${t.objectKey ? `<br><small>R2 objectKey: ${escapeHtml(t.objectKey)}</small>` : ""}
+      </div>
+
+      <div class="item-actions">
+        <button class="ghost" data-edit-track='${escapeHtml(JSON.stringify(t))}'>Modifica</button>
+        <button class="danger" data-delete-track="${escapeHtml(t.id)}">Elimina</button>
+      </div>
+    </div>
+  `).join("");
+
+  box.querySelectorAll("[data-edit-track]").forEach(btn => {
+    btn.onclick = () => fillTrackForm(JSON.parse(btn.dataset.editTrack));
+  });
+
+  box.querySelectorAll("[data-delete-track]").forEach(btn => {
+    btn.onclick = () => {
+      const track = items.find(t => t.id === btn.dataset.deleteTrack);
+      deleteTrack(track).catch(e => setStatus(e.message, true));
+    };
+  });
 }
-    }
+
+function fillTrackForm(t) {
+  $("track-id").value = t.id || "";
+  $("track-area").value = t.areaSlug || "";
+  $("track-title").value = t.title || "";
+  $("track-description").value = t.description || "";
+
+  // Importante:
+  // non riempiamo questo campo col fileUrl esistente.
+  // Questo campo serve solo se vuoi sostituire manualmente l’URL.
+  // Se lo riempiamo in automatico, saveTrack() può interpretarlo come nuovo manual_url
+  // e cancellare objectKey/storage metadata.
+  $("track-file-url").value = "";
+
+  $("track-distance-km").value = t.distanceKm ?? "";
+  $("track-elevation-gain-m").value = t.elevationGainM ?? "";
+  $("track-difficulty").value = t.difficulty || "";
+  $("track-status").value = t.status || "ACTIVE";
+  $("track-sort-order").value = t.sortOrder ?? 10;
+
+  if ($("track-replace-r2")) {
+    $("track-replace-r2").checked = false;
+  }
+
+  setStatus(
+    t.objectKey
+      ? `Traccia in modifica. File R2 attuale: ${t.objectKey}`
+      : "Traccia in modifica. Nessun objectKey R2 salvato su questa traccia."
+  );
+}
 
 function clearTrackForm() {
   ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-difficulty"].forEach(id => $(id).value = "");
@@ -1124,6 +1159,106 @@ function clearTrackForm() {
 }
 
 
+async function deleteR2ObjectByKey(objectKey) {
+  const user = requireUser();
+  const cleanKey = String(objectKey || "").trim();
+
+  if (!cleanKey) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "objectKey mancante"
+    };
+  }
+
+  const idToken = await user.getIdToken();
+
+  const res = await fetch(WILDU_UPLOAD_WORKER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${idToken}`
+    },
+    body: JSON.stringify({
+      action: "delete-object",
+      objectKey: cleanKey
+    })
+  });
+
+  const data = await readJsonResponse(res);
+
+  if (!res.ok || !data.ok) {
+    throw new Error(data.error || `Delete R2 fallito. Status: ${res.status}`);
+  }
+
+  return {
+    ok: true,
+    deletedKey: data.deletedKey || cleanKey
+  };
+}
+    
+async function deleteTrack(track) {
+  requireUser();
+
+  if (!track || !track.id) {
+    throw new Error("Traccia non valida o ID mancante.");
+  }
+
+  const title = track.title || track.id;
+  const objectKey = String(track.objectKey || "").trim();
+  const provider = String(track.storageProvider || "").trim();
+  const hasR2File = !!objectKey && provider === "cloudflare_r2";
+
+  const r2Note = hasR2File
+    ? `\n\nFile R2 collegato:\n${objectKey}\n\nDopo la cancellazione del documento Firestore proverò anche a eliminare fisicamente il file dal bucket R2.`
+    : "";
+
+  const ok = window.confirm(
+    `Vuoi eliminare definitivamente la traccia "${title}"?\n\n` +
+    `Verrà cancellato il documento Firestore in wildu_map_tracks.` +
+    r2Note
+  );
+
+  if (!ok) return;
+
+  // Prima Firestore: se R2 fallisce, resta solo un orfano non visibile nel viewer.
+  // Se facessimo il contrario e Firestore fallisse, avremmo una traccia visibile con file morto.
+  await deleteDoc(doc(db, WILDU_MAP_COLLECTIONS.TRACKS, track.id));
+
+  if (val("track-id") === track.id) {
+    clearTrackForm();
+  }
+
+  let r2Deleted = false;
+  let r2Message = "";
+
+  if (hasR2File) {
+    try {
+      const r2Result = await deleteR2ObjectByKey(objectKey);
+      r2Deleted = !!r2Result.ok;
+      r2Message = ` File R2 eliminato: ${r2Result.deletedKey || objectKey}.`;
+    } catch (e) {
+      r2Message =
+        ` Documento Firestore eliminato, ma delete R2 fallito. ` +
+        `ObjectKey rimasto nel bucket: ${objectKey}. Errore: ${e.message}`;
+    }
+  }
+
+  await loadTracksForSelectedArea();
+
+  if (hasR2File && !r2Deleted) {
+    setStatus(r2Message, true);
+    return;
+  }
+
+  setStatus(
+    hasR2File
+      ? `Traccia eliminata da Firestore.${r2Message}`
+      : "Traccia eliminata da Firestore."
+  );
+}
+
+    
 function haversineMeters(a, b) {
   if (!a || !b) return 0;
 
