@@ -22,9 +22,18 @@
     body { color: var(--text); overflow: hidden; }
     #map { position: absolute; inset: 0; z-index: 1; }
 .topbar {
-  position: absolute; left: 10px; right: 10px; top: 10px; z-index: 500;
-  display: flex; gap: 8px; align-items: center; justify-content: flex-start;
-  pointer-events: none;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 10px;
+  z-index: 700;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: flex-start;
+
+  /* Importante: evita click involontari sui controlli Leaflet/OpenTopoMap sotto la barra */
+  pointer-events: auto;
 }
     .panel {
       pointer-events: auto;
@@ -36,25 +45,46 @@
     .title { font-size: 14px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .subtitle { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 
-    .controls {
+.controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px;
+  gap: 4px;
+  padding: 5px;
   justify-content: flex-start;
+  align-items: center;
   flex: 1 1 auto;
-  max-width: calc(100% - 64px);
+  max-width: calc(100% - 54px);
 }
     
-    button, label.file-btn, select {
-      border: 0; border-radius: 13px; padding: 9px 10px; background: rgba(255,255,255,.08); color: var(--text);
-      font-weight: 800; font-size: 12px; cursor: pointer;
-    }
+button, label.file-btn, select {
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 12px;
+  padding: 7px 8px;
+  background: rgba(10, 18, 13, .96);
+  color: #f3f8f1;
+  font-weight: 850;
+  font-size: 11.5px;
+  cursor: pointer;
+  color-scheme: dark;
+  white-space: nowrap;
+}
+
+select option {
+  background: #172319;
+  color: #f3f8f1;
+}
     button.active { background: var(--accent); color: #142008; }
     button.gold { background: var(--gold); color: #231800; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     input[type="file"] { display: none; }
-    #area-select { max-width: 200px; border: 1px solid var(--line); }
+    #area-select {
+  width: auto;
+  min-width: 104px;
+  max-width: 138px;
+  border: 1px solid rgba(255,255,255,.20);
+  background: rgba(8, 16, 12, .98);
+  color: #f3f8f1;
+}
     .status {
       position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 500;
       pointer-events: none; display: flex; justify-content: center;
@@ -99,6 +129,16 @@ button.gps-chip {
   width: auto;
   cursor: pointer;
   font-family: inherit;
+  white-space: nowrap;
+  max-width: 142px;
+  overflow: hidden;
+}
+
+#gps-status-text {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 button.gps-chip:hover {
@@ -174,18 +214,19 @@ button.gps-chip:hover {
   pointer-events: auto;
   flex: 0 0 auto;
   margin-left: auto;
-  border: 1px solid rgba(255,107,107,.38);
-  background: rgba(255,107,107,.22);
-  color: #ffd4d4;
+  border: 1px solid rgba(255,107,107,.62);
+  background: rgba(128, 28, 28, .96);
+  color: #ffffff;
   border-radius: 999px;
-  padding: 9px 12px;
+  padding: 7px 9px;
   white-space: nowrap;
-  box-shadow: 0 12px 30px rgba(0,0,0,.24);
+  box-shadow: 0 12px 30px rgba(0,0,0,.30);
   backdrop-filter: blur(12px);
+  font-weight: 900;
 }
 
 .exit-btn:hover {
-  background: rgba(255,107,107,.32);
+  background: rgba(165, 38, 38, .98);
 }
 
 .local-gpx-remove {
@@ -282,28 +323,63 @@ button.gps-chip:hover {
   margin-top: 6px;
 }
     .leaflet-control-attribution { font-size: 10px; }
-    .leaflet-popup-content-wrapper { border-radius: 16px; }
-    @media (max-width: 760px) {
+    /* Evita che zoom/layers Leaflet finiscano sotto la navbar Wildu */
+.leaflet-top.leaflet-left,
+.leaflet-top.leaflet-right {
+  top: 96px;
+}
+
+.leaflet-control-layers {
+  margin-top: 0;
+}
+@media (max-width: 760px) {
   .topbar {
     flex-direction: row;
     align-items: flex-start;
+    gap: 5px;
   }
 
   .titlebox { max-width: none; }
 
   .controls {
     justify-content: flex-start;
-    max-width: calc(100% - 58px);
+    max-width: calc(100% - 48px);
+    gap: 3px;
+    padding: 4px;
   }
 
   button, label.file-btn, select {
-    font-size: 11px;
-    padding: 8px 9px;
+    font-size: 10px;
+    padding: 6px 6px;
+    border-radius: 10px;
+  }
+
+  #area-select {
+    min-width: 94px;
+    max-width: 116px;
+  }
+
+  .gps-chip {
+    max-width: 86px;
+    gap: 4px;
+  }
+
+  #gps-status-text {
+    max-width: 42px;
+  }
+
+  .gps-precision {
+    display: none;
   }
 
   .exit-btn {
-    font-size: 11px;
-    padding: 8px 10px;
+    font-size: 10px;
+    padding: 6px 7px;
+  }
+
+  .leaflet-top.leaflet-left,
+  .leaflet-top.leaflet-right {
+    top: 104px;
   }
 
   .status > div {
@@ -315,16 +391,17 @@ button.gps-chip:hover {
 
     
 @media (max-width: 640px) {
-  .topbar {
-    gap: 6px;
-    padding: 8px;
-  }
+.topbar {
+  gap: 4px;
+  padding: 0;
+}
 
-  .topbar button,
-  .topbar select {
-    font-size: 11px;
-    padding: 8px 9px;
-  }
+.topbar button,
+.topbar select,
+.topbar label.file-btn {
+  font-size: 9.5px;
+  padding: 5px 5px;
+}
 
   .gps-hud {
     left: 8px;
@@ -380,12 +457,12 @@ button.gps-chip:hover {
   </div>
 
   <div class="panel controls">
-    <select id="area-select" title="Scegli area"></select>
-    <button id="btn-waypoints" class="active">Waypoints</button>
-    <button id="btn-tracks" class="active">Tracce Wildu</button>
+<select id="area-select" title="Scegli area"></select>
+<button id="btn-waypoints" class="active" title="Mostra/nascondi Wildu Waypoints">WP</button>
+<button id="btn-tracks" class="active" title="Mostra/nascondi tracce Wildu">Tracce</button>
 
 <label id="btn-local-gpx-main" class="file-btn" for="local-gpx" title="Apri una traccia GPX solo sul tuo dispositivo, senza inviarla online">
-  Apri GPX
+  GPX
 </label>
 <input id="local-gpx" type="file" accept=".gpx" />
 <button id="btn-local-gpx-toggle" class="hidden" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
