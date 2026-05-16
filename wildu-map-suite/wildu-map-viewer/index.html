@@ -581,9 +581,11 @@ const ALL_AREAS_VALUE = "__ALL__";
 
 // Cache persistente leggera del viewer.
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
-const WILDU_MAP_CACHE_VERSION = 1;
-const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
-const WILDU_MAP_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 ore
+// GPX personale locale: un solo file alla volta, salvato solo sul dispositivo.
+const WILDU_LOCAL_GPX_DB_NAME = "wildu_map_local_gpx_v1";
+const WILDU_LOCAL_GPX_STORE = "localGpx";
+const WILDU_LOCAL_GPX_KEY = "current";
+const WILDU_LOCAL_GPX_MAX_BYTES = 5 * 1024 * 1024; // 5 MB prudente per GPX testuali
 
 // Bypass manuale per test/urgenze:
 // ?nocache=1 oppure ?refresh=1 oppure ?cache=off
@@ -632,8 +634,18 @@ const state = {
 gpsToastTimer: null,
 safetyNoteTimer: null,
 statusHideTimer: null,
+  
 localGpxLayer: null,
 localGpxVisible: true,
+localGpxObjectUrl: null,
+localGpxName: "",
+localGpxLoadedFromDevice: false,
+
+// Quando l’utente carica un GPX personale e il GPS è acceso,
+// sospendiamo per pochi secondi il follow automatico,
+// così l’utente vede davvero la traccia appena caricata.
+gpsFollowPauseUntil: 0,
+
 showWaypoints: true,
 showTracks: true
   
@@ -1550,6 +1562,109 @@ function exitToMotherApp() {
       }
     }
 
+function openLocalGpxDb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB non disponibile su questo browser."));
+      return;
+    }
+
+    const req = indexedDB.open(WILDU_LOCAL_GPX_DB_NAME, 1);
+
+    req.onupgradeneeded = () => {
+      const db = req.result;
+
+      if (!db.objectStoreNames.contains(WILDU_LOCAL_GPX_STORE)) {
+        db.createObjectStore(WILDU_LOCAL_GPX_STORE, { keyPath: "id" });
+      }
+    };
+
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error("Errore apertura IndexedDB."));
+  });
+}
+
+async function saveLocalGpxToDevice(payload) {
+  if (!payload || !payload.text) return;
+
+  const db = await openLocalGpxDb();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(WILDU_LOCAL_GPX_STORE, "readwrite");
+    const store = tx.objectStore(WILDU_LOCAL_GPX_STORE);
+
+    store.put({
+      id: WILDU_LOCAL_GPX_KEY,
+      schemaVersion: 1,
+      fileName: payload.fileName || "gpx-personale.gpx",
+      text: payload.text,
+      sizeBytes: payload.sizeBytes || payload.text.length,
+      savedAt: Date.now()
+    });
+
+    tx.oncomplete = () => {
+      db.close();
+      resolve(true);
+    };
+
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error || new Error("Errore salvataggio GPX locale."));
+    };
+  });
+}
+
+async function readLocalGpxFromDevice() {
+  const db = await openLocalGpxDb();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(WILDU_LOCAL_GPX_STORE, "readonly");
+    const store = tx.objectStore(WILDU_LOCAL_GPX_STORE);
+    const req = store.get(WILDU_LOCAL_GPX_KEY);
+
+    req.onsuccess = () => {
+      db.close();
+      resolve(req.result || null);
+    };
+
+    req.onerror = () => {
+      db.close();
+      reject(req.error || new Error("Errore lettura GPX locale."));
+    };
+  });
+}
+
+async function deleteLocalGpxFromDevice() {
+  const db = await openLocalGpxDb();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(WILDU_LOCAL_GPX_STORE, "readwrite");
+    const store = tx.objectStore(WILDU_LOCAL_GPX_STORE);
+
+    store.delete(WILDU_LOCAL_GPX_KEY);
+
+    tx.oncomplete = () => {
+      db.close();
+      resolve(true);
+    };
+
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error || new Error("Errore eliminazione GPX locale."));
+    };
+  });
+}
+
+function revokeLocalGpxObjectUrl() {
+  if (state.localGpxObjectUrl) {
+    try {
+      URL.revokeObjectURL(state.localGpxObjectUrl);
+    } catch (_) {}
+
+    state.localGpxObjectUrl = null;
+  }
+}
+    
 function updateLocalGpxControls() {
   const hasLocal = !!state.localGpxLayer;
   const mainBtn = $("btn-local-gpx-main");
@@ -1601,10 +1716,14 @@ function setLocalGpxVisible(visible) {
   setStatus(state.localGpxVisible ? "GPX personale visibile." : "GPX personale nascosto.");
 }
 
-function clearLocalGpx() {
+async function clearLocalGpx() {
   state.localTracksLayer.clearLayers();
   state.localGpxLayer = null;
   state.localGpxVisible = true;
+  state.localGpxName = "";
+  state.localGpxLoadedFromDevice = false;
+
+  revokeLocalGpxObjectUrl();
 
   const input = $("local-gpx");
   if (input) input.value = "";
@@ -1613,10 +1732,91 @@ function clearLocalGpx() {
     state.localTracksLayer.addTo(state.map);
   }
 
+  try {
+    await deleteLocalGpxFromDevice();
+  } catch (_) {
+    // Se IndexedDB non è disponibile o fallisce, almeno rimuoviamo dalla mappa.
+  }
+
   updateLocalGpxControls();
-  setStatus("GPX personale rimosso dalla mappa. Nessun file era stato inviato online.");
+  setStatus("GPX personale rimosso dalla mappa e dalla memoria locale della web app. Il file originale sul tuo dispositivo resta intatto.");
 }
 
+
+ function pauseGpsFollowForLocalGpx(ms = 10000) {
+  if (!state.gpsTrackingActive) return;
+
+  state.gpsFollowPauseUntil = Date.now() + ms;
+
+  setStatus(
+    "GPX personale caricato. Il follow GPS resta in pausa per 10 secondi per mostrarti la traccia."
+  );
+}
+
+function isGpsFollowPaused() {
+  return Number(state.gpsFollowPauseUntil || 0) > Date.now();
+}   
+
+function renderLocalGpxFromText(xmlText, fileName, options = {}) {
+  const text = String(xmlText || "");
+
+  if (!text.trim()) {
+    throw new Error("GPX personale vuoto o non leggibile.");
+  }
+
+  revokeLocalGpxObjectUrl();
+
+  const blob = new Blob([text], { type: "application/gpx+xml" });
+  const url = URL.createObjectURL(blob);
+
+  state.localGpxObjectUrl = url;
+  state.localTracksLayer.clearLayers();
+
+  if (!state.map.hasLayer(state.localTracksLayer)) {
+    state.localTracksLayer.addTo(state.map);
+  }
+
+  const layer = new L.GPX(url, {
+    async: true,
+    polyline_options: USER_TRACK_STYLE
+  });
+
+  layer.on("loaded", (e) => {
+    state.localGpxLayer = layer;
+    state.localGpxVisible = true;
+    state.localGpxName = fileName || "GPX personale";
+    state.localGpxLoadedFromDevice = !!options.fromDevice;
+
+    state.localTracksLayer.addLayer(layer);
+
+if (options.fit !== false) {
+  // Fit una sola volta sul GPX appena caricato:
+  // serve a far capire all’utente che il file è stato aperto.
+  // Se il GPS è acceso, blocchiamo il follow per 10 secondi.
+  if (!options.fromDevice) {
+    pauseGpsFollowForLocalGpx(10000);
+  }
+
+  try {
+    state.map.fitBounds(e.target.getBounds().pad(0.2));
+  } catch (_) {}
+}
+
+    updateLocalGpxControls();
+
+    if (options.fromDevice) {
+      setStatus(`GPX personale ripristinato dal dispositivo: ${state.localGpxName}`);
+    } else {
+      setStatus("GPX personale aperto e salvato solo sul tuo dispositivo. Non viene inviato ai server Wildu.");
+    }
+  });
+
+  layer.on("error", () => {
+    setStatus("Errore lettura GPX personale.", true);
+  });
+}
+
+    
 function loadLocalGpx(file) {
   if (!file) return;
 
@@ -1625,37 +1825,34 @@ function loadLocalGpx(file) {
     return;
   }
 
+  if (file.size && file.size > WILDU_LOCAL_GPX_MAX_BYTES) {
+    setStatus("GPX troppo grande per il salvataggio locale. Limite: 5 MB.", true);
+    return;
+  }
+
   const reader = new FileReader();
 
-  reader.onload = () => {
-    const blob = new Blob([reader.result], { type: "application/gpx+xml" });
-    const url = URL.createObjectURL(blob);
+  reader.onload = async () => {
+    const xmlText = String(reader.result || "");
 
-    state.localTracksLayer.clearLayers();
-
-    if (!state.map.hasLayer(state.localTracksLayer)) {
-      state.localTracksLayer.addTo(state.map);
+    try {
+      await saveLocalGpxToDevice({
+        fileName: file.name,
+        text: xmlText,
+        sizeBytes: file.size || xmlText.length
+      });
+    } catch (e) {
+      setStatus(`GPX aperto, ma non salvato sul dispositivo: ${e.message}`, true);
     }
 
-const layer = new L.GPX(url, {
-  async: true,
-  polyline_options: USER_TRACK_STYLE
-});
-
-    layer.on("loaded", (e) => {
-      state.localGpxLayer = layer;
-      state.localGpxVisible = true;
-      state.localTracksLayer.addLayer(layer);
-
-      try {
-        state.map.fitBounds(e.target.getBounds().pad(0.2));
-      } catch (_) {}
-
-      updateLocalGpxControls();
-      setStatus("GPX personale aperto solo sul tuo dispositivo. Non viene inviato ai server Wildu.");
-    });
-
-    layer.on("error", () => setStatus("Errore lettura GPX locale.", true));
+    try {
+      renderLocalGpxFromText(xmlText, file.name, {
+        fromDevice: false,
+        fit: true
+      });
+    } catch (e) {
+      setStatus(e.message, true);
+    }
   };
 
   reader.onerror = () => setStatus("Errore lettura file locale.", true);
@@ -1775,19 +1972,20 @@ if (!navigator.geolocation) {
   return;
 }
 
-  // Se il tracking è già attivo, il click lo spegne.
-  if (state.gpsWatchId != null) {
-    navigator.geolocation.clearWatch(state.gpsWatchId);
-    state.gpsWatchId = null;
-    state.gpsTrackingActive = false;
+// Se il tracking è già attivo, il click lo spegne.
+if (state.gpsWatchId != null) {
+  navigator.geolocation.clearWatch(state.gpsWatchId);
+  state.gpsWatchId = null;
+  state.gpsTrackingActive = false;
+  state.gpsFollowPauseUntil = 0;
 
-if (btn) btn.classList.remove("active");
+  if (btn) btn.classList.remove("active");
 
-setGpsHud("off", "GPS spento", null);
-showGpsToast("Tracking GPS disattivato", "warn");
-setStatus("Tracking GPS disattivato.");
-return;
-  }
+  setGpsHud("off", "GPS spento", null);
+  showGpsToast("Tracking GPS disattivato", "warn");
+  setStatus("Tracking GPS disattivato.");
+  return;
+}
 
 state.gpsTrackingActive = true;
 state.gpsLastFix = null;
@@ -1888,25 +2086,29 @@ if (acc <= 60) {
 }
   }
 
-  function centerOnFix(fix, mode) {
-    const targetZoom = zoomForAccuracy(fix.acc);
-
-    if (mode === "first") {
-      state.map.flyTo([fix.lat, fix.lng], targetZoom, {
-        animate: true,
-        duration: 0.8
-      });
-      state.gpsMarker.openPopup();
-      return;
-    }
-
-    // Durante la camminata non zoomiamo di continuo:
-    // ci limitiamo a seguire dolcemente la posizione.
-    state.map.panTo([fix.lat, fix.lng], {
-      animate: true,
-      duration: 0.5
-    });
+function centerOnFix(fix, mode) {
+  if (isGpsFollowPaused()) {
+    return;
   }
+
+  const targetZoom = zoomForAccuracy(fix.acc);
+
+  if (mode === "first") {
+    state.map.flyTo([fix.lat, fix.lng], targetZoom, {
+      animate: true,
+      duration: 0.8
+    });
+    state.gpsMarker.openPopup();
+    return;
+  }
+
+  // Durante la camminata non zoomiamo di continuo:
+  // ci limitiamo a seguire dolcemente la posizione.
+  state.map.panTo([fix.lat, fix.lng], {
+    animate: true,
+    duration: 0.5
+  });
+}
 
   state.gpsWatchId = navigator.geolocation.watchPosition(pos => {
     const fix = {
@@ -1988,7 +2190,7 @@ $("local-gpx").onchange = (e) => loadLocalGpx(e.target.files[0]);
 $("btn-local-gpx-main").onclick = (e) => {
   if (state.localGpxLayer) {
     e.preventDefault();
-    clearLocalGpx();
+    clearLocalGpx().catch(err => setStatus(err.message, true));
   }
 };
 
@@ -2007,6 +2209,24 @@ $("btn-exit-mother").onclick = exitToMotherApp;
       window.addEventListener("resize", () => setTimeout(() => state.map.invalidateSize(), 120));
     }
 
+async function restoreLocalGpxFromDevice() {
+  try {
+    const saved = await readLocalGpxFromDevice();
+
+    if (!saved || !saved.text) {
+      updateLocalGpxControls();
+      return;
+    }
+
+    renderLocalGpxFromText(saved.text, saved.fileName || "GPX personale", {
+      fromDevice: true,
+      fit: false
+    });
+  } catch (_) {
+    updateLocalGpxControls();
+  }
+}
+
 async function boot() {
   state.viewerConfig = await loadViewerMapConfig();
   initMap();
@@ -2014,6 +2234,7 @@ async function boot() {
   scheduleSafetyNoteHide();
   updateLocalGpxControls();
   await loadAreas();
+  await restoreLocalGpxFromDevice();
 }
 
 boot().catch(e => setStatus(e.message, true));
