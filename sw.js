@@ -77,19 +77,31 @@ self.addEventListener('fetch', (e) => {
 
     const isSameOrigin = url.origin === self.location.origin;
 
-    // Se è una richiesta verso un server esterno
-    if (!isSameOrigin) {
-        // 🛑 BYPASS AMAZON: Lasciamo che il browser gestisca Amazon da solo
-        if (url.hostname.includes('amazon') || url.hostname.includes('ssl-images')) {
-            return; 
-        }
-
-        // La intercettiamo SOLO se è un'immagine o un asset utile (Cloudinary, Wildu)
-        if (isAssetRequest(req, url)) {
-            e.respondWith(handleAssetRequest(req));
-        }
-        return; 
+// Se è una richiesta verso un server esterno
+if (!isSameOrigin) {
+    // 🛑 BYPASS AMAZON: Lasciamo che il browser gestisca Amazon da solo
+    if (url.hostname.includes('amazon') || url.hostname.includes('ssl-images')) {
+        return;
     }
+
+    // 🗺️ BYPASS TILE MAPPA:
+    // Le tile OpenTopoMap / Waymarked Trails sono cross-origin, numerose e spesso opaque/status 0.
+    // Non le cacheiamo nel nostro SW: lasciamo che Leaflet/browser/provider le gestiscano.
+    if (
+        url.hostname.endsWith('tile.opentopomap.org') ||
+        url.hostname === 'tile.waymarkedtrails.org' ||
+        url.hostname.endsWith('tile.openstreetmap.org')
+    ) {
+        return;
+    }
+
+    // La intercettiamo SOLO se è un'immagine o un asset utile (Cloudinary, Wildu)
+    if (isAssetRequest(req, url)) {
+        e.respondWith(handleAssetRequest(req));
+    }
+    return;
+}
+    
     if (url.origin !== self.location.origin) return;
 
 
