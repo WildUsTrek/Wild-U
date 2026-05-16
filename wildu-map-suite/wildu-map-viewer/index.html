@@ -581,6 +581,10 @@ const ALL_AREAS_VALUE = "__ALL__";
 
 // Cache persistente leggera del viewer.
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
+const WILDU_MAP_CACHE_VERSION = 1;
+const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
+const WILDU_MAP_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 ore
+
 // GPX personale locale: un solo file alla volta, salvato solo sul dispositivo.
 const WILDU_LOCAL_GPX_DB_NAME = "wildu_map_local_gpx_v1";
 const WILDU_LOCAL_GPX_STORE = "localGpx";
@@ -897,7 +901,7 @@ async function loadViewerMapConfig() {
   } catch (e) {
     console.warn("[Wildu Map] Config mappa non disponibile, uso fallback/cache.", e);
 
-    const emergencyCached = readMapCache("viewerConfig", 30 * 24 * 60 * 60 * 1000);
+    const emergencyCached = readMapCache("viewerConfig");
     if (emergencyCached) {
       return {
         baseMap: normalizeTileSettings(emergencyCached.baseMap, fallback.baseMap, "base"),
@@ -1068,7 +1072,7 @@ async function loadAreas() {
 
     await selectAllAreas();
   } catch (e) {
-    const emergencyAreas = readMapCache("areas", 30 * 24 * 60 * 60 * 1000);
+    const emergencyAreas = readMapCache("areas");
 
     if (Array.isArray(emergencyAreas) && emergencyAreas.length) {
       state.areas = emergencyAreas.sort(sortByOrderTitle);
@@ -2167,6 +2171,7 @@ setStatus(msg, true);
       }
 
 state.gpsTrackingActive = false;
+state.gpsFollowPauseUntil = 0;      
 if (btn) btn.classList.remove("active");
 
 setGpsHud("off", "GPS spento", null);
