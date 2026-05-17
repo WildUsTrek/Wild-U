@@ -1,0 +1,46 @@
+<div id="wildu-radio-module" style="padding-bottom:30px;">
+    <div class="card" style="border-left-color:#7cc7ff; margin-top:20px;">
+        <div style="text-align:center;">
+            <div style="font-size:48px; margin-bottom:8px;">🎧</div>
+            <h2 style="color:#7cc7ff; margin:0; text-transform:uppercase;">Radio Natura</h2>
+            <p style="color:#aaa; font-size:14px; line-height:1.5; margin:12px auto 0 auto; max-width:520px;">
+                Audio, racconti e ascolti Wild-U caricati dalla Media Suite.
+            </p>
+        </div>
+    </div>
+
+    <div id="wildu-radio-list"></div>
+</div>
+
+<script>
+(function () {
+    console.log("[WILDU MEDIA RADIO] Modulo avviato");
+
+    if (!window.WilduMediaClient || typeof window.WilduMediaClient.renderTag !== "function") {
+        const root = document.getElementById("wildu-radio-list");
+        if (root) {
+            root.innerHTML = `
+                <div class="card" style="border-left-color:#ff4444; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">⚠️</div>
+                    <h3 style="color:#ff6666; margin:0 0 8px 0;">Loader media assente</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        La client app deve essere aggiornata con WilduMediaClient.
+                    </p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    window.WilduMediaClient.renderTag({
+        tagSlug: "radio",
+        category: "audio",
+        mount: "#wildu-radio-list",
+        renderer: "audio-list"
+    });
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
+        window.WILDU_MODULE.rewriteRoot(document.getElementById("wildu-radio-module"));
+    }
+})();
+</script>
