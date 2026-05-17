@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101512">
+  <title>Wildu Media Suite</title>
+  <link rel="stylesheet" href="css/media-suite.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <h1 id="app-title">Wildu Media Suite</h1>
+        <p>Gestionale media R2 + Firestore con tag versionati per la futura app client. GPX escluso.</p>
+      </div>
+      <section class="auth-box">
+        <div id="auth-status"><span class="badge warn">CARICAMENTO</span></div>
+        <div class="auth-actions">
+          <button id="btn-login">Login Google</button>
+          <button id="btn-logout" style="display:none">Logout</button>
+        </div>
+        <p class="small-text">Versione <span id="app-version">v?</span></p>
+      </section>
+    </header>
+
+    <div id="boot-warning"></div>
+    <div id="status-line" class="status-line">Pronto.</div>
+
+    <nav class="tabs" aria-label="Sezioni Wildu Media Suite">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="tags">Tag / Moduli</button>
+      <button class="tab-btn" data-tab="upload">Upload Media</button>
+      <button class="tab-btn" data-tab="catalog">Catalogo</button>
+      <button class="tab-btn" data-tab="debug">Debug</button>
+    </nav>
+
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="grid">
+        <article class="card third kpi">
+          <span class="muted">Tag configurati</span>
+          <strong id="dashboard-count-tags">0</strong>
+        </article>
+        <article class="card third kpi">
+          <span class="muted">Media caricati filtrati</span>
+          <strong id="dashboard-count-media">0</strong>
+        </article>
+        <article class="card third kpi">
+          <span class="muted">App version</span>
+          <strong id="dashboard-version">0.1.0</strong>
+        </article>
+        <article class="card">
+          <h2>Regole operative</h2>
+          <p>Questa app sorella è un gestionale: carica file su R2, salva metadati su Firestore e incrementa le versioni dei tag coinvolti.</p>
+          <p>La cache dei contenuti resta responsabilità della futura app client: il client leggerà <code>publicVersion</code> del tag e deciderà se aggiornare la propria cache/render.</p>
+          <p><strong>GPX escluso:</strong> il caricamento GPX resta nella mini-app mappa già esistente.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-tags" class="tab-panel">
+      <div class="grid">
+        <article class="card half">
+          <h2>Crea / modifica tag</h2>
+          <form id="tag-form" class="form-grid">
+            <div class="field">
+              <label for="tag-title">Titolo</label>
+              <input id="tag-title" placeholder="Radio" required>
+            </div>
+            <div class="field">
+              <label for="tag-slug">Slug stabile</label>
+              <input id="tag-slug" placeholder="radio">
+            </div>
+            <div class="field full">
+              <label for="tag-description">Descrizione</label>
+              <textarea id="tag-description" placeholder="Contenuti audio della sezione Radio"></textarea>
+            </div>
+            <div class="field third">
+              <label for="tag-status">Status</label>
+              <select id="tag-status">
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="DISABLED">DISABLED</option>
+              </select>
+            </div>
+            <div class="field third">
+              <label for="tag-visibility">Visibility</label>
+              <select id="tag-visibility">
+                <option value="PUBLIC">PUBLIC</option>
+                <option value="PRIVATE">PRIVATE</option>
+              </select>
+            </div>
+            <div class="field third">
+              <label for="tag-sort">Sort order</label>
+              <input id="tag-sort" type="number" value="10">
+            </div>
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Salva tag</button>
+              <button data-requires-auth type="button" id="btn-refresh-tags">Ricarica tag</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card half">
+          <h2>Note versioning</h2>
+          <p><code>version</code> cambia quando cambia qualsiasi media collegato al tag.</p>
+          <p><code>publicVersion</code> cambia solo quando cambia qualcosa che la app client pubblica deve vedere.</p>
+          <p>La app sorella non governa la cache client: prepara solo il semaforo di freschezza.</p>
+        </article>
+
+        <article class="card">
+          <h2>Tag esistenti</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tag</th>
+                  <th>Descrizione</th>
+                  <th>Status</th>
+                  <th>Visibility</th>
+                  <th>Sort</th>
+                  <th>Version</th>
+                  <th>Public</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="tags-table-body">
+                <tr><td colspan="8" class="muted">Login richiesto.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-upload" class="tab-panel">
+      <article class="card">
+        <h2>Upload media</h2>
+        <p class="muted">Categorie attive: audio, pdf, book, image. GPX escluso.</p>
+        <form id="upload-form" class="form-grid">
+          <div class="field full">
+            <label for="upload-file">File</label>
+            <input id="upload-file" type="file" required>
+          </div>
+          <div class="field third">
+            <label for="upload-kind">Categoria</label>
+            <select id="upload-kind" required></select>
+          </div>
+          <div class="field third">
+            <label for="upload-tag">Tag principale</label>
+            <select id="upload-tag" required></select>
+          </div>
+          <div class="field third">
+            <label for="upload-sort">Sort order</label>
+            <input id="upload-sort" type="number" value="10">
+          </div>
+          <div class="field">
+            <label for="upload-title">Titolo</label>
+            <input id="upload-title" required placeholder="Podcast Monte Adone">
+          </div>
+          <div class="field">
+            <label for="upload-tags">Tag descrittivi, separati da virgola</label>
+            <input id="upload-tags" placeholder="radio, appennino, natura">
+          </div>
+          <div class="field full">
+            <label for="upload-description">Descrizione</label>
+            <textarea id="upload-description"></textarea>
+          </div>
+          <div class="field">
+            <label for="upload-status">Status</label>
+            <select id="upload-status">
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="HIDDEN">HIDDEN</option>
+              <option value="ARCHIVED">ARCHIVED</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="upload-visibility">Visibility</label>
+            <select id="upload-visibility">
+              <option value="PUBLIC">PUBLIC</option>
+              <option value="PRIVATE">PRIVATE</option>
+            </select>
+          </div>
+          <div class="field full">
+            <div class="progress"><div id="upload-progress-bar"></div></div>
+            <p id="upload-progress-label" class="small-text">Nessun upload in corso.</p>
+          </div>
+          <div class="form-actions">
+            <button data-requires-auth type="submit">Carica su R2 e salva metadati</button>
+          </div>
+        </form>
+      </article>
+    </section>
+
+    <section id="tab-catalog" class="tab-panel">
+      <article class="card">
+        <h2>Catalogo media admin</h2>
+        <form id="catalog-filters" class="filter-row">
+          <select id="filter-tag"></select>
+          <select id="filter-kind"></select>
+          <select id="filter-status">
+            <option value="">Tutti gli status</option>
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="HIDDEN">HIDDEN</option>
+            <option value="ARCHIVED">ARCHIVED</option>
+          </select>
+          <select id="filter-visibility">
+            <option value="">Tutte le visibility</option>
+            <option value="PUBLIC">PUBLIC</option>
+            <option value="PRIVATE">PRIVATE</option>
+          </select>
+          <button data-requires-auth id="btn-refresh-media" type="button">Ricarica</button>
+        </form>
+        <div id="media-list" class="media-list">
+          <div class="empty">Login richiesto.</div>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-debug" class="tab-panel">
+      <article class="card">
+        <h2>Debug</h2>
+        <p class="muted">Nessuna cache client viene gestita qui. Qui vediamo solo stato admin, collection e versioni tag.</p>
+        <pre id="debug-json">{}</pre>
+      </article>
+    </section>
+
+    <p class="footer-note">Percorso consigliato su GitHub Pages: <code>/Wild-U/wildu-media-suite/</code></p>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-init.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/tag-service.js"></script>
+  <script src="js/r2-worker-service.js"></script>
+  <script src="js/media-service.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
