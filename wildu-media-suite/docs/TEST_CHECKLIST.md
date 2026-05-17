@@ -1,59 +1,50 @@
-# Checklist test manuale
+# Test checklist — Wildu Media Suite
 
-## 1. Boot
+## STEP 1/5 — Base admin e tag
 
-- Apri `/Wild-U/wildu-media-suite/`.
-- Se Firebase config è placeholder, deve comparire avviso chiaro.
-- Con `shared/firebase-config.js` già compilato, la pagina deve mostrare login Google.
+- [ ] Apri `/Wild-U/wildu-media-suite/?refresh=1`.
+- [ ] Verifica che la pagina carichi senza errori JS.
+- [ ] Esegui login Google admin.
+- [ ] Premi `Crea/aggiorna tag ufficiali`.
+- [ ] Verifica tre tag:
+  - `biblioteca`, PUBLIC, clientRenderable true, allowedCategories `pdf`;
+  - `radio`, PUBLIC, clientRenderable true, allowedCategories `audio`;
+  - `immagini`, PRIVATE, clientRenderable false, allowedCategories `image`.
+- [ ] Verifica documento `wildu_media_runtime/public_versions`.
 
-## 2. Login
+## STEP 2/5 — Upload
 
-- Clicca Login Google.
-- Verifica email/UID nel box auth.
-- Verifica tab Debug.
+### PDF Biblioteca
 
-## 3. Tag
+- [ ] Tipo upload: PDF Biblioteca.
+- [ ] Tag auto-selezionato: biblioteca.
+- [ ] Sottocategoria obbligatoria: Libri oppure Manuali e Guide.
+- [ ] Upload completato.
+- [ ] Documento creato in `wildu_media_catalog`.
+- [ ] `biblioteca.version` incrementata.
+- [ ] `biblioteca.publicVersion` incrementata se ACTIVE/PUBLIC.
+- [ ] `public_versions.tags.biblioteca` aggiornato.
 
-- Crea tag `Radio` con slug `radio`.
-- Verifica documento in `wildu_media_tags/radio`.
-- Verifica `version` e `publicVersion` presenti, anche a zero.
-- Crea tag `Biblioteca` con slug `biblioteca`.
+### MP3 Radio
 
-## 4. Upload pubblico
+- [ ] Tipo upload: MP3 Radio.
+- [ ] Tag auto-selezionato: radio.
+- [ ] Nessuna sottocategoria richiesta.
+- [ ] `radio.version` incrementata.
+- [ ] `radio.publicVersion` incrementata se ACTIVE/PUBLIC.
 
-- Carica un file audio con tag `radio`, status `ACTIVE`, visibility `PUBLIC`.
-- Verifica PUT R2 riuscito.
-- Verifica nuovo documento in `wildu_media_catalog`.
-- Verifica `wildu_media_tags/radio.version +1`.
-- Verifica `wildu_media_tags/radio.publicVersion +1`.
+### Immagini admin-only
 
-## 5. Upload privato/nascosto
+- [ ] Tipo upload: Immagine admin-only.
+- [ ] Tag auto-selezionato: immagini.
+- [ ] Visibility predefinita: PRIVATE.
+- [ ] Upload immagine PRIVATE riuscito.
+- [ ] `immagini.version` incrementata.
+- [ ] `immagini.publicVersion` non deve obbligare refresh client.
+- [ ] Provare PUBLIC deve essere bloccato.
 
-- Carica un PDF con tag `biblioteca`, status `HIDDEN` o visibility `PRIVATE`.
-- Verifica `biblioteca.version +1`.
-- Verifica `biblioteca.publicVersion` invariata.
+## Esclusioni
 
-## 6. Catalogo
-
-- Filtra per tag.
-- Filtra per categoria.
-- Apri preview audio/image/pdf.
-
-## 7. Archive
-
-- Archivia un media pubblico.
-- Verifica che `publicVersion` del tag aumenti.
-- Verifica che il media non sia più `ACTIVE`.
-
-## 8. Delete + R2
-
-- Usa solo su file test.
-- Conferma eliminazione.
-- Verifica documento Firestore rimosso.
-- Verifica chiamata Worker `delete-object`.
-- Se R2 fallisce, il file può restare orfano ma non deve più essere visibile dal catalogo client.
-
-## 9. GPX
-
-- Verifica che non esista categoria GPX in upload.
-- Verifica che il codice blocchi `kind === 'gpx'`.
+- [ ] Non esiste tipo upload GPX.
+- [ ] Non esistono tag Tesori/Mappe/Attrezzatura/Giochi come flussi media.
+- [ ] WildWall non viene toccato.

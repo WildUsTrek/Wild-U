@@ -1,44 +1,104 @@
 /*
  * Helper opzionale per la FUTURA app client.
  * Non è usato dalla app sorella admin.
- * Serve solo come riferimento pronto: la client app legge publicVersion del tag e decide se aggiornare la propria cache.
+ * Strada B: modulo HTML statico + loader Firestore per tag.
  */
 (function () {
   'use strict';
 
-  window.WilduMediaClientVersion = {
-    async getTagPublicVersion(db, tagSlug, collections) {
-      collections = collections || { tags: 'wildu_media_tags' };
-      var doc = await db.collection(collections.tags).doc(tagSlug).get();
-      if (!doc.exists) return { exists: false, publicVersion: 0, tag: null };
-      var data = doc.data() || {};
-      return {
-        exists: true,
-        publicVersion: Number(data.publicVersion || 0),
-        version: Number(data.version || 0),
-        tag: data
-      };
-    },
+  var CACHE_PREFIX = 'wilduMediaCache:v1:tag:';
 
-    shouldRefreshByVersion(localVersion, remoteVersion) {
-      return Number(localVersion || 0) !== Number(remoteVersion || 0);
-    },
+  function cacheKey(tagSlug) {
+    return CACHE_PREFIX + String(tagSlug || '').trim();
+  }
 
-    async loadPublicMediaForTag(db, tagSlug, collections, limit) {
-      collections = collections || { catalog: 'wildu_media_catalog' };
-      var snap = await db.collection(collections.catalog)
-        .where('tagSlug', '==', tagSlug)
-        .where('status', '==', 'ACTIVE')
-        .where('visibility', '==', 'PUBLIC')
-        .orderBy('sortOrder', 'asc')
-        .limit(Number(limit || 50))
-        .get();
-
-      return snap.docs.map(function (doc) {
-        var data = doc.data() || {};
-        data.id = doc.id;
-        return data;
-      });
+  function readTagCache(tagSlug) {
+    try {
+      var raw = localStorage.getItem(cacheKey(tagSlug));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
     }
+  }
+
+  function writeTagCache(tagSlug, publicVersion, items) {
+    var payload = {
+      tagSlug: tagSlug,
+      publicVersion: Number(publicVersion || 0),
+      savedAt: Date.now(),
+      items: Array.isArray(items) ? items : []
+    };
+    localStorage.setItem(cacheKey(tagSlug), JSON.stringify(payload));
+    return payload;
+  }
+
+  function clearTagCache(tagSlug) {
+    localStorage.removeItem(cacheKey(tagSlug));
+  }
+
+  async function getPublicVersions(db, collections, docId) {
+    collections = collections || { runtime: 'wildu_media_runtime' };
+    docId = docId || 'public_versions';
+    var doc = await db.collection(collections.runtime).doc(docId).get();
+    if (!doc.exists) return { tags: {}, meta: {}, updatedAt: null };
+    return doc.data() || { tags: {}, meta: {}, updatedAt: null };
+  }
+
+  async function loadPublicMediaForTag(db, tagSlug, options) {
+    options = options || {};
+    var collections = options.collections || { catalog: 'wildu_media_catalog' };
+    var q = db.collection(collections.catalog)
+      .where('tagSlug', '==', tagSlug)
+      .where('status', '==', 'ACTIVE')
+      .where('visibility', '==', 'PUBLIC');
+
+    if (options.category) q = q.where('kind', '==', options.category);
+    if (options.subcategory) q = q.where('subcategory', '==', options.subcategory);
+
+    q = q.orderBy('sortOrder', 'asc').limit(Number(options.limit || 80));
+
+    var snap = await q.get();
+    return snap.docs.map(function (doc) {
+      var data = doc.data() || {};
+      data.id = doc.id;
+      return data;
+    });
+  }
+
+  async function loadTagWithVersionCache(db, tagSlug, options) {
+    options = options || {};
+    var manifest = await getPublicVersions(db, options.collections, options.runtimeDocId);
+    var remoteVersion = Number((manifest.tags || {})[tagSlug] || 0);
+    var local = readTagCache(tagSlug);
+
+    if (local && Number(local.publicVersion || 0) === remoteVersion && Array.isArray(local.items)) {
+      return {
+        source: 'cache',
+        tagSlug: tagSlug,
+        publicVersion: remoteVersion,
+        items: local.items,
+        manifest: manifest
+      };
+    }
+
+    var items = await loadPublicMediaForTag(db, tagSlug, options);
+    writeTagCache(tagSlug, remoteVersion, items);
+
+    return {
+      source: 'firestore',
+      tagSlug: tagSlug,
+      publicVersion: remoteVersion,
+      items: items,
+      manifest: manifest
+    };
+  }
+
+  window.WilduMediaClientVersion = {
+    getPublicVersions: getPublicVersions,
+    loadPublicMediaForTag: loadPublicMediaForTag,
+    loadTagWithVersionCache: loadTagWithVersionCache,
+    readTagCache: readTagCache,
+    writeTagCache: writeTagCache,
+    clearTagCache: clearTagCache
   };
 })();

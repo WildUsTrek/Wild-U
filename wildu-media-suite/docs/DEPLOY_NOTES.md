@@ -1,30 +1,51 @@
-# Deploy notes — GitHub Pages
+# Deploy notes — Wildu Media Suite
 
-Percorso richiesto:
+## 1. Caricamento su GitHub
+
+Caricare la cartella scompattata come:
 
 ```text
 Wild-U/wildu-media-suite/
 ```
 
-URL previsto:
+Non creare doppia cartella:
 
 ```text
-https://wildustrek.github.io/Wild-U/wildu-media-suite/
+wildu-media-suite/wildu-media-suite/index.html
 ```
 
-## Passi
+## 2. Prima apertura
 
-1. Scarica lo ZIP generato.
-2. Estrai la cartella `wildu-media-suite`.
-3. Copiala nella root del repo `Wild-U`.
-4. Verifica `wildu-media-suite/shared/firebase-config.js` con la Firebase frontend config pubblica già impostata.
-5. Commit e push.
-6. Apri l'URL GitHub Pages.
+Aprire:
 
-## Attenzione SW
+```text
+https://wildustrek.github.io/Wild-U/wildu-media-suite/?refresh=1
+```
 
-Se `Wild-U` ha un service worker con scope ampio, questa pagina può finire sotto quel controllo.
+Poi:
 
-Non è un problema per la shell, ma bisogna evitare che audio/pdf/book grandi vengano cacheati automaticamente.
+1. Login Google admin.
+2. Premere `Crea/aggiorna tag ufficiali`.
+3. Premere `Sincronizza manifesto public_versions` se serve.
 
-Prima verifica Network/Application nel browser. Se serve, si farà una patch minima nello `sw.js` madre per bypassare `media.baffiwild.it` o tipi file grandi.
+## 3. Service Worker app madre
+
+Questa app vive sotto lo scope di `/Wild-U/`, quindi può essere intercettata dal Service Worker esistente.
+
+Per lo STEP 5/5 dovremo fare una micro-patch SW per bypassare i file grandi R2/CDN, evitando che MP3/PDF/immagini finiscano nella `ASSET_CACHE`.
+
+Regola futura probabile:
+
+```js
+if (url.hostname === "media.baffiwild.it" || url.hostname === "media.wildu.it") {
+  return;
+}
+```
+
+## 4. Cosa non fa questa suite
+
+- Non carica GPX.
+- Non gestisce Map Viewer / Mappa dei Tesori.
+- Non gestisce Attrezzatura Amazon.
+- Non alimenta WildWall.
+- Non gestisce Giochi.

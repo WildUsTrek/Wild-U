@@ -12,7 +12,7 @@
     <header class="topbar">
       <div class="brand">
         <h1 id="app-title">Wildu Media Suite</h1>
-        <p>Gestionale media R2 + Firestore con tag versionati per la futura app client. GPX escluso.</p>
+        <p>Gestionale media R2 + Firestore con tag versionati per Radio, Biblioteca e immagini admin-only.</p>
       </div>
       <section class="auth-box">
         <div id="auth-status"><span class="badge warn">CARICAMENTO</span></div>
@@ -29,8 +29,8 @@
 
     <nav class="tabs" aria-label="Sezioni Wildu Media Suite">
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
-      <button class="tab-btn" data-tab="tags">Tag / Moduli</button>
-      <button class="tab-btn" data-tab="upload">Upload Media</button>
+      <button class="tab-btn" data-tab="tags">Tag</button>
+      <button class="tab-btn" data-tab="upload">Upload</button>
       <button class="tab-btn" data-tab="catalog">Catalogo</button>
       <button class="tab-btn" data-tab="debug">Debug</button>
     </nav>
@@ -42,18 +42,33 @@
           <strong id="dashboard-count-tags">0</strong>
         </article>
         <article class="card third kpi">
-          <span class="muted">Media caricati filtrati</span>
+          <span class="muted">Media filtrati</span>
           <strong id="dashboard-count-media">0</strong>
         </article>
         <article class="card third kpi">
           <span class="muted">App version</span>
-          <strong id="dashboard-version">0.1.0</strong>
+          <strong id="dashboard-version">0.2.0</strong>
         </article>
-        <article class="card">
-          <h2>Regole operative</h2>
-          <p>Questa app sorella è un gestionale: carica file su R2, salva metadati su Firestore e incrementa le versioni dei tag coinvolti.</p>
-          <p>La cache dei contenuti resta responsabilità della futura app client: il client leggerà <code>publicVersion</code> del tag e deciderà se aggiornare la propria cache/render.</p>
-          <p><strong>GPX escluso:</strong> il caricamento GPX resta nella mini-app mappa già esistente.</p>
+
+        <article class="card half">
+          <h2>Campo d’azione reale</h2>
+          <p>Questa app sorella gestisce solo:</p>
+          <ul>
+            <li><strong>Biblioteca</strong>: PDF divisi nei tab <code>Libri</code> e <code>Manuali e Guide</code>.</li>
+            <li><strong>Radio</strong>: MP3/audio.</li>
+            <li><strong>Immagini</strong>: upload R2 admin-only, per ora non renderizzate in client.</li>
+          </ul>
+          <p class="muted">Fuori: GPX/Map Viewer/Mappa dei Tesori, Attrezzatura Amazon, WildWall e Giochi.</p>
+        </article>
+
+        <article class="card half">
+          <h2>Bootstrap tag iniziali</h2>
+          <p>Usa questo pulsante alla prima apertura per creare/aggiornare i tag tecnici ufficiali senza toccare le versioni già esistenti.</p>
+          <div class="form-actions">
+            <button data-requires-auth id="btn-seed-default-tags" type="button">Crea/aggiorna tag ufficiali</button>
+            <button data-requires-auth id="btn-sync-runtime" type="button">Sincronizza manifesto public_versions</button>
+          </div>
+          <p class="small-text">Il manifesto <code>wildu_media_runtime/public_versions</code> serve alla client app per capire quando aggiornare la cache di Radio/Biblioteca.</p>
         </article>
       </div>
     </section>
@@ -93,6 +108,25 @@
               <label for="tag-sort">Sort order</label>
               <input id="tag-sort" type="number" value="10">
             </div>
+            <div class="field third">
+              <label for="tag-renderer">Renderer client</label>
+              <select id="tag-renderer">
+                <option value="document-tabs">document-tabs</option>
+                <option value="audio-list">audio-list</option>
+                <option value="none">none</option>
+              </select>
+            </div>
+            <div class="field third">
+              <label for="tag-client-renderable">Client render</label>
+              <select id="tag-client-renderable">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </div>
+            <div class="field third">
+              <label for="tag-allowed-categories">Categorie ammesse</label>
+              <input id="tag-allowed-categories" placeholder="pdf,audio,image">
+            </div>
             <div class="form-actions">
               <button data-requires-auth type="submit">Salva tag</button>
               <button data-requires-auth type="button" id="btn-refresh-tags">Ricarica tag</button>
@@ -101,10 +135,10 @@
         </article>
 
         <article class="card half">
-          <h2>Note versioning</h2>
+          <h2>Versioning corretto</h2>
           <p><code>version</code> cambia quando cambia qualsiasi media collegato al tag.</p>
-          <p><code>publicVersion</code> cambia solo quando cambia qualcosa che la app client pubblica deve vedere.</p>
-          <p>La app sorella non governa la cache client: prepara solo il semaforo di freschezza.</p>
+          <p><code>publicVersion</code> cambia solo se cambia un contenuto pubblico di un tag renderizzabile dalla client app.</p>
+          <p><strong>Immagini</strong> ha <code>clientRenderable:false</code>: può avere <code>version</code>, ma non deve obbligare refresh client.</p>
         </article>
 
         <article class="card">
@@ -114,9 +148,11 @@
               <thead>
                 <tr>
                   <th>Tag</th>
-                  <th>Descrizione</th>
+                  <th>Renderer</th>
+                  <th>Categorie</th>
                   <th>Status</th>
                   <th>Visibility</th>
+                  <th>Client</th>
                   <th>Sort</th>
                   <th>Version</th>
                   <th>Public</th>
@@ -124,7 +160,7 @@
                 </tr>
               </thead>
               <tbody id="tags-table-body">
-                <tr><td colspan="8" class="muted">Login richiesto.</td></tr>
+                <tr><td colspan="10" class="muted">Login richiesto.</td></tr>
               </tbody>
             </table>
           </div>
@@ -135,15 +171,19 @@
     <section id="tab-upload" class="tab-panel">
       <article class="card">
         <h2>Upload media</h2>
-        <p class="muted">Categorie attive: audio, pdf, book, image. GPX escluso.</p>
+        <p class="muted">Ammessi: PDF Biblioteca, MP3 Radio, immagini admin-only. GPX escluso.</p>
         <form id="upload-form" class="form-grid">
           <div class="field full">
             <label for="upload-file">File</label>
             <input id="upload-file" type="file" required>
           </div>
           <div class="field third">
-            <label for="upload-kind">Categoria</label>
+            <label for="upload-kind">Tipo upload</label>
             <select id="upload-kind" required></select>
+          </div>
+          <div class="field third" id="upload-subcategory-wrap" style="display:none">
+            <label for="upload-subcategory">Sottocategoria PDF</label>
+            <select id="upload-subcategory"></select>
           </div>
           <div class="field third">
             <label for="upload-tag">Tag principale</label>
@@ -155,11 +195,11 @@
           </div>
           <div class="field">
             <label for="upload-title">Titolo</label>
-            <input id="upload-title" required placeholder="Podcast Monte Adone">
+            <input id="upload-title" required placeholder="Titolo contenuto">
           </div>
           <div class="field">
             <label for="upload-tags">Tag descrittivi, separati da virgola</label>
-            <input id="upload-tags" placeholder="radio, appennino, natura">
+            <input id="upload-tags" placeholder="biblioteca, sentieri, natura">
           </div>
           <div class="field full">
             <label for="upload-description">Descrizione</label>
@@ -197,6 +237,11 @@
         <form id="catalog-filters" class="filter-row">
           <select id="filter-tag"></select>
           <select id="filter-kind"></select>
+          <select id="filter-subcategory">
+            <option value="">Tutte le sottocategorie</option>
+            <option value="libri">Libri</option>
+            <option value="manuali_guide">Manuali e Guide</option>
+          </select>
           <select id="filter-status">
             <option value="">Tutti gli status</option>
             <option value="ACTIVE">ACTIVE</option>
@@ -219,7 +264,7 @@
     <section id="tab-debug" class="tab-panel">
       <article class="card">
         <h2>Debug</h2>
-        <p class="muted">Nessuna cache client viene gestita qui. Qui vediamo solo stato admin, collection e versioni tag.</p>
+        <p class="muted">Qui vediamo solo stato admin, collection, versioni tag e manifesto runtime.</p>
         <pre id="debug-json">{}</pre>
       </article>
     </section>
@@ -227,15 +272,9 @@
     <p class="footer-note">Percorso consigliato su GitHub Pages: <code>/Wild-U/wildu-media-suite/</code></p>
   </main>
 
-  <script type="module" src="shared/firebase-config.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
-  <script src="js/firebase-init.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/tag-service.js"></script>
-  <script src="js/r2-worker-service.js"></script>
-  <script src="js/media-service.js"></script>
-  <script src="js/app.js"></script>
+  <script type="module" src="js/bootstrap.js"></script>
 </body>
 </html>

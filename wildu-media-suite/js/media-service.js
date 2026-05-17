@@ -12,24 +12,67 @@
     return catalogCol().doc(id);
   }
 
+  function getRuleForTag(tagSlug) {
+    return (WILDU_MEDIA_CONFIG.tagRules || {})[root.slugify(tagSlug)] || null;
+  }
+
+  function normalizeSubcategory(value) {
+    return root.slugify(value || '');
+  }
+
+  function validateMediaRouting(media) {
+    var kind = root.slugify(media.kind || '');
+    var tagSlug = root.slugify(media.tagSlug || '');
+    var rule = getRuleForTag(tagSlug);
+
+    if (WILDU_MEDIA_CONFIG.activeUploadKinds.indexOf(kind) === -1) {
+      throw new Error('Tipo upload non ammesso: ' + kind);
+    }
+    if (kind === 'gpx') throw new Error('GPX escluso da questa app: usa la mini-app Map Viewer/Mappa dei Tesori.');
+    if (!tagSlug) throw new Error('Tag principale obbligatorio.');
+    if (!rule) throw new Error('Tag non previsto dalla Media Suite: ' + tagSlug);
+    if (rule.allowedKinds.indexOf(kind) === -1) {
+      throw new Error('Il tag ' + tagSlug + ' non accetta file di tipo ' + kind + '.');
+    }
+
+    if (rule.requiredSubcategory && !media.subcategory) {
+      throw new Error('Sottocategoria obbligatoria per ' + tagSlug + '.');
+    }
+    if (media.subcategory && rule.allowedSubcategories && rule.allowedSubcategories.length) {
+      if (rule.allowedSubcategories.indexOf(media.subcategory) === -1) {
+        throw new Error('Sottocategoria non valida per ' + tagSlug + ': ' + media.subcategory);
+      }
+    }
+
+    if (tagSlug === 'immagini' && media.visibility === 'PUBLIC') {
+      throw new Error('Le immagini sono admin-only per ora: usa visibility PRIVATE. WildWall resta fuori da questa suite.');
+    }
+  }
+
   function normalizeMediaInput(input) {
-    var tagSlug = root.slugify(input.tagSlug);
-    var extraTags = root.parseTags(input.tagsText || input.tags || '');
-    var tagSlugs = [tagSlug].concat(Array.isArray(input.tagSlugs) ? input.tagSlugs : []);
+    input = input || {};
+    var tagSlug = root.slugify(input.tagSlug || '');
+    var tagSlugs = Array.isArray(input.tagSlugs) && input.tagSlugs.length ? input.tagSlugs : [tagSlug];
     tagSlugs = tagSlugs.map(root.slugify).filter(Boolean).filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+    var kind = root.slugify(input.kind || input.category || '');
+    var extraTags = root.parseTags(input.tagsText || input.tags || '');
+    var subcategory = normalizeSubcategory(input.subcategory || '');
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       title: String(input.title || '').trim(),
       description: String(input.description || '').trim(),
-      category: input.kind,
-      kind: input.kind,
+      category: kind,
+      kind: kind,
+      subcategory: subcategory || null,
+      subcategoryLabel: subcategory ? root.getSubcategoryLabel(subcategory) : null,
       tagSlug: tagSlug,
       tagSlugs: tagSlugs,
       tags: extraTags,
       searchTokens: root.parseTags([input.title, input.description, extraTags.join(',')].join(',')),
       status: input.status || WILDU_MEDIA_CONFIG.defaultStatus,
-      visibility: input.visibility || WILDU_MEDIA_CONFIG.defaultVisibility,
+      visibility: input.visibility || WILDU_MEDIA_CONFIG.defaultVisibilityByKind[kind] || 'PUBLIC',
+      clientRenderable: tagSlug !== 'immagini',
       sortOrder: Number(input.sortOrder || 0),
       fileUrl: input.fileUrl,
       objectKey: input.objectKey,
@@ -51,11 +94,7 @@
     var media = normalizeMediaInput(input);
 
     if (!media.title) throw new Error('Titolo media obbligatorio.');
-    if (!media.kind || WILDU_MEDIA_CONFIG.activeUploadKinds.indexOf(media.kind) === -1) {
-      throw new Error('Categoria non ammessa: ' + media.kind);
-    }
-    if (media.kind === 'gpx') throw new Error('GPX escluso da questa app.');
-    if (!media.tagSlug) throw new Error('Tag/modulo obbligatorio.');
+    validateMediaRouting(media);
     if (!media.fileUrl || !media.objectKey) throw new Error('fileUrl/objectKey mancanti.');
 
     media.createdAt = now;
@@ -86,11 +125,11 @@
 
     if (filters.tagSlug) q = q.where('tagSlug', '==', filters.tagSlug);
     if (filters.kind) q = q.where('kind', '==', filters.kind);
+    if (filters.subcategory) q = q.where('subcategory', '==', filters.subcategory);
     if (filters.status) q = q.where('status', '==', filters.status);
     if (filters.visibility) q = q.where('visibility', '==', filters.visibility);
 
-    // Query semplice admin: updatedAt DESC. Se Firestore chiede index, usare firestore.indexes.sample.json.
-    q = q.orderBy('updatedAt', 'desc').limit(Number(filters.limit || 50));
+    q = q.orderBy('updatedAt', 'desc').limit(Number(filters.limit || 80));
 
     var snap = await q.get();
     return snap.docs.map(function (doc) {
@@ -112,7 +151,13 @@
     delete safePatch.createdByEmail;
 
     if (safePatch.tagSlug) safePatch.tagSlug = root.slugify(safePatch.tagSlug);
+    if (safePatch.kind) safePatch.kind = root.slugify(safePatch.kind);
+    if (safePatch.category) safePatch.category = root.slugify(safePatch.category);
+    if (safePatch.subcategory !== undefined) safePatch.subcategory = normalizeSubcategory(safePatch.subcategory) || null;
     if (safePatch.tagSlugs) safePatch.tagSlugs = safePatch.tagSlugs.map(root.slugify).filter(Boolean);
+
+    var afterCandidate = Object.assign({}, before, safePatch);
+    validateMediaRouting(afterCandidate);
 
     safePatch.updatedAt = root.FieldValue.serverTimestamp();
     safePatch.updatedByUid = user.uid;
@@ -140,11 +185,9 @@
     var before = await getMedia(id);
     if (!before) throw new Error('Media non trovato: ' + id);
 
-    // Prima togliamo visibilità da Firestore, così il client non lo renderizza più.
     await mediaRef(id).delete();
     await root.TagService.bumpTagVersionsForMediaChange(before, null, 'MEDIA_HARD_DELETED');
 
-    // Poi proviamo a pulire R2. Se fallisce, il file può restare orfano ma non visibile dal catalogo.
     var r2Result = null;
     var r2Error = null;
     if (before.objectKey) {
@@ -159,6 +202,7 @@
 
   root.MediaService = {
     normalizeMediaInput: normalizeMediaInput,
+    validateMediaRouting: validateMediaRouting,
     createMedia: createMedia,
     getMedia: getMedia,
     listMedia: listMedia,

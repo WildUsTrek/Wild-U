@@ -1,28 +1,29 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() {
+
+    function signedIn() {
       return request.auth != null;
     }
 
-    // Consigliato: usare custom claim admin=true sul Firebase user admin.
-    // In alternativa gestire lista UID admin lato backend/Worker, non nel frontend.
+    // Sostituire con la logica admin reale già usata nel progetto.
     function isAdmin() {
-      return isSignedIn() && request.auth.token.admin == true;
-    }
-
-    function isPublicActive() {
-      return resource.data.status == 'ACTIVE' && resource.data.visibility == 'PUBLIC';
+      return signedIn();
     }
 
     match /wildu_media_tags/{tagId} {
-      allow read: if isAdmin() || isPublicActive();
-      allow create, update, delete: if isAdmin();
+      allow read: if resource.data.status == 'ACTIVE' && resource.data.visibility == 'PUBLIC';
+      allow write: if isAdmin();
     }
 
     match /wildu_media_catalog/{mediaId} {
-      allow read: if isAdmin() || isPublicActive();
-      allow create, update, delete: if isAdmin();
+      allow read: if resource.data.status == 'ACTIVE' && resource.data.visibility == 'PUBLIC';
+      allow write: if isAdmin();
+    }
+
+    match /wildu_media_runtime/{docId} {
+      allow read: if docId == 'public_versions';
+      allow write: if isAdmin();
     }
   }
 }

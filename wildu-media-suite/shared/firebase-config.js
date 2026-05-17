@@ -14,41 +14,126 @@ export const firebaseConfig = {
 
 export const WILDU_MEDIA_COLLECTIONS = Object.freeze({
   TAGS: "wildu_media_tags",
-  CATALOG: "wildu_media_catalog"
+  CATALOG: "wildu_media_catalog",
+  RUNTIME: "wildu_media_runtime"
 });
+
+export const WILDU_MEDIA_DEFAULT_TAGS = Object.freeze([
+  Object.freeze({
+    tagSlug: "biblioteca",
+    title: "Biblioteca",
+    description: "PDF divisi in Libri e Manuali e Guide.",
+    status: "ACTIVE",
+    visibility: "PUBLIC",
+    sortOrder: 10,
+    renderer: "document-tabs",
+    clientRenderable: true,
+    allowedCategories: ["pdf"],
+    tabs: [
+      Object.freeze({ id: "libri", label: "Libri", category: "pdf" }),
+      Object.freeze({ id: "manuali_guide", label: "Manuali e Guide", category: "pdf" })
+    ]
+  }),
+  Object.freeze({
+    tagSlug: "radio",
+    title: "Radio",
+    description: "MP3 e contenuti audio per la sezione Radio.",
+    status: "ACTIVE",
+    visibility: "PUBLIC",
+    sortOrder: 20,
+    renderer: "audio-list",
+    clientRenderable: true,
+    allowedCategories: ["audio"],
+    tabs: []
+  }),
+  Object.freeze({
+    tagSlug: "immagini",
+    title: "Immagini",
+    description: "Immagini caricate su R2, per ora solo catalogo admin. Non alimenta WildWall.",
+    status: "ACTIVE",
+    visibility: "PRIVATE",
+    sortOrder: 90,
+    renderer: "none",
+    clientRenderable: false,
+    allowedCategories: ["image"],
+    tabs: []
+  })
+]);
 
 export const WILDU_MEDIA_CONFIG = Object.freeze({
   appName: "Wildu Media Suite",
-  appVersion: "0.1.1",
+  appVersion: "0.2.0",
 
   // URL pubblici non segreti.
   workerUrl: "https://wildu-upload-manager.baffiwild.workers.dev",
   cdnBaseUrl: "https://media.baffiwild.it/",
 
-  // Categorie gestite dalla app sorella.
-  // GPX escluso: resta nella mini-app mappa già esistente.
-  activeUploadKinds: ["audio", "pdf", "book", "image"],
-  futureKinds: ["video"],
+  // Solo i flussi reali decisi ora.
+  // GPX fuori: resta nella mini-app Map Viewer/Mappa dei Tesori già pronta.
+  // Attrezzatura/Amazon, WildWall e Giochi restano fuori da questo upload media.
+  activeUploadKinds: ["pdf", "audio", "image"],
+
+  kindLabels: Object.freeze({
+    pdf: "PDF Biblioteca",
+    audio: "MP3 Radio",
+    image: "Immagine admin-only"
+  }),
+
+  pdfSubcategories: Object.freeze([
+    Object.freeze({ id: "libri", label: "Libri" }),
+    Object.freeze({ id: "manuali_guide", label: "Manuali e Guide" })
+  ]),
+
+  // Regole di indirizzamento: evitano upload nel tag sbagliato.
+  tagRules: Object.freeze({
+    biblioteca: Object.freeze({
+      allowedKinds: ["pdf"],
+      requiredSubcategory: true,
+      allowedSubcategories: ["libri", "manuali_guide"],
+      clientRenderable: true
+    }),
+    radio: Object.freeze({
+      allowedKinds: ["audio"],
+      requiredSubcategory: false,
+      allowedSubcategories: [],
+      clientRenderable: true
+    }),
+    immagini: Object.freeze({
+      allowedKinds: ["image"],
+      requiredSubcategory: false,
+      allowedSubcategories: [],
+      clientRenderable: false
+    })
+  }),
+
+  defaultVisibilityByKind: Object.freeze({
+    pdf: "PUBLIC",
+    audio: "PUBLIC",
+    image: "PRIVATE"
+  }),
+
+  defaultTagByKind: Object.freeze({
+    pdf: "biblioteca",
+    audio: "radio",
+    image: "immagini"
+  }),
+
+  defaultStatus: "ACTIVE",
 
   // Limiti lato frontend: il Worker deve comunque validarli lato server.
-  maxSizeBytesByKind: {
+  maxSizeBytesByKind: Object.freeze({
     audio: 150 * 1024 * 1024,
     pdf: 120 * 1024 * 1024,
-    book: 120 * 1024 * 1024,
-    image: 20 * 1024 * 1024,
-    video: 500 * 1024 * 1024
-  },
+    image: 20 * 1024 * 1024
+  }),
 
-  allowedMimePrefixesByKind: {
+  allowedMimePrefixesByKind: Object.freeze({
     audio: ["audio/"],
     image: ["image/"],
-    pdf: ["application/pdf"],
-    book: ["application/pdf", "application/epub+zip"],
-    video: ["video/"]
-  },
+    pdf: ["application/pdf"]
+  }),
 
-  defaultVisibility: "PUBLIC",
-  defaultStatus: "ACTIVE",
+  runtimePublicVersionsDocId: "public_versions",
 
   // Header non segreti utili al Worker per audit/canale.
   requestHeaders: Object.freeze({
@@ -56,15 +141,17 @@ export const WILDU_MEDIA_CONFIG = Object.freeze({
   })
 });
 
-// Compatibilità con gli script classici della suite.
-// La app usa ancora IIFE non-module per restare semplice su GitHub Pages.
+// Compatibilità con gli script classici caricati dal bootstrap.
 window.firebaseConfig = firebaseConfig;
 window.WILDU_MEDIA_COLLECTIONS = WILDU_MEDIA_COLLECTIONS;
+window.WILDU_MEDIA_DEFAULT_TAGS = WILDU_MEDIA_DEFAULT_TAGS;
 window.WILDU_MEDIA_CONFIG = Object.freeze({
   ...WILDU_MEDIA_CONFIG,
   firebaseConfig,
   collections: Object.freeze({
     tags: WILDU_MEDIA_COLLECTIONS.TAGS,
-    catalog: WILDU_MEDIA_COLLECTIONS.CATALOG
-  })
+    catalog: WILDU_MEDIA_COLLECTIONS.CATALOG,
+    runtime: WILDU_MEDIA_COLLECTIONS.RUNTIME
+  }),
+  defaultTags: WILDU_MEDIA_DEFAULT_TAGS
 });

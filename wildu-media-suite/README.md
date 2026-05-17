@@ -1,169 +1,78 @@
 # Wildu Media Suite
 
-Scheletro iniziale della app sorella media Wildu, pensata per essere caricata come sottocartella del repository GitHub Pages:
+App sorella admin per gestire media su Cloudflare R2 e metadati su Firestore.
+
+## Scopo reale
+
+Questa suite gestisce solo:
+
+- **Biblioteca**: PDF divisi in due tab client, `Libri` e `Manuali e Guide`.
+- **Radio**: MP3/audio.
+- **Immagini**: upload R2 e catalogo admin-only, per ora non renderizzate nella client app.
+
+Restano fuori da questo lavoro:
+
+- Map Viewer / Mappa dei Tesori / GPX;
+- Attrezzatura Amazon;
+- WildWall immagini viaggi;
+- Giochi.
+
+## Percorso consigliato
+
+Caricare la cartella scompattata dentro il repo GitHub Pages:
 
 ```text
 Wild-U/wildu-media-suite/
 ```
 
-URL previsto dopo deploy:
+URL atteso:
 
 ```text
 https://wildustrek.github.io/Wild-U/wildu-media-suite/
 ```
-
-## Cosa fa
-
-- Login admin con Firebase Auth.
-- Gestione tag/moduli dinamici in Firestore.
-- Upload media su Cloudflare R2 tramite Worker presigned PUT.
-- Salvataggio metadati in Firestore.
-- Versioning dei tag per permettere alla futura app client di capire quando aggiornare la propria cache.
-- Catalogo admin con filtri, preview, archive e delete fisico R2.
-
-## Cosa NON fa
-
-- Non gestisce upload GPX: quello resta nella mini-app mappa già esistente.
-- Non salva file grandi su Firestore.
-- Non passa file grandi da Cloud Run o Apps Script.
-- Non contiene segreti Cloudflare/R2.
-- Non gestisce la cache della app client: aggiorna solo `version` e `publicVersion` dei tag.
-
-## Config pubblica
-
-La config Firebase frontend è già impostata nel file:
-
-```text
-shared/firebase-config.js
-```
-
-Lo schema segue quello della mini-suite mappa, ma con collection e costanti dedicate alla Media Suite:
-
-```text
-WILDU_MEDIA_COLLECTIONS
-WILDU_MEDIA_CONFIG
-```
-
-Non inserire mai secret key, access key, bearer statici, account ID Cloudflare, token R2 o service account.
 
 ## Collection Firestore
 
 ```text
 wildu_media_tags
 wildu_media_catalog
+wildu_media_runtime/public_versions
 ```
 
-### wildu_media_tags
+## Tag ufficiali
 
-Documento esempio:
-
-```js
-{
-  tagSlug: "radio",
-  title: "Radio",
-  description: "Contenuti audio",
-  status: "ACTIVE",
-  visibility: "PUBLIC",
-  sortOrder: 10,
-  version: 3,
-  publicVersion: 2,
-  createdAt,
-  updatedAt,
-  lastContentChangeAt
-}
-```
-
-`version` cambia quando cambia qualunque contenuto collegato al tag.
-
-`publicVersion` cambia solo quando cambia qualcosa che la app client pubblica deve vedere.
-
-### wildu_media_catalog
-
-Documento esempio:
-
-```js
-{
-  schemaVersion: 1,
-  title: "Podcast Monte Adone",
-  description: "...",
-  category: "audio",
-  kind: "audio",
-  tagSlug: "radio",
-  tagSlugs: ["radio"],
-  tags: ["radio", "appennino"],
-  status: "ACTIVE",
-  visibility: "PUBLIC",
-  fileUrl: "https://media.baffiwild.it/audio/radio/...",
-  objectKey: "audio/radio/...mp3",
-  storageProvider: "cloudflare_r2",
-  uploadMode: "worker_presigned_put",
-  originalFileName: "podcast.mp3",
-  contentType: "audio/mpeg",
-  sizeBytes: 123456,
-  sortOrder: 10,
-  createdAt,
-  updatedAt
-}
-```
-
-## Worker
-
-Endpoint pubblico già impostato:
+Alla prima apertura, dopo login admin, premere:
 
 ```text
-https://wildu-upload-manager.baffiwild.workers.dev
+Crea/aggiorna tag ufficiali
 ```
 
-La app invia Firebase ID token admin in header:
+Crea/aggiorna senza azzerare le versioni:
 
 ```text
-Authorization: Bearer <Firebase ID token>
-X-WILDU-CHANNEL: MEDIA_SUITE_ADMIN
+biblioteca
+radio
+immagini
 ```
 
-Payload upload previsto:
+## Versioning
 
-```js
-{
-  action: "create-upload-url",
-  kind: "audio",
-  moduleSlug: "radio",
-  tagSlug: "radio",
-  fileName: "podcast.mp3",
-  contentType: "audio/mpeg",
-  sizeBytes: 123456
-}
-```
+- `version`: cambia a ogni modifica media collegata al tag.
+- `publicVersion`: cambia solo quando cambia un media pubblico di un tag renderizzabile dalla client app.
+- `wildu_media_runtime/public_versions`: manifesto leggero usato dalla client app per confrontare le versioni prima di leggere il catalogo.
 
-Risposta attesa:
+Le immagini hanno `clientRenderable:false`, quindi non aggiornano `publicVersion` e non forzano refresh client.
 
-```js
-{
-  ok: true,
-  uploadUrl: "...",
-  publicUrl: "https://media.baffiwild.it/...",
-  objectKey: "audio/radio/...mp3"
-}
-```
-
-Se il Worker usa un nome azione diverso, cambia solo `action` in:
+## Upload ammessi
 
 ```text
-js/r2-worker-service.js
+pdf   -> biblioteca -> subcategory libri | manuali_guide
+audio -> radio
+image -> immagini -> visibility PRIVATE
 ```
 
-## Deploy
+GPX non è ammesso in questa suite.
 
-1. Copia la cartella `wildu-media-suite` dentro il repo `Wild-U`.
-2. Carica su GitHub.
-3. Apri:
+## Sicurezza
 
-```text
-https://wildustrek.github.io/Wild-U/wildu-media-suite/
-```
-
-## Nota Service Worker
-
-Se la cartella è sotto lo scope della app madre, il Service Worker esistente potrebbe intercettare asset e file. Questo scheletro non modifica il SW.
-
-Regola: non cacheare automaticamente file grandi R2 nel SW. Se serve, fare una micro-patch mirata dopo aver letto lo `sw.js` reale.
+Il frontend contiene solo config Firebase pubblica, endpoint Worker pubblico e CDN pubblico. Non inserire mai segreti Cloudflare/R2, service account, private key o token statici.

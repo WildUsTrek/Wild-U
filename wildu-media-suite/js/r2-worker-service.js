@@ -46,6 +46,7 @@
       kind: params.kind,
       moduleSlug: params.tagSlug,
       tagSlug: params.tagSlug,
+      subcategory: params.subcategory || '',
       fileName: params.fileName,
       contentType: params.contentType,
       sizeBytes: params.sizeBytes

@@ -7,6 +7,7 @@
     currentUser: null,
     tags: [],
     media: [],
+    runtimeManifest: null,
     selectedTab: 'dashboard'
   };
 
@@ -48,47 +49,101 @@
     });
   }
 
+  function kindLabel(kind) {
+    return (WILDU_MEDIA_CONFIG.kindLabels || {})[kind] || kind;
+  }
+
   function fillKindOptions() {
     var options = WILDU_MEDIA_CONFIG.activeUploadKinds.map(function (kind) {
-      return '<option value="' + root.escapeHtml(kind) + '">' + root.escapeHtml(kind) + '</option>';
+      return '<option value="' + root.escapeHtml(kind) + '">' + root.escapeHtml(kindLabel(kind)) + '</option>';
     }).join('');
-    root.$('#upload-kind').innerHTML = '<option value="">Seleziona categoria</option>' + options;
-    root.$('#filter-kind').innerHTML = '<option value="">Tutte le categorie</option>' + options;
+    root.$('#upload-kind').innerHTML = '<option value="">Seleziona tipo upload</option>' + options;
+    root.$('#filter-kind').innerHTML = '<option value="">Tutti i tipi</option>' + options;
+
+    var subOptions = (WILDU_MEDIA_CONFIG.pdfSubcategories || []).map(function (item) {
+      return '<option value="' + root.escapeHtml(item.id) + '">' + root.escapeHtml(item.label) + '</option>';
+    }).join('');
+    root.$('#upload-subcategory').innerHTML = '<option value="">Seleziona sottocategoria</option>' + subOptions;
   }
 
   async function refreshTags() {
     if (!root.db) return;
     state.tags = await root.TagService.listTags({ onlyActive: false });
+    await loadRuntimeManifestQuietly();
     renderTags();
     fillTagDropdowns();
+    renderDashboard();
     renderDebug();
   }
 
-  function fillTagDropdowns() {
-    var activeTags = state.tags.filter(function (tag) { return tag.status === 'ACTIVE'; });
-    var options = activeTags.map(function (tag) {
-      return '<option value="' + root.escapeHtml(tag.tagSlug) + '">' +
-        root.escapeHtml(tag.title || tag.tagSlug) + ' (' + root.escapeHtml(tag.tagSlug) + ')</option>';
-    }).join('');
+  async function loadRuntimeManifestQuietly() {
+    try {
+      var doc = await root.db
+        .collection(WILDU_MEDIA_CONFIG.collections.runtime)
+        .doc(WILDU_MEDIA_CONFIG.runtimePublicVersionsDocId)
+        .get();
+      state.runtimeManifest = doc.exists ? (doc.data() || {}) : null;
+    } catch (e) {
+      state.runtimeManifest = { error: e.message || String(e) };
+    }
+  }
 
-    root.$('#upload-tag').innerHTML = '<option value="">Seleziona tag/modulo</option>' + options;
+  function tagAllowsKind(tag, kind) {
+    var allowed = Array.isArray(tag.allowedCategories) ? tag.allowedCategories : [];
+    return !kind || allowed.indexOf(kind) !== -1;
+  }
+
+  function fillTagDropdowns() {
+    updateUploadUiByKind();
     root.$('#filter-tag').innerHTML = '<option value="">Tutti i tag</option>' + state.tags.map(function (tag) {
       return '<option value="' + root.escapeHtml(tag.tagSlug) + '">' + root.escapeHtml(tag.title || tag.tagSlug) + '</option>';
     }).join('');
   }
 
+  function updateUploadUiByKind() {
+    var kind = root.$('#upload-kind').value || '';
+    var activeTags = state.tags.filter(function (tag) {
+      return tag.status === 'ACTIVE' && tagAllowsKind(tag, kind);
+    });
+
+    var options = activeTags.map(function (tag) {
+      var label = tag.title || tag.tagSlug;
+      return '<option value="' + root.escapeHtml(tag.tagSlug) + '">' + root.escapeHtml(label) + ' (' + root.escapeHtml(tag.tagSlug) + ')</option>';
+    }).join('');
+
+    root.$('#upload-tag').innerHTML = '<option value="">Seleziona tag</option>' + options;
+
+    var defaultTag = (WILDU_MEDIA_CONFIG.defaultTagByKind || {})[kind];
+    if (defaultTag && activeTags.some(function (tag) { return tag.tagSlug === defaultTag; })) {
+      root.$('#upload-tag').value = defaultTag;
+    } else if (activeTags.length === 1) {
+      root.$('#upload-tag').value = activeTags[0].tagSlug;
+    }
+
+    var isPdf = kind === 'pdf';
+    root.$('#upload-subcategory-wrap').style.display = isPdf ? '' : 'none';
+    root.$('#upload-subcategory').required = isPdf;
+    if (!isPdf) root.$('#upload-subcategory').value = '';
+
+    var defaultVis = (WILDU_MEDIA_CONFIG.defaultVisibilityByKind || {})[kind];
+    if (defaultVis) root.$('#upload-visibility').value = defaultVis;
+  }
+
   function renderTags() {
     var tbody = root.$('#tags-table-body');
     if (!state.tags.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="muted">Nessun tag creato.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="muted">Nessun tag creato. Usa “Crea/aggiorna tag ufficiali”.</td></tr>';
       return;
     }
     tbody.innerHTML = state.tags.map(function (tag) {
+      var cats = Array.isArray(tag.allowedCategories) ? tag.allowedCategories.join(', ') : '';
       return '<tr>' +
         '<td><strong>' + root.escapeHtml(tag.title || tag.tagSlug) + '</strong><br><code>' + root.escapeHtml(tag.tagSlug) + '</code></td>' +
-        '<td>' + root.escapeHtml(tag.description || '') + '</td>' +
+        '<td><code>' + root.escapeHtml(tag.renderer || 'none') + '</code></td>' +
+        '<td>' + root.escapeHtml(cats || '—') + '</td>' +
         '<td><span class="badge ' + (tag.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(tag.status || '—') + '</span></td>' +
         '<td>' + root.escapeHtml(tag.visibility || '—') + '</td>' +
+        '<td>' + (tag.clientRenderable === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
         '<td>' + Number(tag.sortOrder || 0) + '</td>' +
         '<td><strong>' + Number(tag.version || 0) + '</strong></td>' +
         '<td><strong>' + Number(tag.publicVersion || 0) + '</strong></td>' +
@@ -108,13 +163,18 @@
       description: root.$('#tag-description').value,
       status: root.$('#tag-status').value,
       visibility: root.$('#tag-visibility').value,
-      sortOrder: root.$('#tag-sort').value
+      sortOrder: root.$('#tag-sort').value,
+      renderer: root.$('#tag-renderer').value,
+      clientRenderable: root.$('#tag-client-renderable').value === 'true',
+      allowedCategoriesText: root.$('#tag-allowed-categories').value
     };
     await root.TagService.createOrUpdateTag(input);
-    root.toast('Tag salvato. Versioni preservate.', 'success');
+    root.toast('Tag salvato. Versioni preservate e manifesto sincronizzato.', 'success');
     root.$('#tag-form').reset();
     root.$('#tag-status').value = 'ACTIVE';
     root.$('#tag-visibility').value = 'PUBLIC';
+    root.$('#tag-renderer').value = 'document-tabs';
+    root.$('#tag-client-renderable').value = 'true';
     await refreshTags();
   }
 
@@ -127,12 +187,28 @@
     root.$('#tag-status').value = tag.status || 'ACTIVE';
     root.$('#tag-visibility').value = tag.visibility || 'PUBLIC';
     root.$('#tag-sort').value = Number(tag.sortOrder || 0);
+    root.$('#tag-renderer').value = tag.renderer || 'none';
+    root.$('#tag-client-renderable').value = tag.clientRenderable === false ? 'false' : 'true';
+    root.$('#tag-allowed-categories').value = Array.isArray(tag.allowedCategories) ? tag.allowedCategories.join(',') : '';
     switchTab('tags');
   }
 
   async function toggleTag(tagSlug, nextStatus) {
     await root.TagService.setTagStatus(tagSlug, nextStatus);
-    root.toast('Stato tag aggiornato: ' + tagSlug + ' → ' + nextStatus, 'success');
+    root.toast('Stato tag aggiornato e manifesto sincronizzato: ' + tagSlug + ' → ' + nextStatus, 'success');
+    await refreshTags();
+  }
+
+  async function seedDefaultTags() {
+    await root.TagService.seedDefaultTags();
+    root.toast('Tag ufficiali creati/aggiornati: biblioteca, radio, immagini.', 'success');
+    await refreshTags();
+  }
+
+  async function syncRuntimeManifest() {
+    var manifest = await root.TagService.syncRuntimePublicVersions();
+    state.runtimeManifest = manifest;
+    root.toast('Manifesto public_versions sincronizzato.', 'success');
     await refreshTags();
   }
 
@@ -141,6 +217,7 @@
 
     var file = root.$('#upload-file').files[0];
     var kind = root.$('#upload-kind').value;
+    var subcategory = root.$('#upload-subcategory').value;
     var tagSlug = root.$('#upload-tag').value;
     var title = root.$('#upload-title').value.trim();
     var description = root.$('#upload-description').value.trim();
@@ -150,13 +227,17 @@
     var sortOrder = Number(root.$('#upload-sort').value || 0);
 
     root.validateFileForKind(file, kind);
-    if (!tagSlug) throw new Error('Scegli un tag/modulo.');
+    if (!tagSlug) throw new Error('Scegli un tag.');
     if (!title) throw new Error('Titolo obbligatorio.');
+
+    if (kind === 'pdf' && !subcategory) throw new Error('Scegli Libri oppure Manuali e Guide.');
+    if (kind !== 'pdf') subcategory = '';
 
     setUploadProgress(0, 'Richiesta URL firmato al Worker...');
     var signed = await root.R2WorkerService.requestUploadUrl({
       kind: kind,
       tagSlug: tagSlug,
+      subcategory: subcategory || '',
       fileName: file.name,
       contentType: file.type || 'application/octet-stream',
       sizeBytes: file.size
@@ -172,6 +253,7 @@
       title: title,
       description: description,
       kind: kind,
+      subcategory: subcategory || null,
       tagSlug: tagSlug,
       tagSlugs: [tagSlug],
       tagsText: tagsText,
@@ -186,10 +268,11 @@
     });
 
     setUploadProgress(100, 'Upload completato. Media ID: ' + media.id);
-    root.toast('Media caricato e versione tag aggiornata.', 'success');
+    root.toast('Media caricato e versioni/manifesto aggiornati.', 'success');
     root.$('#upload-form').reset();
     root.$('#upload-status').value = 'ACTIVE';
     root.$('#upload-visibility').value = 'PUBLIC';
+    updateUploadUiByKind();
     await refreshTags();
     await refreshMedia();
     switchTab('catalog');
@@ -205,6 +288,7 @@
     var filters = {
       tagSlug: root.$('#filter-tag').value || '',
       kind: root.$('#filter-kind').value || '',
+      subcategory: root.$('#filter-subcategory').value || '',
       status: root.$('#filter-status').value || '',
       visibility: root.$('#filter-visibility').value || '',
       limit: 80
@@ -212,6 +296,7 @@
     state.media = await root.MediaService.listMedia(filters);
     renderMedia();
     renderDashboard();
+    renderDebug();
   }
 
   function mediaPreviewHtml(item) {
@@ -221,7 +306,7 @@
     if (item.kind === 'audio') {
       return '<audio controls preload="none" src="' + root.escapeHtml(item.fileUrl) + '"></audio>';
     }
-    return '<a href="' + root.escapeHtml(item.fileUrl) + '" target="_blank" rel="noopener">Apri file</a>';
+    return '<a href="' + root.escapeHtml(item.fileUrl) + '" target="_blank" rel="noopener">Apri PDF</a>';
   }
 
   function renderMedia() {
@@ -231,12 +316,14 @@
       return;
     }
     wrap.innerHTML = state.media.map(function (item) {
+      var sub = item.subcategory ? root.getSubcategoryLabel(item.subcategory) : '';
       return '<article class="media-card">' +
         '<div class="media-main">' +
           '<h3>' + root.escapeHtml(item.title || 'Senza titolo') + '</h3>' +
           '<p class="muted">' + root.escapeHtml(item.description || '') + '</p>' +
           '<div class="chip-row">' +
-            '<span class="chip">' + root.escapeHtml(item.kind || '—') + '</span>' +
+            '<span class="chip">' + root.escapeHtml(kindLabel(item.kind || '—')) + '</span>' +
+            (sub ? '<span class="chip">' + root.escapeHtml(sub) + '</span>' : '') +
             '<span class="chip">tag: ' + root.escapeHtml(item.tagSlug || '—') + '</span>' +
             '<span class="chip ' + (item.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(item.status || '—') + '</span>' +
             '<span class="chip">' + root.escapeHtml(item.visibility || '—') + '</span>' +
@@ -269,11 +356,15 @@
       collections: WILDU_MEDIA_CONFIG.collections,
       activeUploadKinds: WILDU_MEDIA_CONFIG.activeUploadKinds,
       currentUser: state.currentUser ? { uid: state.currentUser.uid, email: state.currentUser.email } : null,
+      runtimeManifest: state.runtimeManifest,
       tags: state.tags.map(function (t) {
         return {
           tagSlug: t.tagSlug,
           version: Number(t.version || 0),
           publicVersion: Number(t.publicVersion || 0),
+          renderer: t.renderer,
+          clientRenderable: t.clientRenderable !== false,
+          allowedCategories: t.allowedCategories,
           status: t.status,
           visibility: t.visibility
         };
@@ -283,9 +374,9 @@
   }
 
   async function archiveMedia(id) {
-    if (!confirm('Archiviare questo media? La client app non lo vedrà più se era pubblico.')) return;
+    if (!confirm('Archiviare questo media? Se era pubblico/renderizzabile, la versione client verrà aggiornata.')) return;
     await root.MediaService.archiveMedia(id);
-    root.toast('Media archiviato e versione tag aggiornata.', 'success');
+    root.toast('Media archiviato e versioni/manifesto aggiornati.', 'success');
     await refreshTags();
     await refreshMedia();
   }
@@ -294,9 +385,9 @@
     if (!confirm('Eliminazione definitiva: cancella documento Firestore e prova a cancellare il file R2. Continuare?')) return;
     var result = await root.MediaService.hardDeleteMediaAndR2(id);
     if (result && result.r2Error) {
-      root.toast('Media rimosso da Firestore e versione tag aggiornata, ma cleanup R2 fallito: ' + result.r2Error, 'error');
+      root.toast('Media rimosso da Firestore e versioni aggiornate, ma cleanup R2 fallito: ' + result.r2Error, 'error');
     } else {
-      root.toast('Media eliminato e versione tag aggiornata. R2 pulito se il Worker ha confermato.', 'success');
+      root.toast('Media eliminato e versioni aggiornate. R2 pulito se il Worker ha confermato.', 'success');
     }
     await refreshTags();
     await refreshMedia();
@@ -312,8 +403,11 @@
 
     root.$('#tag-form').addEventListener('submit', function (evt) { run(saveTagFromForm, evt); });
     root.$('#upload-form').addEventListener('submit', function (evt) { run(uploadMedia, evt); });
+    root.$('#upload-kind').addEventListener('change', updateUploadUiByKind);
     root.$('#btn-refresh-tags').addEventListener('click', function () { run(refreshTags); });
     root.$('#btn-refresh-media').addEventListener('click', function () { run(refreshMedia); });
+    root.$('#btn-seed-default-tags').addEventListener('click', function () { run(seedDefaultTags); });
+    root.$('#btn-sync-runtime').addEventListener('click', function () { run(syncRuntimeManifest); });
     root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
 
     document.body.addEventListener('click', function (evt) {
@@ -370,6 +464,7 @@
       } else {
         state.tags = [];
         state.media = [];
+        state.runtimeManifest = null;
         renderTags();
         renderMedia();
         renderDashboard();
@@ -378,7 +473,13 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function startBoot() {
     boot().catch(function (err) { root.toast(err.message || String(err), 'error'); });
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startBoot);
+  } else {
+    startBoot();
+  }
 })();

@@ -1,4 +1,4 @@
-/* global WILDU_MEDIA_CONFIG */
+/* global WILDU_MEDIA_CONFIG, WILDU_MEDIA_DEFAULT_TAGS */
 (function () {
   'use strict';
 
@@ -12,15 +12,60 @@
     return tagsCol().doc(tagSlug);
   }
 
+  function runtimePublicVersionsRef() {
+    return root.db
+      .collection(WILDU_MEDIA_CONFIG.collections.runtime)
+      .doc(WILDU_MEDIA_CONFIG.runtimePublicVersionsDocId);
+  }
+
+  function normalizeAllowedCategories(value) {
+    if (Array.isArray(value)) return value.map(root.slugify).filter(Boolean);
+    return String(value || '')
+      .split(',')
+      .map(function (x) { return root.slugify(x); })
+      .filter(Boolean)
+      .filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+  }
+
+  function normalizeTabs(tabs) {
+    if (!Array.isArray(tabs)) return [];
+    return tabs.map(function (tab) {
+      return {
+        id: root.slugify(tab.id || tab.label || ''),
+        label: String(tab.label || tab.id || '').trim(),
+        category: root.slugify(tab.category || 'pdf')
+      };
+    }).filter(function (tab) { return tab.id && tab.label; });
+  }
+
+  function getDefaultTag(slug) {
+    var defaults = WILDU_MEDIA_DEFAULT_TAGS || [];
+    return defaults.find(function (tag) { return tag.tagSlug === slug; }) || null;
+  }
+
   function normalizeTagInput(input) {
+    input = input || {};
     var slug = root.slugify(input.tagSlug || input.title || '');
+    var defaultRule = (WILDU_MEDIA_CONFIG.tagRules || {})[slug] || {};
+    var defaultTag = getDefaultTag(slug) || {};
+    var rawTabs = input.tabs !== undefined ? input.tabs : (defaultTag.tabs || []);
+    var rawAllowed = input.allowedCategories && input.allowedCategories.length
+      ? input.allowedCategories
+      : (input.allowedCategoriesText || defaultTag.allowedCategories || defaultRule.allowedKinds || []);
+
     return {
       tagSlug: slug,
-      title: String(input.title || slug).trim(),
-      description: String(input.description || '').trim(),
-      status: input.status || 'ACTIVE',
-      visibility: input.visibility || 'PUBLIC',
-      sortOrder: Number(input.sortOrder || 0)
+      title: String(input.title || defaultTag.title || slug).trim(),
+      description: String(input.description || defaultTag.description || '').trim(),
+      status: input.status || defaultTag.status || 'ACTIVE',
+      visibility: input.visibility || defaultTag.visibility || (slug === 'immagini' ? 'PRIVATE' : 'PUBLIC'),
+      sortOrder: Number(input.sortOrder !== undefined ? input.sortOrder : (defaultTag.sortOrder || 0)),
+      renderer: input.renderer || defaultTag.renderer || (slug === 'radio' ? 'audio-list' : slug === 'biblioteca' ? 'document-tabs' : 'none'),
+      clientRenderable: input.clientRenderable === undefined
+        ? (defaultTag.clientRenderable !== undefined ? defaultTag.clientRenderable : defaultRule.clientRenderable !== false)
+        : !!input.clientRenderable,
+      allowedCategories: normalizeAllowedCategories(rawAllowed),
+      tabs: normalizeTabs(rawTabs)
     };
   }
 
@@ -56,6 +101,10 @@
       status: input.status,
       visibility: input.visibility,
       sortOrder: input.sortOrder,
+      renderer: input.renderer,
+      clientRenderable: input.clientRenderable,
+      allowedCategories: input.allowedCategories,
+      tabs: input.tabs,
       version: root.FieldValue.increment(0),
       publicVersion: root.FieldValue.increment(0),
       createdAt: now,
@@ -66,7 +115,41 @@
       updatedByEmail: user.email || null
     }, { merge: true });
 
+    await syncRuntimePublicVersions();
     return getTag(input.tagSlug);
+  }
+
+  async function seedDefaultTags() {
+    var user = root.requireCurrentUser();
+    var now = root.FieldValue.serverTimestamp();
+    var batch = root.db.batch();
+
+    (WILDU_MEDIA_DEFAULT_TAGS || []).forEach(function (raw) {
+      var tag = normalizeTagInput(raw);
+      batch.set(tagRef(tag.tagSlug), {
+        tagSlug: tag.tagSlug,
+        title: tag.title,
+        description: tag.description,
+        status: tag.status,
+        visibility: tag.visibility,
+        sortOrder: tag.sortOrder,
+        renderer: tag.renderer,
+        clientRenderable: tag.clientRenderable,
+        allowedCategories: tag.allowedCategories,
+        tabs: tag.tabs,
+        version: root.FieldValue.increment(0),
+        publicVersion: root.FieldValue.increment(0),
+        createdAt: now,
+        updatedAt: now,
+        createdByUid: user.uid,
+        updatedByUid: user.uid,
+        createdByEmail: user.email || null,
+        updatedByEmail: user.email || null
+      }, { merge: true });
+    });
+
+    await batch.commit();
+    await syncRuntimePublicVersions();
   }
 
   async function setTagStatus(tagSlug, status) {
@@ -77,6 +160,7 @@
       updatedByUid: user.uid,
       updatedByEmail: user.email || null
     }, { merge: true });
+    await syncRuntimePublicVersions();
   }
 
   function uniqueSlugs(slugs) {
@@ -98,10 +182,51 @@
     return uniqueSlugs(list);
   }
 
+  function tagAllowsClientPublicVersion(tag) {
+    if (!tag) return true;
+    return tag.clientRenderable !== false && tag.status !== 'DISABLED' && tag.visibility === 'PUBLIC';
+  }
+
+  async function getTagsMap(slugs) {
+    var map = {};
+    await Promise.all(uniqueSlugs(slugs).map(async function (slug) {
+      map[slug] = await getTag(slug);
+    }));
+    return map;
+  }
+
+  async function syncRuntimePublicVersions() {
+    var tags = await listTags({ onlyActive: false });
+    var publicMap = {};
+    var meta = {};
+
+    tags.forEach(function (tag) {
+      if (tagAllowsClientPublicVersion(tag)) {
+        publicMap[tag.tagSlug] = Number(tag.publicVersion || 0);
+        meta[tag.tagSlug] = {
+          title: tag.title || tag.tagSlug,
+          renderer: tag.renderer || 'none',
+          allowedCategories: Array.isArray(tag.allowedCategories) ? tag.allowedCategories : [],
+          tabs: Array.isArray(tag.tabs) ? tag.tabs : []
+        };
+      }
+    });
+
+    await runtimePublicVersionsRef().set({
+      schemaVersion: 1,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      tags: publicMap,
+      meta: meta
+    }, { merge: false });
+
+    return { tags: publicMap, meta: meta };
+  }
+
   /*
    * Incrementa le versioni dei tag coinvolti.
-   * Questa è la regola chiave: la app sorella scrive versioni; la client app userà publicVersion
-   * per capire quando aggiornare la propria cache/render.
+   * Regola corretta:
+   * - version cambia per ogni media collegato al tag;
+   * - publicVersion cambia solo se il media impatta la vista pubblica e il tag è clientRenderable.
    */
   async function bumpTagVersionsForMediaChange(beforeMedia, afterMedia, reason) {
     var user = root.requireCurrentUser();
@@ -113,11 +238,13 @@
     var beforePublic = mediaPublicImpact(beforeMedia);
     var afterPublic = mediaPublicImpact(afterMedia);
     var publicChanged = beforePublic || afterPublic;
+    var tagMap = await getTagsMap(allSlugs);
 
     var batch = root.db.batch();
     var now = root.FieldValue.serverTimestamp();
 
     allSlugs.forEach(function (slug) {
+      var tag = tagMap[slug];
       var payload = {
         tagSlug: slug,
         version: root.FieldValue.increment(1),
@@ -127,20 +254,27 @@
         updatedByUid: user.uid,
         updatedByEmail: user.email || null
       };
-      if (publicChanged) payload.publicVersion = root.FieldValue.increment(1);
+      if (publicChanged && tagAllowsClientPublicVersion(tag)) {
+        payload.publicVersion = root.FieldValue.increment(1);
+      }
       batch.set(tagRef(slug), payload, { merge: true });
     });
 
     await batch.commit();
+    await syncRuntimePublicVersions();
   }
 
   root.TagService = {
     listTags: listTags,
     getTag: getTag,
     createOrUpdateTag: createOrUpdateTag,
+    seedDefaultTags: seedDefaultTags,
     setTagStatus: setTagStatus,
+    syncRuntimePublicVersions: syncRuntimePublicVersions,
     bumpTagVersionsForMediaChange: bumpTagVersionsForMediaChange,
     collectMediaTagSlugs: collectMediaTagSlugs,
-    mediaPublicImpact: mediaPublicImpact
+    mediaPublicImpact: mediaPublicImpact,
+    tagAllowsClientPublicVersion: tagAllowsClientPublicVersion,
+    normalizeAllowedCategories: normalizeAllowedCategories
   };
 })();

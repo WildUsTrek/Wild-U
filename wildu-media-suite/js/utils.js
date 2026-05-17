@@ -33,10 +33,11 @@
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .replace(/-{2,}/g, '-');
-    return text || 'senza-titolo';
+    return text || '';
   }
 
   function parseTags(value) {
+    if (Array.isArray(value)) value = value.join(',');
     return String(value || '')
       .split(',')
       .map(function (x) { return slugify(x); })
@@ -70,6 +71,13 @@
     return date.toLocaleString('it-IT');
   }
 
+  function getSubcategoryLabel(id) {
+    var clean = slugify(id);
+    var list = ((window.WILDU_MEDIA_CONFIG || {}).pdfSubcategories || []);
+    var item = list.find(function (x) { return x.id === clean; });
+    return item ? item.label : clean;
+  }
+
   function setStatus(message, type) {
     var box = $('#status-line');
     if (!box) return;
@@ -92,22 +100,26 @@
 
   function validateFileForKind(file, kind) {
     var cfg = window.WILDU_MEDIA_CONFIG;
-    var max = cfg.maxSizeBytesByKind[kind];
+    var cleanKind = slugify(kind);
+    var max = cfg.maxSizeBytesByKind[cleanKind];
     if (!file) throw new Error('Seleziona un file.');
-    if (!kind) throw new Error('Seleziona una categoria.');
-    if (kind === 'gpx') throw new Error('GPX escluso da questa app: usa la mini-app mappa.');
+    if (!cleanKind) throw new Error('Seleziona un tipo upload.');
+    if (cleanKind === 'gpx') throw new Error('GPX escluso da questa app: usa la mini-app Map Viewer/Mappa dei Tesori.');
+    if (cfg.activeUploadKinds.indexOf(cleanKind) === -1) {
+      throw new Error('Tipo upload non ammesso: ' + cleanKind);
+    }
     if (max && file.size > max) {
-      throw new Error('File troppo grande per ' + kind + ': ' + formatBytes(file.size) + ' / max ' + formatBytes(max));
+      throw new Error('File troppo grande per ' + cleanKind + ': ' + formatBytes(file.size) + ' / max ' + formatBytes(max));
     }
 
-    var allowed = cfg.allowedMimePrefixesByKind[kind] || [];
+    var allowed = cfg.allowedMimePrefixesByKind[cleanKind] || [];
     if (allowed.length) {
       var ok = allowed.some(function (prefix) {
         if (prefix.endsWith('/')) return String(file.type || '').indexOf(prefix) === 0;
         return String(file.type || '') === prefix;
       });
       if (!ok) {
-        throw new Error('Content-Type non previsto per ' + kind + ': ' + (file.type || 'sconosciuto'));
+        throw new Error('Content-Type non previsto per ' + cleanKind + ': ' + (file.type || 'sconosciuto'));
       }
     }
   }
@@ -121,6 +133,7 @@
   root.isPublicVisibleMedia = isPublicVisibleMedia;
   root.formatBytes = formatBytes;
   root.toDateTimeLabel = toDateTimeLabel;
+  root.getSubcategoryLabel = getSubcategoryLabel;
   root.toast = toast;
   root.requireCurrentUser = requireCurrentUser;
   root.validateFileForKind = validateFileForKind;
