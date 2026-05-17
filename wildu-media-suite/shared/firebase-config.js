@@ -135,10 +135,11 @@ export const WILDU_MEDIA_CONFIG = Object.freeze({
 
   runtimePublicVersionsDocId: "public_versions",
 
-  // Header non segreti utili al Worker per audit/canale.
-  requestHeaders: Object.freeze({
-    "X-WILDU-CHANNEL": "MEDIA_SUITE_ADMIN"
-  })
+  // Header extra verso il Worker.
+  // Lasciare vuoto: il Worker attuale accetta Authorization + Content-Type.
+  // Header custom come X-WILDU-CHANNEL causano errore CORS preflight
+  // se non sono presenti in Access-Control-Allow-Headers lato Worker.
+  requestHeaders: Object.freeze({})
 });
 
 // Compatibilità con gli script classici caricati dal bootstrap.
