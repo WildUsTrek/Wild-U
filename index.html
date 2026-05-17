@@ -1116,6 +1116,456 @@ const FS = WILDU_FIREBASE.store;
 const FV = WILDU_FIREBASE.store.fieldValue;
 
 WILDU_FIREBASE.boot();
+
+// =========================================================
+// WILDU MEDIA CLIENT — loader Firestore per tag versionati
+// =========================================================
+// Scopo:
+// - NON entra in getInitData
+// - NON gonfia wildCachePublic
+// - legge solo i contenuti del tag richiesto
+// - usa wildu_media_runtime/public_versions come semaforo
+// - cache locale per tag lato client
+// - file grandi R2 NON vengono cacheati qui: salviamo solo metadati/URL
+
+const WilduMediaClient = (() => {
+    const CATALOG_COLLECTION = "wildu_media_catalog";
+    const RUNTIME_COLLECTION = "wildu_media_runtime";
+    const PUBLIC_VERSIONS_DOC = "public_versions";
+
+    const CACHE_PREFIX = "wilduMediaClient:v1:";
+    const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // sicurezza massima: 7 giorni, ma vince sempre publicVersion
+
+    let publicVersionsMemory = null;
+    let publicVersionsLoadedAt = 0;
+
+    function now() {
+        return Date.now();
+    }
+
+    function safeString(value) {
+        return String(value === undefined || value === null ? "" : value).trim();
+    }
+
+    function escapeHtml(value) {
+        return safeString(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function normalizeNumber(value, fallback) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function shouldBypassCache() {
+        try {
+            const params = new URLSearchParams(window.location.search || "");
+            return (
+                params.get("refresh") === "1" ||
+                params.get("nocache") === "1" ||
+                params.get("cache") === "off"
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getTagCacheKey(tagSlug) {
+        return CACHE_PREFIX + "tag:" + safeString(tagSlug).toLowerCase();
+    }
+
+    function readTagCache(tagSlug) {
+        try {
+            const raw = localStorage.getItem(getTagCacheKey(tagSlug));
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return null;
+
+            const savedAt = normalizeNumber(parsed.savedAt, 0);
+            if (savedAt && now() - savedAt > CACHE_TTL_MS) return null;
+
+            if (!Array.isArray(parsed.items)) return null;
+
+            return parsed;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeTagCache(tagSlug, publicVersion, items) {
+        try {
+            const payload = {
+                tagSlug: safeString(tagSlug),
+                publicVersion: normalizeNumber(publicVersion, 0),
+                savedAt: now(),
+                items: Array.isArray(items) ? items : []
+            };
+
+            localStorage.setItem(getTagCacheKey(tagSlug), JSON.stringify(payload));
+        } catch (e) {
+            console.warn("[WilduMediaClient] Cache tag non scritta:", e);
+        }
+    }
+
+    function clearTagCache(tagSlug) {
+        try {
+            localStorage.removeItem(getTagCacheKey(tagSlug));
+        } catch (e) {}
+    }
+
+    function clearAllCache() {
+        try {
+            Object.keys(localStorage).forEach(key => {
+                if (key.indexOf(CACHE_PREFIX) === 0) localStorage.removeItem(key);
+            });
+        } catch (e) {}
+    }
+
+    async function getPublicVersions(options = {}) {
+        const force = options.force === true || shouldBypassCache();
+
+        // micro-cache RAM solo per evitare doppie letture nello stesso render;
+        // non sostituisce la cache persistente dei contenuti.
+        if (!force && publicVersionsMemory && now() - publicVersionsLoadedAt < 30000) {
+            return publicVersionsMemory;
+        }
+
+        const snap = await db
+            .collection(RUNTIME_COLLECTION)
+            .doc(PUBLIC_VERSIONS_DOC)
+            .get();
+
+        const data = snap.exists ? (snap.data() || {}) : {};
+        const tags = data.tags && typeof data.tags === "object" ? data.tags : {};
+
+        publicVersionsMemory = tags;
+        publicVersionsLoadedAt = now();
+
+        return tags;
+    }
+
+    async function fetchTagItemsFromFirestore(tagSlug, options = {}) {
+        const cleanTag = safeString(tagSlug);
+        if (!cleanTag) throw new Error("tagSlug mancante");
+
+        let query = db
+            .collection(CATALOG_COLLECTION)
+            .where("tagSlug", "==", cleanTag)
+            .where("status", "==", "ACTIVE")
+            .where("visibility", "==", "PUBLIC");
+
+        const category = safeString(options.category);
+        if (category) {
+            query = query.where("category", "==", category);
+        }
+
+        const snap = await query.get();
+
+        const items = [];
+        snap.forEach(doc => {
+            const data = doc.data() || {};
+            items.push({
+                id: doc.id,
+                ...data
+            });
+        });
+
+        // Ordiniamo lato client per evitare subito indici Firestore inutili.
+        items.sort((a, b) => {
+            const sa = normalizeNumber(a.sortOrder, 999999);
+            const sb = normalizeNumber(b.sortOrder, 999999);
+            if (sa !== sb) return sa - sb;
+
+            const ta = safeString(a.title).toLowerCase();
+            const tb = safeString(b.title).toLowerCase();
+            return ta.localeCompare(tb);
+        });
+
+        return items;
+    }
+
+    async function loadTag(tagSlug, options = {}) {
+        const cleanTag = safeString(tagSlug);
+        if (!cleanTag) throw new Error("tagSlug mancante");
+
+        const versions = await getPublicVersions({
+            force: options.force === true
+        });
+
+        const publicVersion = normalizeNumber(versions[cleanTag], 0);
+        const cached = readTagCache(cleanTag);
+
+        if (
+            !shouldBypassCache() &&
+            options.force !== true &&
+            cached &&
+            normalizeNumber(cached.publicVersion, -1) === publicVersion
+        ) {
+            return {
+                tagSlug: cleanTag,
+                publicVersion,
+                source: "cache",
+                items: cached.items
+            };
+        }
+
+        const items = await fetchTagItemsFromFirestore(cleanTag, options);
+        writeTagCache(cleanTag, publicVersion, items);
+
+        return {
+            tagSlug: cleanTag,
+            publicVersion,
+            source: "firestore",
+            items
+        };
+    }
+
+    function buildAudioCard(item) {
+        const title = escapeHtml(item.title || item.Titolo || "Audio Wild-U");
+        const description = escapeHtml(item.description || item.Descrizione || "");
+        const fileUrl = safeString(item.fileUrl);
+        const duration = item.durationSeconds ? `${Math.round(Number(item.durationSeconds) / 60)} min` : "";
+
+        if (!fileUrl) return "";
+
+        return `
+            <div class="card" style="border-left-color:#7cc7ff; margin-bottom:16px;">
+                <div style="display:flex; gap:14px; align-items:flex-start;">
+                    <div style="font-size:34px; line-height:1;">🎧</div>
+                    <div style="flex:1; min-width:0;">
+                        <h3 style="margin:0 0 8px 0; color:#7cc7ff; font-size:18px;">${title}</h3>
+                        ${description ? `<p style="margin:0 0 12px 0; color:#bbb; font-size:14px; line-height:1.45;">${description}</p>` : ""}
+                        ${duration ? `<div style="color:#777; font-size:11px; font-weight:900; margin-bottom:8px;">${escapeHtml(duration)}</div>` : ""}
+                        <audio controls preload="none" style="width:100%;">
+                            <source src="${escapeHtml(fileUrl)}">
+                            Il tuo browser non supporta l’audio.
+                        </audio>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function buildPdfCard(item) {
+        const title = escapeHtml(item.title || item.Titolo || "Documento Wild-U");
+        const description = escapeHtml(item.description || item.Descrizione || "");
+        const fileUrl = safeString(item.fileUrl);
+        const subcategory = safeString(item.subcategory);
+
+        if (!fileUrl) return "";
+
+        const badge = subcategory === "libri"
+            ? "📚 Libro"
+            : "📘 Manuale / Guida";
+
+        return `
+            <div class="card" style="border-left-color:var(--w-gold); margin-bottom:16px;">
+                <div style="display:flex; gap:14px; align-items:flex-start;">
+                    <div style="font-size:34px; line-height:1;">📄</div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="color:#777; font-size:11px; font-weight:900; text-transform:uppercase; margin-bottom:6px;">${escapeHtml(badge)}</div>
+                        <h3 style="margin:0 0 8px 0; color:var(--w-gold); font-size:18px;">${title}</h3>
+                        ${description ? `<p style="margin:0 0 14px 0; color:#bbb; font-size:14px; line-height:1.45;">${description}</p>` : ""}
+                        <a href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener" style="
+                            display:inline-flex;
+                            align-items:center;
+                            justify-content:center;
+                            padding:11px 14px;
+                            border-radius:999px;
+                            background:var(--w-gold);
+                            color:#000;
+                            text-decoration:none;
+                            font-size:12px;
+                            font-weight:900;
+                            text-transform:uppercase;
+                        ">Apri PDF</a>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderRadio(mountEl, result) {
+        const items = Array.isArray(result.items) ? result.items : [];
+
+        if (!items.length) {
+            mountEl.innerHTML = `
+                <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
+                    <div style="font-size:44px; margin-bottom:10px;">🎧</div>
+                    <h3 style="color:#7cc7ff; margin:0 0 8px 0;">Radio Natura</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        Nessun audio disponibile per ora.
+                    </p>
+                </div>
+            `;
+            return;
+        }
+
+        mountEl.innerHTML = items.map(buildAudioCard).join("");
+    }
+
+    function renderBiblioteca(mountEl, result) {
+        const items = Array.isArray(result.items) ? result.items : [];
+
+        const libri = items.filter(item => safeString(item.subcategory) === "libri");
+        const manuali = items.filter(item => safeString(item.subcategory) === "manuali_guide");
+
+        mountEl.innerHTML = `
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <button type="button" data-wildu-media-tab="libri" style="
+                    flex:1;
+                    padding:12px 10px;
+                    border-radius:999px;
+                    border:1px solid rgba(212,175,55,0.55);
+                    background:var(--w-gold);
+                    color:#000;
+                    font-size:12px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                ">Libri</button>
+
+                <button type="button" data-wildu-media-tab="manuali_guide" style="
+                    flex:1;
+                    padding:12px 10px;
+                    border-radius:999px;
+                    border:1px solid rgba(120,190,255,0.55);
+                    background:rgba(120,190,255,0.12);
+                    color:#7cc7ff;
+                    font-size:12px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                ">Manuali e Guide</button>
+            </div>
+
+            <div data-wildu-media-panel="libri"></div>
+            <div data-wildu-media-panel="manuali_guide" style="display:none;"></div>
+        `;
+
+        const libriPanel = mountEl.querySelector('[data-wildu-media-panel="libri"]');
+        const manualiPanel = mountEl.querySelector('[data-wildu-media-panel="manuali_guide"]');
+
+        libriPanel.innerHTML = libri.length
+            ? libri.map(buildPdfCard).join("")
+            : `
+                <div class="card" style="border-left-color:var(--w-gold); text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">📚</div>
+                    <p style="color:#aaa; font-size:14px; margin:0;">Nessun libro disponibile per ora.</p>
+                </div>
+            `;
+
+        manualiPanel.innerHTML = manuali.length
+            ? manuali.map(buildPdfCard).join("")
+            : `
+                <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">📘</div>
+                    <p style="color:#aaa; font-size:14px; margin:0;">Nessun manuale o guida disponibile per ora.</p>
+                </div>
+            `;
+
+        const tabButtons = Array.from(mountEl.querySelectorAll("[data-wildu-media-tab]"));
+
+        function setTab(tab) {
+            tabButtons.forEach(btn => {
+                const active = btn.getAttribute("data-wildu-media-tab") === tab;
+                btn.style.background = active
+                    ? (tab === "libri" ? "var(--w-gold)" : "#7cc7ff")
+                    : (tab === "libri" ? "rgba(212,175,55,0.10)" : "rgba(120,190,255,0.12)");
+                btn.style.color = active ? "#000" : (tab === "libri" ? "var(--w-gold)" : "#7cc7ff");
+            });
+
+            Array.from(mountEl.querySelectorAll("[data-wildu-media-panel]")).forEach(panel => {
+                panel.style.display = panel.getAttribute("data-wildu-media-panel") === tab ? "block" : "none";
+            });
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener("click", function () {
+                setTab(this.getAttribute("data-wildu-media-tab"));
+            });
+        });
+
+        setTab("libri");
+    }
+
+    async function renderTag(options = {}) {
+        const mountSelector = safeString(options.mount);
+        const tagSlug = safeString(options.tagSlug);
+        const renderer = safeString(options.renderer);
+
+        if (!mountSelector || !tagSlug) {
+            throw new Error("renderTag richiede mount e tagSlug");
+        }
+
+        const mountEl = document.querySelector(mountSelector);
+        if (!mountEl) {
+            console.warn("[WilduMediaClient] mount non trovato:", mountSelector);
+            return;
+        }
+
+        mountEl.innerHTML = `
+            <div style="text-align:center; padding:28px 10px; color:var(--w-gold);">
+                Caricamento contenuti...
+            </div>
+        `;
+
+        try {
+            const result = await loadTag(tagSlug, options);
+
+            if (renderer === "audio-list") {
+                renderRadio(mountEl, result);
+            } else if (renderer === "biblioteca-tabs") {
+                renderBiblioteca(mountEl, result);
+            } else {
+                mountEl.innerHTML = result.items.map(item => {
+                    const title = escapeHtml(item.title || "Contenuto Wild-U");
+                    const url = escapeHtml(item.fileUrl || "");
+                    return `
+                        <div class="card">
+                            <h3 style="margin-top:0;">${title}</h3>
+                            ${url ? `<a href="${url}" target="_blank" rel="noopener" style="color:var(--w-gold);">Apri</a>` : ""}
+                        </div>
+                    `;
+                }).join("");
+            }
+
+            console.log("[WilduMediaClient] render completato", {
+                tagSlug,
+                source: result.source,
+                publicVersion: result.publicVersion,
+                count: result.items.length
+            });
+        } catch (e) {
+            console.error("[WilduMediaClient] render fallito:", e);
+            mountEl.innerHTML = `
+                <div class="card" style="border-left-color:#ff4444; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">⚠️</div>
+                    <h3 style="color:#ff6666; margin:0 0 8px 0;">Contenuti non disponibili</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        Riprova più tardi o controlla la connessione.
+                    </p>
+                </div>
+            `;
+        }
+    }
+
+    return {
+        getPublicVersions,
+        loadTag,
+        renderTag,
+        readTagCache,
+        writeTagCache,
+        clearTagCache,
+        clearAllCache
+    };
+})();
+
+window.WilduMediaClient = WilduMediaClient;
+    
     // --- VARIABILI GLOBALI ---
     let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
     let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
