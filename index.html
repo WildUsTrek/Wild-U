@@ -1412,8 +1412,13 @@ const WilduMediaClient = (() => {
     function renderBiblioteca(mountEl, result) {
         const items = Array.isArray(result.items) ? result.items : [];
 
+        function isManualiGuide(value) {
+            const clean = safeString(value);
+            return clean === "manuali-guide" || clean === "manuali_guide";
+        }
+
         const libri = items.filter(item => safeString(item.subcategory) === "libri");
-        const manuali = items.filter(item => safeString(item.subcategory) === "manuali_guide");
+        const manuali = items.filter(item => isManualiGuide(item.subcategory));
 
         mountEl.innerHTML = `
             <div style="display:flex; gap:8px; margin-bottom:16px;">
