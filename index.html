@@ -6427,15 +6427,44 @@ function renderDynamicResources(resources) {
         return cloned;
     });
 
+    // =========================================================
+    // WILDU MEDIA SUITE — card statiche client
+    // =========================================================
+    // Queste risorse aprono moduli HTML statici.
+    // I contenuti reali NON arrivano da getInitData:
+    // vengono letti da Firestore tramite WilduMediaClient,
+    // usando wildu_media_runtime/public_versions come semaforo.
+    const mediaSuiteResources = [
+        {
+            Titolo: "Radio Natura",
+            Descrizione: "Audio e ascolti Wild-U dalla Media Suite",
+            Categoria: "🎧",
+            Link_Risorsa: "modules/media-radio.html",
+            module_rev: 1,
+            Grado_Minimo: ""
+        },
+        {
+            Titolo: "Biblioteca Wild-U",
+            Descrizione: "Libri, manuali e guide dalla Media Suite",
+            Categoria: "📚",
+            Link_Risorsa: "modules/media-biblioteca.html",
+            module_rev: 1,
+            Grado_Minimo: ""
+        }
+    ];
+
+    const finalResourcesWithMediaSuite = finalResources.concat(mediaSuiteResources);
+
     window.WILDU_RESOURCE_BUCKETS = {
         gpx: gpxResources,
         libri: libriResources,
         radio: radioResources,
+        mediaSuite: mediaSuiteResources,
         hidden: hiddenResources,
-        visible: finalResources
+        visible: finalResourcesWithMediaSuite
     };
 
-    container.innerHTML = finalResources.map(res => {
+    container.innerHTML = finalResourcesWithMediaSuite.map(res => {
         const safeLinks = btoa(JSON.stringify(res.link_interni || []));
         const grado = res.Grado_Minimo || "";
 
