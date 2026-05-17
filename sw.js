@@ -79,13 +79,14 @@ self.addEventListener('fetch', (e) => {
 
 // Se è una richiesta verso un server esterno
 if (!isSameOrigin) {
-    // 🛑 BYPASS AMAZON: Lasciamo che il browser gestisca Amazon da solo
+    // 🛑 BYPASS AMAZON:
+    // Lasciamo che il browser gestisca Amazon da solo.
     if (url.hostname.includes('amazon') || url.hostname.includes('ssl-images')) {
         return;
     }
 
     // 🗺️ BYPASS TILE MAPPA:
-    // Le tile OpenTopoMap / Waymarked Trails sono cross-origin, numerose e spesso opaque/status 0.
+    // Le tile OpenTopoMap / Waymarked Trails / OSM sono numerose e spesso opaque/status 0.
     // Non le cacheiamo nel nostro SW: lasciamo che Leaflet/browser/provider le gestiscano.
     if (
         url.hostname.endsWith('tile.opentopomap.org') ||
@@ -95,7 +96,20 @@ if (!isSameOrigin) {
         return;
     }
 
-    // La intercettiamo SOLO se è un'immagine o un asset utile (Cloudinary, Wildu)
+    // 🎧📚 BYPASS MEDIA SUITE R2:
+    // I file grandi caricati dalla Media Suite vivono su R2/CDN.
+    // NON devono finire automaticamente in ASSET_CACHE.
+    // Importante: NON bypassiamo www.wildu.it/public/ né Cloudinary,
+    // perché servono a immagini viaggio, cover e WildWall.
+    if (
+        url.hostname === 'media.baffiwild.it' ||
+        url.hostname === 'media.wildu.it'
+    ) {
+        return;
+    }
+
+    // Continuiamo invece a cacheare gli asset esterni utili già previsti:
+    // Cloudinary, www.wildu.it/public/, Google Docs, immagini viaggio, cover, ecc.
     if (isAssetRequest(req, url)) {
         e.respondWith(handleAssetRequest(req));
     }
