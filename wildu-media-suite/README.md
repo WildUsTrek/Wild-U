@@ -29,28 +29,22 @@ https://wildustrek.github.io/Wild-U/wildu-media-suite/
 - Non contiene segreti Cloudflare/R2.
 - Non gestisce la cache della app client: aggiorna solo `version` e `publicVersion` dei tag.
 
-## File da configurare
+## Config pubblica
 
-Apri:
+La config Firebase frontend è già impostata nel file:
 
 ```text
-js/config.js
+shared/firebase-config.js
 ```
 
-Compila solo la config Firebase frontend:
+Lo schema segue quello della mini-suite mappa, ma con collection e costanti dedicate alla Media Suite:
 
-```js
-firebaseConfig: {
-  apiKey: '...',
-  authDomain: '...',
-  projectId: '...',
-  storageBucket: '...',
-  messagingSenderId: '...',
-  appId: '...'
-}
+```text
+WILDU_MEDIA_COLLECTIONS
+WILDU_MEDIA_CONFIG
 ```
 
-Non inserire secret key, access key, bearer statici, account ID Cloudflare o service account.
+Non inserire mai secret key, access key, bearer statici, account ID Cloudflare, token R2 o service account.
 
 ## Collection Firestore
 
@@ -161,9 +155,8 @@ js/r2-worker-service.js
 ## Deploy
 
 1. Copia la cartella `wildu-media-suite` dentro il repo `Wild-U`.
-2. Compila `js/config.js`.
-3. Carica su GitHub.
-4. Apri:
+2. Carica su GitHub.
+3. Apri:
 
 ```text
 https://wildustrek.github.io/Wild-U/wildu-media-suite/

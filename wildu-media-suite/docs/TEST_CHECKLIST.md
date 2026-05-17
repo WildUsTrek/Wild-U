@@ -4,7 +4,7 @@
 
 - Apri `/Wild-U/wildu-media-suite/`.
 - Se Firebase config è placeholder, deve comparire avviso chiaro.
-- Dopo aver compilato `js/config.js`, la pagina deve mostrare login Google.
+- Con `shared/firebase-config.js` già compilato, la pagina deve mostrare login Google.
 
 ## 2. Login
 

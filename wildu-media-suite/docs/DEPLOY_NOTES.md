@@ -17,7 +17,7 @@ https://wildustrek.github.io/Wild-U/wildu-media-suite/
 1. Scarica lo ZIP generato.
 2. Estrai la cartella `wildu-media-suite`.
 3. Copiala nella root del repo `Wild-U`.
-4. Compila `wildu-media-suite/js/config.js` con Firebase frontend config.
+4. Verifica `wildu-media-suite/shared/firebase-config.js` con la Firebase frontend config pubblica già impostata.
 5. Commit e push.
 6. Apri l'URL GitHub Pages.
 

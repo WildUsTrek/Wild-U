@@ -14,7 +14,7 @@
     var missing = root.firebaseConfigMissing || [];
     if (!missing.length) return '';
     return '<div class="alert error"><strong>Config Firebase incompleta.</strong><br>' +
-      'Compila <code>js/config.js</code>: ' + root.escapeHtml(missing.join(', ')) + '</div>';
+      'Controlla <code>shared/firebase-config.js</code>: ' + root.escapeHtml(missing.join(', ')) + '</div>';
   }
 
   function setAuthUi(user) {
