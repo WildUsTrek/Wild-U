@@ -1,0 +1,46 @@
+<div id="wildu-biblioteca-module" style="padding-bottom:30px;">
+    <div class="card" style="border-left-color:var(--w-gold); margin-top:20px;">
+        <div style="text-align:center;">
+            <div style="font-size:48px; margin-bottom:8px;">📚</div>
+            <h2 style="color:var(--w-gold); margin:0; text-transform:uppercase;">Biblioteca Wild-U</h2>
+            <p style="color:#aaa; font-size:14px; line-height:1.5; margin:12px auto 0 auto; max-width:520px;">
+                Libri, manuali e guide caricati dalla Media Suite.
+            </p>
+        </div>
+    </div>
+
+    <div id="wildu-biblioteca-list"></div>
+</div>
+
+<script>
+(function () {
+    console.log("[WILDU MEDIA BIBLIOTECA] Modulo avviato");
+
+    if (!window.WilduMediaClient || typeof window.WilduMediaClient.renderTag !== "function") {
+        const root = document.getElementById("wildu-biblioteca-list");
+        if (root) {
+            root.innerHTML = `
+                <div class="card" style="border-left-color:#ff4444; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">⚠️</div>
+                    <h3 style="color:#ff6666; margin:0 0 8px 0;">Loader media assente</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        La client app deve essere aggiornata con WilduMediaClient.
+                    </p>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    window.WilduMediaClient.renderTag({
+        tagSlug: "biblioteca",
+        category: "pdf",
+        mount: "#wildu-biblioteca-list",
+        renderer: "biblioteca-tabs"
+    });
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
+        window.WILDU_MODULE.rewriteRoot(document.getElementById("wildu-biblioteca-module"));
+    }
+})();
+</script>
