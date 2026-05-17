@@ -5959,18 +5959,25 @@ function getWilduRuntimeManifestRev(rawUrl, runtime) {
     const data = runtime && typeof runtime === "object" ? runtime : {};
     const candidates = buildWilduRuntimeKeyCandidates(rawUrl);
 
-    const buckets = [
-        data.modules,
-        data.games
-    ];
+    // MODULE RUNTIME = solo moduli contenitori.
+    // Non deve leggere data.games, perché un modulo può ospitare più giochi
+    // e non deve ereditare la versione di uno specifico gioco.
+    const moduleBucket = data.modules && typeof data.modules === "object"
+        ? data.modules
+        : null;
 
-    for (const bucket of buckets) {
-        if (!bucket || typeof bucket !== "object") continue;
-
+    if (moduleBucket) {
         for (const key of candidates) {
-            const rev = extractWilduRuntimeRevFromEntry(bucket[key]);
+            const rev = extractWilduRuntimeRevFromEntry(moduleBucket[key]);
             if (rev) return rev;
         }
+    }
+
+    // Compatibilità futura: se module_versions viene scritto piatto:
+    // { "modules/wildu-games.html": { rev: 2 } }
+    for (const key of candidates) {
+        const rev = extractWilduRuntimeRevFromEntry(data[key]);
+        if (rev) return rev;
     }
 
     return null;
@@ -6089,6 +6096,54 @@ window.WILDU_RUNTIME_VERSIONS = {
     clearCorrelated: clearWilduCorrelatedRuntimeCaches
 };
 
+// =========================================================
+// WILDU RESOURCE REV RESOLVER — separa moduli e giochi
+// =========================================================
+// - modules/*.html usa module_versions
+// - giochi/* usa game_versions
+// - tutto il resto eredita la rev del modulo contenitore
+
+function isWilduGameRuntimeUrl(rawUrl) {
+    const key = normalizeWilduRuntimeKey(rawUrl);
+    if (!key) return false;
+
+    return (
+        key.indexOf("giochi/") === 0 ||
+        key.indexOf("/giochi/") >= 0
+    );
+}
+
+function resolveWilduResourceEffectiveRev(rawUrl, fallbackRev) {
+    const baseRev = Math.max(1, parseInt(fallbackRev, 10) || 1);
+
+    // Singoli giochi / mini-app gioco:
+    // comandano solo da wildu_media_runtime/game_versions.
+    if (isWilduGameRuntimeUrl(rawUrl)) {
+        try {
+            if (
+                window.WILDU_GAME_RUNTIME &&
+                typeof window.WILDU_GAME_RUNTIME.getRevForPath === "function"
+            ) {
+                const gameRev = window.WILDU_GAME_RUNTIME.getRevForPath(rawUrl);
+                if (gameRev && gameRev > 0) return gameRev;
+            }
+        } catch (e) {}
+
+        return baseRev;
+    }
+
+    // Moduli contenitori / asset del modulo:
+    // comandano solo da wildu_media_runtime/module_versions.
+    return resolveWilduEffectiveRev(
+        rawUrl,
+        baseRev,
+        WILDU_RUNTIME_VERSION_MEMORY
+    );
+}
+
+function rememberWilduResourceRevAndMaybeClearSoon(rawUrl, effectiveRev) {
+    rememberWilduRuntimeRevAndMaybeClearSoon(rawUrl, effectiveRev);
+}    
     
 async function debugDumpWilduCaches() {
     const summary = {
@@ -6265,13 +6320,12 @@ function getModuleInternalLink(ref, fallbackUrl) {
     const item = findInternalLinkItem(ref);
     const rawUrl = item ? extractInternalLinkUrl(item) : String(fallbackUrl || '').trim();
 
-    const effectiveRev = resolveWilduEffectiveRev(
+    const effectiveRev = resolveWilduResourceEffectiveRev(
         rawUrl,
-        window.currentModuleRev || 1,
-        WILDU_RUNTIME_VERSION_MEMORY
+        window.currentModuleRev || 1
     );
 
-    rememberWilduRuntimeRevAndMaybeClearSoon(rawUrl, effectiveRev);
+    rememberWilduResourceRevAndMaybeClearSoon(rawUrl, effectiveRev);
 
     return buildVersionedModuleUrl(rawUrl, effectiveRev);
 }
@@ -6297,13 +6351,12 @@ function rewriteModuleResourceUrls(root, moduleRev) {
         root.querySelectorAll(selector).forEach(el => {
             const currentValue = el.getAttribute(attr);
             if (!currentValue) return;
-            const effectiveRev = resolveWilduEffectiveRev(
+            const effectiveRev = resolveWilduResourceEffectiveRev(
                 currentValue,
-                moduleRev,
-                WILDU_RUNTIME_VERSION_MEMORY
+                moduleRev
             );
 
-            rememberWilduRuntimeRevAndMaybeClearSoon(currentValue, effectiveRev);
+            rememberWilduResourceRevAndMaybeClearSoon(currentValue, effectiveRev);
 
             const nextValue = buildVersionedModuleUrl(currentValue, effectiveRev);
             if (nextValue && nextValue !== currentValue) {
@@ -6480,13 +6533,12 @@ function exposeModuleRuntime(moduleRev) {
     window.currentModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
     function getEffectiveUrlRev(rawUrl) {
-        const effectiveRev = resolveWilduEffectiveRev(
+        const effectiveRev = resolveWilduResourceEffectiveRev(
             rawUrl,
-            window.currentModuleRev || 1,
-            WILDU_RUNTIME_VERSION_MEMORY
+            window.currentModuleRev || 1
         );
 
-        rememberWilduRuntimeRevAndMaybeClearSoon(rawUrl, effectiveRev);
+        rememberWilduResourceRevAndMaybeClearSoon(rawUrl, effectiveRev);
 
         return effectiveRev;
     }
@@ -7050,11 +7102,18 @@ function getWilduRuntimeEntryRev(container, rawPath) {
 function getWilduGameRuntimeRevForPath(rawPath, runtime) {
     const data = runtime && typeof runtime === "object" ? runtime : {};
 
-    const moduleRev = getWilduRuntimeEntryRev(data.modules, rawPath);
-    if (moduleRev) return moduleRev;
-
+    // GAME RUNTIME = solo singoli giochi.
+    // Non deve mai leggere data.modules, perché il modulo contenitore
+    // e il gioco specifico sono due livelli diversi.
     const gameRev = getWilduRuntimeEntryRev(data.games, rawPath);
     if (gameRev) return gameRev;
+
+    // Compatibilità futura: se un giorno game_versions viene scritto
+    // in forma piatta, es:
+    // { "giochi/sfida-dei-sassi/index.html": { rev: 5 } }
+    // lo accettiamo comunque.
+    const rootRev = getWilduRuntimeEntryRev(data, rawPath);
+    if (rootRev) return rootRev;
 
     return null;
 }
@@ -7075,9 +7134,21 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     }
 
     const legacyModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
+
+    // 1) Manifesto moduli contenitori.
     const runtimeVersions = await getWilduRuntimeVersions();
 
-    // Firestore comanda se contiene una rev per questo modulo.
+    // 2) Manifesto giochi specifici.
+    // Lo carichiamo qui una volta, con TTL 3 ore, così quando il modulo giochi
+    // chiama WILDU_MODULE.getUrl("giochi/...") ha già la rev del singolo gioco.
+    // Se il documento non esiste, non rompe nulla.
+    try {
+        await getWilduGameRuntime();
+    } catch (e) {
+        console.warn("[WILDU GAME RUNTIME] Preload saltato:", e);
+    }
+
+    // Firestore module_versions comanda solo per il modulo contenitore.
     // module_rev legacy resta fallback.
     const resolvedModuleRev = resolveWilduEffectiveRev(f, legacyModuleRev, runtimeVersions);
     const versionedModuleUrl = buildVersionedModuleUrl(f, resolvedModuleRev);
