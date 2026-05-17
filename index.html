@@ -1134,7 +1134,14 @@ const WilduMediaClient = (() => {
     const PUBLIC_VERSIONS_DOC = "public_versions";
 
     const CACHE_PREFIX = "wilduMediaClient:v1:";
-    const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // sicurezza massima: 7 giorni, ma vince sempre publicVersion
+    const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // cache contenuti tag: vince sempre publicVersion
+
+    // Manifesto versioni pubbliche:
+    // evita una lettura Firestore a ogni apertura di Radio/Biblioteca.
+    // Se serve forzare subito un aggiornamento media, usare:
+    // ?mediaRefresh=1 oppure ?nocache=1 oppure ?cache=off
+    const PUBLIC_VERSIONS_CACHE_KEY = CACHE_PREFIX + "public_versions";
+    const PUBLIC_VERSIONS_TTL_MS = 3 * 60 * 60 * 1000; // 3 ore
 
     let publicVersionsMemory = null;
     let publicVersionsLoadedAt = 0;
@@ -1223,18 +1230,67 @@ const WilduMediaClient = (() => {
             Object.keys(localStorage).forEach(key => {
                 if (key.indexOf(CACHE_PREFIX) === 0) localStorage.removeItem(key);
             });
+
+            publicVersionsMemory = null;
+            publicVersionsLoadedAt = 0;
+        } catch (e) {}
+    }
+
+    function readPublicVersionsCache() {
+        try {
+            const raw = localStorage.getItem(PUBLIC_VERSIONS_CACHE_KEY);
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return null;
+
+            const savedAt = normalizeNumber(parsed.savedAt, 0);
+            if (!savedAt || now() - savedAt > PUBLIC_VERSIONS_TTL_MS) return null;
+
+            if (!parsed.tags || typeof parsed.tags !== "object") return null;
+
+            return parsed.tags;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writePublicVersionsCache(tags) {
+        try {
+            localStorage.setItem(PUBLIC_VERSIONS_CACHE_KEY, JSON.stringify({
+                savedAt: now(),
+                tags: tags && typeof tags === "object" ? tags : {}
+            }));
+        } catch (e) {
+            console.warn("[WilduMediaClient] Cache public_versions non scritta:", e);
+        }
+    }
+
+    function clearPublicVersionsCache() {
+        try {
+            localStorage.removeItem(PUBLIC_VERSIONS_CACHE_KEY);
         } catch (e) {}
     }
 
     async function getPublicVersions(options = {}) {
         const force = options.force === true || shouldBypassCache();
 
-        // micro-cache RAM solo per evitare doppie letture nello stesso render;
-        // non sostituisce la cache persistente dei contenuti.
-        if (!force && publicVersionsMemory && now() - publicVersionsLoadedAt < 30000) {
+        // 1) Cache RAM: evita doppie letture nello stesso giro di apertura modulo.
+        if (!force && publicVersionsMemory && now() - publicVersionsLoadedAt < PUBLIC_VERSIONS_TTL_MS) {
             return publicVersionsMemory;
         }
 
+        // 2) Cache persistente: evita lettura Firestore del manifesto per 3 ore.
+        if (!force) {
+            const cachedTags = readPublicVersionsCache();
+            if (cachedTags) {
+                publicVersionsMemory = cachedTags;
+                publicVersionsLoadedAt = now();
+                return cachedTags;
+            }
+        }
+
+        // 3) Firestore: solo se cache assente/scaduta o bypass manuale.
         const snap = await db
             .collection(RUNTIME_COLLECTION)
             .doc(PUBLIC_VERSIONS_DOC)
@@ -1245,6 +1301,8 @@ const WilduMediaClient = (() => {
 
         publicVersionsMemory = tags;
         publicVersionsLoadedAt = now();
+
+        writePublicVersionsCache(tags);
 
         return tags;
     }
@@ -1565,6 +1623,7 @@ const WilduMediaClient = (() => {
         readTagCache,
         writeTagCache,
         clearTagCache,
+        clearPublicVersionsCache,
         clearAllCache
     };
 })();
@@ -5723,6 +5782,313 @@ function readModuleCacheMeta() {
 function writeModuleCacheMeta(nextMeta) {
     localStorage.setItem(MODULE_CACHE_META_KEY, JSON.stringify(nextMeta || {}));
 }
+
+// =========================================================
+// WILDU RUNTIME VERSIONING — moduli/giochi da Firestore
+// =========================================================
+// Firestore diventa autorità per le revisioni effettive.
+// module_rev legacy resta fallback se il path non è presente nel manifesto.
+// Cache manifesto: 3 ore.
+// Bypass manuale:
+// ?moduleRefresh=1
+// ?gameRefresh=1
+// ?nocache=1
+// ?cache=off
+
+const WILDU_RUNTIME_VERSION_COLLECTION = "wildu_media_runtime";
+const WILDU_RUNTIME_VERSION_DOC = "module_versions";
+const WILDU_RUNTIME_VERSION_CACHE_KEY = "wilduRuntimeVersions:v1:module_versions";
+const WILDU_RUNTIME_VERSION_TTL_MS = 3 * 60 * 60 * 1000;
+
+let WILDU_RUNTIME_VERSION_MEMORY = null;
+let WILDU_RUNTIME_VERSION_LOADED_AT = 0;
+
+function shouldBypassWilduRuntimeVersionCache() {
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        return (
+            params.get("moduleRefresh") === "1" ||
+            params.get("gameRefresh") === "1" ||
+            params.get("nocache") === "1" ||
+            params.get("cache") === "off"
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
+function normalizeWilduRuntimeKey(rawUrl) {
+    const value = String(rawUrl || "").trim();
+    if (!value) return "";
+
+    try {
+        const abs = new URL(value, window.location.href);
+
+        if (abs.origin !== window.location.origin) {
+            return "";
+        }
+
+        let path = abs.pathname.replace(/^\/+/, "");
+
+        // Se siamo sotto /Wild-U/, togliamo il prefisso per ottenere:
+        // modules/x.html oppure giochi/x/index.html
+        const scopePrefix = "Wild-U/";
+        if (path.indexOf(scopePrefix) === 0) {
+            path = path.substring(scopePrefix.length);
+        }
+
+        return path.split("?")[0].split("#")[0];
+    } catch (e) {
+        return value
+            .replace(/^\.?\//, "")
+            .split("?")[0]
+            .split("#")[0];
+    }
+}
+
+function buildWilduRuntimeKeyCandidates(rawUrl) {
+    const clean = normalizeWilduRuntimeKey(rawUrl);
+    if (!clean) return [];
+
+    const out = [clean];
+
+    if (clean.charAt(0) !== "/") out.push("/" + clean);
+    if (clean.indexOf("Wild-U/") !== 0) out.push("Wild-U/" + clean);
+    if (clean.indexOf("/Wild-U/") !== 0) out.push("/Wild-U/" + clean);
+
+    return Array.from(new Set(out));
+}
+
+function readWilduRuntimeVersionCache() {
+    try {
+        const raw = localStorage.getItem(WILDU_RUNTIME_VERSION_CACHE_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return null;
+
+        const savedAt = Number(parsed.savedAt || 0);
+        if (!savedAt || Date.now() - savedAt > WILDU_RUNTIME_VERSION_TTL_MS) return null;
+
+        return parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function writeWilduRuntimeVersionCache(payload) {
+    try {
+        localStorage.setItem(WILDU_RUNTIME_VERSION_CACHE_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            payload: payload && typeof payload === "object" ? payload : {}
+        }));
+    } catch (e) {
+        console.warn("[WILDU RUNTIME VERSION] Cache manifesto non scritta:", e);
+    }
+}
+
+function clearWilduRuntimeVersionCache() {
+    try {
+        localStorage.removeItem(WILDU_RUNTIME_VERSION_CACHE_KEY);
+        WILDU_RUNTIME_VERSION_MEMORY = null;
+        WILDU_RUNTIME_VERSION_LOADED_AT = 0;
+    } catch (e) {}
+}
+
+async function getWilduRuntimeVersions(options = {}) {
+    const force = options.force === true || shouldBypassWilduRuntimeVersionCache();
+
+    if (
+        !force &&
+        WILDU_RUNTIME_VERSION_MEMORY &&
+        Date.now() - WILDU_RUNTIME_VERSION_LOADED_AT < WILDU_RUNTIME_VERSION_TTL_MS
+    ) {
+        return WILDU_RUNTIME_VERSION_MEMORY;
+    }
+
+    if (!force) {
+        const cached = readWilduRuntimeVersionCache();
+        if (cached) {
+            WILDU_RUNTIME_VERSION_MEMORY = cached;
+            WILDU_RUNTIME_VERSION_LOADED_AT = Date.now();
+            return cached;
+        }
+    }
+
+    try {
+        const snap = await db
+            .collection(WILDU_RUNTIME_VERSION_COLLECTION)
+            .doc(WILDU_RUNTIME_VERSION_DOC)
+            .get();
+
+        const data = snap.exists ? (snap.data() || {}) : {};
+
+        WILDU_RUNTIME_VERSION_MEMORY = data;
+        WILDU_RUNTIME_VERSION_LOADED_AT = Date.now();
+
+        writeWilduRuntimeVersionCache(data);
+
+        return data;
+    } catch (e) {
+        console.warn("[WILDU RUNTIME VERSION] Lettura Firestore saltata:", e);
+
+        const fallback = {};
+        WILDU_RUNTIME_VERSION_MEMORY = fallback;
+        WILDU_RUNTIME_VERSION_LOADED_AT = Date.now();
+
+        return fallback;
+    }
+}
+
+function extractWilduRuntimeRevFromEntry(entry) {
+    if (!entry || typeof entry !== "object") return null;
+
+    const raw =
+        entry.rev ??
+        entry.version ??
+        entry.Versione ??
+        entry.module_rev ??
+        entry.Module_Rev ??
+        0;
+
+    const rev = parseInt(raw, 10);
+    return Number.isFinite(rev) && rev > 0 ? rev : null;
+}
+
+function getWilduRuntimeManifestRev(rawUrl, runtime) {
+    const data = runtime && typeof runtime === "object" ? runtime : {};
+    const candidates = buildWilduRuntimeKeyCandidates(rawUrl);
+
+    const buckets = [
+        data.modules,
+        data.games
+    ];
+
+    for (const bucket of buckets) {
+        if (!bucket || typeof bucket !== "object") continue;
+
+        for (const key of candidates) {
+            const rev = extractWilduRuntimeRevFromEntry(bucket[key]);
+            if (rev) return rev;
+        }
+    }
+
+    return null;
+}
+
+function resolveWilduEffectiveRev(rawUrl, fallbackRev, runtime) {
+    const legacyRev = Math.max(1, parseInt(fallbackRev, 10) || 1);
+    const manifestRev = getWilduRuntimeManifestRev(rawUrl, runtime || WILDU_RUNTIME_VERSION_MEMORY);
+
+    // Firestore comanda quando c’è.
+    // Il legacy module_rev resta solo fallback.
+    return manifestRev || legacyRev;
+}
+
+function getWilduRuntimeCacheNeedles(rawUrl) {
+    const clean = normalizeWilduRuntimeKey(rawUrl);
+    if (!clean) return [];
+
+    const needles = [];
+
+    // Path preciso: modules/x.html oppure giochi/x/index.html
+    needles.push(clean);
+
+    // Se è una mini-app in cartella, cancelliamo tutta la cartella correlata.
+    // Esempio: giochi/sfida-dei-sassi/index.html → giochi/sfida-dei-sassi/
+    if (/\/index\.html$/i.test(clean)) {
+        needles.push(clean.replace(/\/index\.html$/i, "/"));
+    }
+
+    return Array.from(new Set(needles.filter(Boolean)));
+}
+
+async function clearWilduCorrelatedRuntimeCaches(rawUrl) {
+    if (!("caches" in window)) return;
+
+    const needles = getWilduRuntimeCacheNeedles(rawUrl);
+    if (!needles.length) return;
+
+    try {
+        const cacheNames = await caches.keys();
+
+        for (const cacheName of cacheNames) {
+            if (!/^wildu-/i.test(cacheName)) continue;
+
+            const cache = await caches.open(cacheName);
+            const requests = await cache.keys();
+
+            for (const req of requests) {
+                const reqUrl = req && req.url ? req.url : "";
+
+                let reqPath = "";
+                try {
+                    const abs = new URL(reqUrl);
+                    if (abs.origin !== window.location.origin) continue;
+                    reqPath = abs.pathname.replace(/^\/+/, "");
+                } catch (e) {
+                    reqPath = reqUrl;
+                }
+
+                const matched = needles.some(needle => reqPath.indexOf(needle) >= 0);
+                if (matched) {
+                    await cache.delete(req);
+                }
+            }
+        }
+
+        console.log("[WILDU RUNTIME VERSION] Cache correlata pulita:", {
+            rawUrl,
+            needles
+        });
+    } catch (e) {
+        console.warn("[WILDU RUNTIME VERSION] Pulizia cache correlata fallita:", e);
+    }
+}
+
+async function rememberWilduRuntimeRevAndMaybeClear(rawUrl, effectiveRev) {
+    const key = normalizeWilduRuntimeKey(rawUrl);
+    if (!key) return;
+
+    const nextRev = Math.max(1, parseInt(effectiveRev, 10) || 1);
+    const meta = readModuleCacheMeta();
+
+    const previous =
+        meta[key] ||
+        meta[String(rawUrl)] ||
+        null;
+
+    const previousRev = previous ? Math.max(1, parseInt(previous.rev, 10) || 1) : null;
+
+    if (previousRev && previousRev !== nextRev) {
+        await clearWilduCorrelatedRuntimeCaches(rawUrl);
+    }
+
+    meta[key] = {
+        rev: nextRev,
+        source: "runtime-versioning",
+        rawUrl: String(rawUrl || ""),
+        updatedAt: Date.now()
+    };
+
+    writeModuleCacheMeta(meta);
+}
+
+function rememberWilduRuntimeRevAndMaybeClearSoon(rawUrl, effectiveRev) {
+    rememberWilduRuntimeRevAndMaybeClear(rawUrl, effectiveRev).catch(e => {
+        console.warn("[WILDU RUNTIME VERSION] Aggiornamento meta async fallito:", e);
+    });
+}
+
+window.WILDU_RUNTIME_VERSIONS = {
+    get: getWilduRuntimeVersions,
+    clear: clearWilduRuntimeVersionCache,
+    resolveRev: function (rawUrl, fallbackRev) {
+        return resolveWilduEffectiveRev(rawUrl, fallbackRev || window.currentModuleRev || 1, WILDU_RUNTIME_VERSION_MEMORY);
+    },
+    clearCorrelated: clearWilduCorrelatedRuntimeCaches
+};
+
     
 async function debugDumpWilduCaches() {
     const summary = {
@@ -5898,7 +6264,16 @@ function findInternalLinkItem(ref) {
 function getModuleInternalLink(ref, fallbackUrl) {
     const item = findInternalLinkItem(ref);
     const rawUrl = item ? extractInternalLinkUrl(item) : String(fallbackUrl || '').trim();
-    return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
+
+    const effectiveRev = resolveWilduEffectiveRev(
+        rawUrl,
+        window.currentModuleRev || 1,
+        WILDU_RUNTIME_VERSION_MEMORY
+    );
+
+    rememberWilduRuntimeRevAndMaybeClearSoon(rawUrl, effectiveRev);
+
+    return buildVersionedModuleUrl(rawUrl, effectiveRev);
 }
 
 function rewriteModuleResourceUrls(root, moduleRev) {
@@ -5922,7 +6297,15 @@ function rewriteModuleResourceUrls(root, moduleRev) {
         root.querySelectorAll(selector).forEach(el => {
             const currentValue = el.getAttribute(attr);
             if (!currentValue) return;
-            const nextValue = buildVersionedModuleUrl(currentValue, moduleRev);
+            const effectiveRev = resolveWilduEffectiveRev(
+                currentValue,
+                moduleRev,
+                WILDU_RUNTIME_VERSION_MEMORY
+            );
+
+            rememberWilduRuntimeRevAndMaybeClearSoon(currentValue, effectiveRev);
+
+            const nextValue = buildVersionedModuleUrl(currentValue, effectiveRev);
             if (nextValue && nextValue !== currentValue) {
                 el.setAttribute(attr, nextValue);
             }
@@ -6096,6 +6479,18 @@ async function getWilduCachedImageCandidates(options = {}) {
 function exposeModuleRuntime(moduleRev) {
     window.currentModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
+    function getEffectiveUrlRev(rawUrl) {
+        const effectiveRev = resolveWilduEffectiveRev(
+            rawUrl,
+            window.currentModuleRev || 1,
+            WILDU_RUNTIME_VERSION_MEMORY
+        );
+
+        rememberWilduRuntimeRevAndMaybeClearSoon(rawUrl, effectiveRev);
+
+        return effectiveRev;
+    }
+
     window.WILDU_MODULE = {
         rev: window.currentModuleRev,
         links: Array.isArray(window.currentInternalLinks) ? window.currentInternalLinks : [],
@@ -6103,7 +6498,7 @@ function exposeModuleRuntime(moduleRev) {
         getCachedImages: getWilduCachedImageCandidates,
 
         getUrl: function (rawUrl) {
-            return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
+            return buildVersionedModuleUrl(rawUrl, getEffectiveUrlRev(rawUrl));
         },
 
         getLink: function (ref, fallbackUrl) {
@@ -6116,7 +6511,7 @@ function exposeModuleRuntime(moduleRev) {
     };
 
     window.getVersionedModuleUrl = function (rawUrl) {
-        return buildVersionedModuleUrl(rawUrl, window.currentModuleRev || 1);
+        return buildVersionedModuleUrl(rawUrl, getEffectiveUrlRev(rawUrl));
     };
 
     window.getModuleInternalLink = function (ref, fallbackUrl) {
@@ -6510,27 +6905,189 @@ function renderDynamicResources(resources) {
     }).join('');
 }
 
+
+// =========================================================
+// WILDU GAME RUNTIME — versioni giochi separate dai media
+// =========================================================
+// I giochi restano separati dalla Media Suite.
+// Questo lettore prepara però la client app a ricevere, in futuro,
+// versioni gioco scritte dal Media Center in una tab dedicata.
+// Cache locale: 3 ore.
+// Bypass manuale:
+// ?gameRefresh=1
+// ?nocache=1
+// ?cache=off
+
+const WILDU_GAME_RUNTIME_COLLECTION = "wildu_media_runtime";
+const WILDU_GAME_RUNTIME_DOC = "game_versions";
+const WILDU_GAME_RUNTIME_CACHE_KEY = "wilduGameRuntime:v1:game_versions";
+const WILDU_GAME_RUNTIME_TTL_MS = 3 * 60 * 60 * 1000;
+
+let WILDU_GAME_RUNTIME_MEMORY = null;
+let WILDU_GAME_RUNTIME_LOADED_AT = 0;
+
+function shouldBypassGameRuntimeCache() {
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        return (
+            params.get("gameRefresh") === "1" ||
+            params.get("nocache") === "1" ||
+            params.get("cache") === "off"
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
+function normalizeWilduRuntimePath(value) {
+    return String(value || "")
+        .trim()
+        .replace(/^\.?\//, "")
+        .split("?")[0]
+        .split("#")[0];
+}
+
+function readWilduGameRuntimeCache() {
+    try {
+        const raw = localStorage.getItem(WILDU_GAME_RUNTIME_CACHE_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return null;
+
+        const savedAt = Number(parsed.savedAt || 0);
+        if (!savedAt || Date.now() - savedAt > WILDU_GAME_RUNTIME_TTL_MS) return null;
+
+        return parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function writeWilduGameRuntimeCache(payload) {
+    try {
+        localStorage.setItem(WILDU_GAME_RUNTIME_CACHE_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            payload: payload && typeof payload === "object" ? payload : {}
+        }));
+    } catch (e) {
+        console.warn("[WILDU GAME RUNTIME] Cache non scritta:", e);
+    }
+}
+
+function clearWilduGameRuntimeCache() {
+    try {
+        localStorage.removeItem(WILDU_GAME_RUNTIME_CACHE_KEY);
+        WILDU_GAME_RUNTIME_MEMORY = null;
+        WILDU_GAME_RUNTIME_LOADED_AT = 0;
+    } catch (e) {}
+}
+
+async function getWilduGameRuntime(options = {}) {
+    const force = options.force === true || shouldBypassGameRuntimeCache();
+
+    if (
+        !force &&
+        WILDU_GAME_RUNTIME_MEMORY &&
+        Date.now() - WILDU_GAME_RUNTIME_LOADED_AT < WILDU_GAME_RUNTIME_TTL_MS
+    ) {
+        return WILDU_GAME_RUNTIME_MEMORY;
+    }
+
+    if (!force) {
+        const cached = readWilduGameRuntimeCache();
+        if (cached) {
+            WILDU_GAME_RUNTIME_MEMORY = cached;
+            WILDU_GAME_RUNTIME_LOADED_AT = Date.now();
+            return cached;
+        }
+    }
+
+    try {
+        const snap = await db
+            .collection(WILDU_GAME_RUNTIME_COLLECTION)
+            .doc(WILDU_GAME_RUNTIME_DOC)
+            .get();
+
+        const data = snap.exists ? (snap.data() || {}) : {};
+
+        WILDU_GAME_RUNTIME_MEMORY = data;
+        WILDU_GAME_RUNTIME_LOADED_AT = Date.now();
+
+        writeWilduGameRuntimeCache(data);
+
+        return data;
+    } catch (e) {
+        console.warn("[WILDU GAME RUNTIME] Lettura Firestore saltata:", e);
+
+        const fallback = {};
+        WILDU_GAME_RUNTIME_MEMORY = fallback;
+        WILDU_GAME_RUNTIME_LOADED_AT = Date.now();
+
+        return fallback;
+    }
+}
+
+function getWilduRuntimeEntryRev(container, rawPath) {
+    const cleanPath = normalizeWilduRuntimePath(rawPath);
+    if (!container || typeof container !== "object" || !cleanPath) return null;
+
+    const direct = container[cleanPath];
+    if (direct && typeof direct === "object") {
+        const rev = parseInt(direct.rev ?? direct.version ?? direct.Versione ?? 0, 10);
+        return Number.isFinite(rev) && rev > 0 ? rev : null;
+    }
+
+    const alt = container["/" + cleanPath];
+    if (alt && typeof alt === "object") {
+        const rev = parseInt(alt.rev ?? alt.version ?? alt.Versione ?? 0, 10);
+        return Number.isFinite(rev) && rev > 0 ? rev : null;
+    }
+
+    return null;
+}
+
+function getWilduGameRuntimeRevForPath(rawPath, runtime) {
+    const data = runtime && typeof runtime === "object" ? runtime : {};
+
+    const moduleRev = getWilduRuntimeEntryRev(data.modules, rawPath);
+    if (moduleRev) return moduleRev;
+
+    const gameRev = getWilduRuntimeEntryRev(data.games, rawPath);
+    if (gameRev) return gameRev;
+
+    return null;
+}
+
+window.WILDU_GAME_RUNTIME = {
+    get: getWilduGameRuntime,
+    clear: clearWilduGameRuntimeCache,
+    getRevForPath: function (rawPath) {
+        return getWilduGameRuntimeRevForPath(rawPath, WILDU_GAME_RUNTIME_MEMORY || {});
+    }
+};    
+
+    
 async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     if (!checkRankMet(r)) {
         showToast("🔒 Grado richiesto: " + r.toUpperCase());
         return;
     }
 
-    const resolvedModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
+    const legacyModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
+    const runtimeVersions = await getWilduRuntimeVersions();
+
+    // Firestore comanda se contiene una rev per questo modulo.
+    // module_rev legacy resta fallback.
+    const resolvedModuleRev = resolveWilduEffectiveRev(f, legacyModuleRev, runtimeVersions);
     const versionedModuleUrl = buildVersionedModuleUrl(f, resolvedModuleRev);
+
+    await rememberWilduRuntimeRevAndMaybeClear(f, resolvedModuleRev);
 
     window.currentInternalLinks = encodedLinks ? JSON.parse(atob(encodedLinks)) : [];
     window.currentModuleRev = resolvedModuleRev;
     window.currentModuleUrl = f;
     window.currentModuleVersionedUrl = versionedModuleUrl;
-
-    const meta = readModuleCacheMeta();
-    meta[String(f)] = {
-        rev: resolvedModuleRev,
-        versionedUrl: versionedModuleUrl,
-        updatedAt: Date.now()
-    };
-    writeModuleCacheMeta(meta);
 
     // "wheel" non è più una sezione autonoma.
     // Nascondere #sec-rewards nasconde già anche la Ruota.
