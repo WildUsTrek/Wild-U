@@ -31,7 +31,7 @@ export const WILDU_MEDIA_DEFAULT_TAGS = Object.freeze([
     allowedCategories: ["pdf"],
     tabs: [
       Object.freeze({ id: "libri", label: "Libri", category: "pdf" }),
-      Object.freeze({ id: "manuali_guide", label: "Manuali e Guide", category: "pdf" })
+      Object.freeze({ id: "manuali-guide", label: "Manuali e Guide", category: "pdf" })
     ]
   }),
   Object.freeze({
@@ -81,7 +81,7 @@ export const WILDU_MEDIA_CONFIG = Object.freeze({
 
   pdfSubcategories: Object.freeze([
     Object.freeze({ id: "libri", label: "Libri" }),
-    Object.freeze({ id: "manuali_guide", label: "Manuali e Guide" })
+    Object.freeze({ id: "manuali-guide", label: "Manuali e Guide" })
   ]),
 
   // Regole di indirizzamento: evitano upload nel tag sbagliato.
@@ -89,7 +89,7 @@ export const WILDU_MEDIA_CONFIG = Object.freeze({
     biblioteca: Object.freeze({
       allowedKinds: ["pdf"],
       requiredSubcategory: true,
-      allowedSubcategories: ["libri", "manuali_guide"],
+      allowedSubcategories: ["libri", "manuali-guide"],
       clientRenderable: true
     }),
     radio: Object.freeze({
