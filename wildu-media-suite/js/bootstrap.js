@@ -1,4 +1,8 @@
-import '../shared/firebase-config.js';
+const WILDU_MEDIA_BOOT_VERSION = '0.2.1';
+
+// Import versionato della config pubblica.
+// Serve a evitare che il Service Worker o il browser tengano una config vecchia.
+await import('../shared/firebase-config.js?v=' + encodeURIComponent(WILDU_MEDIA_BOOT_VERSION));
 
 const scripts = [
   'js/firebase-init.js',
@@ -10,10 +14,14 @@ const scripts = [
   'js/app.js'
 ];
 
+function withVersion(src) {
+  return src + '?v=' + encodeURIComponent(WILDU_MEDIA_BOOT_VERSION);
+}
+
 function loadClassicScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = src;
+    s.src = withVersion(src);
     s.onload = resolve;
     s.onerror = () => reject(new Error('Impossibile caricare ' + src));
     document.body.appendChild(s);
