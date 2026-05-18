@@ -1,4 +1,4 @@
-/* global WILDU_MEDIA_CONFIG */
+/* global WILDU_MEDIA_CONFIG */ 
 (function () {
   'use strict';
 
