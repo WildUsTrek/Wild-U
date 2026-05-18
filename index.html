@@ -6700,230 +6700,163 @@ function mergeWilduUniqueResourceLinks(primaryLinks, extraLinks) {
     return out;
 }
 
+
+function escapeWilduHtml(value) {
+    return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function escapeWilduJsString(value) {
+    return String(value == null ? "" : value)
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'")
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "");
+}
+
+function extractWilduRuntimeModules(runtime) {
+    const data = runtime && typeof runtime === "object" ? runtime : {};
+    const bucket = data.modules && typeof data.modules === "object" ? data.modules : {};
+
+    return Object.keys(bucket)
+        .map(function (url) {
+            const raw = bucket[url] && typeof bucket[url] === "object" ? bucket[url] : {};
+
+            const cleanUrl = String(raw.url || raw.Link_Risorsa || url || "").trim();
+            const rev = Math.max(1, parseInt(raw.rev ?? raw.module_rev ?? 1, 10) || 1);
+
+            return {
+                // Campi moderni
+                id: cleanUrl,
+                url: cleanUrl,
+                rev: rev,
+                enabled: raw.enabled !== false,
+                renderer: raw.renderer || "module-html",
+                cacheScope: raw.cacheScope || cleanUrl,
+                clearNeedles: Array.isArray(raw.clearNeedles) ? raw.clearNeedles : [],
+                extraUrls: Array.isArray(raw.extraUrls) ? raw.extraUrls : [],
+
+                // Campi client-facing compatibili
+                Titolo: String(raw.Titolo || raw.title || raw.Title || "Modulo Wild-U").trim(),
+                Descrizione: String(raw.Descrizione || raw.description || raw.notes || "").trim(),
+                Categoria: String(raw.Categoria || raw.category || "🧩").trim(),
+                Grado_Minimo: String(raw.Grado_Minimo || raw.gradeRequired || "").trim(),
+                Link_Risorsa: String(raw.Link_Risorsa || cleanUrl).trim(),
+                Audio: String(raw.Audio || "").trim(),
+                Regione: String(raw.Regione || "").trim(),
+                link_interni: Array.isArray(raw.link_interni) ? raw.link_interni : [],
+                module_rev: String(Math.max(1, parseInt(raw.module_rev ?? rev, 10) || rev))
+            };
+        })
+        .filter(function (item) {
+            return item.enabled !== false && item.Link_Risorsa;
+        })
+        .sort(function (a, b) {
+            const sa = Number(a.sortOrder || a.ordine || 999);
+            const sb = Number(b.sortOrder || b.ordine || 999);
+            if (sa !== sb) return sa - sb;
+            return String(a.Titolo || "").localeCompare(String(b.Titolo || ""));
+        });
+}
+
+    
 function renderDynamicResources(resources) {
     const container = document.getElementById('dynamic-resources-list');
     if (!container) return;
 
-    const sourceList = Array.isArray(resources) ? resources : [];
+    // Nuova regola Fase 2/5:
+    // i moduli client NON arrivano più da data.resources / moduli_risorse legacy.
+    // La nuova fonte è wildu_media_runtime/module_versions.
+    // Il parametro resources resta solo per compatibilità con i vecchi chiamanti.
+    container.innerHTML = `
+        <div class="card" style="border-left-color:var(--w-gold); text-align:center;">
+            <div style="font-size:42px; margin-bottom:10px;">🧩</div>
+            <h3 style="color:var(--w-gold); margin:0 0 8px 0;">Caricamento moduli...</h3>
+            <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                Lettura della nuova sorgente Firestore <code>wildu_media_runtime/module_versions</code>.
+            </p>
+        </div>
+    `;
 
-    const gpxResources = [];
-    const libriResources = [];
-    const radioResources = [];
-    const hiddenResources = [];
-    const visibleResources = [];
+    loadAndRenderWilduRuntimeModules(container, resources).catch(function (err) {
+        console.error("[WILDU MODULES] Render da module_versions fallito:", err);
 
-    function isWilduRadioNaturaResource(res) {
-        if (!res) return false;
+        container.innerHTML = `
+            <div class="card" style="border-left-color:#ff4444; text-align:center;">
+                <div style="font-size:42px; margin-bottom:10px;">⚠️</div>
+                <h3 style="color:#ff6666; margin:0 0 8px 0;">Moduli non disponibili</h3>
+                <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                    Non riesco a leggere <code>wildu_media_runtime/module_versions</code>.<br>
+                    Controlla connessione, regole Firestore o cache.
+                </p>
+            </div>
+        `;
 
-        const title = String(
-            res.Titolo ||
-            res.titolo ||
-            res.Title ||
-            res.title ||
-            res.Nome ||
-            res.nome ||
-            res.Chiave ||
-            res.chiave ||
-            res.Key ||
-            res.key ||
-            res.Slug ||
-            res.slug ||
-            ""
-        ).trim().toLowerCase();
+        window.WILDU_RESOURCE_BUCKETS = {
+            gpx: [],
+            libri: [],
+            radio: [],
+            mediaSuite: [],
+            hidden: [],
+            visible: [],
+            source: "module_versions_error",
+            error: String((err && err.message) || err || "Errore sconosciuto")
+        };
+    });
+}
 
-        const category = String(
-            res.Categoria ||
-            res.categoria ||
-            res.Category ||
-            res.category ||
-            res.Tipo ||
-            res.tipo ||
-            ""
-        ).trim().toLowerCase();
+async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapshot) {
+    const runtime = await getWilduRuntimeVersions();
+    const modules = extractWilduRuntimeModules(runtime);
 
-        const audio = String(
-            res.Audio ||
-            res.audio ||
-            res.Link_Risorsa ||
-            res.link_risorsa ||
-            res.Link ||
-            res.link ||
-            res.URL ||
-            res.url ||
-            ""
-        ).trim().toLowerCase();
+    window.WILDU_LAST_MODULE_RUNTIME = runtime || null;
 
-        return (
-            title === "radio natura" ||
-            title.includes("radio natura") ||
-            title.includes("radio del bosco") ||
-            title.includes("radio wild") ||
-            category.includes("radio") ||
-            category.includes("audio") ||
-            audio.includes("radio-natura") ||
-            audio.includes("radio_natura")
-        );
+    if (!modules.length) {
+        window.WILDU_RESOURCE_BUCKETS = {
+            gpx: [],
+            libri: [],
+            radio: [],
+            mediaSuite: [],
+            hidden: Array.isArray(legacyResourcesSnapshot) ? legacyResourcesSnapshot : [],
+            visible: [],
+            source: "module_versions_empty"
+        };
+
+        container.innerHTML = `
+            <div class="card" style="border-left-color:#ffb84d; text-align:center;">
+                <div style="font-size:42px; margin-bottom:10px;">📭</div>
+                <h3 style="color:#ffcc88; margin:0 0 8px 0;">Nessun modulo pubblicato</h3>
+                <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                    Vai nella <strong>Media Suite Admin → Moduli</strong>, crea o salva i moduli,
+                    poi ricarica questa app con <code>?moduleRefresh=1</code>.
+                </p>
+            </div>
+        `;
+        return;
     }
-
-    function buildWilduRadioLinksFromResource(res) {
-        const links = [];
-
-        try {
-            getWilduResourceLinks(res).forEach(link => {
-                if (!link) return;
-
-                const cloned = { ...link };
-
-                if (!cloned.Titolo && !cloned.titolo && !cloned.title && !cloned.Nome && !cloned.nome) {
-                    cloned.Titolo = "Radio Natura";
-                }
-
-                if (!cloned.Tipo && !cloned.tipo && !cloned.Categoria && !cloned.categoria) {
-                    cloned.Tipo = "audio";
-                }
-
-                links.push(cloned);
-            });
-        } catch (e) {}
-
-        const directUrl = String(
-            res.Audio ||
-            res.audio ||
-            res.Link_Risorsa ||
-            res.link_risorsa ||
-            res.Link ||
-            res.link ||
-            res.URL ||
-            res.url ||
-            ""
-        ).trim();
-
-        if (directUrl) {
-            links.push({
-                Titolo: res.Titolo || res.titolo || "Radio Natura",
-                Descrizione: res.Descrizione || res.descrizione || "Audio ambientale Wild-U.",
-                Tipo: "audio",
-                Link_Risorsa: directUrl
-            });
-        }
-
-        return links;
-    }
-
-    sourceList.forEach(res => {
-        if (!res) return;
-
-        if (isWilduStandaloneBooksResource(res)) {
-            libriResources.push(res);
-            hiddenResources.push(res);
-            return;
-        }
-
-        if (isWilduGpxResource(res)) {
-            gpxResources.push(res);
-            hiddenResources.push(res);
-            return;
-        }
-
-        if (isWilduRadioNaturaResource(res)) {
-            radioResources.push(res);
-            hiddenResources.push(res);
-            return;
-        }
-
-        visibleResources.push(res);
-    });
-
-    const gpxLinks = [];
-    gpxResources.forEach(res => {
-        getWilduResourceLinks(res).forEach(link => gpxLinks.push(link));
-    });
-
-    const radioLinks = [];
-    radioResources.forEach(res => {
-        buildWilduRadioLinksFromResource(res).forEach(link => radioLinks.push(link));
-    });
-
-    const finalResources = visibleResources.map(res => {
-        const cloned = { ...res };
-
-        cloned.Titolo = getWilduDisplayResourceTitle(res);
-
-        // Se questa è "Mappa dei Tesori", ci innestiamo dentro GPX + Radio Natura.
-        if (isWilduTreasureMapResource(res)) {
-            let mergedLinks = getWilduResourceLinks(res);
-
-            if (gpxLinks.length) {
-                mergedLinks = mergeWilduUniqueResourceLinks(
-                    mergedLinks,
-                    gpxLinks
-                );
-
-                cloned.__wilduMergedGpx = true;
-                cloned.__wilduMergedGpxCount = gpxLinks.length;
-            }
-
-            if (radioLinks.length) {
-                mergedLinks = mergeWilduUniqueResourceLinks(
-                    mergedLinks,
-                    radioLinks
-                );
-
-                cloned.__wilduMergedRadio = true;
-                cloned.__wilduMergedRadioCount = radioLinks.length;
-            }
-
-            cloned.link_interni = mergedLinks;
-        }
-
-        return cloned;
-    });
-
-    // =========================================================
-    // WILDU MEDIA SUITE — card statiche client
-    // =========================================================
-    // Queste risorse aprono moduli HTML statici.
-    // I contenuti reali NON arrivano da getInitData:
-    // vengono letti da Firestore tramite WilduMediaClient,
-    // usando wildu_media_runtime/public_versions come semaforo.
-    const mediaSuiteResources = [
-        {
-            Titolo: "Radio Natura",
-            Descrizione: "Audio e ascolti Wild-U dalla Media Suite",
-            Categoria: "🎧",
-            Link_Risorsa: "modules/media-radio.html",
-            module_rev: 1,
-            Grado_Minimo: ""
-        },
-        {
-            Titolo: "Biblioteca Wild-U",
-            Descrizione: "Libri, manuali e guide dalla Media Suite",
-            Categoria: "📚",
-            Link_Risorsa: "modules/media-biblioteca.html",
-            module_rev: 1,
-            Grado_Minimo: ""
-        }
-    ];
-
-    const finalResourcesWithMediaSuite = finalResources.concat(mediaSuiteResources);
 
     window.WILDU_RESOURCE_BUCKETS = {
-        gpx: gpxResources,
-        libri: libriResources,
-        radio: radioResources,
-        mediaSuite: mediaSuiteResources,
-        hidden: hiddenResources,
-        visible: finalResourcesWithMediaSuite
+        gpx: [],
+        libri: [],
+        radio: [],
+        mediaSuite: modules,
+        hidden: Array.isArray(legacyResourcesSnapshot) ? legacyResourcesSnapshot : [],
+        visible: modules,
+        source: "module_versions"
     };
 
-    container.innerHTML = finalResourcesWithMediaSuite.map(res => {
-        const safeLinks = btoa(JSON.stringify(res.link_interni || []));
+    container.innerHTML = modules.map(function (res) {
+        const safeLinks = btoa(JSON.stringify(Array.isArray(res.link_interni) ? res.link_interni : []));
         const grado = res.Grado_Minimo || "";
 
         const moduleRevRaw =
             res.module_rev ??
             res.Module_Rev ??
-            res.modulerev ??
+            res.rev ??
             res.versione ??
             res.Versione ??
             1;
@@ -6934,11 +6867,20 @@ function renderDynamicResources(resources) {
         if (res.Audio === "STOP") {
             audioParam = "'STOP'";
         } else if (res.Audio) {
-            audioParam = `WILD_ASSETS['${res.Audio}']`;
+            audioParam = `WILD_ASSETS['${escapeWilduJsString(res.Audio)}']`;
         }
 
-        const safeLinkRisorsa = String(res.Link_Risorsa || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-        const safeGrado = String(grado || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        const linkRisorsa = String(
+            res.Link_Risorsa ||
+            res.link_risorsa ||
+            res.url ||
+            res.URL ||
+            ""
+        ).trim();
+
+        const safeLinkRisorsa = escapeWilduJsString(linkRisorsa);
+        const safeGrado = escapeWilduJsString(grado);
+
         const displayTitle = getWilduDisplayResourceTitle(res);
         const displayDesc = getWilduResourceDescription(res);
         const displayCategory = getWilduResourceCategory(res);
@@ -6950,11 +6892,24 @@ function renderDynamicResources(resources) {
                     <div style="display:flex; flex-direction:column;">
                         <span class="resource-name">${displayTitle}</span>
                         <span style="font-size:11px; color:#666;">${displayDesc}</span>
+                        ${grado ? `<span style="font-size:10px; color:var(--w-gold); margin-top:3px; text-transform:uppercase;">Grado: ${escapeWilduHtml(grado)}</span>` : ""}
                     </div>
                 </div>
                 <span style="color:var(--w-sub)">➔</span>
             </div>`;
     }).join('');
+
+    console.log("[WILDU MODULES] Render da module_versions completato", {
+        count: modules.length,
+        modules: modules.map(function (m) {
+            return {
+                title: m.Titolo || m.title,
+                url: m.Link_Risorsa || m.url,
+                rev: m.rev || m.module_rev,
+                grade: m.Grado_Minimo || ""
+            };
+        })
+    });
 }
 
 
