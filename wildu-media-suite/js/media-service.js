@@ -84,7 +84,12 @@
       durationSeconds: input.durationSeconds || null,
       width: input.width || null,
       height: input.height || null,
-      pageCount: input.pageCount || null
+      pageCount: input.pageCount || null,
+      mediaVersion: Math.max(1, parseInt(input.mediaVersion, 10) || 1),
+      mediaVersionNote: String(input.mediaVersionNote || '').trim() || null,
+      mediaVersionUpdatedAt: input.mediaVersionUpdatedAt || null,
+      mediaVersionUpdatedByUid: input.mediaVersionUpdatedByUid || null,
+      mediaVersionUpdatedByEmail: input.mediaVersionUpdatedByEmail || null
     };
   }
 
@@ -99,10 +104,13 @@
 
     media.createdAt = now;
     media.updatedAt = now;
+    media.mediaVersionUpdatedAt = now;
     media.createdByUid = user.uid;
     media.updatedByUid = user.uid;
+    media.mediaVersionUpdatedByUid = user.uid;
     media.createdByEmail = user.email || null;
     media.updatedByEmail = user.email || null;
+    media.mediaVersionUpdatedByEmail = user.email || null;
 
     var docRef = await catalogCol().add(media);
     media.id = docRef.id;
@@ -169,6 +177,34 @@
     return getMedia(id);
   }
 
+  async function bumpMediaVersion(id, note) {
+    var user = root.requireCurrentUser();
+    var before = await getMedia(id);
+    if (!before) throw new Error('Media non trovato: ' + id);
+
+    var now = root.FieldValue.serverTimestamp();
+    var nextVersion = Math.max(1, Number(before.mediaVersion || 1) + 1);
+
+    await mediaRef(id).set({
+      mediaVersion: root.FieldValue.increment(1),
+      mediaVersionNote: String(note || '').trim() || 'VERSION_BUMP',
+      mediaVersionUpdatedAt: now,
+      mediaVersionUpdatedByUid: user.uid,
+      mediaVersionUpdatedByEmail: user.email || null,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null
+    }, { merge: true });
+
+    var after = Object.assign({}, before, {
+      mediaVersion: nextVersion,
+      mediaVersionNote: String(note || '').trim() || 'VERSION_BUMP'
+    });
+
+    await root.TagService.bumpTagVersionsForMediaChange(before, after, 'MEDIA_VERSION_BUMP');
+    return getMedia(id);
+  }
+
   async function archiveMedia(id) {
     return updateMedia(id, { status: 'ARCHIVED' });
   }
@@ -207,6 +243,7 @@
     getMedia: getMedia,
     listMedia: listMedia,
     updateMedia: updateMedia,
+    bumpMediaVersion: bumpMediaVersion,
     archiveMedia: archiveMedia,
     deleteMediaDocument: deleteMediaDocument,
     hardDeleteMediaAndR2: hardDeleteMediaAndR2

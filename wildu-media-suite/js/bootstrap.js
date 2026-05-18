@@ -1,4 +1,4 @@
-const WILDU_MEDIA_BOOT_VERSION = '0.2.2';
+const WILDU_MEDIA_BOOT_VERSION = '0.3.0';
 
 // Import versionato della config pubblica.
 // Serve a evitare che il Service Worker o il browser tengano una config vecchia.
@@ -8,6 +8,7 @@ const scripts = [
   'js/firebase-init.js',
   'js/utils.js',
   'js/tag-service.js',
+  'js/runtime-service.js',
   'js/r2-worker-service.js',
   'js/media-service.js',
   'js/client-version-helper.js',

@@ -8,6 +8,8 @@
     tags: [],
     media: [],
     runtimeManifest: null,
+    gameRuntime: null,
+    moduleRuntime: null,
     selectedTab: 'dashboard'
   };
 
@@ -225,6 +227,7 @@
     var status = root.$('#upload-status').value;
     var visibility = root.$('#upload-visibility').value;
     var sortOrder = Number(root.$('#upload-sort').value || 0);
+    var mediaVersion = Math.max(1, parseInt(root.$('#upload-media-version').value, 10) || 1);
 
     root.validateFileForKind(file, kind);
     if (!tagSlug) throw new Error('Scegli un tag.');
@@ -264,7 +267,8 @@
       objectKey: signed.objectKey,
       originalFileName: file.name,
       contentType: file.type || 'application/octet-stream',
-      sizeBytes: file.size
+      sizeBytes: file.size,
+      mediaVersion: mediaVersion
     });
 
     setUploadProgress(100, 'Upload completato. Media ID: ' + media.id);
@@ -272,6 +276,7 @@
     root.$('#upload-form').reset();
     root.$('#upload-status').value = 'ACTIVE';
     root.$('#upload-visibility').value = 'PUBLIC';
+    root.$('#upload-media-version').value = '1';
     updateUploadUiByKind();
     await refreshTags();
     await refreshMedia();
@@ -328,6 +333,7 @@
             '<span class="chip ' + (item.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(item.status || '—') + '</span>' +
             '<span class="chip">' + root.escapeHtml(item.visibility || '—') + '</span>' +
             '<span class="chip">' + root.formatBytes(item.sizeBytes) + '</span>' +
+            '<span class="chip">v' + Number(item.mediaVersion || 1) + '</span>' +
           '</div>' +
           '<p class="small-text"><code>' + root.escapeHtml(item.objectKey || '') + '</code></p>' +
           '<p class="small-text">Aggiornato: ' + root.toDateTimeLabel(item.updatedAt) + '</p>' +
@@ -335,6 +341,7 @@
         '<div class="media-preview">' + mediaPreviewHtml(item) + '</div>' +
         '<div class="media-actions">' +
           '<button class="small" data-open-url="' + root.escapeHtml(item.fileUrl || '') + '">Apri</button>' +
+          '<button class="small" data-version-media="' + root.escapeHtml(item.id) + '">+1 versione</button>' +
           '<button class="small warn" data-archive-media="' + root.escapeHtml(item.id) + '">Archivia</button>' +
           '<button class="small danger" data-hard-delete-media="' + root.escapeHtml(item.id) + '">Elimina + R2</button>' +
         '</div>' +
@@ -348,6 +355,218 @@
     root.$('#dashboard-version').textContent = WILDU_MEDIA_CONFIG.appVersion;
   }
 
+
+  async function refreshGameVersions() {
+    if (!root.db || !root.RuntimeService) return;
+    state.gameRuntime = await root.RuntimeService.listGames();
+    renderGameVersions();
+    renderDebug();
+  }
+
+  async function refreshModuleVersions() {
+    if (!root.db || !root.RuntimeService) return;
+    state.moduleRuntime = await root.RuntimeService.listModules();
+    renderModuleVersions();
+    renderDebug();
+  }
+
+  function renderGameVersions() {
+    var tbody = root.$('#games-table-body');
+    if (!tbody) return;
+
+    var items = state.gameRuntime && Array.isArray(state.gameRuntime.items) ? state.gameRuntime.items : [];
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Nessun gioco registrato. Usa “Preset giochi noti” oppure salva un URL gioco.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(function (item) {
+      return '<tr>' +
+        '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.notes || '') + '</span></td>' +
+        '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || '—') + '</span></td>' +
+        '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
+        '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
+        '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
+        '<td class="actions">' +
+          '<button class="small" data-edit-game="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
+          '<button class="small" data-bump-game="' + root.escapeHtml(item.url || '') + '">+1</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function renderModuleVersions() {
+    var tbody = root.$('#modules-table-body');
+    if (!tbody) return;
+
+    var items = state.moduleRuntime && Array.isArray(state.moduleRuntime.items) ? state.moduleRuntime.items : [];
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Nessun modulo registrato. Usa “Preset moduli noti” oppure salva un URL modulo.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(function (item) {
+      return '<tr>' +
+        '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.notes || '') + '</span></td>' +
+        '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Renderer: ' + root.escapeHtml(item.renderer || 'module-html') + '</span></td>' +
+        '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
+        '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
+        '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
+        '<td class="actions">' +
+          '<button class="small" data-edit-module-version="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
+          '<button class="small" data-bump-module="' + root.escapeHtml(item.url || '') + '">+1</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function findGameVersion(url) {
+    var clean = root.RuntimeService.normalizeRuntimeUrl(url);
+    var items = state.gameRuntime && Array.isArray(state.gameRuntime.items) ? state.gameRuntime.items : [];
+    return items.find(function (item) { return item.url === clean; }) || null;
+  }
+
+  function findModuleVersion(url) {
+    var clean = root.RuntimeService.normalizeRuntimeUrl(url);
+    var items = state.moduleRuntime && Array.isArray(state.moduleRuntime.items) ? state.moduleRuntime.items : [];
+    return items.find(function (item) { return item.url === clean; }) || null;
+  }
+
+  function readGameForm() {
+    return {
+      title: root.$('#game-title').value,
+      url: root.$('#game-url').value,
+      rev: root.$('#game-rev').value,
+      enabled: root.$('#game-enabled').value === 'true',
+      moduleUrl: root.$('#game-module-url').value,
+      description: root.$('#game-description').value,
+      cacheScope: root.$('#game-cache-scope').value,
+      extraUrls: root.$('#game-extra-urls').value,
+      clearNeedles: root.$('#game-clear-needles').value
+    };
+  }
+
+  function fillGameForm(item) {
+    item = item || {};
+    root.$('#game-title').value = item.title || '';
+    root.$('#game-url').value = item.url || '';
+    root.$('#game-rev').value = Number(item.rev || 1);
+    root.$('#game-enabled').value = item.enabled === false ? 'false' : 'true';
+    root.$('#game-module-url').value = item.moduleUrl || '';
+    root.$('#game-description').value = item.description || item.notes || '';
+    root.$('#game-cache-scope').value = item.cacheScope || '';
+    root.$('#game-extra-urls').value = Array.isArray(item.extraUrls) ? item.extraUrls.join(', ') : '';
+    root.$('#game-clear-needles').value = Array.isArray(item.clearNeedles) ? item.clearNeedles.join(', ') : '';
+    switchTab('games');
+  }
+
+  function readModuleForm() {
+    return {
+      title: root.$('#module-title').value,
+      url: root.$('#module-url').value,
+      rev: root.$('#module-rev').value,
+      enabled: root.$('#module-enabled').value === 'true',
+      renderer: root.$('#module-renderer').value,
+      description: root.$('#module-description').value,
+      cacheScope: root.$('#module-cache-scope').value,
+      extraUrls: root.$('#module-extra-urls').value,
+      clearNeedles: root.$('#module-clear-needles').value
+    };
+  }
+
+  function fillModuleForm(item) {
+    item = item || {};
+    root.$('#module-title').value = item.title || '';
+    root.$('#module-url').value = item.url || '';
+    root.$('#module-rev').value = Number(item.rev || 1);
+    root.$('#module-enabled').value = item.enabled === false ? 'false' : 'true';
+    root.$('#module-renderer').value = item.renderer || 'module-html';
+    root.$('#module-description').value = item.description || item.notes || '';
+    root.$('#module-cache-scope').value = item.cacheScope || '';
+    root.$('#module-extra-urls').value = Array.isArray(item.extraUrls) ? item.extraUrls.join(', ') : '';
+    root.$('#module-clear-needles').value = Array.isArray(item.clearNeedles) ? item.clearNeedles.join(', ') : '';
+    switchTab('modules');
+  }
+
+  async function saveGameVersion(evt) {
+    evt.preventDefault();
+    await root.RuntimeService.saveGame(readGameForm());
+    root.toast('Versione gioco salvata in game_versions.', 'success');
+    await refreshGameVersions();
+  }
+
+  async function saveModuleVersion(evt) {
+    evt.preventDefault();
+    await root.RuntimeService.saveModule(readModuleForm());
+    root.toast('Versione modulo salvata in module_versions.', 'success');
+    await refreshModuleVersions();
+  }
+
+  async function bumpSelectedGameVersion() {
+    var url = root.$('#game-url').value;
+    await root.RuntimeService.bumpGame(url, root.$('#game-description').value || 'ADMIN_BUMP');
+    root.toast('Versione gioco incrementata: ' + url, 'success');
+    await refreshGameVersions();
+  }
+
+  async function bumpSelectedModuleVersion() {
+    var url = root.$('#module-url').value;
+    await root.RuntimeService.bumpModule(url, root.$('#module-description').value || 'ADMIN_BUMP');
+    root.toast('Versione modulo incrementata: ' + url, 'success');
+    await refreshModuleVersions();
+  }
+
+  async function seedGames() {
+    await root.RuntimeService.seedDefaultGames();
+    root.toast('Preset giochi noti creati/aggiornati.', 'success');
+    await refreshGameVersions();
+  }
+
+  async function seedModules() {
+    await root.RuntimeService.seedDefaultModules();
+    root.toast('Preset moduli noti creati/aggiornati.', 'success');
+    await refreshModuleVersions();
+  }
+
+  async function bumpGameFromTable(url) {
+    await root.RuntimeService.bumpGame(url, 'ADMIN_TABLE_BUMP');
+    root.toast('Versione gioco incrementata: ' + url, 'success');
+    await refreshGameVersions();
+  }
+
+  async function bumpModuleFromTable(url) {
+    await root.RuntimeService.bumpModule(url, 'ADMIN_TABLE_BUMP');
+    root.toast('Versione modulo incrementata: ' + url, 'success');
+    await refreshModuleVersions();
+  }
+
+  async function bumpMediaVersion(id) {
+    var note = prompt('Nota versione media (+1):', 'Aggiornamento file/metadati pubblico');
+    if (note === null) return;
+    await root.MediaService.bumpMediaVersion(id, note);
+    root.toast('Versione media incrementata e manifesti aggiornati.', 'success');
+    await refreshTags();
+    await refreshMedia();
+  }
+
+  function exportRuntimeJsonToDebug() {
+    var payload = {
+      public_versions: state.runtimeManifest,
+      game_versions: state.gameRuntime ? state.gameRuntime.raw : null,
+      module_versions: state.moduleRuntime ? state.moduleRuntime.raw : null
+    };
+    root.$('#debug-json').textContent = JSON.stringify(payload, null, 2);
+    switchTab('debug');
+  }
+
+  async function syncAllRuntimeDebug() {
+    await loadRuntimeManifestQuietly();
+    await refreshGameVersions();
+    await refreshModuleVersions();
+    exportRuntimeJsonToDebug();
+    root.toast('Runtime debug sincronizzato.', 'success');
+  }
+
   function renderDebug() {
     var debug = {
       appVersion: WILDU_MEDIA_CONFIG.appVersion,
@@ -357,6 +576,8 @@
       activeUploadKinds: WILDU_MEDIA_CONFIG.activeUploadKinds,
       currentUser: state.currentUser ? { uid: state.currentUser.uid, email: state.currentUser.email } : null,
       runtimeManifest: state.runtimeManifest,
+      gameRuntime: state.gameRuntime ? state.gameRuntime.raw : null,
+      moduleRuntime: state.moduleRuntime ? state.moduleRuntime.raw : null,
       tags: state.tags.map(function (t) {
         return {
           tagSlug: t.tagSlug,
@@ -403,11 +624,21 @@
 
     root.$('#tag-form').addEventListener('submit', function (evt) { run(saveTagFromForm, evt); });
     root.$('#upload-form').addEventListener('submit', function (evt) { run(uploadMedia, evt); });
+    root.$('#game-version-form').addEventListener('submit', function (evt) { run(saveGameVersion, evt); });
+    root.$('#module-version-form').addEventListener('submit', function (evt) { run(saveModuleVersion, evt); });
     root.$('#upload-kind').addEventListener('change', updateUploadUiByKind);
     root.$('#btn-refresh-tags').addEventListener('click', function () { run(refreshTags); });
     root.$('#btn-refresh-media').addEventListener('click', function () { run(refreshMedia); });
     root.$('#btn-seed-default-tags').addEventListener('click', function () { run(seedDefaultTags); });
     root.$('#btn-sync-runtime').addEventListener('click', function () { run(syncRuntimeManifest); });
+    root.$('#btn-refresh-games').addEventListener('click', function () { run(refreshGameVersions); });
+    root.$('#btn-refresh-modules').addEventListener('click', function () { run(refreshModuleVersions); });
+    root.$('#btn-game-bump').addEventListener('click', function () { run(bumpSelectedGameVersion); });
+    root.$('#btn-module-bump').addEventListener('click', function () { run(bumpSelectedModuleVersion); });
+    root.$('#btn-seed-games').addEventListener('click', function () { run(seedGames); });
+    root.$('#btn-seed-modules').addEventListener('click', function () { run(seedModules); });
+    root.$('#btn-export-runtime-json').addEventListener('click', exportRuntimeJsonToDebug);
+    root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
     root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
 
     document.body.addEventListener('click', function (evt) {
@@ -419,6 +650,21 @@
 
       var openBtn = evt.target.closest('[data-open-url]');
       if (openBtn) return window.open(openBtn.dataset.openUrl, '_blank', 'noopener');
+
+      var editGameBtn = evt.target.closest('[data-edit-game]');
+      if (editGameBtn) return fillGameForm(findGameVersion(editGameBtn.dataset.editGame));
+
+      var bumpGameBtn = evt.target.closest('[data-bump-game]');
+      if (bumpGameBtn) return run(bumpGameFromTable, bumpGameBtn.dataset.bumpGame);
+
+      var editModuleBtn = evt.target.closest('[data-edit-module-version]');
+      if (editModuleBtn) return fillModuleForm(findModuleVersion(editModuleBtn.dataset.editModuleVersion));
+
+      var bumpModuleBtn = evt.target.closest('[data-bump-module]');
+      if (bumpModuleBtn) return run(bumpModuleFromTable, bumpModuleBtn.dataset.bumpModule);
+
+      var versionMediaBtn = evt.target.closest('[data-version-media]');
+      if (versionMediaBtn) return run(bumpMediaVersion, versionMediaBtn.dataset.versionMedia);
 
       var archiveBtn = evt.target.closest('[data-archive-media]');
       if (archiveBtn) return run(archiveMedia, archiveBtn.dataset.archiveMedia);
@@ -459,14 +705,20 @@
         run(async function () {
           await refreshTags();
           await refreshMedia();
+          await refreshGameVersions();
+          await refreshModuleVersions();
           renderDashboard();
         });
       } else {
         state.tags = [];
         state.media = [];
         state.runtimeManifest = null;
+        state.gameRuntime = null;
+        state.moduleRuntime = null;
         renderTags();
         renderMedia();
+        renderGameVersions();
+        renderModuleVersions();
         renderDashboard();
         renderDebug();
       }

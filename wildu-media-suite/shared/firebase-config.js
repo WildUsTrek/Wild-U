@@ -62,7 +62,7 @@ export const WILDU_MEDIA_DEFAULT_TAGS = Object.freeze([
 
 export const WILDU_MEDIA_CONFIG = Object.freeze({
   appName: "Wildu Media Suite",
-  appVersion: "0.2.0",
+  appVersion: "0.3.0",
 
   // URL pubblici non segreti.
   workerUrl: "https://wildu-upload-manager.baffiwild.workers.dev",
@@ -134,6 +134,64 @@ export const WILDU_MEDIA_CONFIG = Object.freeze({
   }),
 
   runtimePublicVersionsDocId: "public_versions",
+  runtimeGameVersionsDocId: "game_versions",
+  runtimeModuleVersionsDocId: "module_versions",
+
+  defaultGameVersions: Object.freeze([
+    Object.freeze({
+      title: "Sfida dei Sassi",
+      url: "giochi/sfida-dei-sassi/index.html",
+      rev: 1,
+      enabled: true,
+      moduleUrl: "modules/wildu-games.html",
+      cacheScope: "giochi/sfida-dei-sassi/",
+      extraUrls: [],
+      clearNeedles: ["giochi/sfida-dei-sassi/"]
+    }),
+    Object.freeze({
+      title: "Costruisci il Rifugio",
+      url: "giochi/rifugio/index.html",
+      rev: 1,
+      enabled: true,
+      moduleUrl: "modules/wildu-games.html",
+      cacheScope: "giochi/rifugio/",
+      extraUrls: [],
+      clearNeedles: ["giochi/rifugio/"]
+    })
+  ]),
+
+  defaultModuleVersions: Object.freeze([
+    Object.freeze({
+      title: "Radio Natura",
+      url: "modules/media-radio.html",
+      rev: 1,
+      enabled: true,
+      renderer: "module-html",
+      cacheScope: "modules/media-radio.html",
+      extraUrls: [],
+      clearNeedles: ["modules/media-radio.html"]
+    }),
+    Object.freeze({
+      title: "Biblioteca Wild-U",
+      url: "modules/media-biblioteca.html",
+      rev: 1,
+      enabled: true,
+      renderer: "module-html",
+      cacheScope: "modules/media-biblioteca.html",
+      extraUrls: [],
+      clearNeedles: ["modules/media-biblioteca.html"]
+    }),
+    Object.freeze({
+      title: "Modulo Giochi",
+      url: "modules/wildu-games.html",
+      rev: 1,
+      enabled: true,
+      renderer: "module-html",
+      cacheScope: "modules/wildu-games.html",
+      extraUrls: [],
+      clearNeedles: ["modules/wildu-games.html"]
+    })
+  ]),
 
   // Header extra verso il Worker.
   // Lasciare vuoto: il Worker attuale accetta Authorization + Content-Type.

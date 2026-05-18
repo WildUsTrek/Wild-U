@@ -32,6 +32,8 @@
       <button class="tab-btn" data-tab="tags">Tag</button>
       <button class="tab-btn" data-tab="upload">Upload</button>
       <button class="tab-btn" data-tab="catalog">Catalogo</button>
+      <button class="tab-btn" data-tab="games">Giochi</button>
+      <button class="tab-btn" data-tab="modules">Moduli</button>
       <button class="tab-btn" data-tab="debug">Debug</button>
     </nav>
 
@@ -58,7 +60,7 @@
             <li><strong>Radio</strong>: MP3/audio.</li>
             <li><strong>Immagini</strong>: upload R2 admin-only, per ora non renderizzate in client.</li>
           </ul>
-          <p class="muted">Fuori: GPX/Map Viewer/Mappa dei Tesori, Attrezzatura Amazon, WildWall e Giochi.</p>
+          <p class="muted">Fuori dagli upload media: GPX/Map Viewer/Mappa dei Tesori, Attrezzatura Amazon e WildWall. I Giochi restano fuori dagli upload R2, ma sono gestibili in una tab separata solo per URL/versioni/cache.</p>
         </article>
 
         <article class="card half">
@@ -193,6 +195,10 @@
             <label for="upload-sort">Sort order</label>
             <input id="upload-sort" type="number" value="10">
           </div>
+          <div class="field third">
+            <label for="upload-media-version">Versione media iniziale</label>
+            <input id="upload-media-version" type="number" value="1" min="1">
+          </div>
           <div class="field">
             <label for="upload-title">Titolo</label>
             <input id="upload-title" required placeholder="Titolo contenuto">
@@ -259,6 +265,178 @@
           <div class="empty">Login richiesto.</div>
         </div>
       </article>
+    </section>
+
+    <section id="tab-games" class="tab-panel">
+      <div class="grid">
+        <article class="card half">
+          <h2>Versioni giochi</h2>
+          <p class="muted">Gestisce solo URL e versione delle mini-app gioco. Non carica file gioco su R2 e non modifica il modulo contenitore.</p>
+          <form id="game-version-form" class="form-grid">
+            <div class="field">
+              <label for="game-title">Titolo gioco</label>
+              <input id="game-title" placeholder="Sfida dei Sassi">
+            </div>
+            <div class="field">
+              <label for="game-url">URL gioco</label>
+              <input id="game-url" required placeholder="giochi/sfida-dei-sassi/index.html">
+            </div>
+            <div class="field third">
+              <label for="game-rev">Rev</label>
+              <input id="game-rev" type="number" min="1" value="1">
+            </div>
+            <div class="field third">
+              <label for="game-enabled">Enabled</label>
+              <select id="game-enabled">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </div>
+            <div class="field third">
+              <label for="game-module-url">Modulo contenitore</label>
+              <input id="game-module-url" placeholder="modules/wildu-games.html">
+            </div>
+            <div class="field full">
+              <label for="game-description">Descrizione / note</label>
+              <textarea id="game-description" placeholder="Cosa cambia in questa versione"></textarea>
+            </div>
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Salva gioco</button>
+              <button data-requires-auth type="button" id="btn-game-bump">+1 versione gioco</button>
+              <button data-requires-auth type="button" id="btn-refresh-games">Ricarica game_versions</button>
+              <button data-requires-auth type="button" id="btn-seed-games">Preset giochi noti</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card half">
+          <h2>Comandi avanzati giochi</h2>
+          <p class="small-text">Campi compatibili con il client: <code>rev</code>, <code>url</code>, <code>cacheScope</code>, <code>extraUrls</code>, <code>clearNeedles</code>, <code>moduleUrl</code>, <code>enabled</code>.</p>
+          <form id="game-advanced-form" class="form-grid">
+            <div class="field full">
+              <label for="game-cache-scope">cacheScope</label>
+              <input id="game-cache-scope" placeholder="giochi/sfida-dei-sassi/">
+            </div>
+            <div class="field full">
+              <label for="game-extra-urls">extraUrls, separati da virgola</label>
+              <textarea id="game-extra-urls" placeholder="giochi/sfida-dei-sassi/main.js, giochi/sfida-dei-sassi/style.css"></textarea>
+            </div>
+            <div class="field full">
+              <label for="game-clear-needles">clearNeedles, separati da virgola</label>
+              <textarea id="game-clear-needles" placeholder="giochi/sfida-dei-sassi/, sfida-dei-sassi"></textarea>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Giochi registrati</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Gioco</th>
+                  <th>URL</th>
+                  <th>Rev</th>
+                  <th>Enabled</th>
+                  <th>Cache scope</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="games-table-body">
+                <tr><td colspan="6" class="muted">Login richiesto.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-modules" class="tab-panel">
+      <div class="grid">
+        <article class="card half">
+          <h2>Versioni moduli contenitori</h2>
+          <p class="muted">Gestisce la versione dei moduli HTML contenitori. Non gestisce la versione dei singoli giochi interni.</p>
+          <form id="module-version-form" class="form-grid">
+            <div class="field">
+              <label for="module-title">Titolo modulo</label>
+              <input id="module-title" placeholder="Modulo Giochi">
+            </div>
+            <div class="field">
+              <label for="module-url">URL modulo</label>
+              <input id="module-url" required placeholder="modules/wildu-games.html">
+            </div>
+            <div class="field third">
+              <label for="module-rev">Rev</label>
+              <input id="module-rev" type="number" min="1" value="1">
+            </div>
+            <div class="field third">
+              <label for="module-enabled">Enabled</label>
+              <select id="module-enabled">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </div>
+            <div class="field third">
+              <label for="module-renderer">Renderer / tipo</label>
+              <input id="module-renderer" placeholder="module-html">
+            </div>
+            <div class="field full">
+              <label for="module-description">Descrizione / note</label>
+              <textarea id="module-description" placeholder="Cosa cambia in questa versione"></textarea>
+            </div>
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Salva modulo</button>
+              <button data-requires-auth type="button" id="btn-module-bump">+1 versione modulo</button>
+              <button data-requires-auth type="button" id="btn-refresh-modules">Ricarica module_versions</button>
+              <button data-requires-auth type="button" id="btn-seed-modules">Preset moduli noti</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card half">
+          <h2>Comandi avanzati moduli</h2>
+          <p class="small-text">Usali solo se serve controllo fine della cache: il client leggerà prima <code>rev</code>; gli altri campi sono compatibili/futuri.</p>
+          <form id="module-advanced-form" class="form-grid">
+            <div class="field full">
+              <label for="module-cache-scope">cacheScope</label>
+              <input id="module-cache-scope" placeholder="modules/wildu-games.html">
+            </div>
+            <div class="field full">
+              <label for="module-extra-urls">extraUrls, separati da virgola</label>
+              <textarea id="module-extra-urls" placeholder="modules/wildu-games.html, modules/media-radio.html"></textarea>
+            </div>
+            <div class="field full">
+              <label for="module-clear-needles">clearNeedles, separati da virgola</label>
+              <textarea id="module-clear-needles" placeholder="modules/wildu-games.html, wildu-games"></textarea>
+            </div>
+            <div class="form-actions">
+              <button data-requires-auth type="button" id="btn-export-runtime-json">Mostra JSON runtime</button>
+              <button data-requires-auth type="button" id="btn-sync-all-runtime">Sincronizza runtime debug</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Moduli registrati</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Modulo</th>
+                  <th>URL</th>
+                  <th>Rev</th>
+                  <th>Enabled</th>
+                  <th>Cache scope</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="modules-table-body">
+                <tr><td colspan="6" class="muted">Login richiesto.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section id="tab-debug" class="tab-panel">
