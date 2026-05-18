@@ -183,11 +183,17 @@
     if (!before) throw new Error('Media non trovato: ' + id);
 
     var now = root.FieldValue.serverTimestamp();
-    var nextVersion = Math.max(1, Number(before.mediaVersion || 1) + 1);
+
+    // Importante:
+    // i media creati prima del campo mediaVersion vengono mostrati in UI come v1.
+    // Quindi il primo "+1 versione" deve scrivere v2 reale, non increment(1) su campo mancante.
+    var currentVersion = Math.max(1, Number(before.mediaVersion || 1));
+    var nextVersion = currentVersion + 1;
+    var cleanNote = String(note || '').trim() || 'VERSION_BUMP';
 
     await mediaRef(id).set({
-      mediaVersion: root.FieldValue.increment(1),
-      mediaVersionNote: String(note || '').trim() || 'VERSION_BUMP',
+      mediaVersion: nextVersion,
+      mediaVersionNote: cleanNote,
       mediaVersionUpdatedAt: now,
       mediaVersionUpdatedByUid: user.uid,
       mediaVersionUpdatedByEmail: user.email || null,
@@ -198,7 +204,13 @@
 
     var after = Object.assign({}, before, {
       mediaVersion: nextVersion,
-      mediaVersionNote: String(note || '').trim() || 'VERSION_BUMP'
+      mediaVersionNote: cleanNote,
+      mediaVersionUpdatedAt: now,
+      mediaVersionUpdatedByUid: user.uid,
+      mediaVersionUpdatedByEmail: user.email || null,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null
     });
 
     await root.TagService.bumpTagVersionsForMediaChange(before, after, 'MEDIA_VERSION_BUMP');
