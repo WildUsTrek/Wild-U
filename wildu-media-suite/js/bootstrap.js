@@ -1,5 +1,5 @@
 const WILDU_MEDIA_BOOT_VERSION = '0.3.9';
-
+ 
 // Import versionato della config pubblica.
 // Serve a evitare che il Service Worker o il browser tengano una config vecchia.
 await import('../shared/firebase-config.js?v=' + encodeURIComponent(WILDU_MEDIA_BOOT_VERSION));
