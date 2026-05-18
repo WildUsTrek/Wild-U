@@ -1,4 +1,4 @@
-const WILDU_MEDIA_BOOT_VERSION = '0.3.0';
+const WILDU_MEDIA_BOOT_VERSION = '0.3.1';
 
 // Import versionato della config pubblica.
 // Serve a evitare che il Service Worker o il browser tengano una config vecchia.
