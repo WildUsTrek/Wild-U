@@ -1117,6 +1117,122 @@ const FV = WILDU_FIREBASE.store.fieldValue;
 
 WILDU_FIREBASE.boot();
 
+
+// =========================================================
+// WILDU SECURE LAUNCH — ticket temporanei per mini-app protette
+// =========================================================
+// Usato per:
+// - MapViewer standalone: openMode = secure_redirect
+// - Giochi iframe / mini-app future: openMode = secure_iframe
+//
+// Le Firestore Rules verificano:
+// - utente loggato;
+// - utente presente in /utenti/{uid};
+// - utente non bannato;
+// - ticket intestato all'utente;
+// - ticket breve;
+// - source = wild-u-client.
+
+const WILDU_SECURE_LAUNCH_COLLECTION = "wildu_runtime_launches";
+const WILDU_SECURE_LAUNCH_TTL_MS = 2 * 60 * 1000; // ticket breve: 2 minuti
+
+function getWilduLaunchTargetKey(rawUrl) {
+    try {
+        const u = new URL(String(rawUrl || ""), window.location.href);
+        return u.pathname
+            .replace(/^\/+/, "")
+            .replace(/^Wild-U\//i, "")
+            .split("?")[0]
+            .split("#")[0]
+            .replace(/\/+$/, "") || "unknown";
+    } catch (e) {
+        return String(rawUrl || "")
+            .trim()
+            .split("?")[0]
+            .split("#")[0]
+            .replace(/^\.?\//, "")
+            .replace(/\/+$/, "") || "unknown";
+    }
+}
+
+function appendWilduLaunchParam(rawUrl, launchId, moduleRev) {
+    const rev = Math.max(1, parseInt(moduleRev, 10) || 1);
+    const versioned = buildVersionedModuleUrl(rawUrl, rev);
+
+    try {
+        const u = new URL(versioned, window.location.href);
+        u.searchParams.set("launch", launchId);
+        return u.toString();
+    } catch (e) {
+        const sep = String(versioned || "").indexOf("?") >= 0 ? "&" : "?";
+        return String(versioned || "") + sep + "launch=" + encodeURIComponent(launchId);
+    }
+}
+
+async function createWilduRuntimeLaunchTicket(options) {
+    const user = auth.currentUser;
+
+    if (!user || !user.uid) {
+        openRegistrationCTA && openRegistrationCTA("AUTH_REQUIRED", { force: true });
+        throw new Error("Login richiesto per aprire questa mini-app.");
+    }
+
+    const targetUrl = String(options && options.targetUrl || "").trim();
+    if (!targetUrl) {
+        throw new Error("Target mini-app mancante.");
+    }
+
+    const targetKind = String(options && options.targetKind || "standalone").trim();
+    const requiredGrade = String(options && options.requiredGrade || "").trim();
+    const targetKey = String(options && options.targetKey || getWilduLaunchTargetKey(targetUrl)).trim();
+
+    const ref = db.collection(WILDU_SECURE_LAUNCH_COLLECTION).doc();
+
+    await ref.set({
+        uid: user.uid,
+        targetKind: targetKind,
+        targetKey: targetKey,
+        targetUrl: targetUrl,
+        requiredGrade: requiredGrade,
+        createdAt: FV.serverTimestamp(),
+        expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + WILDU_SECURE_LAUNCH_TTL_MS),
+        source: "wild-u-client"
+    });
+
+    return ref.id;
+}
+
+async function openWilduSecureRedirect(targetUrl, requiredGrade, moduleRev) {
+    const launchId = await createWilduRuntimeLaunchTicket({
+        targetKind: "secure_redirect",
+        targetUrl: targetUrl,
+        targetKey: getWilduLaunchTargetKey(targetUrl),
+        requiredGrade: requiredGrade
+    });
+
+    window.location.href = appendWilduLaunchParam(targetUrl, launchId, moduleRev);
+}
+
+async function openWilduSecureIframe(targetUrl, requiredGrade, moduleRev, iframeSelector) {
+    const launchId = await createWilduRuntimeLaunchTicket({
+        targetKind: "secure_iframe",
+        targetUrl: targetUrl,
+        targetKey: getWilduLaunchTargetKey(targetUrl),
+        requiredGrade: requiredGrade
+    });
+
+    const finalUrl = appendWilduLaunchParam(targetUrl, launchId, moduleRev);
+    const iframe = iframeSelector ? document.querySelector(iframeSelector) : null;
+
+    if (iframe) {
+        iframe.src = finalUrl;
+        return finalUrl;
+    }
+
+    return finalUrl;
+}    
+    
+
 // =========================================================
 // WILDU MEDIA CLIENT — loader Firestore per tag versionati
 // =========================================================
@@ -7091,7 +7207,7 @@ window.WILDU_GAME_RUNTIME = {
 
 
 function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode) {
-    const mode = String(openMode || 'module').trim();
+    const mode = String(openMode || "module").trim();
 
     if (!checkRankMet(r)) {
         showToast("🔒 Grado richiesto: " + String(r || "").toUpperCase());
@@ -7105,15 +7221,39 @@ function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode)
     }
 
     const rev = Math.max(1, parseInt(moduleRev, 10) || 1);
+
+    if (mode === "secure_redirect") {
+        showToast("Apertura sicura in corso...");
+        openWilduSecureRedirect(targetUrl, r, rev).catch(function (err) {
+            console.error("[WILDU SECURE LAUNCH] secure_redirect fallito:", err);
+            showToast("Accesso sicuro non riuscito. Riprova dalla app.");
+        });
+        return;
+    }
+
+    if (mode === "secure_iframe") {
+        showToast("Preparazione mini-app sicura...");
+        openWilduSecureIframe(targetUrl, r, rev).then(function (secureUrl) {
+            // Per ora restituiamo solo URL sicuro.
+            // Nel prossimo step lo useremo dentro il modulo giochi/iframe.
+            window.WILDU_LAST_SECURE_IFRAME_URL = secureUrl;
+            console.log("[WILDU SECURE LAUNCH] iframe URL pronto:", secureUrl);
+        }).catch(function (err) {
+            console.error("[WILDU SECURE LAUNCH] secure_iframe fallito:", err);
+            showToast("Mini-app sicura non disponibile. Riprova dalla app.");
+        });
+        return;
+    }
+
     const versionedUrl = buildVersionedModuleUrl(targetUrl, rev);
 
-    if (mode === 'redirect') {
+    if (mode === "redirect") {
         window.location.href = versionedUrl;
         return;
     }
 
-    if (mode === 'new_tab') {
-        const opened = window.open(versionedUrl, '_blank', 'noopener,noreferrer');
+    if (mode === "new_tab") {
+        const opened = window.open(versionedUrl, "_blank", "noopener,noreferrer");
         if (!opened) {
             showToast("Popup bloccato: apro nella stessa scheda.");
             window.location.href = versionedUrl;
@@ -7122,7 +7262,7 @@ function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode)
     }
 
     openModule(targetUrl, a, i, r, encodedLinks, rev);
-}    
+}
 
     
     
