@@ -1107,19 +1107,20 @@
       return;
     }
 
-    tbody.innerHTML = items.map(function (item) {
-      return '<tr>' +
-        '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.notes || '') + '</span></td>' +
-        '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || '—') + '</span></td>' +
-        '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
-        '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
-        '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
-        '<td class="actions">' +
-          '<button class="small" data-edit-game="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
-          '<button class="small" data-bump-game="' + root.escapeHtml(item.url || '') + '">+1</button>' +
-        '</td>' +
-      '</tr>';
-    }).join('');
+tbody.innerHTML = items.map(function (item) {
+  return '<tr>' +
+    '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.notes || '') + '</span></td>' +
+    '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || '—') + '</span></td>' +
+    '<td><span class="badge">' + root.escapeHtml(item.openMode || 'secure_iframe') + '</span></td>' +
+    '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
+    '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
+    '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
+    '<td class="actions">' +
+      '<button class="small" data-edit-game="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
+      '<button class="small" data-bump-game="' + root.escapeHtml(item.url || '') + '">+1</button>' +
+    '</td>' +
+  '</tr>';
+}).join('');
   }
 
   function renderModuleVersions() {
