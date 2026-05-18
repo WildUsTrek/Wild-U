@@ -1217,9 +1217,12 @@
       url: url,
       rev: rev,
       enabled: root.$('#module-enabled').value === 'true',
-      renderer: root.$('#module-renderer').value,
-      description: description,
-      cacheScope: root.$('#module-cache-scope').value,
+      
+renderer: root.$('#module-renderer').value,
+openMode: root.$('#module-open-mode') ? root.$('#module-open-mode').value : 'module',
+description: description,
+cacheScope: root.$('#module-cache-scope').value,
+      
       extraUrls: root.$('#module-extra-urls').value,
       clearNeedles: root.$('#module-clear-needles').value,
 
@@ -1242,8 +1245,13 @@
     root.$('#module-url').value = item.url || '';
     root.$('#module-rev').value = Number(item.rev || item.module_rev || 1);
     root.$('#module-enabled').value = item.enabled === false ? 'false' : 'true';
-    root.$('#module-renderer').value = item.renderer || 'module-html';
-    root.$('#module-description').value = item.description || item.Descrizione || item.notes || '';
+root.$('#module-renderer').value = item.renderer || 'module-html';
+
+if (root.$('#module-open-mode')) {
+  root.$('#module-open-mode').value = item.openMode || item.open_mode || 'module';
+}
+
+root.$('#module-description').value = item.description || item.Descrizione || item.notes || '';
     root.$('#module-cache-scope').value = item.cacheScope || '';
     root.$('#module-extra-urls').value = Array.isArray(item.extraUrls) ? item.extraUrls.join(', ') : '';
     root.$('#module-clear-needles').value = Array.isArray(item.clearNeedles) ? item.clearNeedles.join(', ') : '';
