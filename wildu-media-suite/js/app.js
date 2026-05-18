@@ -1162,12 +1162,17 @@
     return items.find(function (item) { return item.url === clean; }) || null;
   }
 
-  function readGameForm() {
+function readGameForm() {
     return {
       title: root.$('#game-title').value,
       url: root.$('#game-url').value,
       rev: root.$('#game-rev').value,
       enabled: root.$('#game-enabled').value === 'true',
+
+      // Decide come il launcher giochi aprirà questo gioco.
+      // Default consigliato: secure_iframe.
+      openMode: root.$('#game-open-mode') ? root.$('#game-open-mode').value : 'secure_iframe',
+
       moduleUrl: root.$('#game-module-url').value,
       description: root.$('#game-description').value,
       cacheScope: root.$('#game-cache-scope').value,
@@ -1176,12 +1181,17 @@
     };
   }
 
-  function fillGameForm(item) {
+function fillGameForm(item) {
     item = item || {};
     root.$('#game-title').value = item.title || '';
     root.$('#game-url').value = item.url || '';
     root.$('#game-rev').value = Number(item.rev || 1);
     root.$('#game-enabled').value = item.enabled === false ? 'false' : 'true';
+
+    if (root.$('#game-open-mode')) {
+      root.$('#game-open-mode').value = item.openMode || item.open_mode || 'secure_iframe';
+    }
+
     root.$('#game-module-url').value = item.moduleUrl || '';
     root.$('#game-description').value = item.description || item.notes || '';
     root.$('#game-cache-scope').value = item.cacheScope || '';
