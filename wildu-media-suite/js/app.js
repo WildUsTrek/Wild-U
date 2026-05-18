@@ -3,6 +3,7 @@
   'use strict';
 
   var root = window.WilduMedia = window.WilduMedia || {};
+  
   var state = {
     currentUser: null,
     tags: [],
@@ -10,6 +11,13 @@
     runtimeManifest: null,
     gameRuntime: null,
     moduleRuntime: null,
+
+    // Letture legacy/partner solo per popolare campi admin compatibili.
+    // Non diventano fonte di verità dei nuovi moduli.
+    partnerClientConfig: null,
+    legacyModuleResources: null,
+    moduleGradeOptions: [],
+
     selectedTab: 'dashboard'
   };
 
@@ -90,6 +98,141 @@
     }
   }
 
+
+  function titleCaseGrade(value) {
+    return String(value || '')
+      .replace(/_/g, ' ')
+      .replace(/-/g, ' ')
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(function (part) {
+        return part.charAt(0).toUpperCase() + part.slice(1);
+      })
+      .join(' ');
+  }
+
+  function addGradeOption(map, value, source) {
+    var label = titleCaseGrade(value);
+    if (!label) return;
+
+    var key = label.toLowerCase();
+    if (!map[key]) {
+      map[key] = {
+        value: label,
+        label: label,
+        source: source || 'firestore'
+      };
+    }
+  }
+
+  function buildModuleGradeOptions(clientConfig, legacyModulesDoc) {
+    var map = {};
+
+    // 1) Valori esatti già presenti nei vecchi moduli.
+    // Sono i più importanti perché il client li conosce già come Grado_Minimo.
+    var items = legacyModulesDoc && Array.isArray(legacyModulesDoc.items)
+      ? legacyModulesDoc.items
+      : [];
+
+    items.forEach(function (item) {
+      if (item && item.Grado_Minimo) {
+        addGradeOption(map, item.Grado_Minimo, 'PARAMETERS_PARTNER/moduli_risorse');
+      }
+    });
+
+    // 2) Campi grado_* presenti in client_config.
+    Object.keys(clientConfig || {}).forEach(function (key) {
+      if (/^grado_/i.test(key)) {
+        addGradeOption(map, clientConfig[key], 'PARAMETERS_PARTNER/client_config.' + key);
+      }
+    });
+
+    // 3) Soglie XP presenti in client_config.
+    // Non inventiamo gradi: deriviamo solo dai nomi Soglia_* esistenti nel documento.
+    Object.keys(clientConfig || {}).forEach(function (key) {
+      var match = key.match(/^Soglia_(.+)$/i);
+      if (!match) return;
+
+      var raw = match[1];
+
+      // Compatibilità con il vecchio valore reale “Socio Novizio” già presente nei moduli.
+      if (/^novizio$/i.test(raw) && map['socio novizio']) return;
+
+      addGradeOption(map, raw, 'PARAMETERS_PARTNER/client_config.' + key);
+    });
+
+    return Object.keys(map)
+      .sort(function (a, b) {
+        var order = {
+          'socio novizio': 10,
+          'novizio': 10,
+          'esploratore': 20,
+          'sentinella': 30,
+          'veterano': 40,
+          'leggenda': 50,
+          'divinità': 60,
+          'divinita': 60
+        };
+
+        var oa = order[a] || 999;
+        var ob = order[b] || 999;
+        if (oa !== ob) return oa - ob;
+        return a.localeCompare(b);
+      })
+      .map(function (key) { return map[key]; });
+  }
+
+  function renderModuleGradeOptions() {
+    var select = root.$('#module-grade');
+    if (!select) return;
+
+    var current = select.value || '';
+    var options = state.moduleGradeOptions || [];
+
+    select.innerHTML =
+      '<option value="">Nessun grado / pubblico</option>' +
+      options.map(function (item) {
+        return '<option value="' + root.escapeHtml(item.value) + '">' +
+          root.escapeHtml(item.label) +
+          '</option>';
+      }).join('');
+
+    if (current && options.some(function (item) { return item.value === current; })) {
+      select.value = current;
+    }
+  }
+
+  async function loadPartnerModuleContextQuietly() {
+    try {
+      var configSnap = await root.db
+        .collection('PARAMETERS_PARTNER')
+        .doc('client_config')
+        .get();
+
+      var modulesSnap = await root.db
+        .collection('PARAMETERS_PARTNER')
+        .doc('moduli_risorse')
+        .get();
+
+      state.partnerClientConfig = configSnap.exists ? (configSnap.data() || {}) : {};
+      state.legacyModuleResources = modulesSnap.exists ? (modulesSnap.data() || {}) : {};
+      state.moduleGradeOptions = buildModuleGradeOptions(
+        state.partnerClientConfig,
+        state.legacyModuleResources
+      );
+
+      renderModuleGradeOptions();
+    } catch (e) {
+      state.partnerClientConfig = { error: e.message || String(e) };
+      state.legacyModuleResources = { error: e.message || String(e) };
+      state.moduleGradeOptions = [];
+      renderModuleGradeOptions();
+    }
+  }  
+
+  
   function tagAllowsKind(tag, kind) {
     var allowed = Array.isArray(tag.allowedCategories) ? tag.allowedCategories : [];
     return !kind || allowed.indexOf(kind) !== -1;
@@ -400,16 +543,18 @@
     if (!tbody) return;
 
     var items = state.moduleRuntime && Array.isArray(state.moduleRuntime.items) ? state.moduleRuntime.items : [];
+    
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">Nessun modulo registrato. Usa “Preset moduli noti” oppure salva un URL modulo.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="muted">Nessun modulo registrato. Usa “Preset moduli noti” oppure salva un URL modulo.</td></tr>';
       return;
     }
 
     tbody.innerHTML = items.map(function (item) {
       return '<tr>' +
-        '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.notes || '') + '</span></td>' +
+        '<td><strong>' + root.escapeHtml(item.title || item.Titolo || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.Descrizione || item.notes || '') + '</span></td>' +
         '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Renderer: ' + root.escapeHtml(item.renderer || 'module-html') + '</span></td>' +
-        '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
+        '<td>' + (item.Grado_Minimo ? '<span class="badge">' + root.escapeHtml(item.Grado_Minimo) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td><strong>' + Number(item.rev || item.module_rev || 1) + '</strong></td>' +
         '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
         '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
         '<td class="actions">' +
@@ -418,6 +563,7 @@
         '</td>' +
       '</tr>';
     }).join('');
+    
   }
 
   function findGameVersion(url) {
@@ -460,31 +606,91 @@
     switchTab('games');
   }
 
+  function parseModuleInternalLinksInput(value) {
+    var raw = String(value || '').trim();
+    if (!raw) return [];
+
+    try {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {}
+
+    return raw
+      .split(',')
+      .map(function (x) { return x.trim(); })
+      .filter(Boolean);
+  }
+
   function readModuleForm() {
+    var title = root.$('#module-title').value;
+    var url = root.$('#module-url').value;
+    var rev = root.$('#module-rev').value;
+    var description = root.$('#module-description').value;
+    var linkRisorsa = root.$('#module-link-resource').value || url;
+
     return {
-      title: root.$('#module-title').value,
-      url: root.$('#module-url').value,
-      rev: root.$('#module-rev').value,
+      title: title,
+      url: url,
+      rev: rev,
       enabled: root.$('#module-enabled').value === 'true',
       renderer: root.$('#module-renderer').value,
-      description: root.$('#module-description').value,
+      description: description,
       cacheScope: root.$('#module-cache-scope').value,
       extraUrls: root.$('#module-extra-urls').value,
-      clearNeedles: root.$('#module-clear-needles').value
+      clearNeedles: root.$('#module-clear-needles').value,
+
+      // Campi compatibili con PARAMETERS_PARTNER/moduli_risorse.
+      Titolo: title,
+      Descrizione: description,
+      Categoria: root.$('#module-category').value,
+      Grado_Minimo: root.$('#module-grade').value,
+      Link_Risorsa: linkRisorsa,
+      Audio: root.$('#module-audio').value,
+      Regione: root.$('#module-region').value,
+      link_interni: parseModuleInternalLinksInput(root.$('#module-internal-links').value),
+      module_rev: String(Math.max(1, parseInt(rev, 10) || 1))
     };
   }
 
   function fillModuleForm(item) {
     item = item || {};
-    root.$('#module-title').value = item.title || '';
+    root.$('#module-title').value = item.title || item.Titolo || '';
     root.$('#module-url').value = item.url || '';
-    root.$('#module-rev').value = Number(item.rev || 1);
+    root.$('#module-rev').value = Number(item.rev || item.module_rev || 1);
     root.$('#module-enabled').value = item.enabled === false ? 'false' : 'true';
     root.$('#module-renderer').value = item.renderer || 'module-html';
-    root.$('#module-description').value = item.description || item.notes || '';
+    root.$('#module-description').value = item.description || item.Descrizione || item.notes || '';
     root.$('#module-cache-scope').value = item.cacheScope || '';
     root.$('#module-extra-urls').value = Array.isArray(item.extraUrls) ? item.extraUrls.join(', ') : '';
     root.$('#module-clear-needles').value = Array.isArray(item.clearNeedles) ? item.clearNeedles.join(', ') : '';
+
+    root.$('#module-category').value = item.Categoria || '';
+    root.$('#module-audio').value = item.Audio || '';
+    root.$('#module-region').value = item.Regione || '';
+    root.$('#module-link-resource').value = item.Link_Risorsa || item.url || '';
+    root.$('#module-internal-links').value = Array.isArray(item.link_interni)
+      ? JSON.stringify(item.link_interni, null, 2)
+      : '';
+
+    renderModuleGradeOptions();
+    if (item.Grado_Minimo) {
+      var select = root.$('#module-grade');
+      var exists = Array.prototype.some.call(select.options, function (opt) {
+        return opt.value === item.Grado_Minimo;
+      });
+
+      if (!exists) {
+        var opt = document.createElement('option');
+        opt.value = item.Grado_Minimo;
+        opt.textContent = item.Grado_Minimo + ' (salvato)';
+        select.appendChild(opt);
+      }
+
+      select.value = item.Grado_Minimo;
+    } else {
+      root.$('#module-grade').value = '';
+    }
+
     switchTab('modules');
   }
 
