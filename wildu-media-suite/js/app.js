@@ -1413,9 +1413,13 @@
     if (instructionsBtn) {
       instructionsBtn.addEventListener('click', function (evt) {
         evt.preventDefault();
+        evt.stopPropagation();
 
         if (typeof root.openInstructions === 'function') {
           root.openInstructions();
+
+          var statusLine = document.getElementById('status-line');
+          if (statusLine) statusLine.textContent = 'Istruzioni aperte.';
           return;
         }
 
