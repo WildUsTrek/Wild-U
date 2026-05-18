@@ -75,9 +75,18 @@
     };
   }
 
-  function normalizeGame(input) {
+function normalizeGame(input) {
     var entry = normalizeEntry(input, 'game');
     entry.moduleUrl = normalizeRuntimeUrl(input.moduleUrl || '');
+
+    var mode = String(input.openMode || input.open_mode || 'secure_iframe').trim();
+    entry.openMode = [
+      'secure_iframe',
+      'secure_redirect',
+      'iframe',
+      'redirect'
+    ].indexOf(mode) >= 0 ? mode : 'secure_iframe';
+
     return entry;
   }
 
