@@ -1205,33 +1205,121 @@
       .filter(Boolean);
   }
 
+
+  function normalizeWilduModuleTechnicalUrl(rawLink) {
+    var raw = String(rawLink || '').trim();
+    if (!raw) return '';
+
+    try {
+      var parsed = new URL(raw, window.location.href);
+      var path = String(parsed.pathname || '');
+
+      // Caso principale: link reale GitHub Pages dentro /Wild-U/
+      // https://wildustrek.github.io/Wild-U/wildu-map-suite/wildu-map-viewer/
+      // -> wildu-map-suite/wildu-map-viewer/
+      if (
+        parsed.hostname === 'wildustrek.github.io' &&
+        /^\/Wild-U\//i.test(path)
+      ) {
+        return path
+          .replace(/^\/+/, '')
+          .replace(/^Wild-U\//i, '')
+          .split('?')[0]
+          .split('#')[0];
+      }
+
+      // Caso same-origin GitHub Pages o path assoluto già interno.
+      if (
+        parsed.origin === window.location.origin &&
+        /^\/Wild-U\//i.test(path)
+      ) {
+        return path
+          .replace(/^\/+/, '')
+          .replace(/^Wild-U\//i, '')
+          .split('?')[0]
+          .split('#')[0];
+      }
+
+      // Per URL assoluti esterni, manteniamo il link intero come chiave tecnica.
+      // Non è il caso normale, ma non lo distruggiamo.
+      if (/^https?:\/\//i.test(raw)) {
+        return raw.split('#')[0];
+      }
+    } catch (e) {}
+
+    // Path relativo interno:
+    // ./modules/x.html -> modules/x.html
+    // /Wild-U/modules/x.html -> modules/x.html
+    return raw
+      .split('?')[0]
+      .split('#')[0]
+      .replace(/^\/+/, '')
+      .replace(/^Wild-U\//i, '')
+      .replace(/^\.\//, '');
+  }
+
+  function syncModuleTechnicalUrlFromExecutableLink() {
+    var linkInput = root.$('#module-link-resource');
+    var urlInput = root.$('#module-url');
+
+    if (!linkInput || !urlInput) return;
+
+    var executableLink = String(linkInput.value || '').trim();
+    var technicalUrl = normalizeWilduModuleTechnicalUrl(executableLink);
+
+    urlInput.value = technicalUrl;
+
+    var cacheInput = root.$('#module-cache-scope');
+    if (cacheInput && !String(cacheInput.value || '').trim() && technicalUrl) {
+      cacheInput.value = technicalUrl;
+    }
+
+    var needlesInput = root.$('#module-clear-needles');
+    if (needlesInput && !String(needlesInput.value || '').trim() && technicalUrl) {
+      needlesInput.value = technicalUrl;
+    }
+  }
+  
   function readModuleForm() {
     var title = root.$('#module-title').value;
-    var url = root.$('#module-url').value;
+    var executableLink = String(root.$('#module-link-resource').value || '').trim();
+    var technicalUrl = normalizeWilduModuleTechnicalUrl(executableLink);
     var rev = root.$('#module-rev').value;
     var description = root.$('#module-description').value;
-    var linkRisorsa = root.$('#module-link-resource').value || url;
+
+    if (!executableLink) {
+      throw new Error('Incolla il Link eseguibile reale del modulo.');
+    }
+
+    if (!technicalUrl) {
+      throw new Error('Non riesco a generare l’URL tecnico dal link eseguibile.');
+    }
+
+    root.$('#module-url').value = technicalUrl;
 
     return {
       title: title,
-      url: url,
+      url: technicalUrl,
       rev: rev,
       enabled: root.$('#module-enabled').value === 'true',
-      
-renderer: root.$('#module-renderer').value,
-openMode: root.$('#module-open-mode') ? root.$('#module-open-mode').value : 'module',
-description: description,
-cacheScope: root.$('#module-cache-scope').value,
-      
-      extraUrls: root.$('#module-extra-urls').value,
-      clearNeedles: root.$('#module-clear-needles').value,
 
-      // Campi compatibili con PARAMETERS_PARTNER/moduli_risorse.
+      renderer: root.$('#module-renderer').value,
+      openMode: root.$('#module-open-mode') ? root.$('#module-open-mode').value : 'module',
+      description: description,
+      cacheScope: root.$('#module-cache-scope').value || technicalUrl,
+
+      extraUrls: root.$('#module-extra-urls').value,
+      clearNeedles: root.$('#module-clear-needles').value || technicalUrl,
+
+      // Campi compatibili/client-facing.
       Titolo: title,
       Descrizione: description,
       Categoria: root.$('#module-category').value,
       Grado_Minimo: root.$('#module-grade').value,
-      Link_Risorsa: linkRisorsa,
+
+      // Questo è il link reale che il client userà per aprire.
+      Link_Risorsa: executableLink,
+
       Audio: root.$('#module-audio').value,
       Regione: root.$('#module-region').value,
       link_interni: parseModuleInternalLinksInput(root.$('#module-internal-links').value),
@@ -1242,8 +1330,13 @@ cacheScope: root.$('#module-cache-scope').value,
   function fillModuleForm(item) {
     item = item || {};
     root.$('#module-title').value = item.title || item.Titolo || '';
-    root.$('#module-url').value = item.url || '';
+
+    var executableLink = item.Link_Risorsa || item.linkRisorsa || item.url || '';
+    root.$('#module-link-resource').value = executableLink;
+    root.$('#module-url').value = normalizeWilduModuleTechnicalUrl(executableLink);
+
     root.$('#module-rev').value = Number(item.rev || item.module_rev || 1);
+    
     root.$('#module-enabled').value = item.enabled === false ? 'false' : 'true';
 root.$('#module-renderer').value = item.renderer || 'module-html';
 
@@ -1259,7 +1352,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     root.$('#module-category').value = item.Categoria || '';
     root.$('#module-audio').value = item.Audio || '';
     root.$('#module-region').value = item.Regione || '';
-    root.$('#module-link-resource').value = item.Link_Risorsa || item.url || '';
+ 
     root.$('#module-internal-links').value = Array.isArray(item.link_interni)
       ? JSON.stringify(item.link_interni, null, 2)
       : '';
@@ -1462,10 +1555,20 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     root.$('#btn-seed-games').addEventListener('click', function () { run(seedGames); });
     root.$('#btn-seed-modules').addEventListener('click', function () { run(seedModules); });
     root.$('#btn-export-runtime-json').addEventListener('click', exportRuntimeJsonToDebug);
-        root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
+    
+    root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
     root.$('#btn-refresh-module-grades').addEventListener('click', function () { run(loadPartnerModuleContextQuietly); });
-    root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
 
+    var moduleExecutableLinkInput = root.$('#module-link-resource');
+    if (moduleExecutableLinkInput) {
+      moduleExecutableLinkInput.addEventListener('input', syncModuleTechnicalUrlFromExecutableLink);
+      moduleExecutableLinkInput.addEventListener('blur', syncModuleTechnicalUrlFromExecutableLink);
+      moduleExecutableLinkInput.addEventListener('paste', function () {
+        setTimeout(syncModuleTechnicalUrlFromExecutableLink, 0);
+      });
+    }
+
+    root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
     document.body.addEventListener('click', function (evt) {
       var editBtn = evt.target.closest('[data-edit-tag]');
       if (editBtn) return editTag(editBtn.dataset.editTag);
