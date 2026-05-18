@@ -84,6 +84,20 @@
   function normalizeModule(input) {
     var entry = normalizeEntry(input, 'module');
     entry.renderer = String(input.renderer || 'module-html').trim();
+
+    // Campi compatibili con il vecchio PARAMETERS_PARTNER/moduli_risorse.
+    // Li salviamo qui per permettere al client di migrare senza dipendere
+    // dalla raccolta legacy obsoleta.
+    entry.Titolo = String(input.Titolo || input.title || '').trim() || entry.title;
+    entry.Descrizione = String(input.Descrizione || input.description || '').trim() || entry.description;
+    entry.Categoria = String(input.Categoria || '').trim();
+    entry.Grado_Minimo = String(input.Grado_Minimo || input.gradeRequired || '').trim();
+    entry.Link_Risorsa = normalizeRuntimeUrl(input.Link_Risorsa || input.linkRisorsa || entry.url);
+    entry.Audio = String(input.Audio || '').trim();
+    entry.Regione = String(input.Regione || '').trim();
+    entry.link_interni = Array.isArray(input.link_interni) ? input.link_interni : [];
+    entry.module_rev = String(Math.max(1, parseInt(entry.rev, 10) || 1));
+
     return entry;
   }
 
