@@ -6735,8 +6735,11 @@ function extractWilduRuntimeModules(runtime) {
                 url: cleanUrl,
                 rev: rev,
                 enabled: raw.enabled !== false,
-                renderer: raw.renderer || "module-html",
-                cacheScope: raw.cacheScope || cleanUrl,
+                
+renderer: raw.renderer || "module-html",
+openMode: raw.openMode || raw.open_mode || "module",
+cacheScope: raw.cacheScope || cleanUrl,
+                
                 clearNeedles: Array.isArray(raw.clearNeedles) ? raw.clearNeedles : [],
                 extraUrls: Array.isArray(raw.extraUrls) ? raw.extraUrls : [],
 
@@ -6886,13 +6889,18 @@ async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapsh
         const displayCategory = getWilduResourceCategory(res);
 
         return `
-            <div class="resource-item" onclick="openModule('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev})">
+        
+            <div class="resource-item" onclick="openWilduRuntimeResource('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev}, '${escapeWilduJsString(res.openMode || "module")}')">
+                
                 <div class="resource-info">
                     <span class="resource-icon">${displayCategory}</span>
                     <div style="display:flex; flex-direction:column;">
                         <span class="resource-name">${displayTitle}</span>
                         <span style="font-size:11px; color:#666;">${displayDesc}</span>
-                        ${grado ? `<span style="font-size:10px; color:var(--w-gold); margin-top:3px; text-transform:uppercase;">Grado: ${escapeWilduHtml(grado)}</span>` : ""}
+                        
+${grado ? `<span style="font-size:10px; color:var(--w-gold); margin-top:3px; text-transform:uppercase;">Grado: ${escapeWilduHtml(grado)}</span>` : ""}
+${res.openMode && res.openMode !== "module" ? `<span style="font-size:10px; color:#7cc7ff; margin-top:3px; text-transform:uppercase;">Apertura: ${escapeWilduHtml(res.openMode)}</span>` : ""}
+                    
                     </div>
                 </div>
                 <span style="color:var(--w-sub)">➔</span>
@@ -7081,6 +7089,42 @@ window.WILDU_GAME_RUNTIME = {
     }
 };    
 
+
+function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode) {
+    const mode = String(openMode || 'module').trim();
+
+    if (!checkRankMet(r)) {
+        showToast("🔒 Grado richiesto: " + String(r || "").toUpperCase());
+        return;
+    }
+
+    const targetUrl = String(f || "").trim();
+    if (!targetUrl) {
+        showToast("Modulo non configurato.");
+        return;
+    }
+
+    const rev = Math.max(1, parseInt(moduleRev, 10) || 1);
+    const versionedUrl = buildVersionedModuleUrl(targetUrl, rev);
+
+    if (mode === 'redirect') {
+        window.location.href = versionedUrl;
+        return;
+    }
+
+    if (mode === 'new_tab') {
+        const opened = window.open(versionedUrl, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+            showToast("Popup bloccato: apro nella stessa scheda.");
+            window.location.href = versionedUrl;
+        }
+        return;
+    }
+
+    openModule(targetUrl, a, i, r, encodedLinks, rev);
+}    
+
+    
     
 async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     if (!checkRankMet(r)) {
