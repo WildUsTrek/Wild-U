@@ -784,6 +784,9 @@
       runtimeManifest: state.runtimeManifest,
       gameRuntime: state.gameRuntime ? state.gameRuntime.raw : null,
       moduleRuntime: state.moduleRuntime ? state.moduleRuntime.raw : null,
+      partnerClientConfig: state.partnerClientConfig,
+      legacyModuleResources: state.legacyModuleResources,
+      moduleGradeOptions: state.moduleGradeOptions,
       tags: state.tags.map(function (t) {
         return {
           tagSlug: t.tagSlug,
@@ -844,7 +847,8 @@
     root.$('#btn-seed-games').addEventListener('click', function () { run(seedGames); });
     root.$('#btn-seed-modules').addEventListener('click', function () { run(seedModules); });
     root.$('#btn-export-runtime-json').addEventListener('click', exportRuntimeJsonToDebug);
-    root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
+        root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
+    root.$('#btn-refresh-module-grades').addEventListener('click', function () { run(loadPartnerModuleContextQuietly); });
     root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
 
     document.body.addEventListener('click', function (evt) {
@@ -909,18 +913,26 @@
       setAuthUi(user);
       if (user) {
         run(async function () {
+          
+          await loadPartnerModuleContextQuietly();
           await refreshTags();
           await refreshMedia();
           await refreshGameVersions();
           await refreshModuleVersions();
           renderDashboard();
+          
         });
       } else {
         state.tags = [];
         state.media = [];
+        
         state.runtimeManifest = null;
         state.gameRuntime = null;
         state.moduleRuntime = null;
+        state.partnerClientConfig = null;
+        state.legacyModuleResources = null;
+        state.moduleGradeOptions = [];
+        
         renderTags();
         renderMedia();
         renderGameVersions();
