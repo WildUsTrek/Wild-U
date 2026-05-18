@@ -59,6 +59,590 @@
     });
   }
 
+
+  function openInstructions() {
+    var activeTab = state.selectedTab || 'dashboard';
+
+    function esc(value) {
+      return root.escapeHtml ? root.escapeHtml(value) : String(value == null ? '' : value);
+    }
+
+    function code(value) {
+      return '<code style="color:#f6d889; background:rgba(0,0,0,.22); padding:2px 6px; border-radius:7px;">' + esc(value) + '</code>';
+    }
+
+    function badge(value, tone) {
+      var bg = tone === 'good'
+        ? 'rgba(107,213,138,.14)'
+        : tone === 'warn'
+          ? 'rgba(228,182,83,.16)'
+          : tone === 'danger'
+            ? 'rgba(238,106,106,.14)'
+            : 'rgba(255,255,255,.08)';
+
+      var color = tone === 'good'
+        ? '#bff7cd'
+        : tone === 'warn'
+          ? '#ffe7a5'
+          : tone === 'danger'
+            ? '#ffc5c5'
+            : '#f3f8f4';
+
+      return '<span style="display:inline-flex; align-items:center; border-radius:999px; padding:4px 9px; background:' + bg + '; color:' + color + '; font-size:12px; font-weight:900;">' + esc(value) + '</span>';
+    }
+
+    function list(items) {
+      return '<ul style="margin:8px 0 0; padding-left:20px;">' + (items || []).map(function (item) {
+        return '<li style="margin:7px 0;">' + item + '</li>';
+      }).join('') + '</ul>';
+    }
+
+    function ordered(items) {
+      return '<ol style="margin:8px 0 0; padding-left:22px;">' + (items || []).map(function (item) {
+        return '<li style="margin:7px 0;">' + item + '</li>';
+      }).join('') + '</ol>';
+    }
+
+    function details(title, body, open) {
+      return '' +
+        '<details ' + (open ? 'open' : '') + ' style="' +
+          'border:1px solid rgba(255,255,255,.12);' +
+          'border-radius:16px;' +
+          'padding:13px 15px;' +
+          'background:rgba(255,255,255,.045);' +
+          'margin:12px 0;' +
+        '">' +
+          '<summary style="cursor:pointer; font-weight:950; color:#f6d889; font-size:15px;">' + esc(title) + '</summary>' +
+          '<div style="margin-top:11px; color:#dfe9df; line-height:1.58; font-size:14px;">' + body + '</div>' +
+        '</details>';
+    }
+
+    function actionTable(rows) {
+      return '' +
+        '<div style="overflow:auto; border:1px solid rgba(255,255,255,.12); border-radius:16px; margin-top:10px;">' +
+          '<table style="width:100%; border-collapse:collapse; min-width:760px; font-size:13px;">' +
+            '<thead>' +
+              '<tr style="background:rgba(214,178,94,.10); color:#f6d889; text-transform:uppercase; letter-spacing:.04em;">' +
+                '<th style="text-align:left; padding:10px;">Azione admin</th>' +
+                '<th style="text-align:left; padding:10px;">Firestore toccato</th>' +
+                '<th style="text-align:left; padding:10px;">Cache/versione</th>' +
+                '<th style="text-align:left; padding:10px;">Effetto client</th>' +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' +
+              (rows || []).map(function (row) {
+                return '<tr style="border-top:1px solid rgba(255,255,255,.10);">' +
+                  '<td style="padding:10px; vertical-align:top;">' + row.action + '</td>' +
+                  '<td style="padding:10px; vertical-align:top;">' + row.firestore + '</td>' +
+                  '<td style="padding:10px; vertical-align:top;">' + row.cache + '</td>' +
+                  '<td style="padding:10px; vertical-align:top;">' + row.client + '</td>' +
+                '</tr>';
+              }).join('') +
+            '</tbody>' +
+          '</table>' +
+        '</div>';
+    }
+
+    function dependencyMap(rows) {
+      return '' +
+        '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; margin-top:10px;">' +
+          (rows || []).map(function (row) {
+            return '' +
+              '<div style="border:1px solid rgba(255,255,255,.12); border-radius:15px; padding:12px; background:rgba(0,0,0,.16);">' +
+                '<div style="font-weight:950; color:#f6d889; margin-bottom:6px;">' + row.name + '</div>' +
+                '<div style="color:#dfe9df; font-size:13px; line-height:1.48;">' + row.role + '</div>' +
+                (row.fields ? '<div style="margin-top:8px; color:#aebcaf; font-size:12px; line-height:1.45;">Campi: ' + row.fields + '</div>' : '') +
+              '</div>';
+          }).join('') +
+        '</div>';
+    }
+
+    function summaryCards(data) {
+      return '' +
+        '<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin:16px 0;">' +
+          '<div style="border:1px solid rgba(107,213,138,.22); background:rgba(107,213,138,.08); border-radius:18px; padding:14px;">' +
+            '<div style="font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.06em; color:#bff7cd;">Scopo</div>' +
+            '<div style="margin-top:7px; font-size:14px; line-height:1.45;">' + data.purpose + '</div>' +
+          '</div>' +
+          '<div style="border:1px solid rgba(214,178,94,.26); background:rgba(214,178,94,.08); border-radius:18px; padding:14px;">' +
+            '<div style="font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.06em; color:#f6d889;">Decisione rapida</div>' +
+            '<div style="margin-top:7px; font-size:14px; line-height:1.45;">' + data.fastDecision + '</div>' +
+          '</div>' +
+          '<div style="border:1px solid rgba(120,190,255,.22); background:rgba(120,190,255,.07); border-radius:18px; padding:14px;">' +
+            '<div style="font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.06em; color:#9ed6ff;">Effetto client</div>' +
+            '<div style="margin-top:7px; font-size:14px; line-height:1.45;">' + data.clientImpact + '</div>' +
+          '</div>' +
+          '<div style="border:1px solid rgba(238,106,106,.20); background:rgba(238,106,106,.07); border-radius:18px; padding:14px;">' +
+            '<div style="font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.06em; color:#ffc5c5;">Non fare</div>' +
+            '<div style="margin-top:7px; font-size:14px; line-height:1.45;">' + data.doNot + '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    var docs = {
+      dashboard: {
+        icon: '🧭',
+        title: 'Dashboard',
+        subtitle: 'Cabina di controllo generale della Media Suite.',
+        purpose: 'Verificare lo stato base della suite, creare i tag ufficiali e sincronizzare il manifesto pubblico.',
+        fastDecision: 'Usala al primo avvio o dopo una patch. Non usarla per gestire singoli file, giochi o moduli.',
+        clientImpact: 'Aggiorna solo il manifesto ' + code('public_versions') + ' usato da Radio/Biblioteca.',
+        doNot: 'Non confondere tag media con moduli client o giochi. Qui non si caricano file.',
+        questions: [
+          '<strong>Prima apertura: cosa faccio?</strong> Login → Crea/aggiorna tag ufficiali → Sincronizza manifesto public_versions.',
+          '<strong>Se Radio o Biblioteca non aggiornano?</strong> Controlla qui se ' + code('public_versions') + ' contiene ' + code('radio') + ' e ' + code('biblioteca') + '.',
+          '<strong>Se vedo dati vecchi?</strong> Verifica la versione caricata dagli script e usa refresh/nocache solo per test.'
+        ],
+        steps: [
+          'Accedi con Google admin.',
+          'Premi “Crea/aggiorna tag ufficiali” solo quando vuoi garantire la presenza di biblioteca, radio e immagini.',
+          'Premi “Sincronizza manifesto public_versions” per rigenerare il manifesto leggero letto dal client.',
+          'Vai in Debug se vuoi controllare JSON e dipendenze reali.'
+        ],
+        actions: [
+          {
+            action: 'Crea/aggiorna tag ufficiali',
+            firestore: code('wildu_media_tags/biblioteca') + ', ' + code('radio') + ', ' + code('immagini'),
+            cache: 'Preserva versioni esistenti; non azzera publicVersion.',
+            client: 'Prepara Radio/Biblioteca/Immagini, ma non forza da solo il download dei cataloghi.'
+          },
+          {
+            action: 'Sincronizza public_versions',
+            firestore: code('wildu_media_runtime/public_versions'),
+            cache: 'Aggiorna il semaforo pubblico dei tag renderizzabili.',
+            client: 'Il client confronta queste versioni con la cache locale.'
+          }
+        ],
+        deps: [
+          { name: 'wildu_media_tags', role: 'Fonte dei tag tecnici media.', fields: 'tagSlug, renderer, allowedCategories, version, publicVersion' },
+          { name: 'wildu_media_runtime/public_versions', role: 'Manifesto leggero letto dal client.', fields: 'tags.radio, tags.biblioteca, meta' },
+          { name: 'wildu_media_catalog', role: 'Catalogo dei file caricati.', fields: 'kind, tagSlug, status, visibility, mediaVersion' }
+        ],
+        risks: [
+          'Non creare tag “gpx”, “giochi”, “amazon” o “wildwall” nella Media Suite.',
+          'Non usare Dashboard per versionare moduli o giochi: esistono tab dedicate.'
+        ]
+      },
+
+      tags: {
+        icon: '🏷️',
+        title: 'Tag',
+        subtitle: 'Gestione dei canali logici dei media.',
+        purpose: 'Definire come i media vengono raggruppati e renderizzati: Biblioteca, Radio, Immagini.',
+        fastDecision: 'Modifica i tag solo se devi cambiare regole di rendering, categorie ammesse o visibilità del canale.',
+        clientImpact: 'Solo tag con ' + code('clientRenderable:true') + ' e ' + code('visibility:PUBLIC') + ' entrano in public_versions.',
+        doNot: 'Non usare i tag come sostituti dei moduli client o delle versioni gioco.',
+        questions: [
+          '<strong>Devo creare nuovi tag?</strong> Quasi mai. I tag ufficiali bastano: biblioteca, radio, immagini.',
+          '<strong>Quando cambia publicVersion?</strong> Quando cambia un contenuto pubblico/renderizzabile collegato al tag.',
+          '<strong>Immagini aggiorna il client?</strong> No: immagini è admin-only e ' + code('clientRenderable:false') + '.'
+        ],
+        steps: [
+          'Controlla che biblioteca accetti solo PDF.',
+          'Controlla che radio accetti solo audio.',
+          'Controlla che immagini sia privata e non renderizzabile dal client.',
+          'Salva solo modifiche intenzionali a renderer/categorie/visibilità.'
+        ],
+        actions: [
+          {
+            action: 'Salva tag',
+            firestore: code('wildu_media_tags/{tagSlug}'),
+            cache: 'Preserva version/publicVersion con increment(0) dove previsto.',
+            client: 'Cambia come il client può interpretare quel tag nei manifesti.'
+          },
+          {
+            action: 'Disattiva tag',
+            firestore: code('wildu_media_tags/{tagSlug}.status'),
+            cache: 'Sincronizza public_versions.',
+            client: 'Un tag disattivato non deve governare nuove viste pubbliche.'
+          }
+        ],
+        deps: [
+          { name: 'biblioteca', role: 'PDF pubblici in due tab.', fields: 'renderer=document-tabs, tabs=libri/manuali-guide' },
+          { name: 'radio', role: 'Audio/MP3 pubblici.', fields: 'renderer=audio-list, allowedCategories=audio' },
+          { name: 'immagini', role: 'Upload immagini admin-only.', fields: 'visibility=PRIVATE, clientRenderable=false' }
+        ],
+        risks: [
+          'Se trasformi immagini in PUBLIC/renderizzabile potresti forzare refresh client non desiderati.',
+          'Se sbagli allowedCategories, l’upload può finire in tag errato o essere bloccato.'
+        ]
+      },
+
+      upload: {
+        icon: '☁️',
+        title: 'Upload',
+        subtitle: 'Caricamento file su R2 e metadati su Firestore.',
+        purpose: 'Caricare PDF, MP3/audio e immagini admin-only senza far passare file grandi dal backend applicativo.',
+        fastDecision: 'Usa Upload per nuovi file. Usa Catalogo per versionare o gestire file già caricati.',
+        clientImpact: 'PDF/MP3 pubblici aggiornano il semaforo del tag; immagini private no.',
+        doNot: 'Non caricare GPX, giochi, moduli HTML, WildWall o materiale Amazon qui.',
+        questions: [
+          '<strong>Voglio caricare un MP3 Radio.</strong> Tipo audio → tag radio → status ACTIVE → visibility PUBLIC.',
+          '<strong>Voglio caricare un PDF Biblioteca.</strong> Tipo PDF → tag biblioteca → scegli Libri oppure Manuali e Guide.',
+          '<strong>Voglio caricare immagine.</strong> Tipo image → tag immagini → visibility PRIVATE.'
+        ],
+        steps: [
+          'Scegli file e tipo upload.',
+          'Verifica che il tag principale venga selezionato correttamente.',
+          'Per PDF scegli obbligatoriamente la sottocategoria.',
+          'Compila titolo, descrizione e sortOrder.',
+          'Avvia upload: il Worker genera URL firmato, il browser carica su R2, poi Firestore salva metadati.'
+        ],
+        actions: [
+          {
+            action: 'Carica PDF pubblico',
+            firestore: code('wildu_media_catalog') + ' + ' + code('wildu_media_tags/biblioteca') + ' + ' + code('public_versions'),
+            cache: 'Incrementa biblioteca.version e biblioteca.publicVersion.',
+            client: 'Biblioteca vedrà versione diversa e rileggerà il catalogo del tag.'
+          },
+          {
+            action: 'Carica MP3 pubblico',
+            firestore: code('wildu_media_catalog') + ' + ' + code('wildu_media_tags/radio') + ' + ' + code('public_versions'),
+            cache: 'Incrementa radio.version e radio.publicVersion.',
+            client: 'Radio vedrà versione diversa e rileggerà il catalogo del tag.'
+          },
+          {
+            action: 'Carica immagine privata',
+            firestore: code('wildu_media_catalog') + ' + ' + code('wildu_media_tags/immagini'),
+            cache: 'Incrementa eventualmente version interna, non deve forzare publicVersion client.',
+            client: 'Nessun impatto su WildWall o viste pubbliche.'
+          }
+        ],
+        deps: [
+          { name: 'Cloudflare R2', role: 'Conserva file grandi.', fields: 'objectKey, publicUrl' },
+          { name: 'Worker upload manager', role: 'Firma upload e valida richiesta admin.', fields: 'Authorization Firebase ID token' },
+          { name: 'wildu_media_catalog', role: 'Metadati del media.', fields: 'fileUrl, objectKey, kind, tagSlug, status, visibility' },
+          { name: 'TagService', role: 'Aggiorna versioni tag dopo creazione media.', fields: 'version, publicVersion, public_versions' }
+        ],
+        risks: [
+          'Un file pubblico errato aggiorna il client: controlla tag/status/visibility prima dell’upload.',
+          'Non usare questa suite per file sorgente giochi o moduli HTML.'
+        ]
+      },
+
+      catalog: {
+        icon: '🗂️',
+        title: 'Catalogo',
+        subtitle: 'Gestione e versioning dei media già caricati.',
+        purpose: 'Ispezionare, filtrare, versionare, archiviare e controllare i media esistenti.',
+        fastDecision: 'Se cambi o vuoi ripubblicare un file audio/PDF, usa “+1 versione”.',
+        clientImpact: 'Versionare audio/PDF pubblici deve aggiornare sempre la cache client del relativo tag.',
+        doNot: 'Non confondere mediaVersion con rev gioco/modulo: sono livelli diversi.',
+        questions: [
+          '<strong>+1 versione su MP3 Radio cosa fa?</strong> Aggiorna mediaVersion e publicVersion radio.',
+          '<strong>+1 versione su PDF Biblioteca cosa fa?</strong> Aggiorna mediaVersion e publicVersion biblioteca.',
+          '<strong>+1 versione su immagine privata?</strong> Aggiorna il media, ma non deve forzare la client app pubblica.'
+        ],
+        steps: [
+          'Filtra per tag/kind/status/visibility.',
+          'Controlla il media e la versione attuale.',
+          'Premi +1 versione quando vuoi dichiarare che il contenuto è cambiato o va riletto dal client.',
+          'Verifica Debug: tag.version/publicVersion e public_versions devono essere coerenti.'
+        ],
+        actions: [
+          {
+            action: '+1 versione su PDF pubblico',
+            firestore: code('wildu_media_catalog/{mediaId}.mediaVersion') + ' + ' + code('wildu_media_tags/biblioteca.publicVersion'),
+            cache: 'Aggiorna public_versions.tags.biblioteca.',
+            client: 'Biblioteca invalida cache locale e rilegge solo il catalogo biblioteca.'
+          },
+          {
+            action: '+1 versione su MP3 pubblico',
+            firestore: code('wildu_media_catalog/{mediaId}.mediaVersion') + ' + ' + code('wildu_media_tags/radio.publicVersion'),
+            cache: 'Aggiorna public_versions.tags.radio.',
+            client: 'Radio invalida cache locale e rilegge solo il catalogo radio.'
+          },
+          {
+            action: 'Archivia/nascondi media pubblico',
+            firestore: code('wildu_media_catalog/{mediaId}.status/visibility'),
+            cache: 'Se prima o dopo era pubblico, aggiorna publicVersion del tag.',
+            client: 'La lista pubblica viene ricalcolata.'
+          }
+        ],
+        deps: [
+          { name: 'mediaVersion', role: 'Versione del singolo file/media.', fields: 'mediaVersion, mediaVersionNote, mediaVersionUpdatedAt' },
+          { name: 'tag.publicVersion', role: 'Semaforo cache client per il tag.', fields: 'radio, biblioteca' },
+          { name: 'public_versions', role: 'Manifesto letto dal client.', fields: 'tags, meta' }
+        ],
+        risks: [
+          'Se un vecchio media non aveva mediaVersion, il primo +1 deve diventare v2 reale.',
+          'Se publicVersion non cambia, il client può continuare a usare cache vecchia.'
+        ]
+      },
+
+      games: {
+        icon: '🎮',
+        title: 'Giochi',
+        subtitle: 'Versioning dei singoli giochi, separati dai moduli contenitori.',
+        purpose: 'Governare la rev di ogni mini-app gioco senza caricare file e senza contaminare altri giochi.',
+        fastDecision: 'Aumenta rev gioco solo quando cambia quel gioco specifico.',
+        clientImpact: 'Il client deve aggiornare solo cacheScope/clearNeedles del gioco versionato.',
+        doNot: 'Non usare game_versions per versionare il modulo launcher giochi.',
+        questions: [
+          '<strong>Ho modificato Sfida dei Sassi.</strong> Aumenta rev solo di giochi/sfida-dei-sassi/index.html.',
+          '<strong>Ho aggiunto un nuovo gioco al menu.</strong> Aumenta anche il modulo contenitore in tab Moduli.',
+          '<strong>Qui devo caricare il codice del gioco?</strong> No, qui salvi solo URL e versione.'
+        ],
+        steps: [
+          'Crea preset giochi noti se il documento è vuoto.',
+          'Controlla URL, titolo, rev, moduleUrl, cacheScope e clearNeedles.',
+          'Usa +1 quando cambia codice/CSS/asset di quel gioco.',
+          'Verifica Debug: la mappa corretta è gameRuntime.games.'
+        ],
+        actions: [
+          {
+            action: '+1 su Sfida dei Sassi',
+            firestore: code('wildu_media_runtime/game_versions.games["giochi/sfida-dei-sassi/index.html"].rev'),
+            cache: 'Il client pulirà/aggiornerà cache correlata al cacheScope del gioco.',
+            client: 'Solo quel gioco viene aggiornato. Rifugio e modulo giochi restano invariati.'
+          },
+          {
+            action: 'Salva nuovo gioco',
+            firestore: code('wildu_media_runtime/game_versions.games["giochi/..."].*'),
+            cache: 'Registra rev e area cache del nuovo gioco.',
+            client: 'Il gioco sarà versionabile quando il client lo referenzia.'
+          }
+        ],
+        deps: [
+          { name: 'game_versions', role: 'Fonte runtime per singoli giochi.', fields: 'games[url].rev, moduleUrl, cacheScope, clearNeedles' },
+          { name: 'moduleUrl', role: 'Indica il launcher/contenitore del gioco.', fields: 'modules/wildu-games.html' },
+          { name: 'cacheScope', role: 'Ambito cache da invalidare quando cambia rev.', fields: 'giochi/nome-gioco/' }
+        ],
+        risks: [
+          'Non confondere gioco specifico con modulo contenitore.',
+          'Vecchi campi piatti tipo games.giochi/... sono fantasma: comanda la mappa games.'
+        ]
+      },
+
+      modules: {
+        icon: '🧩',
+        title: 'Moduli',
+        subtitle: 'Sorgente moderna dei moduli client e dei gradi richiesti.',
+        purpose: 'Gestire moduli client, rev contenitore e campi client-facing, incluso Grado_Minimo.',
+        fastDecision: 'Usa questa tab per decidere chi può aprire un modulo e quando il modulo contenitore deve aggiornarsi.',
+        clientImpact: 'Nel nuovo client 2/5 la sorgente sarà module_versions, non moduli_risorse legacy.',
+        doNot: 'Non fare migrazione/merge. La vecchia raccolta serve solo lettura/diagnosi gradi.',
+        questions: [
+          '<strong>Dove scelgo il grado richiesto?</strong> Nel menu Grado richiesto, popolato da Firestore.',
+          '<strong>Da dove arrivano i gradi?</strong> Da client_config e dai valori reali già presenti nei moduli legacy.',
+          '<strong>Quando aumento rev modulo?</strong> Quando cambia HTML/layout/wrapper/logica del modulo contenitore.'
+        ],
+        steps: [
+          'Ricarica gradi da Firestore se il menu è vuoto.',
+          'Compila Titolo, URL, rev, enabled, renderer.',
+          'Scegli Grado_Minimo dal menu, senza inventare valori.',
+          'Compila Categoria, Audio, Regione, Link_Risorsa e link_interni se il client dovrà usarli.',
+          'Salva il modulo: il nuovo client leggerà questa sorgente.'
+        ],
+        actions: [
+          {
+            action: 'Salva modulo con grado',
+            firestore: code('wildu_media_runtime/module_versions.modules["modules/..."].Grado_Minimo'),
+            cache: 'Aggiorna solo la sorgente runtime moduli.',
+            client: 'Il nuovo client userà questo grado per decidere accesso al modulo.'
+          },
+          {
+            action: '+1 versione modulo',
+            firestore: code('wildu_media_runtime/module_versions.modules["modules/..."].rev'),
+            cache: 'Il client aggiornerà il contenitore HTML del modulo.',
+            client: 'Non aggiorna PDF/MP3, non aggiorna giochi specifici.'
+          },
+          {
+            action: 'Ricarica gradi',
+            firestore: code('PARAMETERS_PARTNER/client_config') + ' + ' + code('PARAMETERS_PARTNER/moduli_risorse'),
+            cache: 'Solo lettura admin, nessuna scrittura.',
+            client: 'Nessun effetto diretto; serve a popolare il menu gradi.'
+          }
+        ],
+        deps: [
+          { name: 'module_versions', role: 'Nuova fonte dei moduli client.', fields: 'modules[url].rev, Grado_Minimo, Link_Risorsa, module_rev, link_interni' },
+          { name: 'PARAMETERS_PARTNER/client_config', role: 'Solo lettura per gradi/soglie reali.', fields: 'Soglia_*, grado_*' },
+          { name: 'PARAMETERS_PARTNER/moduli_risorse', role: 'Legacy solo diagnosi/schema storico.', fields: 'items[].Grado_Minimo, Link_Risorsa, module_rev' }
+        ],
+        risks: [
+          'Non scrivere nella vecchia moduli_risorse per i nuovi moduli.',
+          'Non inventare gradi manualmente: il menu deve derivare da Firestore.',
+          'Non usare module_versions per versionare il singolo gioco.'
+        ]
+      },
+
+      debug: {
+        icon: '🧪',
+        title: 'Debug',
+        subtitle: 'Ispezione tecnica dei manifesti e dello stato admin.',
+        purpose: 'Verificare che Firestore, cache e UI siano coerenti prima di passare al client.',
+        fastDecision: 'Usa Debug dopo ogni seed, bump, patch o comportamento sospetto.',
+        clientImpact: 'Mostra se il client riceverà manifesti coerenti o cache/versioni contaminate.',
+        doNot: 'Non ignorare campi fantasma o versioni incoerenti: annotali prima di andare avanti.',
+        questions: [
+          '<strong>public_versions è corretto?</strong> Deve contenere solo radio/biblioteca.',
+          '<strong>game_versions è corretto?</strong> Deve contenere mappa games, non comandare moduli.',
+          '<strong>module_versions è corretto?</strong> Deve contenere mappa modules e campi client-facing.'
+        ],
+        steps: [
+          'Controlla appVersion e script caricati.',
+          'Controlla runtimeManifest.tags.',
+          'Controlla gameRuntime.games.',
+          'Controlla moduleRuntime.modules.',
+          'Controlla tags version/publicVersion.',
+          'Se trovi campi fantasma, non usarli come fonte: pianifica cleanup.'
+        ],
+        actions: [
+          {
+            action: 'Ispezione public_versions',
+            firestore: code('wildu_media_runtime/public_versions'),
+            cache: 'Controlla semafori cache Radio/Biblioteca.',
+            client: 'Determina se Radio/Biblioteca useranno cache o Firestore.'
+          },
+          {
+            action: 'Ispezione game_versions',
+            firestore: code('wildu_media_runtime/game_versions'),
+            cache: 'Controlla rev/cacheScope dei giochi.',
+            client: 'Determina refresh dei singoli giochi.'
+          },
+          {
+            action: 'Ispezione module_versions',
+            firestore: code('wildu_media_runtime/module_versions'),
+            cache: 'Controlla rev/campi client-facing dei moduli.',
+            client: 'Determina accesso e refresh dei moduli.'
+          }
+        ],
+        deps: [
+          { name: 'state.runtimeManifest', role: 'Debug del manifesto pubblico.', fields: 'tags, meta' },
+          { name: 'state.gameRuntime.raw', role: 'Debug runtime giochi.', fields: 'games' },
+          { name: 'state.moduleRuntime.raw', role: 'Debug runtime moduli.', fields: 'modules' },
+          { name: 'state.moduleGradeOptions', role: 'Debug gradi caricati da Firestore.', fields: 'value, label, source' }
+        ],
+        risks: [
+          'Script vecchi in cache possono farti credere che una patch non funzioni.',
+          'Campi vecchi piatti possono comparire nel debug ma non devono diventare fonte.',
+          'Debug positivo è prerequisito per Fase 2/5.'
+        ]
+      }
+    };
+
+    var data = docs[activeTab] || docs.dashboard;
+
+    var existing = document.getElementById('wildu-instructions-overlay');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'wildu-instructions-overlay';
+    overlay.style.cssText = [
+      'position:fixed',
+      'inset:0',
+      'z-index:99999',
+      'background:rgba(0,0,0,.74)',
+      'backdrop-filter:blur(10px)',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'padding:18px'
+    ].join(';');
+
+    overlay.innerHTML = '' +
+      '<div role="dialog" aria-modal="true" aria-label="Istruzioni Media Suite" style="' +
+        'width:min(1100px,96vw);' +
+        'max-height:91vh;' +
+        'overflow:auto;' +
+        'background:#17211b;' +
+        'color:#f3f8f4;' +
+        'border:1px solid rgba(255,255,255,.16);' +
+        'border-radius:24px;' +
+        'box-shadow:0 28px 100px rgba(0,0,0,.62);' +
+      '">' +
+        '<div style="' +
+          'position:sticky;' +
+          'top:0;' +
+          'z-index:2;' +
+          'background:linear-gradient(180deg,#17211b 0%,#17211b 84%,rgba(23,33,27,.90) 100%);' +
+          'padding:20px 22px;' +
+          'border-bottom:1px solid rgba(255,255,255,.10);' +
+          'display:flex;' +
+          'gap:14px;' +
+          'justify-content:space-between;' +
+          'align-items:flex-start;' +
+        '">' +
+          '<div style="min-width:0;">' +
+            '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+              '<span style="font-size:25px;">' + esc(data.icon) + '</span>' +
+              badge('Tab attiva: ' + data.title, 'good') +
+              badge('Guida operativa', 'warn') +
+            '</div>' +
+            '<h2 style="margin:8px 0 4px; font-size:30px; line-height:1.08; letter-spacing:-.03em;">' + esc(data.title) + '</h2>' +
+            '<p style="margin:0; color:#aebcaf; max-width:820px; line-height:1.45;">' + esc(data.subtitle) + '</p>' +
+          '</div>' +
+          '<button type="button" id="wildu-instructions-close" style="' +
+            'border:0;' +
+            'border-radius:999px;' +
+            'padding:10px 15px;' +
+            'background:#d6b25e;' +
+            'color:#1b1509;' +
+            'font-weight:950;' +
+            'cursor:pointer;' +
+            'white-space:nowrap;' +
+          '">Chiudi</button>' +
+        '</div>' +
+
+        '<div style="padding:18px 22px 24px;">' +
+          '<div style="border:1px solid rgba(214,178,94,.25); background:linear-gradient(135deg,rgba(214,178,94,.12),rgba(107,213,138,.06)); border-radius:20px; padding:16px 17px; margin-bottom:14px;">' +
+            '<div style="font-size:12px; text-transform:uppercase; letter-spacing:.08em; font-weight:950; color:#f6d889;">Riassunto strategico enterprise</div>' +
+            '<div style="margin-top:8px; font-size:15px; line-height:1.56; color:#eef6ef;">' +
+              data.purpose + '<br>' +
+              '<span style="color:#aebcaf;">Decisione rapida:</span> ' + data.fastDecision + '<br>' +
+              '<span style="color:#aebcaf;">Effetto client:</span> ' + data.clientImpact +
+            '</div>' +
+          '</div>' +
+
+          summaryCards(data) +
+
+          details('1. Domande rapide per casi d’uso comuni', list(data.questions), true) +
+          details('2. Procedura operativa sintetica', ordered(data.steps), true) +
+          details('3. Azioni, Firestore, cache ed effetto client', actionTable(data.actions), true) +
+          details('4. Mappa dipendenze e struttura reale', dependencyMap(data.deps), false) +
+          details('5. Rischi, paradossi e cose da non fare', list(data.risks), false) +
+
+          '<div style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px;">' +
+            '<div style="padding:13px 14px; border-radius:16px; background:rgba(107,213,138,.08); border:1px solid rgba(107,213,138,.22); font-size:13px; line-height:1.45;">' +
+              '<strong style="color:#bff7cd;">Regola fonti nuove:</strong><br>' +
+              'Per i nuovi moduli il client leggerà ' + code('wildu_media_runtime/module_versions') + '. Nessuna migrazione/merge con la vecchia sorgente.' +
+            '</div>' +
+            '<div style="padding:13px 14px; border-radius:16px; background:rgba(120,190,255,.07); border:1px solid rgba(120,190,255,.22); font-size:13px; line-height:1.45;">' +
+              '<strong style="color:#9ed6ff;">Regola cache:</strong><br>' +
+              'Versionare audio/PDF, giochi e moduli deve aggiornare la cache relativa, ma senza contaminare livelli diversi.' +
+            '</div>' +
+            '<div style="padding:13px 14px; border-radius:16px; background:rgba(238,106,106,.07); border:1px solid rgba(238,106,106,.20); font-size:13px; line-height:1.45;">' +
+              '<strong style="color:#ffc5c5;">Regola anti-paradosso:</strong><br>' +
+              'Media, giochi e moduli sono tre piani diversi: ' + code('public_versions') + ', ' + code('game_versions') + ', ' + code('module_versions') + '.' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+
+    function close() {
+      overlay.remove();
+      document.removeEventListener('keydown', onKeyDown);
+    }
+
+    function onKeyDown(evt) {
+      if (evt.key === 'Escape') close();
+    }
+
+    overlay.addEventListener('click', function (evt) {
+      if (evt.target === overlay) close();
+    });
+
+    var closeBtn = document.getElementById('wildu-instructions-close');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+
+    document.addEventListener('keydown', onKeyDown);
+  }
+
+  root.openInstructions = openInstructions;
+  
+
   function kindLabel(kind) {
     return (WILDU_MEDIA_CONFIG.kindLabels || {})[kind] || kind;
   }
