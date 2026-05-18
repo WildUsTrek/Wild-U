@@ -89,15 +89,36 @@
 
   async function writeEntry(ref, bucketName, url, entry) {
     var user = root.requireCurrentUser();
-    var payload = {
-      schemaVersion: 1,
+    var cleanUrl = normalizeRuntimeUrl(url || (entry && entry.url) || '');
+
+    if (!cleanUrl) {
+      throw new Error('URL obbligatorio per ' + bucketName + '.');
+    }
+
+    var docRef = ref();
+    var snap = await docRef.get();
+    var current = snap.exists ? (snap.data() || {}) : {};
+
+    var bucket = current[bucketName] && typeof current[bucketName] === 'object'
+      ? Object.assign({}, current[bucketName])
+      : {};
+
+    bucket[cleanUrl] = Object.assign({}, entry, {
+      url: cleanUrl,
       updatedAt: root.FieldValue.serverTimestamp(),
       updatedByUid: user.uid,
       updatedByEmail: user.email || null
-    };
-    payload[bucketName + '.' + url] = entry;
-    await ref().set(payload, { merge: true });
-    return entry;
+    });
+
+    await docRef.set({
+      schemaVersion: 1,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      [bucketName]: bucket
+    }, { merge: true });
+
+    return bucket[cleanUrl];
   }
 
   async function listGames() {
@@ -140,17 +161,95 @@
 
   async function seedDefaultGames() {
     var defaults = WILDU_MEDIA_CONFIG.defaultGameVersions || [];
+
+    // Fallback prudente: se la config non contiene ancora preset,
+    // creiamo comunque i giochi noti reali invece di salvare "0" in silenzio.
+    if (!defaults.length) {
+      defaults = [
+        {
+          title: 'Sfida dei Sassi',
+          url: 'giochi/sfida-dei-sassi/index.html',
+          rev: 1,
+          enabled: true,
+          moduleUrl: 'modules/wildu-games.html',
+          description: 'Mini-app gioco Sfida dei Sassi.',
+          notes: 'Preset iniziale Media Suite.',
+          cacheScope: 'giochi/sfida-dei-sassi/',
+          extraUrls: '',
+          clearNeedles: 'giochi/sfida-dei-sassi/'
+        },
+        {
+          title: 'Costruisci il Rifugio',
+          url: 'giochi/rifugio/index.html',
+          rev: 1,
+          enabled: true,
+          moduleUrl: 'modules/wildu-games.html',
+          description: 'Mini-app gioco Costruisci il Rifugio.',
+          notes: 'Preset iniziale Media Suite.',
+          cacheScope: 'giochi/rifugio/',
+          extraUrls: '',
+          clearNeedles: 'giochi/rifugio/'
+        }
+      ];
+    }
+
     for (var i = 0; i < defaults.length; i++) {
       await saveGame(defaults[i]);
     }
+
     return listGames();
   }
 
   async function seedDefaultModules() {
     var defaults = WILDU_MEDIA_CONFIG.defaultModuleVersions || [];
+
+    // Fallback prudente: se la config non contiene ancora preset,
+    // creiamo i moduli contenitori noti senza dipendere da altri file.
+    if (!defaults.length) {
+      defaults = [
+        {
+          title: 'Radio Natura',
+          url: 'modules/media-radio.html',
+          rev: 1,
+          enabled: true,
+          renderer: 'audio-list',
+          description: 'Modulo contenitore Radio.',
+          notes: 'Preset iniziale Media Suite.',
+          cacheScope: 'modules/media-radio.html',
+          extraUrls: '',
+          clearNeedles: 'modules/media-radio.html'
+        },
+        {
+          title: 'Biblioteca Wild-U',
+          url: 'modules/media-biblioteca.html',
+          rev: 1,
+          enabled: true,
+          renderer: 'document-tabs',
+          description: 'Modulo contenitore Biblioteca.',
+          notes: 'Preset iniziale Media Suite.',
+          cacheScope: 'modules/media-biblioteca.html',
+          extraUrls: '',
+          clearNeedles: 'modules/media-biblioteca.html'
+        },
+        {
+          title: 'Modulo Giochi',
+          url: 'modules/wildu-games.html',
+          rev: 1,
+          enabled: true,
+          renderer: 'module-html',
+          description: 'Modulo launcher dei giochi Wild-U.',
+          notes: 'Preset iniziale Media Suite.',
+          cacheScope: 'modules/wildu-games.html',
+          extraUrls: '',
+          clearNeedles: 'modules/wildu-games.html'
+        }
+      ];
+    }
+
     for (var i = 0; i < defaults.length; i++) {
       await saveModule(defaults[i]);
     }
+
     return listModules();
   }
 
