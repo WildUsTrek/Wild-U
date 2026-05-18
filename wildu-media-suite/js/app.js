@@ -1097,6 +1097,22 @@
     renderDebug();
   }
 
+
+  function cleanAdminDumpText(value) {
+    var raw = String(value == null ? '' : value).trim();
+
+    if (
+      raw === 'ADMIN_TABLE_BUMP' ||
+      raw === 'ADMIN_BUMP' ||
+      raw === 'VERSION_BUMP'
+    ) {
+      return '';
+    }
+
+    return raw;
+  }
+  
+  
   function renderGameVersions() {
     var tbody = root.$('#games-table-body');
     if (!tbody) return;
@@ -1109,7 +1125,7 @@
 
 tbody.innerHTML = items.map(function (item) {
   return '<tr>' +
-    '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.notes || '') + '</span></td>' +
+    '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(cleanAdminDumpText(item.description || item.notes || '')) + '</span></td>' +
     '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || '—') + '</span></td>' +
     '<td><span class="badge">' + root.escapeHtml(item.openMode || 'secure_iframe') + '</span></td>' +
     '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
@@ -1136,7 +1152,7 @@ tbody.innerHTML = items.map(function (item) {
 
     tbody.innerHTML = items.map(function (item) {
       return '<tr>' +
-        '<td><strong>' + root.escapeHtml(item.title || item.Titolo || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(item.description || item.Descrizione || item.notes || '') + '</span></td>' +
+        '<td><strong>' + root.escapeHtml(item.title || item.Titolo || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(cleanAdminDumpText(item.description || item.Descrizione || item.notes || '')) + '</span></td>' +
         '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Renderer: ' + root.escapeHtml(item.renderer || 'module-html') + '</span></td>' +
         '<td>' + (item.Grado_Minimo ? '<span class="badge">' + root.escapeHtml(item.Grado_Minimo) + '</span>' : '<span class="muted">—</span>') + '</td>' +
         '<td><strong>' + Number(item.rev || item.module_rev || 1) + '</strong></td>' +
@@ -1406,14 +1422,14 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
   async function bumpSelectedGameVersion() {
     var url = root.$('#game-url').value;
-    await root.RuntimeService.bumpGame(url, root.$('#game-description').value || 'ADMIN_BUMP');
+    await root.RuntimeService.bumpGame(url, '');
     root.toast('Versione gioco incrementata: ' + url, 'success');
     await refreshGameVersions();
   }
 
   async function bumpSelectedModuleVersion() {
     var url = root.$('#module-url').value;
-    await root.RuntimeService.bumpModule(url, root.$('#module-description').value || 'ADMIN_BUMP');
+    await root.RuntimeService.bumpModule(url, '');
     root.toast('Versione modulo incrementata: ' + url, 'success');
     await refreshModuleVersions();
   }
@@ -1431,13 +1447,13 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   async function bumpGameFromTable(url) {
-    await root.RuntimeService.bumpGame(url, 'ADMIN_TABLE_BUMP');
+    await root.RuntimeService.bumpGame(url, '');
     root.toast('Versione gioco incrementata: ' + url, 'success');
     await refreshGameVersions();
   }
 
   async function bumpModuleFromTable(url) {
-    await root.RuntimeService.bumpModule(url, 'ADMIN_TABLE_BUMP');
+    await root.RuntimeService.bumpModule(url, '');
     root.toast('Versione modulo incrementata: ' + url, 'success');
     await refreshModuleVersions();
   }
