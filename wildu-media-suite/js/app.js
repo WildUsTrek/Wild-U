@@ -1408,6 +1408,25 @@
   }
 
   function bindEvents() {
+
+    var instructionsBtn = document.getElementById('btn-open-instructions');
+    if (instructionsBtn) {
+      instructionsBtn.addEventListener('click', function (evt) {
+        evt.preventDefault();
+
+        if (typeof root.openInstructions === 'function') {
+          root.openInstructions();
+          return;
+        }
+
+        if (typeof root.toast === 'function') {
+          root.toast('Istruzioni non caricate: controlla versione app.js / cache.', 'error');
+        } else {
+          alert('Istruzioni non caricate: controlla versione app.js / cache.');
+        }
+      });
+    }
+    
     root.$('#btn-login').addEventListener('click', function () { run(login); });
     root.$('#btn-logout').addEventListener('click', function () { run(logout); });
 
