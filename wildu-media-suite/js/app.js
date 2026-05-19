@@ -813,12 +813,14 @@
 
       renderModuleGradeOptions();
       renderClientConsoleSwitchCardState();
+      renderGlobalCacheNukeCardState();
     } catch (e) {
       state.partnerClientConfig = { error: e.message || String(e) };
       state.legacyModuleResources = { error: e.message || String(e) };
       state.moduleGradeOptions = [];
       renderModuleGradeOptions();
       renderClientConsoleSwitchCardState();
+      renderGlobalCacheNukeCardState();
     }
   }  
 
@@ -1801,6 +1803,144 @@
     );
   }
 
+  
+    function getGlobalCacheEpochValue() {
+    var cfg = state.partnerClientConfig || {};
+    var raw = cfg.global_cache_epoch;
+
+    if (raw === undefined || raw === null || raw === '') return 0;
+
+    var n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function renderGlobalCacheNukeCardState() {
+    var current = document.getElementById('global-cache-epoch-current');
+    var updated = document.getElementById('global-cache-epoch-updated');
+    var reasonInput = document.getElementById('global-cache-reason');
+
+    var cfg = state.partnerClientConfig || {};
+    var epoch = getGlobalCacheEpochValue();
+
+    if (current) {
+      current.innerHTML = epoch
+        ? '<span class="badge warn">ATTIVO</span> <code>' + root.escapeHtml(String(epoch)) + '</code>'
+        : '<span class="badge good">Mai forzato</span>';
+    }
+
+    if (updated) {
+      var who = cfg.global_cache_updatedByEmail || cfg.global_cache_updatedByUid || '';
+      var when = root.toDateTimeLabel ? root.toDateTimeLabel(cfg.global_cache_updatedAt) : '';
+      var reason = cfg.global_cache_reason || '';
+
+      updated.textContent = [when, who, reason].filter(Boolean).join(' — ') || 'Nessuna pulizia globale registrata.';
+    }
+
+    if (reasonInput && !String(reasonInput.value || '').trim()) {
+      reasonInput.value = cfg.global_cache_reason || '';
+    }
+  }
+
+  async function forceGlobalClientCacheRefreshFromDebug() {
+    if (!root.db) throw new Error('Firestore non inizializzato.');
+    if (!state.currentUser) throw new Error('Login richiesto.');
+
+    var reasonInput = document.getElementById('global-cache-reason');
+    var reason = reasonInput ? String(reasonInput.value || '').trim() : '';
+
+    if (!reason) {
+      reason = 'manual-admin-cache-refresh';
+    }
+
+    var ok = confirm(
+      'Pulizia nucleare cache client?\n\n' +
+      'I client aggiornati, al prossimo avvio, cancelleranno CacheStorage, cache pubblica, cache runtime e ricaricheranno il main index.\n\n' +
+      'Motivo: ' + reason + '\n\n' +
+      'Continuare?'
+    );
+
+    if (!ok) return;
+
+    var user = root.requireCurrentUser();
+    var epoch = Date.now();
+
+    await root.db
+      .collection('PARAMETERS_PARTNER')
+      .doc('client_config')
+      .set({
+        global_cache_epoch: epoch,
+        global_cache_mode: 'NUCLEAR',
+        global_cache_reason: reason,
+        global_cache_updatedAt: root.FieldValue.serverTimestamp(),
+        global_cache_updatedByUid: user.uid,
+        global_cache_updatedByEmail: user.email || null
+      }, { merge: true });
+
+    state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
+      global_cache_epoch: epoch,
+      global_cache_mode: 'NUCLEAR',
+      global_cache_reason: reason,
+      global_cache_updatedByUid: user.uid,
+      global_cache_updatedByEmail: user.email || null
+    });
+
+    renderGlobalCacheNukeCardState();
+    renderDebug();
+
+    root.toast(
+      'Pulizia nucleare cache pubblicata. I client aggiornati la eseguiranno al prossimo avvio.',
+      'success'
+    );
+  }
+
+  function installGlobalClientCacheNukeCard() {
+    var debugPanel = document.getElementById('tab-debug');
+    if (!debugPanel) return;
+    if (document.getElementById('wildu-global-cache-nuke-card')) return;
+
+    var card = document.createElement('article');
+    card.className = 'card';
+    card.id = 'wildu-global-cache-nuke-card';
+    card.innerHTML = '' +
+      '<h2>☢️ Pulizia nucleare cache client</h2>' +
+      '<p class="muted">' +
+        'Scrive <code>global_cache_epoch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
+        'I client aggiornati useranno questo valore per cancellare cache shell, dati pubblici, runtime moduli/giochi/media e ricaricare il main index.' +
+      '</p>' +
+      '<p class="small-text">' +
+        'Nota: funziona sui client che hanno già ricevuto la patch di lettura <code>global_cache_epoch</code>. ' +
+        'Per distribuirla la prima volta serve ancora un bump manuale di <code>version.json</code>.' +
+      '</p>' +
+      '<div class="form-grid">' +
+        '<div class="field full">' +
+          '<label for="global-cache-reason">Motivo pulizia</label>' +
+          '<input id="global-cache-reason" placeholder="Esempio: audio-cors-volume-fix">' +
+        '</div>' +
+        '<div class="field half">' +
+          '<label>Epoch attuale</label>' +
+          '<div id="global-cache-epoch-current" style="padding-top:10px;">—</div>' +
+        '</div>' +
+        '<div class="field half">' +
+          '<label>Audit</label>' +
+          '<div id="global-cache-epoch-updated" class="small-text" style="padding-top:10px;">—</div>' +
+        '</div>' +
+        '<div class="form-actions full">' +
+          '<button data-requires-auth type="button" id="btn-force-global-cache-refresh" class="danger">☢️ Forza refresh globale client</button>' +
+        '</div>' +
+      '</div>';
+
+    debugPanel.insertBefore(card, debugPanel.firstChild);
+
+    var btn = document.getElementById('btn-force-global-cache-refresh');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        run(forceGlobalClientCacheRefreshFromDebug);
+      });
+    }
+
+    renderGlobalCacheNukeCardState();
+  }
+  
   function installClientConsoleSwitchCard() {
     var debugPanel = document.getElementById('tab-debug');
     if (!debugPanel) return;
@@ -2314,6 +2454,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     
     installAdminDumpCleanerButton(); //AGGIUNTA PERICOLOSA
     installClientConsoleSwitchCard();
+    installGlobalClientCacheNukeCard();
     
     var instructionsBtn = document.getElementById('btn-open-instructions');
     if (instructionsBtn) {
