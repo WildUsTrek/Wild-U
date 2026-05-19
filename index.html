@@ -7108,86 +7108,58 @@ if (profKeyEl) {
             );
 
             if (WILD_ASSETS.audio_xp) {
-                const nextXpSrc = formatAssetLink(WILD_ASSETS.audio_xp);
-                if (sXP.src !== nextXpSrc) {
-                    sXP.crossOrigin = "anonymous";
-                    sXP.src = nextXpSrc;
-                    try { sXP.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(sXP, WILD_ASSETS.audio_xp);
                 sXP.volume = 0.5;
             }
 
             if (WILD_ASSETS.audio_reward) {
-                const nextRewardSrc = formatAssetLink(WILD_ASSETS.audio_reward);
-                if (sRew.src !== nextRewardSrc) {
-                    sRew.crossOrigin = "anonymous";
-                    sRew.src = nextRewardSrc;
-                    try { sRew.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(sRew, WILD_ASSETS.audio_reward);
             }
 
             if (WILD_ASSETS.audio_levelup) {
-                const nextLevelSrc = formatAssetLink(WILD_ASSETS.audio_levelup);
-                if (sLvl.src !== nextLevelSrc) {
-                    sLvl.crossOrigin = "anonymous";
-                    sLvl.src = nextLevelSrc;
-                    try { sLvl.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(sLvl, WILD_ASSETS.audio_levelup);
             }
 
             if (WILD_ASSETS.audio_spin) {
-                const nextSpinSrc = formatAssetLink(WILD_ASSETS.audio_spin);
-                if (sSpin.src !== nextSpinSrc) {
-                    sSpin.crossOrigin = "anonymous";
-                    sSpin.src = nextSpinSrc;
-                    try { sSpin.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(sSpin, WILD_ASSETS.audio_spin);
                 sSpin.volume = 0.2;
             }
 
             if (WILD_ASSETS.audio_end) {
-                const nextEndSrc = formatAssetLink(WILD_ASSETS.audio_end);
-                if (sEnd.src !== nextEndSrc) {
-                    sEnd.crossOrigin = "anonymous";
-                    sEnd.src = nextEndSrc;
-                    try { sEnd.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(sEnd, WILD_ASSETS.audio_end);
                 sEnd.volume = 0.4;
             }
 
             let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
             if (linkMusica) {
-                const nextMusicaSrc = formatAssetLink(linkMusica);
-
-                if (aMus.src !== nextMusicaSrc) {
-                    aMus.crossOrigin = "anonymous";
-                    aMus.src = nextMusicaSrc;
-                    aMus.loop = true;
-                    try { aMus.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(aMus, linkMusica, { loop: true });
             }
 
             let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
             if (linkAmbienza) {
-                const nextAmbienzaSrc = formatAssetLink(linkAmbienza);
-
-                if (aAmb.src !== nextAmbienzaSrc) {
-                    aAmb.crossOrigin = "anonymous";
-                    aAmb.src = nextAmbienzaSrc;
-                    aAmb.loop = true;
-                    try { aAmb.load(); } catch (e) {}
-                }
+                prepareWilduNativeAudioSource(aAmb, linkAmbienza, { loop: true });
             }
 
             notifyWilduSystemAudioReady();
 
             pageDebug('SYSTEM_AUDIO_CONFIGURED', {
                 source: sourceLabel || '',
+                nativeSystemAudio: true,
                 hasMusic: !!(aMus && aMus.src),
                 hasAmbience: !!(aAmb && aAmb.src),
+                musicCrossOrigin: aMus ? aMus.crossOrigin : '',
+                ambienceCrossOrigin: aAmb ? aAmb.crossOrigin : '',
                 FIXED_VOL_MUS,
                 FIXED_VOL_AMB
             });
+
+            try {
+                wilduAudioDebugLog('SYSTEM_AUDIO_CONFIGURED', {
+                    source: sourceLabel || '',
+                    nativeSystemAudio: true,
+                    snapshot: collectWilduAudioDebugSnapshot()
+                });
+            } catch (e) {}
         } catch (e) {
             pageDebug('SYSTEM_AUDIO_CONFIGURE_FAILED', {
                 source: sourceLabel || '',
@@ -8818,6 +8790,50 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         return n;
     }
 
+
+
+        function isWilduSystemAudioUrl(src) {
+        try {
+            return String(src || "").indexOf("https://media.baffiwild.it/wildu-system-audio/") === 0;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function prepareWilduNativeAudioSource(audio, rawUrl, options = {}) {
+        if (!audio || !rawUrl) return "";
+
+        const nextSrc = formatAssetLink(rawUrl);
+
+        try {
+            // Per gli audio di sistema R2 NON vogliamo CORS/WebAudio.
+            // L'URL diretto su mobile suona: quindi lasciamo il browser usare playback nativo.
+            if (isWilduSystemAudioUrl(nextSrc)) {
+                audio.removeAttribute("crossorigin");
+                audio.crossOrigin = null;
+            } else {
+                audio.crossOrigin = "anonymous";
+            }
+
+            audio.preload = "auto";
+            audio.playsInline = true;
+
+            if (options.loop === true) {
+                audio.loop = true;
+            }
+
+            if (audio.src !== nextSrc) {
+                audio.src = nextSrc;
+                try { audio.load(); } catch (e) {}
+            }
+        } catch (e) {}
+
+        return nextSrc;
+    }
+
+
+
+
     function getWildAudioContext() {
         if (wildAudioCtx) return wildAudioCtx;
 
@@ -8852,6 +8868,13 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     function ensureWildAudioNode(audio) {
         if (!audio) return null;
 
+        // Gli audio di sistema R2 devono restare in playback nativo.
+        // Su mobile il file diretto suona, mentre il ramo crossOrigin/WebAudio genera
+        // MEDIA_ERR_SRC_NOT_SUPPORTED / NETWORK_NO_SOURCE.
+        if (isWilduSystemAudioUrl(audio.src)) {
+            return null;
+        }
+
         const existing = wildAudioNodes.get(audio);
         if (existing) return existing;
 
@@ -8870,7 +8893,6 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
             wildAudioNodes.set(audio, node);
             return node;
         } catch (e) {
-            // Se il browser rifiuta MediaElementSource, resta il fallback audio.volume.
             return null;
         }
     }
