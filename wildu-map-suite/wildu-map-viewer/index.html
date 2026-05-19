@@ -565,19 +565,320 @@ button.gps-chip:hover {
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.2.0/gpx.min.js"></script>
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs, query, where
 } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-    import { firebaseConfig, WILDU_MAP_COLLECTIONS, WILDU_MAP_CONFIG } from "../shared/firebase-config.js";
+import { firebaseConfig, WILDU_MAP_COLLECTIONS, WILDU_MAP_CONFIG } from "../shared/firebase-config.js";
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const $ = (id) => document.getElementById(id);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = (id) => document.getElementById(id);
 
 const params = new URLSearchParams(location.search);
 const initialAreaSlug = params.get("area") || params.get("areaSlug") || "";
 const ALL_AREAS_VALUE = "__ALL__";
+
+// =========================================================
+// WILDU SECURE LAUNCH — guard MapViewer standalone
+// =========================================================
+// Regola:
+// - primo ingresso: richiede ?launch=<ticketId> creato dalla app madre;
+// - ticket Firestore breve;
+// - dopo validazione: sessione locale 8 ore;
+// - accesso diretto senza ticket/sessione valida: bloccato.
+
+const WILDU_SECURE_LAUNCH_COLLECTION = "wildu_runtime_launches";
+const WILDU_SECURE_SESSION_KEY = "wildu_secure_session_mapviewer";
+const WILDU_SECURE_SESSION_MS = 8 * 60 * 60 * 1000;
+const WILDU_MAPVIEWER_TARGET_KEY = "wildu-map-suite/wildu-map-viewer";
+const WILDU_MAPVIEWER_ALLOWED_KIND = "secure_redirect";
+
+function normalizeWilduSecureTargetKey(raw) {
+  let value = String(raw || "").trim();
+
+  if (!value) return "";
+
+  try {
+    const u = new URL(value, window.location.href);
+    value = u.pathname;
+  } catch (_) {
+    value = value.split("?")[0].split("#")[0];
+  }
+
+  return value
+    .replace(/^\/+/, "")
+    .replace(/^Wild-U\//i, "")
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/\/+$/, "");
+}
+
+function timestampToMillis(value) {
+  if (!value) return 0;
+
+  if (typeof value.toMillis === "function") {
+    return value.toMillis();
+  }
+
+  if (typeof value.seconds === "number") {
+    return (value.seconds * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1000000);
+  }
+
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function waitForWilduAuthUser(timeoutMs = 7000) {
+  if (auth.currentUser) {
+    return Promise.resolve(auth.currentUser);
+  }
+
+  return new Promise((resolve) => {
+    let done = false;
+    let unsub = () => {};
+
+    const finish = (user) => {
+      if (done) return;
+      done = true;
+
+      try {
+        unsub();
+      } catch (_) {}
+
+      resolve(user || null);
+    };
+
+    const timer = setTimeout(() => finish(auth.currentUser || null), timeoutMs);
+
+    unsub = onAuthStateChanged(auth, (user) => {
+      clearTimeout(timer);
+      finish(user || null);
+    }, () => {
+      clearTimeout(timer);
+      finish(null);
+    });
+  });
+}
+
+function readWilduSecureSession() {
+  try {
+    const raw = sessionStorage.getItem(WILDU_SECURE_SESSION_KEY);
+    if (!raw) return null;
+
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return null;
+
+    const targetKey = normalizeWilduSecureTargetKey(data.targetKey);
+    const expiresAt = Number(data.expiresAt || 0);
+
+    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) return null;
+    if (!expiresAt || expiresAt <= Date.now()) return null;
+
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearWilduSecureSession() {
+  try {
+    sessionStorage.removeItem(WILDU_SECURE_SESSION_KEY);
+  } catch (_) {}
+}
+
+function writeWilduSecureSession(user, ticketData) {
+  const payload = {
+    uid: user.uid,
+    targetKey: WILDU_MAPVIEWER_TARGET_KEY,
+    targetKind: ticketData.targetKind || WILDU_MAPVIEWER_ALLOWED_KIND,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + WILDU_SECURE_SESSION_MS
+  };
+
+  sessionStorage.setItem(WILDU_SECURE_SESSION_KEY, JSON.stringify(payload));
+  return payload;
+}
+
+function removeWilduLaunchParamFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("launch")) return;
+
+    u.searchParams.delete("launch");
+    window.history.replaceState({}, document.title, u.pathname + u.search + u.hash);
+  } catch (_) {}
+}
+
+function showSecureLaunchBlocked(reason, details = "") {
+  const messages = {
+    NO_AUTH: "Per aprire questa mappa devi entrare dalla app Wild-U con il tuo account.",
+    NO_LAUNCH: "Apri questa mappa dalla app Wild-U.",
+    INVALID_TICKET: "Accesso mappa non valido o scaduto. Riapri la mappa dalla app Wild-U.",
+    WRONG_TARGET: "Questo ticket non è valido per la Mappa dei Tesori.",
+    WRONG_KIND: "Tipo apertura non valido per questa mappa.",
+    WRONG_USER: "Questo ticket appartiene a un altro utente.",
+    OFFLINE: "Serve internet per verificare l’accesso alla mappa.",
+    FIRESTORE_DENIED: "Accesso negato. Riapri la mappa dalla app Wild-U.",
+    SESSION_EXPIRED: "Sessione mappa scaduta. Riapri la mappa dalla app Wild-U."
+  };
+
+  const message = messages[reason] || messages.INVALID_TICKET;
+  const safeDetails = String(details || "").trim();
+
+  document.body.innerHTML = `
+    <main style="
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:24px;
+      background:radial-gradient(circle at top, rgba(167,209,41,.12), transparent 38%), #0f1712;
+      color:#f3f8f1;
+      font-family:Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align:center;
+    ">
+      <section style="
+        width:100%;
+        max-width:420px;
+        border:1px solid rgba(255,255,255,.14);
+        border-radius:22px;
+        padding:26px 22px;
+        background:rgba(18,28,21,.94);
+        box-shadow:0 18px 48px rgba(0,0,0,.34);
+      ">
+        <div style="font-size:54px; line-height:1; margin-bottom:14px;">🗺️</div>
+        <h1 style="margin:0 0 10px 0; font-size:24px; color:#a7d129;">Mappa protetta</h1>
+        <p style="margin:0 0 18px 0; color:#d9e6d5; font-size:15px; line-height:1.55;">${message}</p>
+        ${safeDetails ? `<p style="margin:0 0 18px 0; color:#aab8a8; font-size:12px; line-height:1.4;">${safeDetails}</p>` : ""}
+        <button id="wildu-secure-open-mother" type="button" style="
+          width:100%;
+          border:0;
+          border-radius:999px;
+          padding:13px 16px;
+          background:#a7d129;
+          color:#142008;
+          font-weight:950;
+          font-size:14px;
+          cursor:pointer;
+        ">Apri Wild-U</button>
+      </section>
+    </main>
+  `;
+
+  const btn = document.getElementById("wildu-secure-open-mother");
+  if (btn) {
+    btn.addEventListener("click", () => {
+      window.location.href = "https://wildustrek.github.io/Wild-U/";
+    });
+  }
+}
+
+async function validateWilduSecureLaunchOrSession() {
+  setStatus("Verifica accesso Wild-U...", false, true);
+
+  const user = await waitForWilduAuthUser();
+
+  if (!user || !user.uid) {
+    clearWilduSecureSession();
+    showSecureLaunchBlocked("NO_AUTH");
+    return false;
+  }
+
+  const savedSession = readWilduSecureSession();
+  if (savedSession) {
+    if (savedSession.uid === user.uid) {
+      setStatus("Sessione mappa valida.", false);
+      return true;
+    }
+
+    clearWilduSecureSession();
+    showSecureLaunchBlocked("WRONG_USER");
+    return false;
+  }
+
+  const launchId = String(params.get("launch") || "").trim();
+
+  if (!launchId) {
+    showSecureLaunchBlocked("NO_LAUNCH");
+    return false;
+  }
+
+  if (!navigator.onLine) {
+    showSecureLaunchBlocked("OFFLINE");
+    return false;
+  }
+
+  try {
+    const ref = doc(db, WILDU_SECURE_LAUNCH_COLLECTION, launchId);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      clearWilduSecureSession();
+      showSecureLaunchBlocked("INVALID_TICKET");
+      return false;
+    }
+
+    const data = snap.data() || {};
+    const expiresAt = timestampToMillis(data.expiresAt);
+    const targetKind = String(data.targetKind || "").trim();
+    const targetKey = normalizeWilduSecureTargetKey(data.targetKey || data.targetUrl);
+
+    if (String(data.uid || "") !== user.uid) {
+      clearWilduSecureSession();
+      showSecureLaunchBlocked("WRONG_USER");
+      return false;
+    }
+
+    if (String(data.source || "") !== "wild-u-client") {
+      clearWilduSecureSession();
+      showSecureLaunchBlocked("INVALID_TICKET");
+      return false;
+    }
+
+    if (targetKind !== WILDU_MAPVIEWER_ALLOWED_KIND) {
+      clearWilduSecureSession();
+      showSecureLaunchBlocked("WRONG_KIND");
+      return false;
+    }
+
+    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) {
+      clearWilduSecureSession();
+      showSecureLaunchBlocked("WRONG_TARGET");
+      return false;
+    }
+
+    if (!expiresAt || expiresAt <= Date.now()) {
+      clearWilduSecureSession();
+      showSecureLaunchBlocked("INVALID_TICKET", "Ticket scaduto.");
+      return false;
+    }
+
+    writeWilduSecureSession(user, data);
+    removeWilduLaunchParamFromUrl();
+    setStatus("Accesso verificato. Avvio mappa...", false);
+    return true;
+
+  } catch (e) {
+    console.error("[Wildu Map] Secure launch denied:", e);
+    clearWilduSecureSession();
+
+    const code = String(e && e.code || "").toLowerCase();
+    if (code.includes("permission-denied")) {
+      showSecureLaunchBlocked("FIRESTORE_DENIED");
+      return false;
+    }
+
+    showSecureLaunchBlocked("INVALID_TICKET", e && e.message ? e.message : "");
+    return false;
+  }
+}
 
 // Cache persistente leggera del viewer.
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
@@ -2233,6 +2534,9 @@ async function restoreLocalGpxFromDevice() {
 }
 
 async function boot() {
+  const secureOk = await validateWilduSecureLaunchOrSession();
+  if (!secureOk) return;
+
   state.viewerConfig = await loadViewerMapConfig();
   initMap();
   bind();
@@ -2242,7 +2546,10 @@ async function boot() {
   await restoreLocalGpxFromDevice();
 }
 
-boot().catch(e => setStatus(e.message, true));
+boot().catch(e => {
+  console.error("[Wildu Map] Boot error:", e);
+  setStatus(e.message, true);
+});
 
 window.wilduMapCacheDebug = async function wilduMapCacheDebug() {
   const now = Date.now();
