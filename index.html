@@ -6117,9 +6117,26 @@ if (profKeyEl) {
     }
 
     function sanitizeVolume(val) {
-        if (!val) return 0;
-        let n = parseFloat(String(val).replace('%', '').replace(',', '.'));
-        return isNaN(n) ? 0 : (n > 1 ? n / 100 : n);
+        // Scala corretta Wildu Audio App:
+        // il valore salvato in client_config è SEMPRE percentuale umana.
+        //
+        // 0     => 0%
+        // 0,2   => 0,2%   => gain 0.002
+        // 1     => 1%     => gain 0.01
+        // 5     => 5%     => gain 0.05
+        // 100   => 100%   => gain 1
+        if (val === undefined || val === null) return 0;
+
+        const raw = String(val).trim();
+        if (raw === "") return 0;
+
+        let n = parseFloat(raw.replace('%', '').replace(',', '.'));
+
+        if (!Number.isFinite(n)) return 0;
+        if (n < 0) n = 0;
+        if (n > 100) n = 100;
+
+        return n / 100;
     }
 
     function addWilduSystemAudioCorsVersion(url) {
