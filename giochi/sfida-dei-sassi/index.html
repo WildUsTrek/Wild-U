@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
+<style id="wildu-guard-prehide">
+html.wildu-guard-checking body { visibility: hidden; }
+</style>
+<script id="wildu-guard-prehide-script">
+document.documentElement.classList.add("wildu-guard-checking");
+</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stone Lines — Skeleton</title>
@@ -95,11 +101,68 @@
     </div>
   </div>
 
-  <script src="js/state.js"></script>
-  <script src="js/logic.js"></script>
-  <script src="js/render.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/input.js"></script>
-  <script src="js/main.js"></script>
+  
+  
+  
+  
+  
+  
+
+  <script type="module" id="wildu-secure-game-bootstrap">
+(async function bootstrapWilduProtectedGame() {
+  const SCRIPT_URLS = [
+    "js/state.js",
+    "js/logic.js",
+    "js/render.js",
+    "js/ui.js",
+    "js/input.js",
+    "js/main.js"
+  ];
+  const GUARD_URL = "../../shared/wildu-secure-game-guard.js";
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Errore caricamento script gioco: " + src));
+      document.body.appendChild(s);
+    });
+  }
+
+  try {
+    const { guardWilduGame } = await import(GUARD_URL);
+
+    await guardWilduGame({
+      allowedKind: "secure_iframe",
+      sessionMs: 11 * 60 * 60 * 1000,
+      blockTitle: "Stone Lines — Skeleton"
+    });
+
+    if (document.readyState === "loading") {
+      await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+    }
+
+    for (const src of SCRIPT_URLS) {
+      await loadScript(src);
+    }
+
+    document.documentElement.classList.remove("wildu-guard-checking");
+
+    if (typeof window.WilduGameStart === "function") {
+      window.WilduGameStart();
+    } else if (typeof window.init === "function") {
+      window.init();
+    }
+  } catch (err) {
+    document.documentElement.classList.remove("wildu-guard-checking");
+
+    if (!String(err && err.message || "").includes("WILDU_GAME_BLOCKED:")) {
+      console.error("[Wildu Protected Game] Bootstrap failed:", err);
+      document.body.innerHTML = '<main style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#0f1712;color:#f3f8f1;font-family:system-ui,sans-serif;text-align:center;"><section style="max-width:460px;border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:26px;background:rgba(18,28,21,.95);"><h1 style="color:#f5b400;">Errore avvio gioco</h1><p>Il gioco è protetto, ma il bootstrap non è riuscito a caricare correttamente gli script.</p><p style="font-size:12px;color:#aab8a8;">Controlla percorsi JS e console.</p></section></main>';
+    }
+  }
+})();
+</script>
 </body>
 </html>
