@@ -1135,6 +1135,7 @@ WILDU_FIREBASE.boot();
 
 const WILDU_SECURE_LAUNCH_COLLECTION = "wildu_runtime_launches";
 const WILDU_SECURE_LAUNCH_TTL_MS = 2 * 60 * 1000; // ticket breve: 2 minuti
+const WILDU_SECURE_LAUNCH_BRIDGE_PREFIX = "wildu_secure_launch_bridge:";
 
 function getWilduLaunchTargetKey(rawUrl) {
     try {
@@ -1202,12 +1203,55 @@ async function createWilduRuntimeLaunchTicket(options) {
     return ref.id;
 }
 
+function writeWilduSecureLaunchBridge(options) {
+    try {
+        const launchId = String(options && options.launchId || "").trim();
+        if (!launchId) return;
+
+        const targetUrl = String(options && options.targetUrl || "").trim();
+        const targetKey = String(options && options.targetKey || getWilduLaunchTargetKey(targetUrl)).trim();
+        const targetKind = String(options && options.targetKind || "").trim();
+
+        const payload = {
+            launchId: launchId,
+            uid: auth.currentUser && auth.currentUser.uid ? auth.currentUser.uid : "",
+            targetKind: targetKind,
+            targetKey: targetKey,
+            targetUrl: targetUrl,
+            requiredGrade: String(options && options.requiredGrade || "").trim(),
+            moduleRev: Math.max(1, parseInt(options && options.moduleRev, 10) || 1),
+            createdAt: Date.now(),
+            expiresAt: Date.now() + WILDU_SECURE_LAUNCH_TTL_MS,
+            source: "wild-u-client"
+        };
+
+        localStorage.setItem(
+            WILDU_SECURE_LAUNCH_BRIDGE_PREFIX + launchId,
+            JSON.stringify(payload)
+        );
+    } catch (e) {
+        console.warn("[WILDU SECURE LAUNCH] bridge locale non scritto:", e);
+    }
+}
+
+
 async function openWilduSecureRedirect(targetUrl, requiredGrade, moduleRev) {
+    const targetKey = getWilduLaunchTargetKey(targetUrl);
+
     const launchId = await createWilduRuntimeLaunchTicket({
         targetKind: "secure_redirect",
         targetUrl: targetUrl,
-        targetKey: getWilduLaunchTargetKey(targetUrl),
+        targetKey: targetKey,
         requiredGrade: requiredGrade
+    });
+
+    writeWilduSecureLaunchBridge({
+        launchId: launchId,
+        targetKind: "secure_redirect",
+        targetUrl: targetUrl,
+        targetKey: targetKey,
+        requiredGrade: requiredGrade,
+        moduleRev: moduleRev
     });
 
     window.location.href = appendWilduLaunchParam(targetUrl, launchId, moduleRev);
@@ -8359,5 +8403,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
 </body>
 </html>
-
 
