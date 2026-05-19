@@ -47,6 +47,7 @@
       <button class="tab-btn" data-tab="catalog">Catalogo</button>
       <button class="tab-btn" data-tab="games">Giochi</button>
       <button class="tab-btn" data-tab="modules">Moduli</button>
+      <button class="tab-btn" data-tab="audio">Audio App</button>
       <button class="tab-btn" data-tab="debug">Debug</button>
     </nav>
 
@@ -559,6 +560,120 @@
       </div>
     </section>
 
+    <section id="tab-audio" class="tab-panel">
+      <div class="grid">
+        <article class="card">
+          <h2>Audio App</h2>
+          <p class="muted">
+            Gestione degli audio di sistema della client app: musica, ambienza, effetti XP, ruota e audio modulo.
+            Gli upload vengono salvati su R2 e poi rispecchiati nei campi legacy della client app.
+          </p>
+
+          <div class="alert" style="background:rgba(214,178,94,.08); border-color:rgba(214,178,94,.26);">
+            <strong>Obiettivo migrazione:</strong>
+            spostare gli audio oggi ospitati su GitHub raw verso
+            <code>media.baffiwild.it/wildu-system-audio/</code>,
+            così il client potrà usare cache e controllo volume in modo pulito.
+          </div>
+
+          <div class="form-actions">
+            <button data-requires-auth id="btn-refresh-system-audio" type="button">Ricarica Audio App</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Slot audio previsti</h2>
+          <p class="small-text">
+            Ogni riga corrisponde a un campo tecnico già previsto dalla client app.
+            Usa “Modifica” per caricare un nuovo file su R2 e salvare l’URL aggiornato.
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Audio</th>
+                  <th>Campo</th>
+                  <th>Ruolo</th>
+                  <th>Stato</th>
+                  <th>URL attuale</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="system-audio-table-body">
+                <tr><td colspan="6" class="muted">Login richiesto o dati non ancora caricati.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card half">
+          <h2>Modifica audio</h2>
+          <p class="small-text">
+            Seleziona uno slot dalla tabella, poi carica un file audio. Il file verrà inviato a R2 tramite Worker.
+          </p>
+
+          <form id="system-audio-form" class="form-grid">
+            <input type="hidden" id="system-audio-slot-key">
+
+            <div class="field full">
+              <label for="system-audio-slot-label">Slot selezionato</label>
+              <input id="system-audio-slot-label" readonly placeholder="Nessuno slot selezionato">
+            </div>
+
+            <div class="field full">
+              <label for="system-audio-current-url">URL attuale</label>
+              <input id="system-audio-current-url" readonly placeholder="—">
+            </div>
+
+            <div class="field full">
+              <label for="system-audio-file">Nuovo file audio</label>
+              <input id="system-audio-file" type="file" accept="audio/*">
+            </div>
+
+            <div class="field full">
+              <label for="system-audio-note">Nota versione / descrizione</label>
+              <textarea id="system-audio-note" placeholder="Esempio: nuova musica principale, volume ottimizzato, file migrato da GitHub raw..."></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Upload e salva audio</button>
+              <button type="button" id="btn-system-audio-cancel">Annulla modifica</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card half">
+          <h2>Volumi client</h2>
+          <p class="small-text">
+            Per compatibilità con il client attuale, i valori restano nello stesso formato dei campi legacy:
+            <code>vol_musica</code> e <code>vol_ambienza</code>.
+          </p>
+
+          <form id="system-audio-volume-form" class="form-grid">
+            <div class="field half">
+              <label for="system-audio-vol-musica">Volume musica</label>
+              <input id="system-audio-vol-musica" type="number" step="0.1" min="0" max="100" placeholder="Esempio: 7">
+            </div>
+
+            <div class="field half">
+              <label for="system-audio-vol-ambienza">Volume ambienza</label>
+              <input id="system-audio-vol-ambienza" type="number" step="0.1" min="0" max="100" placeholder="Esempio: 1.1">
+            </div>
+
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Salva volumi</button>
+            </div>
+          </form>
+
+          <p class="small-text">
+            Nota: il controllo volume definitivo lato smartphone verrà fatto dopo la migrazione degli audio su R2,
+            perché GitHub raw crea problemi CORS con WebAudio.
+          </p>
+        </article>
+      </div>
+    </section>
+
     <section id="tab-debug" class="tab-panel">
       <article class="card">
         <h2>Debug</h2>
@@ -573,6 +688,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
-<script type="module" src="js/bootstrap.js?v=0.4.2"></script>
+<script type="module" src="js/bootstrap.js?v=0.4.3"></script>
 </body>
 </html>
