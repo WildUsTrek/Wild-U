@@ -3747,15 +3747,27 @@ const publicCachePayload = {
             }
 
             let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-            if (linkMusica && !aMus.src) {
-                aMus.src = formatAssetLink(linkMusica);
-                aMus.loop = true;
+            if (linkMusica) {
+                const nextMusicaSrc = formatAssetLink(linkMusica);
+
+                if (aMus.src !== nextMusicaSrc) {
+                    aMus.crossOrigin = "anonymous";
+                    aMus.src = nextMusicaSrc;
+                    aMus.loop = true;
+                    try { aMus.load(); } catch (e) {}
+                }
             }
 
             let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-            if (linkAmbienza && !aAmb.src) {
-                aAmb.src = formatAssetLink(linkAmbienza);
-                aAmb.loop = true;
+            if (linkAmbienza) {
+                const nextAmbienzaSrc = formatAssetLink(linkAmbienza);
+
+                if (aAmb.src !== nextAmbienzaSrc) {
+                    aAmb.crossOrigin = "anonymous";
+                    aAmb.src = nextAmbienzaSrc;
+                    aAmb.loop = true;
+                    try { aAmb.load(); } catch (e) {}
+                }
             }
 
             if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
