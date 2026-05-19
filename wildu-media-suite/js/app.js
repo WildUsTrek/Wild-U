@@ -18,6 +18,10 @@
     legacyModuleResources: null,
     moduleGradeOptions: [],
 
+    // Audio App: runtime moderno + mirror legacy client_config.
+    systemAudio: null,
+    systemAudioItems: [],
+
     selectedTab: 'dashboard'
   };
 
@@ -818,7 +822,487 @@
     }
   }  
 
-  
+
+  // =========================================================
+  // AUDIO APP — gestione audio di sistema client su R2 + mirror legacy
+  // =========================================================
+  // Fonte moderna:
+  // - wildu_media_runtime/system_audio
+  //
+  // Mirror compatibilità client attuale:
+  // - PARAMETERS_PARTNER/client_config.audio_*
+  // - PARAMETERS_PARTNER/client_config.vol_musica
+  // - PARAMETERS_PARTNER/client_config.vol_ambienza
+  //
+  // Nota:
+  // Non usare wildu_media_catalog per questi asset: sono runtime app,
+  // non contenuti Radio/Biblioteca sfogliabili.
+
+  var SYSTEM_AUDIO_RUNTIME_COLLECTION = 'wildu_media_runtime';
+  var SYSTEM_AUDIO_RUNTIME_DOC = 'system_audio';
+  var SYSTEM_AUDIO_CLIENT_CONFIG_COLLECTION = 'PARAMETERS_PARTNER';
+  var SYSTEM_AUDIO_CLIENT_CONFIG_DOC = 'client_config';
+
+  var SYSTEM_AUDIO_SLOTS = [
+    {
+      key: 'audio_musica',
+      label: 'Musica principale',
+      role: 'music',
+      fileName: 'audio_musica.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_ambienza',
+      label: 'Ambienza',
+      role: 'ambience',
+      fileName: 'audio_ambienza.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_xp',
+      label: 'Suono XP',
+      role: 'effect',
+      fileName: 'audio_xp.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_reward',
+      label: 'Ricompensa',
+      role: 'effect',
+      fileName: 'audio_reward.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_levelup',
+      label: 'Level Up',
+      role: 'effect',
+      fileName: 'audio_levelup.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_spin',
+      label: 'Ruota - avvio',
+      role: 'effect',
+      fileName: 'audio_spin.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_end',
+      label: 'Ruota - fine',
+      role: 'effect',
+      fileName: 'audio_end.mp3',
+      allowStop: false
+    },
+    {
+      key: 'audio_radio',
+      label: 'Audio modulo Radio',
+      role: 'module',
+      fileName: 'audio_radio.mp3',
+      allowStop: true
+    },
+    {
+      key: 'audio_rifugio',
+      label: 'Audio modulo Rifugio',
+      role: 'module',
+      fileName: 'audio_rifugio.mp3',
+      allowStop: true
+    },
+    {
+      key: 'audio_wildwall',
+      label: 'Audio WildWall',
+      role: 'module',
+      fileName: 'audio_wildwall.mp3',
+      allowStop: true
+    }
+  ];
+
+  function systemAudioRuntimeRef() {
+    return root.db
+      .collection(SYSTEM_AUDIO_RUNTIME_COLLECTION)
+      .doc(SYSTEM_AUDIO_RUNTIME_DOC);
+  }
+
+  function systemAudioClientConfigRef() {
+    return root.db
+      .collection(SYSTEM_AUDIO_CLIENT_CONFIG_COLLECTION)
+      .doc(SYSTEM_AUDIO_CLIENT_CONFIG_DOC);
+  }
+
+  function getSystemAudioSlot(slotKey) {
+    return SYSTEM_AUDIO_SLOTS.find(function (slot) {
+      return slot.key === slotKey;
+    }) || null;
+  }
+
+  function getSystemAudioItem(slotKey) {
+    return (state.systemAudioItems || []).find(function (item) {
+      return item.key === slotKey;
+    }) || null;
+  }
+
+  function normalizeSystemAudioUrl(value) {
+    return String(value === undefined || value === null ? '' : value).trim();
+  }
+
+  function isStopAudioValue(value) {
+    return normalizeSystemAudioUrl(value).toUpperCase() === 'STOP';
+  }
+
+  function getSystemAudioOrigin(value) {
+    var url = normalizeSystemAudioUrl(value);
+
+    if (!url) return 'MANCANTE';
+    if (isStopAudioValue(url)) return 'STOP';
+
+    try {
+      var parsed = new URL(url, window.location.href);
+
+      if (parsed.hostname === 'raw.githubusercontent.com') {
+        return 'GITHUB RAW';
+      }
+
+      if (
+        parsed.hostname === 'media.baffiwild.it' ||
+        parsed.hostname === 'media.wildu.it'
+      ) {
+        if (parsed.pathname.indexOf('/wildu-system-audio/') !== -1) {
+          return 'R2 SYSTEM';
+        }
+
+        return 'R2';
+      }
+
+      if (parsed.hostname.indexOf('github') !== -1) {
+        return 'GITHUB';
+      }
+
+      return parsed.hostname || 'URL';
+    } catch (e) {
+      return 'VALORE';
+    }
+  }
+
+  function getSystemAudioBadgeHtml(value) {
+    var origin = getSystemAudioOrigin(value);
+    var tone = 'rgba(255,255,255,.08)';
+    var color = '#f3f8f4';
+
+    if (origin === 'R2 SYSTEM') {
+      tone = 'rgba(107,213,138,.14)';
+      color = '#bff7cd';
+    } else if (origin === 'R2') {
+      tone = 'rgba(120,190,255,.13)';
+      color = '#bde4ff';
+    } else if (origin === 'GITHUB RAW' || origin === 'GITHUB') {
+      tone = 'rgba(228,182,83,.16)';
+      color = '#ffe7a5';
+    } else if (origin === 'MANCANTE') {
+      tone = 'rgba(238,106,106,.14)';
+      color = '#ffc5c5';
+    } else if (origin === 'STOP') {
+      tone = 'rgba(255,255,255,.06)';
+      color = '#aebcaf';
+    }
+
+    return '<span style="display:inline-flex; padding:4px 9px; border-radius:999px; background:' +
+      tone + '; color:' + color + '; font-size:12px; font-weight:900;">' +
+      root.escapeHtml(origin) +
+      '</span>';
+  }
+
+  function buildSystemAudioItems(clientConfig, runtimeDoc) {
+    clientConfig = clientConfig || {};
+    runtimeDoc = runtimeDoc || {};
+
+    var runtimeItems = runtimeDoc.items && typeof runtimeDoc.items === 'object'
+      ? runtimeDoc.items
+      : {};
+
+    return SYSTEM_AUDIO_SLOTS.map(function (slot) {
+      var runtimeItem = runtimeItems[slot.key] || {};
+      var legacyValue = normalizeSystemAudioUrl(clientConfig[slot.key]);
+      var runtimeValue = normalizeSystemAudioUrl(runtimeItem.fileUrl);
+
+      var effectiveUrl = legacyValue || runtimeValue || '';
+
+      return {
+        key: slot.key,
+        label: slot.label,
+        role: slot.role,
+        fileName: slot.fileName,
+        allowStop: slot.allowStop === true,
+        legacyUrl: legacyValue,
+        runtimeUrl: runtimeValue,
+        effectiveUrl: effectiveUrl,
+        runtimeItem: runtimeItem
+      };
+    });
+  }
+
+  function renderSystemAudio() {
+    var body = root.$('#system-audio-table-body');
+    if (!body) return;
+
+    var items = state.systemAudioItems || [];
+
+    if (!state.currentUser) {
+      body.innerHTML = '<tr><td colspan="6" class="muted">Login richiesto.</td></tr>';
+      return;
+    }
+
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="6" class="muted">Audio App non ancora caricata. Premi “Ricarica Audio App”.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = items.map(function (item) {
+      var url = normalizeSystemAudioUrl(item.effectiveUrl);
+      var shortUrl = url || '—';
+
+      return '' +
+        '<tr>' +
+          '<td><strong>' + root.escapeHtml(item.label) + '</strong></td>' +
+          '<td><code>' + root.escapeHtml(item.key) + '</code></td>' +
+          '<td>' + root.escapeHtml(item.role) + '</td>' +
+          '<td>' + getSystemAudioBadgeHtml(url) + '</td>' +
+          '<td style="max-width:420px; word-break:break-all;">' +
+            (url && !isStopAudioValue(url)
+              ? '<a href="' + root.escapeHtml(url) + '" target="_blank" rel="noopener">' + root.escapeHtml(shortUrl) + '</a>'
+              : root.escapeHtml(shortUrl)) +
+          '</td>' +
+          '<td>' +
+            '<button class="small" type="button" data-edit-system-audio="' + root.escapeHtml(item.key) + '">Modifica</button> ' +
+            (url && !isStopAudioValue(url)
+              ? '<button class="small" type="button" data-open-url="' + root.escapeHtml(url) + '">Ascolta</button>'
+              : '') +
+          '</td>' +
+        '</tr>';
+    }).join('');
+
+    renderSystemAudioVolumeFields();
+  }
+
+  function renderSystemAudioVolumeFields() {
+    var config = state.partnerClientConfig || {};
+    var volMusica = root.$('#system-audio-vol-musica');
+    var volAmbienza = root.$('#system-audio-vol-ambienza');
+
+    if (volMusica && config.vol_musica !== undefined && config.vol_musica !== null) {
+      volMusica.value = config.vol_musica;
+    }
+
+    if (volAmbienza && config.vol_ambienza !== undefined && config.vol_ambienza !== null) {
+      volAmbienza.value = config.vol_ambienza;
+    }
+  }
+
+  function clearSystemAudioForm() {
+    var fields = [
+      '#system-audio-slot-key',
+      '#system-audio-slot-label',
+      '#system-audio-current-url',
+      '#system-audio-note'
+    ];
+
+    fields.forEach(function (selector) {
+      var el = root.$(selector);
+      if (el) el.value = '';
+    });
+
+    var fileInput = root.$('#system-audio-file');
+    if (fileInput) fileInput.value = '';
+  }
+
+  function fillSystemAudioForm(slotKey) {
+    var slot = getSystemAudioSlot(slotKey);
+    if (!slot) {
+      root.toast('Slot audio non trovato: ' + slotKey, 'error');
+      return;
+    }
+
+    var item = getSystemAudioItem(slotKey) || {
+      key: slot.key,
+      label: slot.label,
+      effectiveUrl: ''
+    };
+
+    root.$('#system-audio-slot-key').value = slot.key;
+    root.$('#system-audio-slot-label').value = slot.label + ' — ' + slot.key;
+    root.$('#system-audio-current-url').value = item.effectiveUrl || '';
+    root.$('#system-audio-note').value = '';
+
+    var fileInput = root.$('#system-audio-file');
+    if (fileInput) fileInput.value = '';
+
+    switchTab('audio');
+  }
+
+  async function refreshSystemAudio() {
+    var clientConfigSnap = await systemAudioClientConfigRef().get();
+    var runtimeSnap = await systemAudioRuntimeRef().get();
+
+    var clientConfig = clientConfigSnap.exists ? (clientConfigSnap.data() || {}) : {};
+    var runtimeDoc = runtimeSnap.exists ? (runtimeSnap.data() || {}) : {};
+
+    state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, clientConfig);
+    state.systemAudio = runtimeDoc;
+    state.systemAudioItems = buildSystemAudioItems(clientConfig, runtimeDoc);
+
+    renderSystemAudio();
+    renderDebug();
+  }
+
+  function buildSystemAudioObjectKey(slot, file) {
+    var originalName = String(file && file.name || slot.fileName || slot.key + '.mp3');
+    var extMatch = originalName.match(/\.([a-z0-9]+)$/i);
+    var ext = extMatch ? extMatch[1].toLowerCase() : 'mp3';
+
+    return 'wildu-system-audio/' + slot.key + '.' + ext;
+  }
+
+  async function uploadSystemAudioSlot(evt) {
+    evt.preventDefault();
+
+    var slotKey = normalizeSystemAudioUrl(root.$('#system-audio-slot-key').value);
+    var slot = getSystemAudioSlot(slotKey);
+
+    if (!slot) {
+      throw new Error('Seleziona prima uno slot audio dalla tabella.');
+    }
+
+    var fileInput = root.$('#system-audio-file');
+    var file = fileInput && fileInput.files && fileInput.files[0];
+
+    if (!file) {
+      throw new Error('Seleziona un file audio da caricare.');
+    }
+
+    if (typeof root.validateFileForKind === 'function') {
+      root.validateFileForKind(file, 'audio');
+    }
+
+    var note = normalizeSystemAudioUrl(root.$('#system-audio-note').value);
+    var objectKey = buildSystemAudioObjectKey(slot, file);
+
+    root.toast('Richiesta URL firmato R2 per ' + slot.key + '...', 'info');
+
+    var uploadInfo = await root.R2WorkerService.requestUploadUrl({
+      kind: 'audio',
+      tagSlug: 'system-audio',
+      subcategory: slot.key,
+      fileName: objectKey,
+      contentType: file.type || 'audio/mpeg',
+      sizeBytes: file.size
+    });
+
+    root.toast('Upload R2 in corso...', 'info');
+
+    await root.R2WorkerService.putFileToR2(
+      uploadInfo.uploadUrl,
+      file,
+      file.type || 'audio/mpeg'
+    );
+
+    var publicUrl = normalizeSystemAudioUrl(uploadInfo.publicUrl);
+    if (!publicUrl) {
+      throw new Error('Upload completato ma publicUrl mancante.');
+    }
+
+    var user = root.requireCurrentUser();
+    var now = root.FieldValue.serverTimestamp();
+
+    var itemPatch = {
+      label: slot.label,
+      role: slot.role,
+      clientField: slot.key,
+      fileUrl: publicUrl,
+      objectKey: uploadInfo.objectKey || objectKey,
+      originalFileName: file.name || null,
+      contentType: file.type || 'audio/mpeg',
+      sizeBytes: Number(file.size || 0),
+      status: 'ACTIVE',
+      cachePolicy: 'SYSTEM_AUDIO',
+      note: note || null,
+      uploadedAt: now,
+      uploadedByUid: user.uid,
+      uploadedByEmail: user.email || null,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null
+    };
+
+    var runtimePayload = {
+      schemaVersion: 1,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      items: {}
+    };
+
+    runtimePayload.items[slot.key] = itemPatch;
+
+    var clientPatch = {};
+    clientPatch[slot.key] = publicUrl;
+
+    await systemAudioRuntimeRef().set(runtimePayload, { merge: true });
+    await systemAudioClientConfigRef().set(clientPatch, { merge: true });
+
+    root.toast('Audio salvato e mirror client_config aggiornato: ' + slot.key, 'success');
+
+    clearSystemAudioForm();
+    await refreshSystemAudio();
+  }
+
+  async function saveSystemAudioVolumes(evt) {
+    evt.preventDefault();
+
+    var rawMusica = root.$('#system-audio-vol-musica').value;
+    var rawAmbienza = root.$('#system-audio-vol-ambienza').value;
+
+    var volMusica = Number(rawMusica);
+    var volAmbienza = Number(rawAmbienza);
+
+    if (!Number.isFinite(volMusica) || volMusica < 0 || volMusica > 100) {
+      throw new Error('Volume musica non valido. Usa un numero tra 0 e 100.');
+    }
+
+    if (!Number.isFinite(volAmbienza) || volAmbienza < 0 || volAmbienza > 100) {
+      throw new Error('Volume ambienza non valido. Usa un numero tra 0 e 100.');
+    }
+
+    var user = root.requireCurrentUser();
+    var now = root.FieldValue.serverTimestamp();
+
+    await systemAudioRuntimeRef().set({
+      schemaVersion: 1,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      volumes: {
+        music: volMusica,
+        ambience: volAmbienza,
+        legacyFormat: true,
+        updatedAt: now,
+        updatedByUid: user.uid,
+        updatedByEmail: user.email || null
+      }
+    }, { merge: true });
+
+    await systemAudioClientConfigRef().set({
+      vol_musica: volMusica,
+      vol_ambienza: volAmbienza
+    }, { merge: true });
+
+    state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
+      vol_musica: volMusica,
+      vol_ambienza: volAmbienza
+    });
+
+    root.toast('Volumi Audio App salvati e mirror client_config aggiornato.', 'success');
+
+    await refreshSystemAudio();
+  }
+
   function tagAllowsKind(tag, kind) {
     var allowed = Array.isArray(tag.allowedCategories) ? tag.allowedCategories : [];
     return !kind || allowed.indexOf(kind) !== -1;
@@ -1769,6 +2253,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       partnerClientConfig: state.partnerClientConfig,
       legacyModuleResources: state.legacyModuleResources,
       moduleGradeOptions: state.moduleGradeOptions,
+      systemAudio: state.systemAudio,
+      systemAudioItems: state.systemAudioItems,
       tags: state.tags.map(function (t) {
         return {
           tagSlug: t.tagSlug,
@@ -1859,6 +2345,26 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
     root.$('#btn-refresh-module-grades').addEventListener('click', function () { run(loadPartnerModuleContextQuietly); });
 
+    var refreshSystemAudioBtn = root.$('#btn-refresh-system-audio');
+    if (refreshSystemAudioBtn) {
+      refreshSystemAudioBtn.addEventListener('click', function () { run(refreshSystemAudio); });
+    }
+
+    var systemAudioForm = root.$('#system-audio-form');
+    if (systemAudioForm) {
+      systemAudioForm.addEventListener('submit', function (evt) { run(uploadSystemAudioSlot, evt); });
+    }
+
+    var systemAudioVolumeForm = root.$('#system-audio-volume-form');
+    if (systemAudioVolumeForm) {
+      systemAudioVolumeForm.addEventListener('submit', function (evt) { run(saveSystemAudioVolumes, evt); });
+    }
+
+    var cancelSystemAudioBtn = root.$('#btn-system-audio-cancel');
+    if (cancelSystemAudioBtn) {
+      cancelSystemAudioBtn.addEventListener('click', clearSystemAudioForm);
+    }
+
     var moduleExecutableLinkInput = root.$('#module-link-resource');
     if (moduleExecutableLinkInput) {
       moduleExecutableLinkInput.addEventListener('input', syncModuleTechnicalUrlFromExecutableLink);
@@ -1890,6 +2396,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var bumpModuleBtn = evt.target.closest('[data-bump-module]');
       if (bumpModuleBtn) return run(bumpModuleFromTable, bumpModuleBtn.dataset.bumpModule);
+
+      var editSystemAudioBtn = evt.target.closest('[data-edit-system-audio]');
+      if (editSystemAudioBtn) return fillSystemAudioForm(editSystemAudioBtn.dataset.editSystemAudio);
 
       var versionMediaBtn = evt.target.closest('[data-version-media]');
       if (versionMediaBtn) return run(bumpMediaVersion, versionMediaBtn.dataset.versionMedia);
@@ -1933,6 +2442,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
         run(async function () {
           
           await loadPartnerModuleContextQuietly();
+          await refreshSystemAudio();
           await refreshTags();
           await refreshMedia();
           await refreshGameVersions();
@@ -1950,11 +2460,14 @@ root.$('#module-description').value = item.description || item.Descrizione || it
         state.partnerClientConfig = null;
         state.legacyModuleResources = null;
         state.moduleGradeOptions = [];
+        state.systemAudio = null;
+        state.systemAudioItems = [];
         
         renderTags();
         renderMedia();
         renderGameVersions();
         renderModuleVersions();
+        renderSystemAudio();
         renderDashboard();
         renderDebug();
       }
