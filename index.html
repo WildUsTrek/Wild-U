@@ -7320,10 +7320,14 @@ async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapsh
         const moduleRev = Math.max(1, parseInt(moduleRevRaw, 10) || 1);
 
         let audioParam = "''";
-        if (res.Audio === "STOP") {
-            audioParam = "'STOP'";
-        } else if (res.Audio) {
-            audioParam = `WILD_ASSETS['${escapeWilduJsString(res.Audio)}']`;
+
+        // Audio modulo: passiamo SEMPRE l'istruzione grezza salvata in module_versions.
+        // Non risolviamo qui WILD_ASSETS['audio_radio'], perché se client_config contiene STOP
+        // il mixer scambierebbe una chiave modulo per un comando STOP.
+        const rawModuleAudio = String(res.Audio || "").trim();
+
+        if (rawModuleAudio) {
+            audioParam = `'${escapeWilduJsString(rawModuleAudio)}'`;
         }
 
         const linkRisorsa = String(
@@ -7918,27 +7922,65 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         restoreDefaultAudio();
     }
 
+    function resolveWilduModuleAudioInstruction(instruction) {
+        const raw = String(instruction || "").trim();
+
+        if (!raw) return "";
+
+        // STOP è un comando solo se scritto direttamente nel campo Audio del modulo.
+        if (raw.toUpperCase() === "STOP") return "STOP";
+
+        // URL diretto salvato nella tab Moduli.
+        if (/^https?:\/\//i.test(raw)) return raw;
+
+        // Chiave tecnica salvata nella tab Moduli, es. audio_radio.
+        // La risolviamo tramite WILD_ASSETS solo se il valore finale è un vero URL.
+        const mapped = WILD_ASSETS && WILD_ASSETS[raw] != null
+            ? String(WILD_ASSETS[raw]).trim()
+            : "";
+
+        if (!mapped) return "";
+
+        // Anti-paradosso:
+        // se module_versions.Audio = "audio_radio" ma client_config.audio_radio = "STOP",
+        // non deve diventare comando STOP. Significa solo: nessun URL modulo da usare.
+        if (mapped.toUpperCase() === "STOP") return "";
+
+        if (/^https?:\/\//i.test(mapped)) return mapped;
+
+        return "";
+    }
+
+    function stopCurrentModuleAudio() {
+        try {
+            if (!currentModuleAudio) return;
+
+            const old = currentModuleAudio;
+            currentModuleAudio = null;
+
+            fadeAudio(old, 0, () => {
+                stopOneWilduAudio(old, { reset: true });
+            });
+        } catch(e) {}
+    }
+
     function handleModuleAudio(instruction) {
         try {
-            const i = instruction ? String(instruction).trim().toUpperCase() : "";
+            const resolved = resolveWilduModuleAudioInstruction(instruction);
 
-            if (i === "STOP") {
+            if (resolved === "STOP") {
+                stopCurrentModuleAudio();
                 fadeAudio(aMus, 0);
                 fadeAudio(aAmb, 0);
-                if (currentModuleAudio) fadeAudio(currentModuleAudio, 0);
                 return;
             }
 
-            if (instruction && instruction.startsWith("http")) {
+            if (resolved && /^https?:\/\//i.test(resolved)) {
                 fadeAudio(aMus, 0);
                 fadeAudio(aAmb, 0);
+                stopCurrentModuleAudio();
 
-                if (currentModuleAudio) {
-                    stopOneWilduAudio(currentModuleAudio, { reset: true });
-                    currentModuleAudio = null;
-                }
-
-                currentModuleAudio = new Audio(formatAssetLink(instruction));
+                currentModuleAudio = new Audio(formatAssetLink(resolved));
                 currentModuleAudio.loop = true;
                 currentModuleAudio.preload = "auto";
                 currentModuleAudio.playsInline = true;
@@ -7952,6 +7994,10 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
                 fadeAudio(currentModuleAudio, target);
                 return;
             }
+
+            // Se il modulo ha una chiave non migrata o un valore vuoto,
+            // non trasformiamo mai quel valore in STOP per errore.
+            stopCurrentModuleAudio();
 
             if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
             if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
