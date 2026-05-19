@@ -2156,6 +2156,12 @@ function requireLoggedAccess(reason, options = {}) {
     let wildAudioResumeRetryTimer = null;
     let wildAudioNeedsUserResume = false;
 
+    // Mobile audio unlock:
+    // su smartphone il primo tap può arrivare prima che gli asset audio siano pronti.
+    // In quel caso NON consideriamo l'audio inizializzato: mostriamo un pulsante esplicito.
+    let wildAudioNeedsUserStart = false;
+    let wildAudioUnlockButtonShown = false;
+
     const GRADI_MAP = {
         "Socio Novizio": { ico: "🌱", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
         "Esploratore": { ico: "🌲", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
@@ -3968,8 +3974,7 @@ if (cachedPublicData && !bypassPublicCache) {
             sendClientConsoleSwitchToServiceWorker(false, 'PUBLIC_CACHE_RENDER_EXCEPTION');
         });
 
-        FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
-        FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
+        configureWilduSystemAudioFromAssets('PUBLIC_CACHE_RENDER');
 
         if (WILD_ASSETS['img_header']) {
             document.getElementById('main-hero').style.backgroundImage =
@@ -4100,57 +4105,9 @@ const publicCachePayload = {
             evaluateBookings(); 
              //NEEEWWWWWW
 
-            FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
-            FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
+                        configureWilduSystemAudioFromAssets('INITDATA_REMOTE');
 
-            // CORS-clean per WebAudio/GainNode:
-            // crossOrigin è già impostato alla creazione degli oggetti Audio.
-            if (WILD_ASSETS.audio_xp) {
-                sXP.src = formatAssetLink(WILD_ASSETS.audio_xp);
-                sXP.volume = 0.5;
-            }
-
-            if (WILD_ASSETS.audio_reward) {
-                sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
-            }
-
-            if (WILD_ASSETS.audio_levelup) {
-                sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
-            }
-
-            if (WILD_ASSETS.audio_spin) {
-                sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin);
-                sSpin.volume = 0.2;
-            }
-
-            if (WILD_ASSETS.audio_end) {
-                sEnd.src = formatAssetLink(WILD_ASSETS.audio_end);
-                sEnd.volume = 0.4;
-            }
-
-            let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-            if (linkMusica) {
-                const nextMusicaSrc = formatAssetLink(linkMusica);
-
-                if (aMus.src !== nextMusicaSrc) {
-                    aMus.crossOrigin = "anonymous";
-                    aMus.src = nextMusicaSrc;
-                    aMus.loop = true;
-                    try { aMus.load(); } catch (e) {}
-                }
-            }
-
-            let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-            if (linkAmbienza) {
-                const nextAmbienzaSrc = formatAssetLink(linkAmbienza);
-
-                if (aAmb.src !== nextAmbienzaSrc) {
-                    aAmb.crossOrigin = "anonymous";
-                    aAmb.src = nextAmbienzaSrc;
-                    aAmb.loop = true;
-                    try { aAmb.load(); } catch (e) {}
-                }
-            }
+            
 
             if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
             if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
@@ -6562,6 +6519,119 @@ if (profKeyEl) {
 
         return addWilduSystemAudioCorsVersion(raw);
     }
+
+
+
+        function pickWilduVolumeValue(primary, fallback) {
+        // Non usare || sui volumi: 0 è un valore valido e significa silenzio.
+        if (primary !== undefined && primary !== null && String(primary).trim() !== "") {
+            return primary;
+        }
+
+        return fallback;
+    }
+
+    function configureWilduSystemAudioFromAssets(sourceLabel) {
+        try {
+            FIXED_VOL_MUS = sanitizeVolume(
+                pickWilduVolumeValue(WILD_ASSETS.vol_musica, WILD_ASSETS.val_c13)
+            );
+
+            FIXED_VOL_AMB = sanitizeVolume(
+                pickWilduVolumeValue(WILD_ASSETS.vol_ambienza, WILD_ASSETS.val_c14)
+            );
+
+            if (WILD_ASSETS.audio_xp) {
+                const nextXpSrc = formatAssetLink(WILD_ASSETS.audio_xp);
+                if (sXP.src !== nextXpSrc) {
+                    sXP.crossOrigin = "anonymous";
+                    sXP.src = nextXpSrc;
+                    try { sXP.load(); } catch (e) {}
+                }
+                sXP.volume = 0.5;
+            }
+
+            if (WILD_ASSETS.audio_reward) {
+                const nextRewardSrc = formatAssetLink(WILD_ASSETS.audio_reward);
+                if (sRew.src !== nextRewardSrc) {
+                    sRew.crossOrigin = "anonymous";
+                    sRew.src = nextRewardSrc;
+                    try { sRew.load(); } catch (e) {}
+                }
+            }
+
+            if (WILD_ASSETS.audio_levelup) {
+                const nextLevelSrc = formatAssetLink(WILD_ASSETS.audio_levelup);
+                if (sLvl.src !== nextLevelSrc) {
+                    sLvl.crossOrigin = "anonymous";
+                    sLvl.src = nextLevelSrc;
+                    try { sLvl.load(); } catch (e) {}
+                }
+            }
+
+            if (WILD_ASSETS.audio_spin) {
+                const nextSpinSrc = formatAssetLink(WILD_ASSETS.audio_spin);
+                if (sSpin.src !== nextSpinSrc) {
+                    sSpin.crossOrigin = "anonymous";
+                    sSpin.src = nextSpinSrc;
+                    try { sSpin.load(); } catch (e) {}
+                }
+                sSpin.volume = 0.2;
+            }
+
+            if (WILD_ASSETS.audio_end) {
+                const nextEndSrc = formatAssetLink(WILD_ASSETS.audio_end);
+                if (sEnd.src !== nextEndSrc) {
+                    sEnd.crossOrigin = "anonymous";
+                    sEnd.src = nextEndSrc;
+                    try { sEnd.load(); } catch (e) {}
+                }
+                sEnd.volume = 0.4;
+            }
+
+            let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
+            if (linkMusica) {
+                const nextMusicaSrc = formatAssetLink(linkMusica);
+
+                if (aMus.src !== nextMusicaSrc) {
+                    aMus.crossOrigin = "anonymous";
+                    aMus.src = nextMusicaSrc;
+                    aMus.loop = true;
+                    try { aMus.load(); } catch (e) {}
+                }
+            }
+
+            let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
+            if (linkAmbienza) {
+                const nextAmbienzaSrc = formatAssetLink(linkAmbienza);
+
+                if (aAmb.src !== nextAmbienzaSrc) {
+                    aAmb.crossOrigin = "anonymous";
+                    aAmb.src = nextAmbienzaSrc;
+                    aAmb.loop = true;
+                    try { aAmb.load(); } catch (e) {}
+                }
+            }
+
+            notifyWilduSystemAudioReady();
+
+            pageDebug('SYSTEM_AUDIO_CONFIGURED', {
+                source: sourceLabel || '',
+                hasMusic: !!(aMus && aMus.src),
+                hasAmbience: !!(aAmb && aAmb.src),
+                FIXED_VOL_MUS,
+                FIXED_VOL_AMB
+            });
+        } catch (e) {
+            pageDebug('SYSTEM_AUDIO_CONFIGURE_FAILED', {
+                source: sourceLabel || '',
+                error: e && e.message ? e.message : String(e)
+            });
+        }
+    }
+
+
+
     function showToast(msg) { var t = document.getElementById('toast-msg'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
     function processXPBuffer() { if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); } }
     function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; sRew.play(); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
@@ -8281,6 +8351,116 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         }
     }
 
+
+        function hasWilduPlayableSystemAudio() {
+        try {
+            return !!(
+                (aMus && aMus.src && FIXED_VOL_MUS > 0) ||
+                (aAmb && aAmb.src && FIXED_VOL_AMB > 0) ||
+                (currentModuleAudio && currentModuleAudio.src)
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function hideWilduAudioUnlockButton() {
+        try {
+            const btn = document.getElementById('wildu-audio-unlock-button');
+            if (btn) btn.remove();
+            wildAudioUnlockButtonShown = false;
+        } catch (e) {}
+    }
+
+    function showWilduAudioUnlockButton(reason) {
+        try {
+            if (wildAudioUnlockButtonShown) return;
+            if (!hasWilduPlayableSystemAudio()) return;
+
+            wildAudioUnlockButtonShown = true;
+
+            const btn = document.createElement('button');
+            btn.id = 'wildu-audio-unlock-button';
+            btn.type = 'button';
+            btn.textContent = '🔊 Attiva audio';
+            btn.style.cssText = [
+                'position:fixed',
+                'left:50%',
+                'bottom:calc(92px + env(safe-area-inset-bottom,0px))',
+                'transform:translateX(-50%)',
+                'z-index:999999',
+                'border:1px solid rgba(214,175,55,.75)',
+                'background:linear-gradient(135deg,#2d5a27,#d4af37)',
+                'color:#fff',
+                'font-weight:950',
+                'font-size:15px',
+                'border-radius:999px',
+                'padding:13px 20px',
+                'box-shadow:0 12px 35px rgba(0,0,0,.55)',
+                'cursor:pointer'
+            ].join(';');
+
+            btn.addEventListener('click', function (evt) {
+                evt.preventDefault();
+                evt.stopPropagation();
+                startAudioMixer();
+            }, { passive: false });
+
+            document.body.appendChild(btn);
+
+            pageDebug('AUDIO_UNLOCK_BUTTON_SHOWN', {
+                reason: reason || ''
+            });
+        } catch (e) {}
+    }
+
+    function markWilduAudioNeedsUserStart(reason, err) {
+        wildAudioNeedsUserStart = true;
+
+        pageDebug('AUDIO_NEEDS_USER_START', {
+            reason: reason || '',
+            error: err && err.message ? err.message : String(err || '')
+        });
+
+        showWilduAudioUnlockButton(reason || 'play-blocked');
+    }
+
+    function notifyWilduSystemAudioReady() {
+        if (!hasWilduPlayableSystemAudio()) return;
+
+        // Se l’utente aveva già toccato troppo presto, ora mostriamo il tasto esplicito.
+        if (wildAudioNeedsUserStart || !audioInited) {
+            showWilduAudioUnlockButton('assets-ready');
+        }
+    }
+
+    async function playWilduAudioElement(audio, label) {
+        if (!audio || !audio.src) return false;
+
+        try {
+            prepareWildAudio(audio);
+            await resumeWildAudioContext();
+
+            // Partiamo da volume/gain 0, così non esplode a volume pieno.
+            applyWildAudioVolume(audio, 0, { instant: true });
+
+            const p = audio.play();
+            if (p && typeof p.then === 'function') {
+                await p;
+            }
+
+            pageDebug('AUDIO_PLAY_OK', {
+                label: label || '',
+                src: audio.src || ''
+            });
+
+            return true;
+        } catch (e) {
+            markWilduAudioNeedsUserStart(label || 'play', e);
+            return false;
+        }
+    }
+
     function prepareWildAudio(audio) {
         if (!audio) return;
 
@@ -8292,32 +8472,59 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         ensureWildAudioNode(audio);
     }
 
-    function startAudioMixer() {
-        if (!audioInited) audioInited = true;
+        async function startAudioMixer() {
+        // Non consumare il primo tap se gli asset non sono ancora arrivati.
+        // Su mobile questo era il buco: primo tap troppo presto = audio mai sbloccato.
+        if (!hasWilduPlayableSystemAudio()) {
+            wildAudioNeedsUserStart = true;
 
-        resumeWildAudioContext().then(() => {
-            prepareWildAudio(aMus);
-            prepareWildAudio(aAmb);
+            pageDebug('AUDIO_START_DEFERRED_ASSETS_NOT_READY', {
+                hasMusSrc: !!(aMus && aMus.src),
+                hasAmbSrc: !!(aAmb && aAmb.src),
+                FIXED_VOL_MUS,
+                FIXED_VOL_AMB
+            });
 
-            if (currentModuleAudio && currentModuleAudio.src) {
+            return;
+        }
+
+        audioInited = true;
+        wildAudioNeedsUserStart = false;
+
+        let playedSomething = false;
+
+        if (currentModuleAudio && currentModuleAudio.src) {
+            const ok = await playWilduAudioElement(currentModuleAudio, 'module');
+            if (ok) {
                 const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
                 fadeAudio(currentModuleAudio, target);
-                wildAudioNeedsUserResume = false;
-                return;
+                playedSomething = true;
+            }
+        } else {
+            if (aMus && aMus.src && FIXED_VOL_MUS > 0) {
+                const okMus = await playWilduAudioElement(aMus, 'music');
+                if (okMus) {
+                    fadeAudio(aMus, FIXED_VOL_MUS);
+                    playedSomething = true;
+                }
             }
 
-            if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) {
-                fadeAudio(aMus, FIXED_VOL_MUS);
+            if (aAmb && aAmb.src && FIXED_VOL_AMB > 0) {
+                const okAmb = await playWilduAudioElement(aAmb, 'ambience');
+                if (okAmb) {
+                    fadeAudio(aAmb, FIXED_VOL_AMB);
+                    playedSomething = true;
+                }
             }
+        }
 
-            if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) {
-                fadeAudio(aAmb, FIXED_VOL_AMB);
-            }
-
+        if (playedSomething) {
+            hideWilduAudioUnlockButton();
             wildAudioNeedsUserResume = false;
-        }).catch(() => {
-            wildAudioNeedsUserResume = true;
-        });
+            wildAudioNeedsUserStart = false;
+        } else {
+            markWilduAudioNeedsUserStart('nothing-played-after-start');
+        }
     }
 
     function fadeAudio(audio, targetVolume, callback) {
@@ -8350,7 +8557,9 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
                 applyWildAudioVolume(audio, start, { instant: true });
 
                 if (audio.paused) {
-                    audio.play().catch(e => {});
+                    audio.play().catch(e => {
+                        markWilduAudioNeedsUserStart('fadeAudio-play-blocked', e);
+                    });
                 }
             }
 
