@@ -2917,6 +2917,8 @@ let WILDU_CONSOLE_SWITCH_PROMISE = null;
 const WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY = 'wildGlobalCacheEpochSeen';
 const WILDU_GLOBAL_CACHE_RELOAD_LOCK_KEY = 'wildGlobalCacheReloadLock';
 const WILDU_GLOBAL_CACHE_RELOAD_LOCK_MS = 5 * 60 * 1000; // anti-loop 5 minuti
+const WILDU_GLOBAL_CACHE_NOTICE_KEY = 'wildGlobalCacheNotice';
+const WILDU_GLOBAL_CACHE_RELOAD_DELAY_MS = 650;
 let WILDU_GLOBAL_CACHE_PROMISE = null;
 
 function wilduConsoleIsEnabled() {
@@ -3150,6 +3152,137 @@ function normalizeWilduGlobalCacheEpoch(value) {
     return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+
+function showWilduGlobalCacheOverlay(title, message) {
+    try {
+        let overlay = document.getElementById('wildu-global-cache-overlay');
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'wildu-global-cache-overlay';
+            overlay.style.cssText = [
+                'position:fixed',
+                'inset:0',
+                'z-index:999999',
+                'background:rgba(0,0,0,.86)',
+                'backdrop-filter:blur(8px)',
+                'display:flex',
+                'align-items:center',
+                'justify-content:center',
+                'padding:24px',
+                'box-sizing:border-box',
+                'color:#fff',
+                'font-family:-apple-system,BlinkMacSystemFont,Roboto,sans-serif'
+            ].join(';');
+
+            overlay.innerHTML = '' +
+                '<div style="' +
+                    'width:min(420px,92vw);' +
+                    'background:#17211b;' +
+                    'border:1px solid rgba(214,175,55,.45);' +
+                    'border-radius:22px;' +
+                    'box-shadow:0 28px 90px rgba(0,0,0,.65);' +
+                    'padding:24px;' +
+                    'text-align:center;' +
+                '">' +
+                    '<div style="font-size:34px; margin-bottom:10px;">☢️</div>' +
+                    '<h2 id="wildu-global-cache-overlay-title" style="margin:0 0 10px; color:#f6d889; font-size:22px;">Aggiornamento app</h2>' +
+                    '<p id="wildu-global-cache-overlay-message" style="margin:0; color:#dfe9df; font-size:15px; line-height:1.45;">Preparazione aggiornamento...</p>' +
+                    '<div style="margin-top:18px; height:8px; border-radius:999px; background:rgba(255,255,255,.12); overflow:hidden;">' +
+                        '<div style="width:100%; height:100%; background:linear-gradient(90deg,#2d5a27,#d4af37); animation:wilduCachePulse 1.1s ease-in-out infinite alternate;"></div>' +
+                    '</div>' +
+                    '<style>@keyframes wilduCachePulse{from{transform:translateX(-55%)}to{transform:translateX(55%)}}</style>' +
+                '</div>';
+
+            document.body.appendChild(overlay);
+        }
+
+        const titleEl = document.getElementById('wildu-global-cache-overlay-title');
+        const msgEl = document.getElementById('wildu-global-cache-overlay-message');
+
+        if (titleEl) titleEl.textContent = title || 'Aggiornamento app';
+        if (msgEl) msgEl.textContent = message || 'Aggiornamento cache in corso...';
+
+        overlay.style.display = 'flex';
+    } catch (e) {}
+}
+
+function updateWilduGlobalCacheOverlay(message) {
+    try {
+        const msgEl = document.getElementById('wildu-global-cache-overlay-message');
+        if (msgEl) msgEl.textContent = message || '';
+    } catch (e) {}
+}
+
+function markWilduGlobalCacheNotice(epoch, reason) {
+    try {
+        localStorage.setItem(WILDU_GLOBAL_CACHE_NOTICE_KEY, JSON.stringify({
+            epoch: String(epoch || ''),
+            reason: String(reason || ''),
+            ts: Date.now()
+        }));
+    } catch (e) {}
+}
+
+function consumeWilduGlobalCacheNotice() {
+    try {
+        const raw = localStorage.getItem(WILDU_GLOBAL_CACHE_NOTICE_KEY);
+        if (!raw) return null;
+
+        localStorage.removeItem(WILDU_GLOBAL_CACHE_NOTICE_KEY);
+
+        const data = JSON.parse(raw);
+        if (!data || !data.epoch) return null;
+
+        return data;
+    } catch (e) {
+        try { localStorage.removeItem(WILDU_GLOBAL_CACHE_NOTICE_KEY); } catch (_) {}
+        return null;
+    }
+}
+
+function maybeShowWilduGlobalCacheNotice() {
+    const notice = consumeWilduGlobalCacheNotice();
+    if (!notice) return;
+
+    setTimeout(() => {
+        try {
+            showToast('Cache aggiornata dall’amministratore. App ricaricata.');
+        } catch (e) {}
+    }, 800);
+}
+
+function triggerWilduGlobalCacheReload(targetUrl) {
+    const finalUrl = String(targetUrl || window.location.href);
+
+    updateWilduGlobalCacheOverlay('Pulizia completata. Ricarico l’app...');
+
+    // Primo tentativo: normale replace dopo mezzo secondo, così l’utente vede l’avviso.
+    setTimeout(() => {
+        try {
+            window.location.replace(finalUrl);
+        } catch (e) {
+            window.location.href = finalUrl;
+        }
+    }, WILDU_GLOBAL_CACHE_RELOAD_DELAY_MS);
+
+    // Secondo tentativo: se un browser mobile “dorme” e non naviga, riprova.
+    setTimeout(() => {
+        try {
+            window.location.assign(finalUrl);
+        } catch (e) {
+            window.location.href = finalUrl;
+        }
+    }, 2500);
+
+    // Terzo paracadute: se siamo ancora qui, forza reload della pagina corrente.
+    setTimeout(() => {
+        try {
+            window.location.reload();
+        } catch (e) {}
+    }, 4500);
+}
+
 function clearWilduKnownLocalCachesForGlobalNuke() {
     const exactKeys = [
         SHELL_META_KEY,
@@ -3212,13 +3345,26 @@ async function runWilduGlobalCacheNuke(epoch, reason) {
 
     setWilduGlobalCacheReloadLock(cleanEpoch);
 
+    showWilduGlobalCacheOverlay(
+        'Cache aggiornata dall’amministratore',
+        'Pulizia cache in corso. L’app si ricaricherà da sola.'
+    );
+
     pageDebug('GLOBAL_CACHE_NUKE_START', {
         epoch: cleanEpoch,
         reason: reason || ''
     });
 
+    // Lascia un frame al browser per mostrare davvero l’overlay,
+    // soprattutto su mobile/PWA.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+    updateWilduGlobalCacheOverlay('Cancello cache shell, asset, moduli e dati pubblici...');
+
     // 1) Cancella tutte le CacheStorage: shell/main index, asset, moduli, meta, SW caches.
     await clearWilduShellCaches();
+
+    updateWilduGlobalCacheOverlay('Pulisco cache locali non essenziali...');
 
     // 2) Cancella cache locali note, ma non Firebase Auth.
     clearWilduKnownLocalCachesForGlobalNuke();
@@ -3226,14 +3372,28 @@ async function runWilduGlobalCacheNuke(epoch, reason) {
     // 3) Segna epoch vista DOPO la pulizia, per evitare loop al reload.
     writeWilduGlobalCacheSeenEpoch(cleanEpoch);
 
+    // 4) Prepara avviso post-reload.
+    markWilduGlobalCacheNotice(cleanEpoch, reason || '');
+
     pageDebug('GLOBAL_CACHE_NUKE_DONE', {
         epoch: cleanEpoch
     });
 
     const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set('globalCacheEpoch', String(cleanEpoch));
 
-    window.location.replace(nextUrl.toString());
+    nextUrl.searchParams.set('globalCacheEpoch', String(cleanEpoch));
+    nextUrl.searchParams.set('nocache', '1');
+    nextUrl.searchParams.set('cache', 'off');
+    nextUrl.searchParams.set('publicRefresh', '1');
+    nextUrl.searchParams.set('moduleRefresh', '2');
+    nextUrl.searchParams.set('adminRefresh', String(Date.now()));
+
+    pageDebug('GLOBAL_CACHE_RELOAD_SCHEDULED', {
+        targetUrl: nextUrl.toString()
+    });
+
+    triggerWilduGlobalCacheReload(nextUrl.toString());
+
     throw new Error('GLOBAL_CACHE_REFRESH_TRIGGERED');
 }
 
@@ -3728,6 +3888,8 @@ async function init() {
         }
         console.warn('Shell version check skipped:', e);
     }
+
+    maybeShowWilduGlobalCacheNotice();
 
     checkAuthEnvironment();
 
