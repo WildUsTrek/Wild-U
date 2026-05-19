@@ -635,6 +635,49 @@
         return true;
     }
 
+    async function syncGameRuntimeVersionBeforeOpen(game, targetUrl) {
+        const rawUrl = normalizeUrl(targetUrl || (game && game.url) || "");
+        const rev = Math.max(1, parseInt(game && game.rev, 10) || 1);
+
+        if (!rawUrl) return;
+
+        try {
+            const runtimeApi = window.WILDU_RUNTIME_VERSIONS;
+
+            if (runtimeApi && typeof runtimeApi.remember === "function") {
+                await runtimeApi.remember(rawUrl, rev);
+
+                console.log("[WILDU GIOCHI] runtime rev sincronizzata", {
+                    url: rawUrl,
+                    rev: rev
+                });
+
+                return;
+            }
+
+            // Paracadute temporaneo: se il main index non è ancora aggiornato,
+            // almeno puliamo la cache correlata tramite l'API già esposta.
+            // Dopo Patch 1/2 non verrà usato.
+            if (runtimeApi && typeof runtimeApi.clearCorrelated === "function") {
+                await runtimeApi.clearCorrelated(rawUrl);
+
+                console.warn("[WILDU GIOCHI] runtime remember non disponibile: pulizia correlata fallback eseguita", {
+                    url: rawUrl,
+                    rev: rev
+                });
+
+                return;
+            }
+
+            console.warn("[WILDU GIOCHI] WILDU_RUNTIME_VERSIONS non disponibile: salto sync cache gioco", {
+                url: rawUrl,
+                rev: rev
+            });
+        } catch (e) {
+            console.warn("[WILDU GIOCHI] sync runtime/cache gioco fallita:", e);
+        }
+    }
+
     function openGameFrame(game, url) {
         if (!overlayEl || !frameEl) {
             throw new Error("Overlay gioco non trovato.");
@@ -676,6 +719,11 @@
         if (!targetUrl) {
             throw new Error("URL gioco mancante.");
         }
+
+        // Fase 3/5 — cache/versioning giochi:
+        // prima di aprire il gioco, sincronizziamo la rev del singolo gioco.
+        // Se la rev è cambiata, il main index pulisce cacheScope/clearNeedles correlati.
+        await syncGameRuntimeVersionBeforeOpen(game, targetUrl);
 
         if (mode === "secure_iframe") {
             if (typeof window.openWilduSecureIframe !== "function") {
