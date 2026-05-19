@@ -8868,9 +8868,11 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     function ensureWildAudioNode(audio) {
         if (!audio) return null;
 
-        // Gli audio di sistema R2 devono restare in playback nativo.
-        // Su mobile il file diretto suona, mentre il ramo crossOrigin/WebAudio genera
-        // MEDIA_ERR_SRC_NOT_SUPPORTED / NETWORK_NO_SOURCE.
+        // IMPORTANTISSIMO:
+        // Gli audio di sistema R2 NON devono passare da MediaElementSource.
+        // Su mobile il file diretto suona, ma crossOrigin/WebAudio via <audio>
+        // può produrre MEDIA_ERR_SRC_NOT_SUPPORTED.
+        // Il controllo volume per questi passa da applyWildAudioVolume().
         if (isWilduSystemAudioUrl(audio.src)) {
             return null;
         }
@@ -8901,11 +8903,35 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         if (!audio) return;
 
         const safeVolume = clampWildVolume(volume);
+
+        try {
+            // Ramo speciale: audio di sistema R2.
+            // Qui NON dobbiamo mai lasciare audio.volume = 1 per colpa di vecchi GainNode.
+            // Se esiste un nodo WebAudio rimasto appeso da una versione precedente,
+            // lo azzeriamo e governiamo il volume in modo nativo.
+            if (isWilduSystemAudioUrl(audio.src)) {
+                try {
+                    const oldNode = wildAudioNodes.get(audio);
+                    if (oldNode && oldNode.gain) {
+                        if (options.instant === true && oldNode.gain.context) {
+                            oldNode.gain.gain.setValueAtTime(0, oldNode.gain.context.currentTime);
+                        } else {
+                            oldNode.gain.gain.value = 0;
+                        }
+                    }
+                } catch (_) {}
+
+                audio.muted = safeVolume <= 0;
+                audio.volume = safeVolume;
+
+                return;
+            }
+        } catch (_) {}
+
         const node = ensureWildAudioNode(audio);
 
         try {
             if (node && node.gain) {
-                // Quando il GainNode esiste, l'elemento resta a 1 e il gain governa il volume reale.
                 audio.volume = 1;
 
                 if (options.instant === true) {
@@ -8914,16 +8940,27 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
                     node.gain.gain.value = safeVolume;
                 }
             } else {
-                // Fallback desktop/browser senza WebAudio.
+                audio.muted = safeVolume <= 0;
                 audio.volume = safeVolume;
             }
         } catch (e) {
-            try { audio.volume = safeVolume; } catch (_) {}
+            try {
+                audio.muted = safeVolume <= 0;
+                audio.volume = safeVolume;
+            } catch (_) {}
         }
     }
 
     function getWildAudioVolume(audio) {
         if (!audio) return 0;
+
+        try {
+            // Per gli audio R2 nativi la fonte vera deve essere audio.volume,
+            // non un GainNode vecchio rimasto nella WeakMap.
+            if (isWilduSystemAudioUrl(audio.src)) {
+                return clampWildVolume(audio.volume);
+            }
+        } catch (e) {}
 
         try {
             const node = wildAudioNodes.get(audio);
