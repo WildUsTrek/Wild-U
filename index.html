@@ -3244,6 +3244,23 @@ function consumePublicCacheBypassOnce() {
     return true;
 }
 
+
+function shouldBypassPublicCacheFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+
+        return (
+            params.get("refresh") === "1" ||
+            params.get("nocache") === "1" ||
+            params.get("cache") === "off" ||
+            params.get("publicRefresh") === "1" ||
+            params.get("publicCacheRefresh") === "1"
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
 function requestPublicCacheBypass() {
     const pin = window.prompt('PIN refresh cache pubblica:');
     if (pin === null) return;
@@ -3490,7 +3507,10 @@ async function fetchInitData(options = {}) {
     }
 
     initDataPromise = (async () => {
-        const bypassPublicCache = !force && consumePublicCacheBypassOnce();
+        const bypassPublicCache =
+    force ||
+    consumePublicCacheBypassOnce() ||
+    shouldBypassPublicCacheFromUrl();
         const publicCacheEnvelope = readPublicCacheEnvelope();
         const hasValidPublicCache = !force && !bypassPublicCache && isPublicCacheStillValid(publicCacheEnvelope);
         const cachedPublicData = publicCacheEnvelope && publicCacheEnvelope.payload ? publicCacheEnvelope.payload : null;
