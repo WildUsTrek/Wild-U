@@ -1259,16 +1259,35 @@
     var rawMusica = root.$('#system-audio-vol-musica').value;
     var rawAmbienza = root.$('#system-audio-vol-ambienza').value;
 
-    var volMusica = Number(rawMusica);
-    var volAmbienza = Number(rawAmbienza);
+    function parseSystemAudioPercent(rawValue, label) {
+      var raw = String(rawValue === undefined || rawValue === null ? '' : rawValue)
+        .trim()
+        .replace('%', '')
+        .replace(',', '.');
 
-    if (!Number.isFinite(volMusica) || volMusica < 0 || volMusica > 100) {
-      throw new Error('Volume musica non valido. Usa un numero tra 0 e 100.');
+      if (raw === '') {
+        throw new Error('Volume ' + label + ' mancante.');
+      }
+
+      var n = Number(raw);
+
+      if (!Number.isFinite(n)) {
+        throw new Error('Volume ' + label + ' non valido. Usa valori come 0, 0,2, 0.5, 1, 5 o 100.');
+      }
+
+      if (n < 0 || n > 100) {
+        throw new Error('Volume ' + label + ' non valido. Usa un numero percentuale tra 0 e 100.');
+      }
+
+      // Scala Wildu corretta:
+      // 0,2 resta 0.2 nel DB, cioè 0,2%.
+      // 1 resta 1 nel DB, cioè 1%.
+      // La conversione in gain WebAudio /100 avviene SOLO nel client.
+      return n;
     }
 
-    if (!Number.isFinite(volAmbienza) || volAmbienza < 0 || volAmbienza > 100) {
-      throw new Error('Volume ambienza non valido. Usa un numero tra 0 e 100.');
-    }
+    var volMusica = parseSystemAudioPercent(rawMusica, 'musica');
+    var volAmbienza = parseSystemAudioPercent(rawAmbienza, 'ambienza');
 
     var user = root.requireCurrentUser();
     var now = root.FieldValue.serverTimestamp();
