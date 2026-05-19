@@ -1098,18 +1098,161 @@
   }
 
 
-  function cleanAdminDumpText(value) {
+  function isAdminDumpText(value) {
     var raw = String(value == null ? '' : value).trim();
 
-    if (
-      raw === 'ADMIN_TABLE_BUMP' ||
+    return raw === 'ADMIN_TABLE_BUMP' ||
       raw === 'ADMIN_BUMP' ||
-      raw === 'VERSION_BUMP'
-    ) {
-      return '';
+      raw === 'VERSION_BUMP';
+  }
+
+  function cleanAdminDumpText(value) {
+    return isAdminDumpText(value) ? '' : String(value == null ? '' : value);
+  }
+
+  function cleanRuntimeEntryVisibleDumpFields(entry, fields, stats) {
+    var src = entry && typeof entry === 'object' ? entry : {};
+    var out = Object.assign({}, src);
+
+    fields.forEach(function (field) {
+      if (isAdminDumpText(out[field])) {
+        out[field] = '';
+        stats.cleaned++;
+      }
+    });
+
+    return out;
+  }
+
+  function cleanRuntimeMapEntries(map, fields, stats) {
+    var src = map && typeof map === 'object' ? map : {};
+    var out = {};
+    Object.keys(src).forEach(function (key) {
+      out[key] = cleanRuntimeEntryVisibleDumpFields(src[key], fields, stats);
+    });
+    return out;
+  }
+
+  async function cleanAdminDumpsFromRuntimeDocs() {
+    if (!root.db) throw new Error('Firestore non inizializzato.');
+    if (!state.currentUser) throw new Error('Login richiesto.');
+
+    var runtimeCol = root.db.collection(WILDU_MEDIA_CONFIG.collections.runtime);
+    var gameRef = runtimeCol.doc('game_versions');
+    var moduleRef = runtimeCol.doc('module_versions');
+
+    var gameSnap = await gameRef.get();
+    var moduleSnap = await moduleRef.get();
+
+    var stats = {
+      cleaned: 0,
+      gameEntries: 0,
+      moduleEntries: 0,
+      docsWritten: 0
+    };
+
+    if (gameSnap.exists) {
+      var gameData = gameSnap.data() || {};
+      var gamePatch = {};
+      var gameChanged = false;
+
+      if (gameData.games && typeof gameData.games === 'object') {
+        gamePatch.games = cleanRuntimeMapEntries(gameData.games, ['description', 'notes'], stats);
+        stats.gameEntries += Object.keys(gameData.games).length;
+        gameChanged = true;
+      }
+
+      // Pulizia prudente anche dei vecchi campi fantasma tipo:
+      // "games.giochi/sfida-dei-sassi/index.html"
+      Object.keys(gameData).forEach(function (key) {
+        if (key.indexOf('games.') === 0 && gameData[key] && typeof gameData[key] === 'object') {
+          gamePatch[key] = cleanRuntimeEntryVisibleDumpFields(gameData[key], ['description', 'notes'], stats);
+          gameChanged = true;
+        }
+      });
+
+      if (gameChanged) {
+        await gameRef.set(gamePatch, { merge: true });
+        stats.docsWritten++;
+      }
     }
 
-    return raw;
+    if (moduleSnap.exists) {
+      var moduleData = moduleSnap.data() || {};
+      var modulePatch = {};
+      var moduleChanged = false;
+
+      if (moduleData.modules && typeof moduleData.modules === 'object') {
+        modulePatch.modules = cleanRuntimeMapEntries(
+          moduleData.modules,
+          ['description', 'notes', 'Descrizione'],
+          stats
+        );
+        stats.moduleEntries += Object.keys(moduleData.modules).length;
+        moduleChanged = true;
+      }
+
+      // Pulizia prudente anche di eventuali vecchi campi fantasma "modules...."
+      Object.keys(moduleData).forEach(function (key) {
+        if (key.indexOf('modules.') === 0 && moduleData[key] && typeof moduleData[key] === 'object') {
+          modulePatch[key] = cleanRuntimeEntryVisibleDumpFields(
+            moduleData[key],
+            ['description', 'notes', 'Descrizione'],
+            stats
+          );
+          moduleChanged = true;
+        }
+      });
+
+      if (moduleChanged) {
+        await moduleRef.set(modulePatch, { merge: true });
+        stats.docsWritten++;
+      }
+    }
+
+    await refreshGameVersions();
+    await refreshModuleVersions();
+
+    root.toast(
+      'Lavaggio completato. Dump rimossi: ' + stats.cleaned +
+      ' | Giochi letti: ' + stats.gameEntries +
+      ' | Moduli letti: ' + stats.moduleEntries,
+      'success'
+    );
+
+    return stats;
+  }
+
+  function installAdminDumpCleanerButton() {
+    var debugPanel = document.getElementById('tab-debug');
+    if (!debugPanel) return;
+    if (document.getElementById('btn-clean-admin-dumps')) return;
+
+    var card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML = '' +
+      '<h2>🧼 Pulizia dump tecnici</h2>' +
+      '<p class="muted">' +
+        'Rimuove dai manifesti runtime le vecchie scritte tecniche ' +
+        '<code>ADMIN_TABLE_BUMP</code>, <code>ADMIN_BUMP</code> e <code>VERSION_BUMP</code> ' +
+        'da descrizioni e note visibili.' +
+      '</p>' +
+      '<p class="small-text">' +
+        'Tocca solo <code>wildu_media_runtime/game_versions</code> e ' +
+        '<code>wildu_media_runtime/module_versions</code>. Non tocca R2, catalogo media, tag o public_versions.' +
+      '</p>' +
+      '<div class="form-actions">' +
+        '<button data-requires-auth type="button" id="btn-clean-admin-dumps">Lava dump tecnici</button>' +
+      '</div>';
+
+    debugPanel.insertBefore(card, debugPanel.firstChild);
+
+    var btn = document.getElementById('btn-clean-admin-dumps');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        run(cleanAdminDumpsFromRuntimeDocs);
+      });
+    }
   }
   
   
@@ -1536,7 +1679,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   function bindEvents() {
-
+    
+    installAdminDumpCleanerButton(); //AGGIUNTA PERICOLOSA
+    
     var instructionsBtn = document.getElementById('btn-open-instructions');
     if (instructionsBtn) {
       instructionsBtn.addEventListener('click', function (evt) {
