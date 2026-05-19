@@ -2846,9 +2846,79 @@ const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
 
 const DEBUG_WILDU_PAGE = true;
 
+// Ultimo valore noto lato pagina. Serve solo per ritrasmettere al SW dopo update/reload.
+const WILDU_CONSOLE_SWITCH_STORAGE_KEY = 'wildConsoleSwitchLastValue';
+
 function pageDebug(type, details) {
     if (!DEBUG_WILDU_PAGE) return;
     console.log('[WILDU PAGE]', type, details || {});
+}
+
+function getClientConsoleSwitchFromConfig(sourceConfig) {
+    const cfg = sourceConfig && typeof sourceConfig === 'object'
+        ? sourceConfig
+        : config;
+
+    return cfg && cfg.console_switch === true;
+}
+
+function rememberClientConsoleSwitch(value) {
+    try {
+        localStorage.setItem(
+            WILDU_CONSOLE_SWITCH_STORAGE_KEY,
+            value === true ? 'true' : 'false'
+        );
+    } catch (e) {}
+}
+
+function readRememberedClientConsoleSwitch() {
+    try {
+        return localStorage.getItem(WILDU_CONSOLE_SWITCH_STORAGE_KEY) === 'true';
+    } catch (e) {
+        return false;
+    }
+}
+
+function sendClientConsoleSwitchToServiceWorker(value) {
+    if (!('serviceWorker' in navigator)) return;
+
+    const enabled = value === true;
+
+    rememberClientConsoleSwitch(enabled);
+
+    const message = {
+        type: 'WILDU_CONSOLE_SWITCH',
+        value: enabled,
+        source: 'wild-u-client',
+        ts: Date.now()
+    };
+
+    try {
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage(message);
+        }
+    } catch (e) {}
+
+    try {
+        navigator.serviceWorker.ready
+            .then((registration) => {
+                if (registration && registration.active) {
+                    registration.active.postMessage(message);
+                }
+            })
+            .catch(() => {});
+    } catch (e) {}
+}
+
+function applyClientConsoleSwitchFromConfig(sourceConfig) {
+    const enabled = getClientConsoleSwitchFromConfig(sourceConfig);
+    sendClientConsoleSwitchToServiceWorker(enabled);
+
+    pageDebug('CONSOLE_SWITCH_APPLIED', {
+        console_switch: enabled
+    });
+
+    return enabled;
 }
 
 if ('serviceWorker' in navigator) {
@@ -2858,6 +2928,10 @@ if ('serviceWorker' in navigator) {
 
         const msg = data.__WILDU_DEBUG__;
         console.log('[WILDU TRACE]', msg.type, msg.details || {}, msg.ts || '');
+    });
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        sendClientConsoleSwitchToServiceWorker(readRememberedClientConsoleSwitch());
     });
 }
     
@@ -3312,6 +3386,8 @@ if (cachedPublicData && !bypassPublicCache) {
         config = data.config || {};
         if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
+        applyClientConsoleSwitchFromConfig(config);
+
         FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
         FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
 
@@ -3429,6 +3505,8 @@ const publicCachePayload = {
             WILD_ASSETS = data.assets || {};
             config = data.config || {};
             if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
+
+            applyClientConsoleSwitchFromConfig(config);
 
             allTrips = data.events || [];
             allOpenDays = data.opendays || [];
@@ -7400,7 +7478,15 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     function handleStoreLink(chiave) { document.getElementById('download-action-modal').style.display = 'none'; let val = WILD_ASSETS[chiave]; if (!val || val.trim() === "") showToast("Versione non ancora disponibile."); else if (val.startsWith("http")) window.open(val, '_blank'); else showToast(val); }
     function parseSheetText(text) { return text ? String(text).replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') : ""; }
 
-    if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => {}); }); }
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(() => {
+                    sendClientConsoleSwitchToServiceWorker(readRememberedClientConsoleSwitch());
+                })
+                .catch(err => {});
+        });
+    }
 
 
     // 2. APRI IL POP-UP E DECODIFICA IL JSON (VERSIONE UNIVERSALE)
@@ -8403,4 +8489,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
 </body>
 </html>
-
