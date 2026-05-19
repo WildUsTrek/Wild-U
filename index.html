@@ -2153,6 +2153,8 @@ function requireLoggedAccess(reason, options = {}) {
     let wildAudioCtx = null;
     let wildAudioNodes = new WeakMap();
     let wildAudioPausedByHidden = false;
+    let wildAudioResumeRetryTimer = null;
+    let wildAudioNeedsUserResume = false;
 
     const GRADI_MAP = {
         "Socio Novizio": { ico: "🌱", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
@@ -7800,10 +7802,18 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     function resumeWildAudioContext() {
         try {
             const ctx = getWildAudioContext();
-            if (ctx && ctx.state === "suspended") {
-                ctx.resume().catch(() => {});
+            if (!ctx) return Promise.resolve(false);
+
+            if (ctx.state === "suspended") {
+                return ctx.resume()
+                    .then(() => true)
+                    .catch(() => false);
             }
-        } catch (e) {}
+
+            return Promise.resolve(ctx.state === "running");
+        } catch (e) {
+            return Promise.resolve(false);
+        }
     }
 
     function ensureWildAudioNode(audio) {
@@ -7888,18 +7898,29 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     function startAudioMixer() {
         if (!audioInited) audioInited = true;
 
-        resumeWildAudioContext();
+        resumeWildAudioContext().then(() => {
+            prepareWildAudio(aMus);
+            prepareWildAudio(aAmb);
 
-        prepareWildAudio(aMus);
-        prepareWildAudio(aAmb);
+            if (currentModuleAudio && currentModuleAudio.src) {
+                const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
+                fadeAudio(currentModuleAudio, target);
+                wildAudioNeedsUserResume = false;
+                return;
+            }
 
-        if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) {
-            fadeAudio(aMus, FIXED_VOL_MUS);
-        }
+            if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) {
+                fadeAudio(aMus, FIXED_VOL_MUS);
+            }
 
-        if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) {
-            fadeAudio(aAmb, FIXED_VOL_AMB);
-        }
+            if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) {
+                fadeAudio(aAmb, FIXED_VOL_AMB);
+            }
+
+            wildAudioNeedsUserResume = false;
+        }).catch(() => {
+            wildAudioNeedsUserResume = true;
+        });
     }
 
     function fadeAudio(audio, targetVolume, callback) {
@@ -8000,21 +8021,64 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         hardStopWilduAudio();
     }
 
-    function resumeWilduAudioAfterHiddenPage() {
+    async function resumeWilduAudioAfterHiddenPage() {
         if (!wildAudioPausedByHidden || !audioInited) return;
+
+        if (wildAudioResumeRetryTimer) {
+            clearTimeout(wildAudioResumeRetryTimer);
+            wildAudioResumeRetryTimer = null;
+        }
+
+        // NON azzeriamo subito wildAudioPausedByHidden:
+        // lo facciamo solo dopo un tentativo reale di ripartenza.
+        const ctxReady = await resumeWildAudioContext();
+
+        function restartExpectedAudio() {
+            try {
+                if (currentModuleAudio && currentModuleAudio.src) {
+                    const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
+                    fadeAudio(currentModuleAudio, target);
+                    return;
+                }
+
+                restoreDefaultAudio();
+            } catch (e) {}
+        }
+
+        restartExpectedAudio();
+
+        // Controllo leggermente ritardato: alcuni browser riprendono il contesto,
+        // ma l'HTMLAudioElement resta ancora paused dopo il primo tentativo.
+        wildAudioResumeRetryTimer = setTimeout(() => {
+            wildAudioResumeRetryTimer = null;
+
+            const somethingShouldPlay =
+                (currentModuleAudio && currentModuleAudio.src) ||
+                (aMus && aMus.src && FIXED_VOL_MUS > 0) ||
+                (aAmb && aAmb.src && FIXED_VOL_AMB > 0);
+
+            const somethingActuallyPlaying =
+                (currentModuleAudio && !currentModuleAudio.paused) ||
+                (aMus && !aMus.paused) ||
+                (aAmb && !aAmb.paused);
+
+            if (somethingShouldPlay && !somethingActuallyPlaying) {
+                wildAudioNeedsUserResume = true;
+
+                // Secondo tentativo automatico leggero.
+                restartExpectedAudio();
+            } else {
+                wildAudioNeedsUserResume = false;
+            }
+        }, 450);
 
         wildAudioPausedByHidden = false;
 
-        // Alcuni browser richiedono un nuovo gesto: se fallisce, ripartirà al prossimo tap/click.
-        resumeWildAudioContext();
-
-        if (currentModuleAudio && currentModuleAudio.src) {
-            const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
-            fadeAudio(currentModuleAudio, target);
-            return;
+        // Se il browser ha rifiutato resume perché vuole un gesto utente,
+        // il prossimo tap/click richiamerà startAudioMixer().
+        if (!ctxReady) {
+            wildAudioNeedsUserResume = true;
         }
-
-        restoreDefaultAudio();
     }
 
     function resolveWilduModuleAudioInstruction(instruction) {
