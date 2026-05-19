@@ -3230,12 +3230,25 @@ function escapeWilduAudioDebugHtml(value) {
 }
 
 function buildWilduAudioDebugCopyText() {
-    const snapshot = collectWilduAudioDebugSnapshot();
+    let snapshot = null;
+    let snapshotError = "";
+
+    try {
+        snapshot = collectWilduAudioDebugSnapshot();
+    } catch (e) {
+        snapshotError = e && e.stack ? e.stack : (e && e.message ? e.message : String(e));
+    }
 
     return JSON.stringify({
         reportType: "WILDU_AUDIO_DEBUG_REPORT",
         reportVersion: 1,
-        snapshot
+        generatedAt: new Date().toISOString(),
+        href: window.location.href,
+        userAgent: navigator.userAgent,
+        consoleSwitch: typeof wilduConsoleIsEnabled === "function" ? wilduConsoleIsEnabled() : null,
+        snapshotError: snapshotError,
+        snapshot: snapshot,
+        recentEvents: Array.isArray(wildAudioDebugEvents) ? wildAudioDebugEvents.slice(-50) : []
     }, null, 2);
 }
 
@@ -3245,42 +3258,51 @@ async function copyWilduAudioDebugReport() {
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            showToast("Debug audio copiato.");
+            try { showToast("Debug audio copiato."); } catch (_) {}
             wilduAudioDebugLog("COPY_REPORT_OK", { method: "navigator.clipboard" });
             return true;
         }
     } catch (e) {
-        wilduAudioDebugLog("COPY_REPORT_CLIPBOARD_FAILED", {
-            error: e && e.message ? e.message : String(e)
-        });
+        try {
+            wilduAudioDebugLog("COPY_REPORT_CLIPBOARD_FAILED", {
+                error: e && e.message ? e.message : String(e)
+            });
+        } catch (_) {}
     }
 
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "readonly");
+    ta.style.position = "fixed";
+    ta.style.left = "8px";
+    ta.style.right = "8px";
+    ta.style.bottom = "8px";
+    ta.style.width = "calc(100vw - 16px)";
+    ta.style.height = "45vh";
+    ta.style.zIndex = "1000000";
+    ta.style.background = "#111";
+    ta.style.color = "#fff";
+    ta.style.border = "2px solid #d4af37";
+    ta.style.borderRadius = "12px";
+    ta.style.padding = "12px";
+    ta.style.fontSize = "12px";
+    ta.style.boxSizing = "border-box";
+
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+
     try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.setAttribute("readonly", "readonly");
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        ta.style.top = "0";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-
         const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-
         if (ok) {
-            showToast("Debug audio copiato.");
+            document.body.removeChild(ta);
+            try { showToast("Debug audio copiato."); } catch (_) {}
             wilduAudioDebugLog("COPY_REPORT_OK", { method: "execCommand" });
             return true;
         }
-    } catch (e) {
-        wilduAudioDebugLog("COPY_REPORT_FALLBACK_FAILED", {
-            error: e && e.message ? e.message : String(e)
-        });
-    }
+    } catch (e) {}
 
-    alert("Copia automatica non riuscita. Tieni premuto sul pannello debug e copia manualmente.");
+    alert("Copia automatica non riuscita. Ho aperto il testo debug: selezionalo e copialo manualmente.");
     return false;
 }
 
@@ -3329,12 +3351,30 @@ function renderWilduAudioDebugPanel() {
             : '<span style="color:#ff6b6b;font-weight:900;">' + badText + '</span>';
     }
 
-    function rowAudio(a) {
+    function rowAudio(a, fallbackLabel) {
+        a = a || {
+            label: fallbackLabel || "unknown",
+            hasSrc: false,
+            src: "",
+            paused: true,
+            targetVolume: null,
+            volume: null,
+            gain: null,
+            node: false,
+            readyState: "NO_DATA",
+            networkState: "NO_DATA",
+            error: "AUDIO_DEBUG_OBJECT_MISSING",
+            crossOrigin: "",
+            playsInline: null,
+            currentTime: null,
+            duration: null
+        };
+
         return '' +
             '<details open style="border-top:1px solid rgba(255,255,255,.12); padding-top:6px; margin-top:6px;">' +
                 '<summary style="color:#f6d889;font-weight:900;">' +
-                    escapeWilduAudioDebugHtml(a.label) + ' ' +
-                    badge(a.hasSrc, 'SRC', 'NO_SRC') + ' ' +
+                    escapeWilduAudioDebugHtml(a.label || fallbackLabel || "unknown") + ' ' +
+                    badge(!!a.hasSrc, 'SRC', 'NO_SRC') + ' ' +
                     badge(a.paused === false, 'PLAY', 'PAUSE') +
                 '</summary>' +
                 '<div>src: <span style="color:#9ad7ff;">' + escapeWilduAudioDebugHtml(a.src || '-') + '</span></div>' +
@@ -3343,8 +3383,8 @@ function renderWilduAudioDebugPanel() {
                     ' | gain: ' + escapeWilduAudioDebugHtml(a.gain) +
                     ' | node: ' + escapeWilduAudioDebugHtml(a.node) +
                 '</div>' +
-                '<div>ready: ' + escapeWilduAudioDebugHtml(a.readyState) +
-                    ' | network: ' + escapeWilduAudioDebugHtml(a.networkState) +
+                '<div>ready: ' + escapeWilduAudioDebugHtml(a.readyState || '-') +
+                    ' | network: ' + escapeWilduAudioDebugHtml(a.networkState || '-') +
                     ' | error: <span style="color:#ff9a9a;">' + escapeWilduAudioDebugHtml(a.error || '-') + '</span>' +
                 '</div>' +
                 '<div>crossOrigin: ' + escapeWilduAudioDebugHtml(a.crossOrigin || '-') +
@@ -3392,14 +3432,14 @@ function renderWilduAudioDebugPanel() {
             '<button type="button" id="wildu-audio-debug-copy" style="background:#f6d889;color:#111;border:0;border-radius:8px;padding:7px 9px;font-weight:900;">Copia debug</button>' +
         '</div>' +
 
-        rowAudio(s.music) +
-        rowAudio(s.ambience) +
-        rowAudio(s.module) +
-        rowAudio(s.xp) +
-        rowAudio(s.reward) +
-        rowAudio(s.levelup) +
-        rowAudio(s.spin) +
-        rowAudio(s.end) +
+        rowAudio((s.audioElements && s.audioElements.music) || s.music, "music") +
+        rowAudio((s.audioElements && s.audioElements.ambience) || s.ambience, "ambience") +
+        rowAudio((s.audioElements && s.audioElements.module) || s.module, "module") +
+        rowAudio((s.audioElements && s.audioElements.xp) || s.xp, "xp") +
+        rowAudio((s.audioElements && s.audioElements.reward) || s.reward, "reward") +
+        rowAudio((s.audioElements && s.audioElements.levelup) || s.levelup, "levelup") +
+        rowAudio((s.audioElements && s.audioElements.spin) || s.spin, "spin") +
+        rowAudio((s.audioElements && s.audioElements.end) || s.end, "end") +
 
         '<details style="border-top:1px solid rgba(255,255,255,.12); padding-top:6px; margin-top:8px;">' +
             '<summary style="color:#f6d889;font-weight:900;">Eventi recenti</summary>' +
