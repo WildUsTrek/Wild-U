@@ -592,7 +592,7 @@ const ALL_AREAS_VALUE = "__ALL__";
 
 const WILDU_SECURE_LAUNCH_COLLECTION = "wildu_runtime_launches";
 const WILDU_SECURE_SESSION_KEY = "wildu_secure_session_mapviewer";
-const WILDU_SECURE_SESSION_MS = 8 * 60 * 60 * 1000;
+const WILDU_SECURE_SESSION_MS = 11 * 60 * 60 * 1000; // 11 ore: primo passaggio obbligatorio dalla app madre, poi uso comodo
 const WILDU_MAPVIEWER_TARGET_KEY = "wildu-map-suite/wildu-map-viewer";
 const WILDU_MAPVIEWER_ALLOWED_KIND = "secure_redirect";
 
@@ -669,7 +669,7 @@ function waitForWilduAuthUser(timeoutMs = 7000) {
 
 function readWilduSecureSession() {
   try {
-    const raw = sessionStorage.getItem(WILDU_SECURE_SESSION_KEY);
+    const raw = localStorage.getItem(WILDU_SECURE_SESSION_KEY);
     if (!raw) return null;
 
     const data = JSON.parse(raw);
@@ -678,18 +678,26 @@ function readWilduSecureSession() {
     const targetKey = normalizeWilduSecureTargetKey(data.targetKey);
     const expiresAt = Number(data.expiresAt || 0);
 
-    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) return null;
-    if (!expiresAt || expiresAt <= Date.now()) return null;
+    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) {
+      clearWilduSecureSession();
+      return null;
+    }
+
+    if (!expiresAt || expiresAt <= Date.now()) {
+      clearWilduSecureSession();
+      return null;
+    }
 
     return data;
   } catch (_) {
+    clearWilduSecureSession();
     return null;
   }
 }
 
 function clearWilduSecureSession() {
   try {
-    sessionStorage.removeItem(WILDU_SECURE_SESSION_KEY);
+    localStorage.removeItem(WILDU_SECURE_SESSION_KEY);
   } catch (_) {}
 }
 
@@ -702,7 +710,7 @@ function writeWilduSecureSession(user, ticketData) {
     expiresAt: Date.now() + WILDU_SECURE_SESSION_MS
   };
 
-  sessionStorage.setItem(WILDU_SECURE_SESSION_KEY, JSON.stringify(payload));
+  localStorage.setItem(WILDU_SECURE_SESSION_KEY, JSON.stringify(payload));
   return payload;
 }
 
@@ -783,26 +791,17 @@ function showSecureLaunchBlocked(reason, details = "") {
 async function validateWilduSecureLaunchOrSession() {
   setStatus("Verifica accesso Wild-U...", false, true);
 
-  const user = await waitForWilduAuthUser();
-
-  if (!user || !user.uid) {
-    clearWilduSecureSession();
-    showSecureLaunchBlocked("NO_AUTH");
-    return false;
-  }
-
+  // 1) Se una sessione locale valida esiste già, lasciamo entrare subito.
+  // Questo è il comportamento voluto: ticket breve solo per il primo passaggio
+  // dalla app madre, poi uso comodo della mappa per 11 ore.
   const savedSession = readWilduSecureSession();
   if (savedSession) {
-    if (savedSession.uid === user.uid) {
-      setStatus("Sessione mappa valida.", false);
-      return true;
-    }
-
-    clearWilduSecureSession();
-    showSecureLaunchBlocked("WRONG_USER");
-    return false;
+    removeWilduLaunchParamFromUrl();
+    setStatus("Sessione mappa valida.", false);
+    return true;
   }
 
+  // 2) Senza sessione locale, serve per forza un ticket fresco dalla app madre.
   const launchId = String(params.get("launch") || "").trim();
 
   if (!launchId) {
@@ -812,6 +811,15 @@ async function validateWilduSecureLaunchOrSession() {
 
   if (!navigator.onLine) {
     showSecureLaunchBlocked("OFFLINE");
+    return false;
+  }
+
+  // 3) Il primo ingresso deve essere autenticato e verificato via Firestore.
+  const user = await waitForWilduAuthUser();
+
+  if (!user || !user.uid) {
+    clearWilduSecureSession();
+    showSecureLaunchBlocked("NO_AUTH");
     return false;
   }
 
