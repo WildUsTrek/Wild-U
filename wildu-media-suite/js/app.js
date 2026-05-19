@@ -808,11 +808,13 @@
       );
 
       renderModuleGradeOptions();
+      renderClientConsoleSwitchCardState();
     } catch (e) {
       state.partnerClientConfig = { error: e.message || String(e) };
       state.legacyModuleResources = { error: e.message || String(e) };
       state.moduleGradeOptions = [];
       renderModuleGradeOptions();
+      renderClientConsoleSwitchCardState();
     }
   }  
 
@@ -1222,6 +1224,131 @@
 
     return stats;
   }
+
+
+  function getClientConsoleSwitchValue() {
+    return !!(
+      state.partnerClientConfig &&
+      state.partnerClientConfig.console_switch === true
+    );
+  }
+
+  function renderClientConsoleSwitchCardState() {
+    var select = document.getElementById('client-console-switch');
+    var label = document.getElementById('client-console-switch-current');
+    var updated = document.getElementById('client-console-switch-updated');
+
+    var value = getClientConsoleSwitchValue();
+
+    if (select) {
+      select.value = value ? 'true' : 'false';
+    }
+
+    if (label) {
+      label.innerHTML = value
+        ? '<span class="badge warn">LOQUACE / DEBUG</span>'
+        : '<span class="badge good">SILENZIOSO</span>';
+    }
+
+    if (updated) {
+      var cfg = state.partnerClientConfig || {};
+      var who = cfg.console_switch_updatedByEmail || cfg.console_switch_updatedByUid || '';
+      var when = root.toDateTimeLabel ? root.toDateTimeLabel(cfg.console_switch_updatedAt) : '';
+
+      updated.textContent = who || when
+        ? 'Ultimo aggiornamento: ' + [when, who].filter(Boolean).join(' — ')
+        : 'Nessun aggiornamento registrato.';
+    }
+  }
+
+  async function saveClientConsoleSwitchFromDebug() {
+    if (!root.db) throw new Error('Firestore non inizializzato.');
+    if (!state.currentUser) throw new Error('Login richiesto.');
+
+    var select = document.getElementById('client-console-switch');
+    if (!select) throw new Error('Controllo console switch non trovato.');
+
+    var value = select.value === 'true';
+    var user = root.requireCurrentUser();
+
+    await root.db
+      .collection('PARAMETERS_PARTNER')
+      .doc('client_config')
+      .set({
+        console_switch: value,
+        console_switch_updatedAt: root.FieldValue.serverTimestamp(),
+        console_switch_updatedByUid: user.uid,
+        console_switch_updatedByEmail: user.email || null
+      }, { merge: true });
+
+    state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
+      console_switch: value,
+      console_switch_updatedByUid: user.uid,
+      console_switch_updatedByEmail: user.email || null
+    });
+
+    renderClientConsoleSwitchCardState();
+    renderDebug();
+
+    root.toast(
+      value
+        ? 'Console switch attivato: il client potrà rendere il Service Worker loquace.'
+        : 'Console switch disattivato: il client potrà rendere il Service Worker silenzioso.',
+      'success'
+    );
+  }
+
+  function installClientConsoleSwitchCard() {
+    var debugPanel = document.getElementById('tab-debug');
+    if (!debugPanel) return;
+    if (document.getElementById('wildu-client-console-switch-card')) return;
+
+    var card = document.createElement('article');
+    card.className = 'card';
+    card.id = 'wildu-client-console-switch-card';
+    card.innerHTML = '' +
+      '<h2>🎛️ Console switch client / Service Worker</h2>' +
+      '<p class="muted">' +
+        'Scrive <code>console_switch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
+        'Il client userà questo valore per rendere il Service Worker silenzioso oppure loquace.' +
+      '</p>' +
+      '<p class="small-text">' +
+        'Questa scheda non modifica ancora il Service Worker: prepara solo la configurazione centrale. ' +
+        'La patch Client + SW arriverà nello step successivo.' +
+      '</p>' +
+      '<div class="form-grid">' +
+        '<div class="field third">' +
+          '<label for="client-console-switch">Console switch</label>' +
+          '<select id="client-console-switch">' +
+            '<option value="false">false — SW silenzioso</option>' +
+            '<option value="true">true — SW loquace/debug</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="field third">' +
+          '<label>Stato attuale</label>' +
+          '<div id="client-console-switch-current" style="padding-top:10px;">—</div>' +
+        '</div>' +
+        '<div class="field third">' +
+          '<label>Audit</label>' +
+          '<div id="client-console-switch-updated" class="small-text" style="padding-top:10px;">—</div>' +
+        '</div>' +
+        '<div class="form-actions full">' +
+          '<button data-requires-auth type="button" id="btn-save-client-console-switch">Salva console switch</button>' +
+        '</div>' +
+      '</div>';
+
+    debugPanel.insertBefore(card, debugPanel.firstChild);
+
+    var btn = document.getElementById('btn-save-client-console-switch');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        run(saveClientConsoleSwitchFromDebug);
+      });
+    }
+
+    renderClientConsoleSwitchCardState();
+  }
+
 
   function installAdminDumpCleanerButton() {
     var debugPanel = document.getElementById('tab-debug');
@@ -1681,6 +1808,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   function bindEvents() {
     
     installAdminDumpCleanerButton(); //AGGIUNTA PERICOLOSA
+    installClientConsoleSwitchCard();
     
     var instructionsBtn = document.getElementById('btn-open-instructions');
     if (instructionsBtn) {
