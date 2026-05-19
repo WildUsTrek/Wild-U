@@ -980,7 +980,8 @@ const WILDU_FIREBASE = (() => {
 
     // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
     // FALSE = console più pulita, solo errori online
-    const FIREBASE_READ_WARNINGS = true;
+    // Nota: la verbosità piena viene comunque riattivata da console_switch=true.
+    const FIREBASE_READ_WARNINGS = false;
 
     function getFirestoreLogLevel() {
         if (!navigator.onLine) return 'silent';
@@ -2861,9 +2862,41 @@ const WILDU_CONSOLE_SWITCH_TTL_MS = 24 * 60 * 60 * 1000; // 24 ore, solo per con
 let WILDU_SW_CONSOLE_ALLOWED = false;
 let WILDU_CONSOLE_SWITCH_PROMISE = null;
 
+function wilduConsoleIsEnabled() {
+    return WILDU_SW_CONSOLE_ALLOWED === true;
+}
+
+function wilduConsoleLog() {
+    if (!wilduConsoleIsEnabled()) return;
+    console.log.apply(console, arguments);
+}
+
+function wilduConsoleInfo() {
+    if (!wilduConsoleIsEnabled()) return;
+    console.info.apply(console, arguments);
+}
+
+function wilduConsoleWarn() {
+    if (!wilduConsoleIsEnabled()) return;
+    console.warn.apply(console, arguments);
+}
+
 function pageDebug(type, details) {
-    if (!DEBUG_WILDU_PAGE) return;
+    if (!wilduConsoleIsEnabled()) return;
     console.log('[WILDU PAGE]', type, details || {});
+}
+
+
+function applyWilduFirebaseConsoleLevel(enabled) {
+    try {
+        if (
+            typeof firebase !== 'undefined' &&
+            firebase.firestore &&
+            typeof firebase.firestore.setLogLevel === 'function'
+        ) {
+            firebase.firestore.setLogLevel(enabled === true ? 'debug' : 'silent');
+        }
+    } catch (e) {}
 }
 
 function shouldBypassConsoleSwitchCache() {
@@ -2920,7 +2953,8 @@ function sendClientConsoleSwitchToServiceWorker(value, reason) {
     if (!('serviceWorker' in navigator)) return;
 
     const enabled = value === true;
-    WILDU_SW_CONSOLE_ALLOWED = enabled;
+WILDU_SW_CONSOLE_ALLOWED = enabled;
+applyWilduFirebaseConsoleLevel(enabled);
 
     const message = {
         type: 'WILDU_CONSOLE_SWITCH',
@@ -2965,7 +2999,7 @@ async function refreshClientConsoleSwitch(options = {}) {
         }
     }
 
-    if (WILDU_CONSOLE_SWITCH_PROMISE && !force) {
+    if (WILDU_CONSOLE_SWITCH_PROMISE) {
         return WILDU_CONSOLE_SWITCH_PROMISE;
     }
 
@@ -3022,7 +3056,7 @@ if ('serviceWorker' in navigator) {
         if (!WILDU_SW_CONSOLE_ALLOWED) return;
 
         const msg = data.__WILDU_DEBUG__;
-        console.log('[WILDU TRACE]', msg.type, msg.details || {}, msg.ts || '');
+wilduConsoleLog('[WILDU TRACE]', msg.type, msg.details || {}, msg.ts || '');
     });
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -3920,22 +3954,35 @@ function setCurrentBookingDraft(payload = {}) {
     if (bookingEventDocIdEl) bookingEventDocIdEl.value = currentBookingDraft.eventDocId;
 }
     
-// 🎛️ INTERRUTTORE INDAGINI: Metti 'false' per silenziare la console in produzione
-let DEBUG_ZAINO = true;
+// 🎛️ INDAGINI ZAINO: dipendono dalla console_switch globale.
+// Non controllano logica, render, filtri o prenotazioni: solo stampa console.
+function debugZainoEnabled() {
+    return wilduConsoleIsEnabled();
+}
+
+function zainoGroup() {
+    if (!debugZainoEnabled()) return;
+    console.group.apply(console, arguments);
+}
+
+function zainoGroupEnd() {
+    if (!debugZainoEnabled()) return;
+    console.groupEnd();
+}
 
 function evaluateBookings() {
-    if (DEBUG_ZAINO) console.group("🕵️ INDAGINE ZAINO: CHI HA INVITATO VIA DEL MARE?");
+    if (debugZainoEnabled()) zainoGroup("🕵️ INDAGINE ZAINO: CHI HA INVITATO VIA DEL MARE?");
     
     const currentUid = auth.currentUser ? auth.currentUser.uid : wildUserKey;
-    if (DEBUG_ZAINO) console.log("1. UTENTE CORRENTE:", currentUid);
+    if (debugZainoEnabled()) wilduConsoleLog("1. UTENTE CORRENTE:", currentUid);
     
     if (!currentUid) {
-        if (DEBUG_ZAINO) { console.log("❌ Nessun utente loggato, esco."); console.groupEnd(); }
+        if (debugZainoEnabled()) { wilduConsoleLog("❌ Nessun utente loggato, esco."); zainoGroupEnd(); }
         return;
     }
 
-    if (DEBUG_ZAINO) console.log("2. ALL BOOKINGS (Dati grezzi in memoria ORA):", JSON.parse(JSON.stringify(allBookings)));
-    if (DEBUG_ZAINO) console.log("3. PENDING BOOKINGS (Dati sospesi ORA):", JSON.parse(JSON.stringify(pendingBookings)));
+    if (debugZainoEnabled()) wilduConsoleLog("2. ALL BOOKINGS (Dati grezzi in memoria ORA):", JSON.parse(JSON.stringify(allBookings)));
+    if (debugZainoEnabled()) wilduConsoleLog("3. PENDING BOOKINGS (Dati sospesi ORA):", JSON.parse(JSON.stringify(pendingBookings)));
 
     myBookedTitles = []; 
     const occupiedSlots = new Set();
@@ -3950,18 +3997,18 @@ function evaluateBookings() {
         const bDate = parseItalianDate(dateStr);
         const isValid = !dateStr || bDate >= today; 
         
-        if (DEBUG_ZAINO) console.log(`-> Filtro DB: [${title}] data [${dateStr}]. Passa il controllo data? ${isValid}`);
+        if (debugZainoEnabled()) wilduConsoleLog(`-> Filtro DB: [${title}] data [${dateStr}]. Passa il controllo data? ${isValid}`);
         return isValid; 
     });
 
-    if (DEBUG_ZAINO) console.log("4. VIAGGI SOPRAVVISSUTI AI FILTRI:", myConfirmed);
+    if (debugZainoEnabled()) wilduConsoleLog("4. VIAGGI SOPRAVVISSUTI AI FILTRI:", myConfirmed);
 
     for (let b of myConfirmed) {
         const title = b.titolo || b["Viaggio Scelto (non modificare)"] || "Viaggio";
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
 
-        if (DEBUG_ZAINO) console.log(`-> Aggiungo in Zaino REALE: [${title}] con Chiave: [${bookingKey}]`);
+        if (debugZainoEnabled()) wilduConsoleLog(`-> Aggiungo in Zaino REALE: [${title}] con Chiave: [${bookingKey}]`);
 
         occupiedSlots.add(bookingKey);
         if (!myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
@@ -4012,13 +4059,13 @@ if (tripOrig) {
     }
 
     // 2. GHOST CARDS (Con scudo anti-fantasma)
-    if (DEBUG_ZAINO) console.log("5. CONTROLLO PENDENTI (Ricerca Fantasmi):");
+    if (debugZainoEnabled()) wilduConsoleLog("5. CONTROLLO PENDENTI (Ricerca Fantasmi):");
     
     if (isBookingInProgress) {
         pendingBookings.forEach(pKey => {
-            if (DEBUG_ZAINO) console.log(`-> Verifico pendente: [${pKey}]`);
+            if (debugZainoEnabled()) wilduConsoleLog(`-> Verifico pendente: [${pKey}]`);
             if (!myBookedTitles.includes(pKey)) {
-                if (DEBUG_ZAINO) console.log(`-> ⚠️ TROVATO PENDENTE AUTORIZZATO! Aggiungo allo zaino visuale: [${pKey}]`);
+                if (debugZainoEnabled()) wilduConsoleLog(`-> ⚠️ TROVATO PENDENTE AUTORIZZATO! Aggiungo allo zaino visuale: [${pKey}]`);
                 occupiedSlots.add(pKey);
                 const displayTitle = pKey.replace('official_events:', '').split('__')[0].replace(/_/g, ' ').toUpperCase();
                 activeHtml += `
@@ -4027,12 +4074,12 @@ if (tripOrig) {
                     <div style="font-size: 11px; color: var(--w-gold); margin-top: 5px;">⏳ SINCRONIZZAZIONE...</div>
                 </div>`;
             } else {
-                if (DEBUG_ZAINO) console.log(`-> Pendente saltato perché già in zaino: [${pKey}]`);
+                if (debugZainoEnabled()) wilduConsoleLog(`-> Pendente saltato perché già in zaino: [${pKey}]`);
             }
         });
     } else {
         if (pendingBookings.length > 0) {
-            if (DEBUG_ZAINO) console.log(`-> 🧹 PULIZIA: Nessuna prenotazione in corso, distruggo ${pendingBookings.length} fantasmi pendenti.`);
+            if (debugZainoEnabled()) wilduConsoleLog(`-> 🧹 PULIZIA: Nessuna prenotazione in corso, distruggo ${pendingBookings.length} fantasmi pendenti.`);
             pendingBookings = [];
         }
     }
@@ -4042,7 +4089,7 @@ if (tripOrig) {
         : activeHtml;
 
     const totalOccupied = occupiedSlots.size;
-    if (DEBUG_ZAINO) console.log(`6. RISULTATO FINALE ZAINO: Occupati = ${totalOccupied}, Contenuto =`, Array.from(occupiedSlots));
+    if (debugZainoEnabled()) wilduConsoleLog(`6. RISULTATO FINALE ZAINO: Occupati = ${totalOccupied}, Contenuto =`, Array.from(occupiedSlots));
 
     const max = parseInt(config.limite_prenotazioni) || 3;
     canBook = !isBanned && totalOccupied < max;
@@ -4054,7 +4101,7 @@ if (tripOrig) {
     filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
     
-    if (DEBUG_ZAINO) console.groupEnd();
+    if (debugZainoEnabled()) zainoGroupEnd();
 }
 
     
