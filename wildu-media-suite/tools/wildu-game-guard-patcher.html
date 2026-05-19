@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Wildu Game Guard Patcher — Secure Launcher Helper</title>
+  <title>Wildu Game Guard Patcher V3 V3 — Secure Launcher Helper</title>
   <style>
     :root {
       --bg:#0d1410;
@@ -543,9 +543,80 @@ window.WilduGameStart();</pre>
           isExternal: !!src,
           isClassicExternal: !!src && !isModule,
           hasAsync: Object.prototype.hasOwnProperty.call(attrs, "async"),
-          hasDefer: Object.prototype.hasOwnProperty.call(attrs, "defer")
+          hasDefer: Object.prototype.hasOwnProperty.call(attrs, "defer"),
+          normalizedSrc: "",
+          acceptedForLoader: false,
+          rejectReason: ""
         });
       }
+      return scripts;
+    }
+
+    function stripQueryHash(value) {
+      return safeTrim(value).split("?")[0].split("#")[0].trim();
+    }
+
+    function normalizeGameScriptSrc(src, info) {
+      const raw = safeTrim(src);
+      if (!raw) return { ok: false, src: "", reason: "src vuoto" };
+
+      if (/^(data|blob|javascript|chrome-extension|moz-extension):/i.test(raw)) {
+        return { ok: false, src: "", reason: "schema non consentito" };
+      }
+
+      if (/wildu-secure-game-guard\.js/i.test(raw) || /wildu-secure-game-bootstrap/i.test(raw)) {
+        return { ok: false, src: "", reason: "guard/bootstrap già presente" };
+      }
+
+      const gameDir = info.dirParts.join("/");
+      const gameDirPrefix = gameDir ? gameDir + "/" : "";
+      let path = stripQueryHash(raw).replace(/\\/g, "/");
+
+      try {
+        if (/^https?:\/\//i.test(path)) {
+          const u = new URL(path);
+          if (u.origin !== "https://wildustrek.github.io") {
+            return { ok: false, src: "", reason: "script assoluto fuori origine Wild-U" };
+          }
+          path = u.pathname.replace(/^\/+/, "").replace(/^Wild-U\//i, "");
+          if (!path.startsWith(gameDirPrefix)) {
+            return { ok: false, src: "", reason: "script assoluto fuori cartella gioco" };
+          }
+          path = path.slice(gameDirPrefix.length);
+        } else if (path.startsWith("/")) {
+          path = path.replace(/^\/+/, "").replace(/^Wild-U\//i, "");
+          if (!path.startsWith(gameDirPrefix)) {
+            return { ok: false, src: "", reason: "script assoluto fuori cartella gioco" };
+          }
+          path = path.slice(gameDirPrefix.length);
+        } else {
+          path = path.replace(/^\.\/+/, "");
+        }
+      } catch (e) {
+        return { ok: false, src: "", reason: "src non normalizzabile" };
+      }
+
+      if (!path || path.startsWith("../") || path.includes("/../")) {
+        return { ok: false, src: "", reason: "script fuori cartella gioco" };
+      }
+
+      if (!/\.(js|mjs)$/i.test(path)) {
+        return { ok: false, src: "", reason: "non sembra un file JS locale" };
+      }
+
+      return { ok: true, src: path, reason: "" };
+    }
+
+    function classifyScriptsForGame(scripts, info) {
+      const seen = new Set();
+      scripts.forEach((s) => {
+        if (!s.isClassicExternal) return;
+        const result = normalizeGameScriptSrc(s.src, info);
+        s.acceptedForLoader = result.ok && !seen.has(result.src);
+        s.normalizedSrc = result.src;
+        s.rejectReason = result.ok && seen.has(result.src) ? "duplicato" : result.reason;
+        if (s.acceptedForLoader) seen.add(result.src);
+      });
       return scripts;
     }
 
@@ -561,8 +632,10 @@ window.WilduGameStart();</pre>
         const info = getUrlInfo($("gameUrl").value);
         if (!safeTrim(html)) throw new Error("Incolla o scarica prima l’index originale.");
 
-        const scripts = findScriptTags(html);
-        const classic = scripts.filter(s => s.isClassicExternal && !/wildu-secure-game-guard\.js/i.test(s.src));
+        const scripts = classifyScriptsForGame(findScriptTags(html), info);
+        const allClassicExternal = scripts.filter(s => s.isClassicExternal && !/wildu-secure-game-guard\.js/i.test(s.src));
+        const classic = allClassicExternal.filter(s => s.acceptedForLoader);
+        const rejectedClassic = allClassicExternal.filter(s => !s.acceptedForLoader);
         const modules = scripts.filter(s => s.isModule);
         const inline = scripts.filter(s => !s.isExternal);
         const alreadyGuarded = /wildu-secure-game-guard\.js|guardWilduGame|WilduSecureGameGuard/i.test(html);
@@ -571,21 +644,24 @@ window.WilduGameStart();</pre>
 
         const warnings = [];
         if (alreadyGuarded) warnings.push("Sembra già presente un guard Wildu: evita doppia patch.");
-        if (!classic.length) warnings.push("Non ho trovato script classici esterni da proteggere.");
+        if (!classic.length) warnings.push("Non ho trovato script classici locali idonei da proteggere.");
+        if (rejectedClassic.length) warnings.push("Ho scartato script assoluti/fuori cartella/sospetti: verranno rimossi e NON reinseriti nel loader.");
         if (modules.length) warnings.push("Sono presenti script type=module: il tool non li rimuove automaticamente.");
         if (inline.length) warnings.push("Sono presenti script inline: se avviano il gioco prima del guard serve controllo manuale.");
-        if (asyncDefer.length) warnings.push("Alcuni script hanno async/defer: il loader li caricherà in ordine sequenziale.");
+        if (asyncDefer.length) warnings.push("Alcuni script locali hanno async/defer: il loader li caricherà in ordine sequenziale.");
 
-        state.analysis = { info, scripts, classic, modules, inline, alreadyGuarded, warnings, title };
+        state.analysis = { info, scripts, allClassicExternal, classic, rejectedClassic, modules, inline, alreadyGuarded, warnings, title };
 
-        const scriptList = classic.map(s => `<li><code>${escapeHtml(s.src)}</code>${s.hasAsync ? " <span class='warntext'>async</span>" : ""}${s.hasDefer ? " <span class='warntext'>defer</span>" : ""}</li>`).join("");
+        const scriptList = classic.map(s => `<li><code>${escapeHtml(s.normalizedSrc)}</code>${s.src !== s.normalizedSrc ? ` <span class='info'>da ${escapeHtml(s.src)}</span>` : ""}${s.hasAsync ? " <span class='warntext'>async</span>" : ""}${s.hasDefer ? " <span class='warntext'>defer</span>" : ""}</li>`).join("");
+        const rejectedList = rejectedClassic.map(s => `<li><code>${escapeHtml(s.src)}</code> <span class='warntext'>${escapeHtml(s.rejectReason || "scartato")}</span></li>`).join("");
 
         report.innerHTML = `
           <div class="line"><strong>Target dedotto:</strong><br><code>${escapeHtml(info.path)}</code></div>
           <div class="line"><strong>Target normalizzato dal guard:</strong><br><code>${escapeHtml(info.normalizedTarget)}</code></div>
           <div class="line"><strong>Path guard:</strong><br><code>${escapeHtml(info.guardPath)}</code></div>
           <div class="line"><strong>Titolo blocco:</strong><br><code>${escapeHtml(title)}</code></div>
-          <div class="line"><strong>Script classici rilevati:</strong><br>${classic.length ? `<ol>${scriptList}</ol>` : "<span class='ko'>nessuno</span>"}</div>
+          <div class="line"><strong>Script locali accettati nel loader:</strong><br>${classic.length ? `<ol>${scriptList}</ol>` : "<span class='ko'>nessuno</span>"}</div>
+          ${rejectedClassic.length ? `<div class="line"><strong class="warntext">Script scartati/rimossi:</strong><ol>${rejectedList}</ol></div>` : ""}
           ${warnings.length ? `<div class="line"><strong class="warntext">Avvisi:</strong><ul>${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join("")}</ul></div>` : `<div class="line"><strong class="ok">Nessun avviso critico.</strong></div>`}
         `;
         return state.analysis;
@@ -597,7 +673,7 @@ window.WilduGameStart();</pre>
     }
 
     function jsStringArray(items) {
-      return "[\n" + items.map(s => "    " + JSON.stringify(s.src)).join(",\n") + "\n  ]";
+      return "[\n" + items.map(s => "    " + JSON.stringify(s.normalizedSrc || s.src)).join(",\n") + "\n  ]";
     }
 
     function buildBootstrap(analysis) {
@@ -675,14 +751,16 @@ document.documentElement.classList.add("wildu-guard-checking");
       }
 
       if (!analysis.classic.length) {
-        alert("Non ho trovato script classici esterni da sostituire. Questo gioco potrebbe richiedere patch manuale.");
+        alert("Non ho trovato script classici locali da inserire nel loader. Questo gioco potrebbe richiedere patch manuale.");
         return;
       }
 
       let patched = html;
 
-      // Rimuove solo gli script classici esterni rilevati.
-      analysis.classic.forEach(s => {
+      // Rimuove tutti gli script classici esterni trovati.
+      // Reinserisce nel loader SOLO quelli locali/accettati.
+      // Così URL assoluti strani o iniettati non passano nel gioco protetto.
+      (analysis.allClassicExternal || analysis.classic).forEach(s => {
         patched = patched.replace(s.full, "");
       });
 
