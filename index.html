@@ -2904,6 +2904,21 @@ const WILDU_CONSOLE_SWITCH_TTL_MS = 24 * 60 * 60 * 1000; // 24 ore, solo per con
 let WILDU_SW_CONSOLE_ALLOWED = false;
 let WILDU_CONSOLE_SWITCH_PROMISE = null;
 
+// =========================================================
+// WILDU GLOBAL CACHE NUKE — Admin Suite -> Client
+// =========================================================
+// Fonte admin: PARAMETERS_PARTNER/client_config.global_cache_epoch
+// Regola:
+// - controllo server a ogni avvio, senza TTL lungo;
+// - se epoch cambia, cancella CacheStorage + cache localStorage non essenziali;
+// - rimuove wildShellMeta così il main index/shell viene riscaricato;
+// - non tocca Firebase Auth e non slogga l'utente.
+
+const WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY = 'wildGlobalCacheEpochSeen';
+const WILDU_GLOBAL_CACHE_RELOAD_LOCK_KEY = 'wildGlobalCacheReloadLock';
+const WILDU_GLOBAL_CACHE_RELOAD_LOCK_MS = 5 * 60 * 1000; // anti-loop 5 minuti
+let WILDU_GLOBAL_CACHE_PROMISE = null;
+
 function wilduConsoleIsEnabled() {
     return WILDU_SW_CONSOLE_ALLOWED === true;
 }
@@ -3088,6 +3103,200 @@ async function refreshClientConsoleSwitch(options = {}) {
 
     return WILDU_CONSOLE_SWITCH_PROMISE;
 }
+
+function readWilduGlobalCacheSeenEpoch() {
+    try {
+        return Number(localStorage.getItem(WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY) || 0) || 0;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function writeWilduGlobalCacheSeenEpoch(epoch) {
+    try {
+        localStorage.setItem(WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY, String(epoch || 0));
+    } catch (e) {}
+}
+
+function readWilduGlobalCacheReloadLock() {
+    try {
+        return JSON.parse(sessionStorage.getItem(WILDU_GLOBAL_CACHE_RELOAD_LOCK_KEY) || 'null');
+    } catch (e) {
+        return null;
+    }
+}
+
+function hasRecentWilduGlobalCacheReloadLock(epoch) {
+    const lock = readWilduGlobalCacheReloadLock();
+    if (!lock || !lock.ts || !lock.epoch) return false;
+
+    const isRecent = (Date.now() - Number(lock.ts)) < WILDU_GLOBAL_CACHE_RELOAD_LOCK_MS;
+    const isSameEpoch = String(lock.epoch) === String(epoch);
+
+    return isRecent && isSameEpoch;
+}
+
+function setWilduGlobalCacheReloadLock(epoch) {
+    try {
+        sessionStorage.setItem(WILDU_GLOBAL_CACHE_RELOAD_LOCK_KEY, JSON.stringify({
+            ts: Date.now(),
+            epoch: String(epoch || '')
+        }));
+    } catch (e) {}
+}
+
+function normalizeWilduGlobalCacheEpoch(value) {
+    const n = Number(value || 0);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function clearWilduKnownLocalCachesForGlobalNuke() {
+    const exactKeys = [
+        SHELL_META_KEY,
+        SHELL_RELOAD_LOCK_KEY,
+        PUBLIC_CACHE_KEY,
+        PUBLIC_CACHE_BYPASS_KEY,
+        WILDU_CONSOLE_SWITCH_CACHE_KEY,
+        'wildAmazonProductsCache',
+        'wildAmazonProductsRemoteAt',
+        'wildAmazonProductsLastRemoteTryAt',
+        'wildAmazonProductsLastRenderAt'
+    ];
+
+    // Questi possono esistere a seconda della versione client caricata.
+    try { if (typeof MODULE_CACHE_META_KEY !== 'undefined') exactKeys.push(MODULE_CACHE_META_KEY); } catch (e) {}
+    try { if (typeof REG_CTA_STORAGE_KEY !== 'undefined') exactKeys.push(REG_CTA_STORAGE_KEY); } catch (e) {}
+    try { if (typeof STORAGE_GUARD_KEY !== 'undefined') exactKeys.push(STORAGE_GUARD_KEY); } catch (e) {}
+
+    exactKeys.forEach((key) => {
+        try {
+            if (key && key !== WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY) {
+                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
+            }
+        } catch (e) {}
+    });
+
+    // Cache persistenti di Radio/Biblioteca, public_versions e runtime media.
+    try {
+        Object.keys(localStorage).forEach((key) => {
+            if (
+                key.indexOf('wilduMediaClient:v1:') === 0 ||
+                key.indexOf('wilduRuntime') === 0 ||
+                key.indexOf('wildu_runtime') === 0 ||
+                key.indexOf('WILDU_RUNTIME') === 0
+            ) {
+                localStorage.removeItem(key);
+            }
+        });
+    } catch (e) {}
+
+    try {
+        if (typeof clearWilduRuntimeVersionCache === 'function') {
+            clearWilduRuntimeVersionCache();
+        }
+    } catch (e) {}
+}
+
+async function runWilduGlobalCacheNuke(epoch, reason) {
+    const cleanEpoch = normalizeWilduGlobalCacheEpoch(epoch);
+    if (!cleanEpoch) return false;
+
+    if (hasRecentWilduGlobalCacheReloadLock(cleanEpoch)) {
+        pageDebug('GLOBAL_CACHE_NUKE_LOCK_ACTIVE', {
+            epoch: cleanEpoch,
+            reason: reason || ''
+        });
+        return false;
+    }
+
+    setWilduGlobalCacheReloadLock(cleanEpoch);
+
+    pageDebug('GLOBAL_CACHE_NUKE_START', {
+        epoch: cleanEpoch,
+        reason: reason || ''
+    });
+
+    // 1) Cancella tutte le CacheStorage: shell/main index, asset, moduli, meta, SW caches.
+    await clearWilduShellCaches();
+
+    // 2) Cancella cache locali note, ma non Firebase Auth.
+    clearWilduKnownLocalCachesForGlobalNuke();
+
+    // 3) Segna epoch vista DOPO la pulizia, per evitare loop al reload.
+    writeWilduGlobalCacheSeenEpoch(cleanEpoch);
+
+    pageDebug('GLOBAL_CACHE_NUKE_DONE', {
+        epoch: cleanEpoch
+    });
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('globalCacheEpoch', String(cleanEpoch));
+
+    window.location.replace(nextUrl.toString());
+    throw new Error('GLOBAL_CACHE_REFRESH_TRIGGERED');
+}
+
+async function checkWilduGlobalCacheEpoch(options = {}) {
+    const reason = options.reason || 'BOOT';
+
+    if (WILDU_GLOBAL_CACHE_PROMISE) {
+        return WILDU_GLOBAL_CACHE_PROMISE;
+    }
+
+    WILDU_GLOBAL_CACHE_PROMISE = (async () => {
+        if (!navigator.onLine) {
+            pageDebug('GLOBAL_CACHE_EPOCH_OFFLINE_SKIP', { reason });
+            return false;
+        }
+
+        try {
+            const snap = await db
+                .collection('PARAMETERS_PARTNER')
+                .doc('client_config')
+                .get({ source: 'server' });
+
+            const data = snap.exists ? (snap.data() || {}) : {};
+            const remoteEpoch = normalizeWilduGlobalCacheEpoch(data.global_cache_epoch);
+            const seenEpoch = readWilduGlobalCacheSeenEpoch();
+
+            pageDebug('GLOBAL_CACHE_EPOCH_CHECK', {
+                reason,
+                remoteEpoch,
+                seenEpoch,
+                mode: data.global_cache_mode || '',
+                cacheReason: data.global_cache_reason || ''
+            });
+
+            if (!remoteEpoch || remoteEpoch === seenEpoch) {
+                return false;
+            }
+
+            await runWilduGlobalCacheNuke(
+                remoteEpoch,
+                data.global_cache_reason || reason
+            );
+
+            return true;
+        } catch (e) {
+            if (e && e.message === 'GLOBAL_CACHE_REFRESH_TRIGGERED') {
+                throw e;
+            }
+
+            pageDebug('GLOBAL_CACHE_EPOCH_READ_FAILED', {
+                reason,
+                error: e && e.message ? e.message : String(e)
+            });
+
+            return false;
+        } finally {
+            WILDU_GLOBAL_CACHE_PROMISE = null;
+        }
+    })();
+
+    return WILDU_GLOBAL_CACHE_PROMISE;
+}
+
 
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
@@ -3521,6 +3730,15 @@ async function init() {
     }
 
     checkAuthEnvironment();
+
+    try {
+        await checkWilduGlobalCacheEpoch({ reason: 'BOOT' });
+    } catch (e) {
+        if (e && e.message === 'GLOBAL_CACHE_REFRESH_TRIGGERED') {
+            return;
+        }
+        console.warn('Global cache epoch check skipped:', e);
+    }
 
     refreshClientConsoleSwitch({ reason: 'BOOT' }).catch(() => {
         sendClientConsoleSwitchToServiceWorker(false, 'BOOT_EXCEPTION');
