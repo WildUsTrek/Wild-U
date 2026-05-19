@@ -602,16 +602,38 @@ function normalizeWilduSecureTargetKey(raw) {
 
   if (!value) return "";
 
+  // Prima tagliamo query/hash. Vale sia per URL completi sia per chiavi tecniche.
+  value = value.split("?")[0].split("#")[0].trim();
+
   try {
-    const u = new URL(value, window.location.href);
-    value = u.pathname;
+    // Caso 1: URL assoluto reale.
+    // Esempio:
+    // https://wildustrek.github.io/Wild-U/wildu-map-suite/wildu-map-viewer/
+    if (/^https?:\/\//i.test(value)) {
+      value = new URL(value).pathname;
+    }
+
+    // Caso 2: path assoluto dal dominio.
+    // Esempio:
+    // /Wild-U/wildu-map-suite/wildu-map-viewer/
+    // Lo lasciamo così e lo puliamo sotto.
+    else if (value.indexOf("/") === 0) {
+      // niente new URL: è già un path
+    }
+
+    // Caso 3: chiave tecnica relativa già corretta.
+    // Esempio:
+    // wildu-map-suite/wildu-map-viewer
+    // NON va risolta con new URL(..., location.href), altrimenti si duplica.
+    else {
+      value = value.replace(/^\.\/+/, "");
+    }
   } catch (_) {
-    value = value.split("?")[0].split("#")[0];
+    // Fallback conservativo: mantieni il valore già tagliato.
   }
 
   return value
     .replace(/\\/g, "/")
-    .replace(/^https?:\/\/[^/]+/i, "")
     .replace(/^\/+/, "")
     .replace(/^Wild-U\//i, "")
     .replace(/\/index\.html$/i, "")
