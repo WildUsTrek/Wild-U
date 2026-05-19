@@ -610,11 +610,16 @@ function normalizeWilduSecureTargetKey(raw) {
   }
 
   return value
+    .replace(/\\/g, "/")
+    .replace(/^https?:\/\/[^/]+/i, "")
     .replace(/^\/+/, "")
     .replace(/^Wild-U\//i, "")
-    .split("?")[0]
-    .split("#")[0]
+    .replace(/\/index\.html$/i, "")
     .replace(/\/+$/, "");
+}
+
+function isWilduMapViewerTargetKey(raw) {
+  return normalizeWilduSecureTargetKey(raw) === WILDU_MAPVIEWER_TARGET_KEY;
 }
 
 function timestampToMillis(value) {
@@ -687,7 +692,7 @@ function readWilduLaunchBridge(launchId) {
     if (String(data.launchId || "") !== cleanLaunchId) return null;
     if (source !== "wild-u-client") return null;
     if (targetKind !== WILDU_MAPVIEWER_ALLOWED_KIND) return null;
-    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) return null;
+    if (!isWilduMapViewerTargetKey(targetKey)) return null;
     if (!expiresAt || expiresAt <= Date.now()) return null;
 
     return data;
@@ -717,10 +722,10 @@ function readWilduSecureSession() {
     const targetKey = normalizeWilduSecureTargetKey(data.targetKey);
     const expiresAt = Number(data.expiresAt || 0);
 
-    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) {
-      clearWilduSecureSession();
-      return null;
-    }
+    if (!isWilduMapViewerTargetKey(targetKey)) {
+  clearWilduSecureSession();
+  return null;
+}
 
     if (!expiresAt || expiresAt <= Date.now()) {
       clearWilduSecureSession();
@@ -915,11 +920,18 @@ async function validateWilduSecureLaunchOrSession() {
       return false;
     }
 
-    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) {
-      clearWilduSecureSession();
-      showSecureLaunchBlocked("WRONG_TARGET");
-      return false;
-    }
+    if (!isWilduMapViewerTargetKey(targetKey)) {
+  console.warn("[Wildu Map] WRONG_TARGET", {
+    rawTargetKey: data.targetKey || "",
+    rawTargetUrl: data.targetUrl || "",
+    normalizedTargetKey: targetKey,
+    expectedTargetKey: WILDU_MAPVIEWER_TARGET_KEY
+  });
+
+  clearWilduSecureSession();
+  showSecureLaunchBlocked("WRONG_TARGET");
+  return false;
+}
 
     if (!expiresAt || expiresAt <= Date.now()) {
       clearWilduSecureSession();
