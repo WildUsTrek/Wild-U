@@ -5,10 +5,66 @@ const SHELL_PREFIX = 'wildu-shell-';
 const VERSION_KEY = '__wildu_shell_version__';
 const FALLBACK_VERSION = 'bootstrap';
 
-const DEBUG_WILDU_SW = true;
+const WILDU_SW_CONSOLE_SWITCH_KEY = '__wildu_console_switch__';
+
+// Default sicuro: Service Worker silenzioso.
+let WILDU_SW_CONSOLE_SWITCH = false;
+
+async function saveSwConsoleSwitch(value) {
+    try {
+        const cache = await caches.open(META_CACHE);
+        await cache.put(
+            WILDU_SW_CONSOLE_SWITCH_KEY,
+            new Response(JSON.stringify({
+                value: value === true,
+                updatedAt: new Date().toISOString()
+            }), {
+                headers: { 'Content-Type': 'application/json' }
+            })
+        );
+    } catch (e) {}
+}
+
+async function loadSwConsoleSwitch() {
+    try {
+        const cache = await caches.open(META_CACHE);
+        const res = await cache.match(WILDU_SW_CONSOLE_SWITCH_KEY);
+        if (!res) return false;
+
+        const data = await res.json();
+        return data && data.value === true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function setSwConsoleSwitch(value) {
+    WILDU_SW_CONSOLE_SWITCH = value === true;
+    saveSwConsoleSwitch(WILDU_SW_CONSOLE_SWITCH).catch(() => {});
+}
+
+loadSwConsoleSwitch()
+    .then((value) => {
+        WILDU_SW_CONSOLE_SWITCH = value === true;
+    })
+    .catch(() => {
+        WILDU_SW_CONSOLE_SWITCH = false;
+    });
+
+self.addEventListener('message', (event) => {
+    const data = event && event.data;
+    if (!data || data.type !== 'WILDU_CONSOLE_SWITCH') return;
+
+    setSwConsoleSwitch(data.value === true);
+
+    swDebug('CONSOLE_SWITCH_UPDATED', {
+        enabled: WILDU_SW_CONSOLE_SWITCH,
+        source: data.source || 'unknown'
+    });
+});
 
 function swDebug(type, details) {
-    if (!DEBUG_WILDU_SW) return;
+    if (!WILDU_SW_CONSOLE_SWITCH) return;
 
     const payload = {
         source: 'SW',
