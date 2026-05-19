@@ -2118,13 +2118,30 @@ function requireLoggedAccess(reason, options = {}) {
         return await auth.currentUser.getIdToken();
     }
 
-    // --- AUDIO NATIVO SENZA BLOCCHI GITHUB ---
+    // --- AUDIO NATIVO / WEB AUDIO SAFE ---
     const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
     const sLvl = new Audio(); const sXP = new Audio();
-    const aAmb = new Audio(); aAmb.volume = 0; 
-    const aMus = new Audio(); aMus.volume = 0; 
-    let audioInited = false; let FIXED_VOL_AMB = 0; let FIXED_VOL_MUS = 0;
-    let fadeIntervals = new Map(); let currentModuleAudio = null;
+
+    const aAmb = new Audio();
+    const aMus = new Audio();
+
+    aAmb.volume = 0;
+    aMus.volume = 0;
+    aAmb.preload = "auto";
+    aMus.preload = "auto";
+
+    let audioInited = false;
+    let FIXED_VOL_AMB = 0;
+    let FIXED_VOL_MUS = 0;
+    let fadeIntervals = new Map();
+    let currentModuleAudio = null;
+
+    // WebView/mobile possono ignorare HTMLAudioElement.volume.
+    // Per questo usiamo un GainNode WebAudio quando disponibile:
+    // volume HTML = fallback desktop, gain = controllo reale su smartphone.
+    let wildAudioCtx = null;
+    let wildAudioNodes = new WeakMap();
+    let wildAudioPausedByHidden = false;
 
     const GRADI_MAP = {
         "Socio Novizio": { ico: "🌱", img: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800" },
@@ -2135,16 +2152,28 @@ function requireLoggedAccess(reason, options = {}) {
         "Divinità": { ico: "✨", img: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=800" }
     };
 
-    // SCUDO IN AZIONE SUL CAMBIO TAB/FOCUS
-    document.addEventListener("visibilitychange", () => { 
-        isPageActive = !document.hidden; 
-        if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer(); 
+    // SCUDO IN AZIONE SUL CAMBIO TAB/FOCUS + STOP AUDIO MOBILE
+    document.addEventListener("visibilitychange", () => {
+        isPageActive = !document.hidden;
+
+        if (document.hidden) {
+            pauseWilduAudioForHiddenPage();
+            return;
+        }
+
+        if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer();
+        resumeWilduAudioAfterHiddenPage();
     });
-    window.onfocus = () => { 
-        if(wildUserKey && (Date.now() - lastFetchTime > 300000)) fetchXP(); 
+
+    window.onfocus = () => {
+        if(wildUserKey && (Date.now() - lastFetchTime > 300000)) fetchXP();
     };
 
-    document.addEventListener('touchstart', startAudioMixer);
+    window.addEventListener("pagehide", hardStopWilduAudio);
+    window.addEventListener("beforeunload", hardStopWilduAudio);
+    window.addEventListener("freeze", hardStopWilduAudio);
+
+    document.addEventListener('touchstart', startAudioMixer, { passive: true });
     document.addEventListener('click', startAudioMixer);
 
 
@@ -7647,15 +7676,306 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     
     function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
     
-    function startAudioMixer() { 
-        if(!audioInited) audioInited = true; 
-        if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
-        if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
+    function clampWildVolume(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 0;
+        if (n < 0) return 0;
+        if (n > 1) return 1;
+        return n;
     }
-    
-    function fadeAudio(audio, targetVolume, callback) { if (!audio) return; try { if (fadeIntervals.has(audio)) clearInterval(fadeIntervals.get(audio)); let start = audio.volume; let change = targetVolume - start; if (change === 0) return; if (targetVolume > 0 && audio.paused) audio.play().catch(e => {}); let step = 0; let interval = setInterval(() => { step++; let newVol = start + (change * (step / 20)); if(newVol>1) newVol=1; if(newVol<0) newVol=0; audio.volume = newVol; if (step >= 20) { clearInterval(interval); fadeIntervals.delete(audio); audio.volume = targetVolume; if (targetVolume === 0) audio.pause(); if (callback) callback(); } }, 50); fadeIntervals.set(audio, interval); } catch(e) {} }
-    function handleModuleAudio(instruction) { try { let i = instruction ? String(instruction).trim().toUpperCase() : ""; if (i === "STOP") { fadeAudio(aMus, 0); fadeAudio(aAmb, 0); return; } if (instruction && instruction.startsWith("http")) { fadeAudio(aMus, 0); currentModuleAudio = new Audio(formatAssetLink(instruction)); currentModuleAudio.loop = true; currentModuleAudio.volume = 0; currentModuleAudio.play().catch(e => {}); fadeAudio(currentModuleAudio, 1); return; } if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
-    function restoreDefaultAudio() { try { if (currentModuleAudio) fadeAudio(currentModuleAudio, 0, () => { currentModuleAudio.pause(); currentModuleAudio = null; }); if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS); if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB); } catch(e) {} }
+
+    function getWildAudioContext() {
+        if (wildAudioCtx) return wildAudioCtx;
+
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+
+        try {
+            wildAudioCtx = new Ctx();
+            return wildAudioCtx;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function resumeWildAudioContext() {
+        try {
+            const ctx = getWildAudioContext();
+            if (ctx && ctx.state === "suspended") {
+                ctx.resume().catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    function ensureWildAudioNode(audio) {
+        if (!audio) return null;
+
+        const existing = wildAudioNodes.get(audio);
+        if (existing) return existing;
+
+        const ctx = getWildAudioContext();
+        if (!ctx) return null;
+
+        try {
+            const source = ctx.createMediaElementSource(audio);
+            const gain = ctx.createGain();
+
+            gain.gain.value = 0;
+            source.connect(gain);
+            gain.connect(ctx.destination);
+
+            const node = { source, gain };
+            wildAudioNodes.set(audio, node);
+            return node;
+        } catch (e) {
+            // Se il browser rifiuta MediaElementSource, resta il fallback audio.volume.
+            return null;
+        }
+    }
+
+    function applyWildAudioVolume(audio, volume, options = {}) {
+        if (!audio) return;
+
+        const safeVolume = clampWildVolume(volume);
+        const node = ensureWildAudioNode(audio);
+
+        try {
+            if (node && node.gain) {
+                // Quando il GainNode esiste, l'elemento resta a 1 e il gain governa il volume reale.
+                audio.volume = 1;
+
+                if (options.instant === true) {
+                    node.gain.gain.setValueAtTime(safeVolume, node.gain.context.currentTime);
+                } else {
+                    node.gain.gain.value = safeVolume;
+                }
+            } else {
+                // Fallback desktop/browser senza WebAudio.
+                audio.volume = safeVolume;
+            }
+        } catch (e) {
+            try { audio.volume = safeVolume; } catch (_) {}
+        }
+    }
+
+    function getWildAudioVolume(audio) {
+        if (!audio) return 0;
+
+        try {
+            const node = wildAudioNodes.get(audio);
+            if (node && node.gain) {
+                return clampWildVolume(node.gain.gain.value);
+            }
+        } catch (e) {}
+
+        try {
+            return clampWildVolume(audio.volume);
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function prepareWildAudio(audio) {
+        if (!audio) return;
+
+        try {
+            audio.preload = "auto";
+            audio.playsInline = true;
+        } catch (e) {}
+
+        ensureWildAudioNode(audio);
+    }
+
+    function startAudioMixer() {
+        if (!audioInited) audioInited = true;
+
+        resumeWildAudioContext();
+
+        prepareWildAudio(aMus);
+        prepareWildAudio(aAmb);
+
+        if (aMus.paused && aMus.src && FIXED_VOL_MUS > 0) {
+            fadeAudio(aMus, FIXED_VOL_MUS);
+        }
+
+        if (aAmb.paused && aAmb.src && FIXED_VOL_AMB > 0) {
+            fadeAudio(aAmb, FIXED_VOL_AMB);
+        }
+    }
+
+    function fadeAudio(audio, targetVolume, callback) {
+        if (!audio) return;
+
+        try {
+            const safeTarget = clampWildVolume(targetVolume);
+
+            if (fadeIntervals.has(audio)) {
+                clearInterval(fadeIntervals.get(audio));
+                fadeIntervals.delete(audio);
+            }
+
+            prepareWildAudio(audio);
+
+            const start = getWildAudioVolume(audio);
+            const change = safeTarget - start;
+
+            if (Math.abs(change) < 0.001) {
+                applyWildAudioVolume(audio, safeTarget, { instant: true });
+                if (safeTarget === 0) {
+                    try { audio.pause(); } catch (_) {}
+                }
+                if (callback) callback();
+                return;
+            }
+
+            if (safeTarget > 0) {
+                resumeWildAudioContext();
+                applyWildAudioVolume(audio, start, { instant: true });
+
+                if (audio.paused) {
+                    audio.play().catch(e => {});
+                }
+            }
+
+            let step = 0;
+            const steps = 20;
+
+            const interval = setInterval(() => {
+                step++;
+
+                const nextVol = clampWildVolume(start + (change * (step / steps)));
+                applyWildAudioVolume(audio, nextVol, { instant: true });
+
+                if (step >= steps) {
+                    clearInterval(interval);
+                    fadeIntervals.delete(audio);
+
+                    applyWildAudioVolume(audio, safeTarget, { instant: true });
+
+                    if (safeTarget === 0) {
+                        try { audio.pause(); } catch (_) {}
+                    }
+
+                    if (callback) callback();
+                }
+            }, 50);
+
+            fadeIntervals.set(audio, interval);
+        } catch(e) {}
+    }
+
+    function stopOneWilduAudio(audio, options = {}) {
+        if (!audio) return;
+
+        try {
+            if (fadeIntervals.has(audio)) {
+                clearInterval(fadeIntervals.get(audio));
+                fadeIntervals.delete(audio);
+            }
+
+            applyWildAudioVolume(audio, 0, { instant: true });
+            audio.pause();
+
+            if (options.reset === true) {
+                try { audio.currentTime = 0; } catch (_) {}
+            }
+        } catch (e) {}
+    }
+
+    function hardStopWilduAudio() {
+        stopOneWilduAudio(aMus);
+        stopOneWilduAudio(aAmb);
+        stopOneWilduAudio(currentModuleAudio);
+
+        try {
+            if (wildAudioCtx && wildAudioCtx.state === "running") {
+                wildAudioCtx.suspend().catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    function pauseWilduAudioForHiddenPage() {
+        wildAudioPausedByHidden = audioInited === true;
+
+        // Su smartphone è meglio uno stop immediato: evita audio fantasma dopo chiusura/browser in background.
+        hardStopWilduAudio();
+    }
+
+    function resumeWilduAudioAfterHiddenPage() {
+        if (!wildAudioPausedByHidden || !audioInited) return;
+
+        wildAudioPausedByHidden = false;
+
+        // Alcuni browser richiedono un nuovo gesto: se fallisce, ripartirà al prossimo tap/click.
+        resumeWildAudioContext();
+
+        if (currentModuleAudio && currentModuleAudio.src) {
+            const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
+            fadeAudio(currentModuleAudio, target);
+            return;
+        }
+
+        restoreDefaultAudio();
+    }
+
+    function handleModuleAudio(instruction) {
+        try {
+            const i = instruction ? String(instruction).trim().toUpperCase() : "";
+
+            if (i === "STOP") {
+                fadeAudio(aMus, 0);
+                fadeAudio(aAmb, 0);
+                if (currentModuleAudio) fadeAudio(currentModuleAudio, 0);
+                return;
+            }
+
+            if (instruction && instruction.startsWith("http")) {
+                fadeAudio(aMus, 0);
+                fadeAudio(aAmb, 0);
+
+                if (currentModuleAudio) {
+                    stopOneWilduAudio(currentModuleAudio, { reset: true });
+                    currentModuleAudio = null;
+                }
+
+                currentModuleAudio = new Audio(formatAssetLink(instruction));
+                currentModuleAudio.loop = true;
+                currentModuleAudio.preload = "auto";
+                currentModuleAudio.playsInline = true;
+
+                prepareWildAudio(currentModuleAudio);
+                applyWildAudioVolume(currentModuleAudio, 0, { instant: true });
+
+                currentModuleAudio.play().catch(e => {});
+
+                const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
+                fadeAudio(currentModuleAudio, target);
+                return;
+            }
+
+            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
+            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
+        } catch(e) {}
+    }
+
+    function restoreDefaultAudio() {
+        try {
+            if (currentModuleAudio) {
+                const moduleAudio = currentModuleAudio;
+
+                fadeAudio(moduleAudio, 0, () => {
+                    stopOneWilduAudio(moduleAudio, { reset: true });
+
+                    if (currentModuleAudio === moduleAudio) {
+                        currentModuleAudio = null;
+                    }
+                });
+            }
+
+            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
+            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
+        } catch(e) {}
+    }
 
     let currentGroupLink = '';
     function openGroupChoice(name, link) { currentGroupLink = link; document.getElementById('group-modal-title').innerText = name; document.getElementById('group-action-modal').style.display = 'flex'; document.getElementById('btn-go-group').onclick = () => { window.open(currentGroupLink, '_blank'); document.getElementById('group-action-modal').style.display = 'none'; }; document.getElementById('btn-copy-group').onclick = () => copyToClipboard(currentGroupLink); }
