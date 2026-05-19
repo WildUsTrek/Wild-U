@@ -16,13 +16,58 @@
     return runtimeCol().doc(WILDU_MEDIA_CONFIG.runtimeModuleVersionsDocId || 'module_versions');
   }
 
-  function normalizeRuntimeUrl(value) {
-    return String(value || '')
-      .trim()
-      .replace(/^\.?\//, '')
-      .split('?')[0]
-      .split('#')[0];
+function normalizeRuntimeUrl(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '';
+
+  var path = raw;
+
+  try {
+    if (/^https?:\/\//i.test(raw)) {
+      var parsed = new URL(raw);
+      path = parsed.pathname || '';
+    }
+  } catch (e) {
+    path = raw;
   }
+
+  path = String(path || '')
+    .trim()
+    .split('?')[0]
+    .split('#')[0]
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .replace(/^\.\/+/, '')
+    .replace(/^Wild-U\//i, '');
+
+  /*
+    Regola chirurgica:
+    wildu-media-suite è la cartella dell'admin, non identità runtime client.
+    La rimuoviamo SOLO se precede percorsi runtime reali.
+    Non accorpiamo nomi diversi.
+  */
+  path = path.replace(/^wildu-media-suite\/(?=modules\/|giochi\/|wildu-map-suite\/)/i, '');
+
+  return path.replace(/\/+$/, '');
+}
+
+function getRuntimeAliasKeys(key) {
+  var clean = normalizeRuntimeUrl(key);
+  if (!clean) return [];
+
+  var aliases = [
+    clean,
+    'wildu-media-suite/' + clean,
+    '/Wild-U/' + clean,
+    './' + clean
+  ];
+
+  return aliases
+    .map(normalizeRuntimeUrl)
+    .concat(['wildu-media-suite/' + clean])
+    .filter(Boolean)
+    .filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+}
 
   function uniqueList(value) {
     if (Array.isArray(value)) return value.map(normalizeRuntimeUrl).filter(Boolean).filter(function (x, i, arr) { return arr.indexOf(x) === i; });
@@ -113,39 +158,60 @@ function normalizeGame(input) {
     return entry;
   }
 
-  async function writeEntry(ref, bucketName, url, entry) {
-    var user = root.requireCurrentUser();
-    var cleanUrl = normalizeRuntimeUrl(url || (entry && entry.url) || '');
+async function writeEntry(ref, bucketName, url, entry) {
+  var user = root.requireCurrentUser();
+  var cleanUrl = normalizeRuntimeUrl(url || (entry && entry.url) || '');
 
-    if (!cleanUrl) {
-      throw new Error('URL obbligatorio per ' + bucketName + '.');
-    }
-
-    var docRef = ref();
-    var snap = await docRef.get();
-    var current = snap.exists ? (snap.data() || {}) : {};
-
-    var bucket = current[bucketName] && typeof current[bucketName] === 'object'
-      ? Object.assign({}, current[bucketName])
-      : {};
-
-    bucket[cleanUrl] = Object.assign({}, entry, {
-      url: cleanUrl,
-      updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
-    });
-
-    await docRef.set({
-      schemaVersion: 1,
-      updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
-      [bucketName]: bucket
-    }, { merge: true });
-
-    return bucket[cleanUrl];
+  if (!cleanUrl) {
+    throw new Error('URL obbligatorio per ' + bucketName + '.');
   }
+
+  var docRef = ref();
+  var snap = await docRef.get();
+  var current = snap.exists ? (snap.data() || {}) : {};
+
+  var bucket = current[bucketName] && typeof current[bucketName] === 'object'
+    ? Object.assign({}, current[bucketName])
+    : {};
+
+  /*
+    Rimuove SOLO i cloni equivalenti dello stesso record.
+    Esempio:
+    cleanUrl = modules/wildu-games.html
+    elimina eventuale bucket["wildu-media-suite/modules/wildu-games.html"]
+    ma NON elimina modules/wildu-games22.html.
+  */
+  getRuntimeAliasKeys(cleanUrl).forEach(function (alias) {
+    if (alias !== cleanUrl && Object.prototype.hasOwnProperty.call(bucket, alias)) {
+      delete bucket[alias];
+    }
+  });
+
+  bucket[cleanUrl] = Object.assign({}, entry, {
+    url: cleanUrl,
+    updatedAt: root.FieldValue.serverTimestamp(),
+    updatedByUid: user.uid,
+    updatedByEmail: user.email || null
+  });
+
+  /*
+    Niente merge:true qui: riscriviamo il documento runtime preservando
+    gli altri campi top-level, ma sostituendo il bucket pulito.
+    Così i cloni rimossi non restano appesi.
+  */
+  var nextDoc = Object.assign({}, current, {
+    schemaVersion: 1,
+    updatedAt: root.FieldValue.serverTimestamp(),
+    updatedByUid: user.uid,
+    updatedByEmail: user.email || null
+  });
+
+  nextDoc[bucketName] = bucket;
+
+  await docRef.set(nextDoc);
+
+  return bucket[cleanUrl];
+}
 
   async function listGames() {
     return readRuntime(gameDocRef, 'games');
