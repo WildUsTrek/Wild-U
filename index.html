@@ -2122,8 +2122,19 @@ function requireLoggedAccess(reason, options = {}) {
     const sRew = new Audio(); const sSpin = new Audio(); const sEnd = new Audio();
     const sLvl = new Audio(); const sXP = new Audio();
 
+    // Gli audio di sistema ora arrivano da R2/CDN.
+    // Per WebAudio/GainNode serve CORS-clean: crossOrigin va impostato PRIMA di .src.
+    [sRew, sSpin, sEnd, sLvl, sXP].forEach((audio) => {
+        try { audio.crossOrigin = "anonymous"; } catch (e) {}
+    });
+
     const aAmb = new Audio();
     const aMus = new Audio();
+
+    // Necessario per createMediaElementSource + GainNode su media.baffiwild.it.
+    // Deve essere impostato prima di assegnare aAmb.src / aMus.src.
+    aAmb.crossOrigin = "anonymous";
+    aMus.crossOrigin = "anonymous";
 
     aAmb.volume = 0;
     aMus.volume = 0;
@@ -3710,17 +3721,42 @@ const publicCachePayload = {
             FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
             FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
 
-            sXP.src = formatAssetLink(WILD_ASSETS.audio_xp); sXP.volume = 0.5;
-            sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
-            sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
-            sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin); sSpin.volume = 0.2;
-            sEnd.src = formatAssetLink(WILD_ASSETS.audio_end); sEnd.volume = 0.4;
+            // CORS-clean per WebAudio/GainNode:
+            // crossOrigin è già impostato alla creazione degli oggetti Audio.
+            if (WILD_ASSETS.audio_xp) {
+                sXP.src = formatAssetLink(WILD_ASSETS.audio_xp);
+                sXP.volume = 0.5;
+            }
+
+            if (WILD_ASSETS.audio_reward) {
+                sRew.src = formatAssetLink(WILD_ASSETS.audio_reward);
+            }
+
+            if (WILD_ASSETS.audio_levelup) {
+                sLvl.src = formatAssetLink(WILD_ASSETS.audio_levelup);
+            }
+
+            if (WILD_ASSETS.audio_spin) {
+                sSpin.src = formatAssetLink(WILD_ASSETS.audio_spin);
+                sSpin.volume = 0.2;
+            }
+
+            if (WILD_ASSETS.audio_end) {
+                sEnd.src = formatAssetLink(WILD_ASSETS.audio_end);
+                sEnd.volume = 0.4;
+            }
 
             let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
-            if (linkMusica && !aMus.src) { aMus.src = formatAssetLink(linkMusica); aMus.loop = true; }
+            if (linkMusica && !aMus.src) {
+                aMus.src = formatAssetLink(linkMusica);
+                aMus.loop = true;
+            }
 
             let linkAmbienza = WILD_ASSETS.ambienza || WILD_ASSETS.audio_ambienza;
-            if (linkAmbienza && !aAmb.src) { aAmb.src = formatAssetLink(linkAmbienza); aAmb.loop = true; }
+            if (linkAmbienza && !aAmb.src) {
+                aAmb.src = formatAssetLink(linkAmbienza);
+                aAmb.loop = true;
+            }
 
             if (WILD_ASSETS['titolo_apple']) document.getElementById('apple-title').innerHTML = parseSheetText(WILD_ASSETS['titolo_apple']);
             if (WILD_ASSETS['sottotitolo_apple']) document.getElementById('apple-subtitle').innerHTML = parseSheetText(WILD_ASSETS['sottotitolo_apple']);
@@ -7980,10 +8016,14 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
                 fadeAudio(aAmb, 0);
                 stopCurrentModuleAudio();
 
-                currentModuleAudio = new Audio(formatAssetLink(resolved));
+                currentModuleAudio = new Audio();
+
+                // Audio modulo da R2/CDN: anche qui crossOrigin deve precedere .src.
+                currentModuleAudio.crossOrigin = "anonymous";
                 currentModuleAudio.loop = true;
                 currentModuleAudio.preload = "auto";
                 currentModuleAudio.playsInline = true;
+                currentModuleAudio.src = formatAssetLink(resolved);
 
                 prepareWildAudio(currentModuleAudio);
                 applyWildAudioVolume(currentModuleAudio, 0, { instant: true });
