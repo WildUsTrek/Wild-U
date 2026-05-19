@@ -6114,8 +6114,55 @@ if (profKeyEl) {
         } catch(e) { console.error(e); btn.disabled = false; sSpin.pause(); msg.innerText = "Gli spiriti sono confusi. Riprova."; }
     }
 
-    function sanitizeVolume(val) { if (!val) return 0; let n = parseFloat(String(val).replace('%', '').replace(',', '.')); return isNaN(n) ? 0 : (n > 1 ? n/100 : n); }
-    function formatAssetLink(url) { if (!url) return url; if (url.includes("/file/d/")) return "https://docs.google.com/uc?export=media&id=" + url.split("/file/d/")[1].split("/")[0].split("?")[0]; if (url.includes("id=")) return "https://docs.google.com/uc?export=media&id=" + url.split("id=")[1].split("&")[0]; return url; }
+    function sanitizeVolume(val) {
+        if (!val) return 0;
+        let n = parseFloat(String(val).replace('%', '').replace(',', '.'));
+        return isNaN(n) ? 0 : (n > 1 ? n / 100 : n);
+    }
+
+    function addWilduSystemAudioCorsVersion(url) {
+        const raw = String(url || "").trim();
+        if (!raw) return raw;
+
+        try {
+            const u = new URL(raw, window.location.href);
+
+            if (
+                u.hostname === "media.baffiwild.it" &&
+                u.pathname.indexOf("/wildu-system-audio/") === 0
+            ) {
+                // Query stabile: forza una variante CORS pulita senza distruggere la cache.
+                u.searchParams.set("wildu_cors", "2");
+                return u.toString();
+            }
+
+            return raw;
+        } catch (e) {
+            if (raw.indexOf("media.baffiwild.it/wildu-system-audio/") >= 0) {
+                return raw + (raw.indexOf("?") >= 0 ? "&" : "?") + "wildu_cors=2";
+            }
+
+            return raw;
+        }
+    }
+
+    function formatAssetLink(url) {
+        if (!url) return url;
+
+        const raw = String(url || "").trim();
+
+        if (raw.includes("/file/d/")) {
+            return "https://docs.google.com/uc?export=media&id=" +
+                raw.split("/file/d/")[1].split("/")[0].split("?")[0];
+        }
+
+        if (raw.includes("id=")) {
+            return "https://docs.google.com/uc?export=media&id=" +
+                raw.split("id=")[1].split("&")[0];
+        }
+
+        return addWilduSystemAudioCorsVersion(raw);
+    }
     function showToast(msg) { var t = document.getElementById('toast-msg'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
     function processXPBuffer() { if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); } }
     function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; sRew.play(); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
