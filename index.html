@@ -2846,50 +2846,87 @@ const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
 
 const DEBUG_WILDU_PAGE = true;
 
-// Ultimo valore noto lato pagina. Serve solo per ritrasmettere al SW dopo update/reload.
-const WILDU_CONSOLE_SWITCH_STORAGE_KEY = 'wildConsoleSwitchLastValue';
+// =========================================================
+// WILDU CONSOLE SWITCH — Client -> Service Worker
+// =========================================================
+// Fonte admin: PARAMETERS_PARTNER/client_config.console_switch
+// Regola:
+// - il SW parte silenzioso;
+// - il client legge Firestore solo se cache TTL assente/scaduta o bypass test;
+// - cache dedicata breve, separata da wildCachePublic;
+// - cache pubblica 8h NON può più accendere il debug SW.
+
+const WILDU_CONSOLE_SWITCH_CACHE_KEY = 'wildConsoleSwitchCache';
+const WILDU_CONSOLE_SWITCH_TTL_MS = 24 * 60 * 60 * 1000; // 24 ore, solo per console_switch
+let WILDU_SW_CONSOLE_ALLOWED = false;
+let WILDU_CONSOLE_SWITCH_PROMISE = null;
 
 function pageDebug(type, details) {
     if (!DEBUG_WILDU_PAGE) return;
     console.log('[WILDU PAGE]', type, details || {});
 }
 
-function getClientConsoleSwitchFromConfig(sourceConfig) {
-    const cfg = sourceConfig && typeof sourceConfig === 'object'
-        ? sourceConfig
-        : config;
-
-    return cfg && cfg.console_switch === true;
-}
-
-function rememberClientConsoleSwitch(value) {
+function shouldBypassConsoleSwitchCache() {
     try {
-        localStorage.setItem(
-            WILDU_CONSOLE_SWITCH_STORAGE_KEY,
-            value === true ? 'true' : 'false'
+        const params = new URLSearchParams(window.location.search || "");
+        return (
+            params.get("refresh") === "1" ||
+            params.get("nocache") === "1" ||
+            params.get("cache") === "off" ||
+            params.get("swConsoleRefresh") === "1" ||
+            params.get("consoleSwitchRefresh") === "1"
         );
-    } catch (e) {}
-}
-
-function readRememberedClientConsoleSwitch() {
-    try {
-        return localStorage.getItem(WILDU_CONSOLE_SWITCH_STORAGE_KEY) === 'true';
     } catch (e) {
         return false;
     }
 }
 
-function sendClientConsoleSwitchToServiceWorker(value) {
+function readConsoleSwitchCache() {
+    try {
+        const raw = localStorage.getItem(WILDU_CONSOLE_SWITCH_CACHE_KEY);
+        if (!raw) return null;
+
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== "object") return null;
+
+        const savedAt = Number(data.savedAt || 0);
+        if (!savedAt) return null;
+
+        if ((Date.now() - savedAt) > WILDU_CONSOLE_SWITCH_TTL_MS) {
+            return null;
+        }
+
+        return {
+            value: data.value === true,
+            savedAt: savedAt,
+            source: data.source || "cache"
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function writeConsoleSwitchCache(value, source) {
+    try {
+        localStorage.setItem(WILDU_CONSOLE_SWITCH_CACHE_KEY, JSON.stringify({
+            value: value === true,
+            savedAt: Date.now(),
+            source: source || "firestore"
+        }));
+    } catch (e) {}
+}
+
+function sendClientConsoleSwitchToServiceWorker(value, reason) {
     if (!('serviceWorker' in navigator)) return;
 
     const enabled = value === true;
-
-    rememberClientConsoleSwitch(enabled);
+    WILDU_SW_CONSOLE_ALLOWED = enabled;
 
     const message = {
         type: 'WILDU_CONSOLE_SWITCH',
         value: enabled,
         source: 'wild-u-client',
+        reason: reason || 'UNKNOWN',
         ts: Date.now()
     };
 
@@ -2910,15 +2947,70 @@ function sendClientConsoleSwitchToServiceWorker(value) {
     } catch (e) {}
 }
 
-function applyClientConsoleSwitchFromConfig(sourceConfig) {
-    const enabled = getClientConsoleSwitchFromConfig(sourceConfig);
-    sendClientConsoleSwitchToServiceWorker(enabled);
+async function refreshClientConsoleSwitch(options = {}) {
+    const reason = options.reason || 'REFRESH';
+    const force = options.force === true || shouldBypassConsoleSwitchCache();
 
-    pageDebug('CONSOLE_SWITCH_APPLIED', {
-        console_switch: enabled
-    });
+    if (!force) {
+        const cached = readConsoleSwitchCache();
+        if (cached) {
+            sendClientConsoleSwitchToServiceWorker(cached.value, reason + '_TTL_CACHE');
 
-    return enabled;
+            pageDebug('SW_CONSOLE_SWITCH_TTL_CACHE', {
+                value: cached.value,
+                ageMs: Date.now() - cached.savedAt
+            });
+
+            return cached.value;
+        }
+    }
+
+    if (WILDU_CONSOLE_SWITCH_PROMISE && !force) {
+        return WILDU_CONSOLE_SWITCH_PROMISE;
+    }
+
+    WILDU_CONSOLE_SWITCH_PROMISE = (async () => {
+        // Default sicuro: spegni prima, accendi solo se Firestore conferma true.
+        sendClientConsoleSwitchToServiceWorker(false, reason + '_DEFAULT_OFF');
+
+        if (!navigator.onLine) {
+            pageDebug('SW_CONSOLE_SWITCH_OFFLINE_DEFAULT_OFF', { reason });
+            return false;
+        }
+
+        try {
+            const snap = await db
+                .collection('PARAMETERS_PARTNER')
+                .doc('client_config')
+                .get({ source: 'server' });
+
+            const data = snap.exists ? (snap.data() || {}) : {};
+            const enabled = data.console_switch === true;
+
+            writeConsoleSwitchCache(enabled, 'firestore');
+            sendClientConsoleSwitchToServiceWorker(enabled, reason + '_FIRESTORE');
+
+            pageDebug('SW_CONSOLE_SWITCH_FIRESTORE', {
+                reason,
+                enabled
+            });
+
+            return enabled;
+        } catch (e) {
+            sendClientConsoleSwitchToServiceWorker(false, reason + '_READ_FAILED');
+
+            pageDebug('SW_CONSOLE_SWITCH_READ_FAILED_DEFAULT_OFF', {
+                reason,
+                error: e && e.message ? e.message : String(e)
+            });
+
+            return false;
+        } finally {
+            WILDU_CONSOLE_SWITCH_PROMISE = null;
+        }
+    })();
+
+    return WILDU_CONSOLE_SWITCH_PROMISE;
 }
 
 if ('serviceWorker' in navigator) {
@@ -2926,12 +3018,18 @@ if ('serviceWorker' in navigator) {
         const data = event && event.data;
         if (!data || !data.__WILDU_DEBUG__) return;
 
+        // Se lo switch admin è OFF, la pagina non stampa trace nemmeno se un vecchio SW parla.
+        if (!WILDU_SW_CONSOLE_ALLOWED) return;
+
         const msg = data.__WILDU_DEBUG__;
         console.log('[WILDU TRACE]', msg.type, msg.details || {}, msg.ts || '');
     });
 
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-        sendClientConsoleSwitchToServiceWorker(readRememberedClientConsoleSwitch());
+        sendClientConsoleSwitchToServiceWorker(WILDU_SW_CONSOLE_ALLOWED, 'CONTROLLER_CHANGE');
+        refreshClientConsoleSwitch({ reason: 'CONTROLLER_CHANGE' }).catch(() => {
+            sendClientConsoleSwitchToServiceWorker(false, 'CONTROLLER_CHANGE_EXCEPTION');
+        });
     });
 }
     
@@ -3331,6 +3429,10 @@ async function init() {
 
     checkAuthEnvironment();
 
+    refreshClientConsoleSwitch({ reason: 'BOOT' }).catch(() => {
+        sendClientConsoleSwitchToServiceWorker(false, 'BOOT_EXCEPTION');
+    });
+
         maybeRunStorageGuard({ aggressive: false }).catch((e) => {
         console.warn('Storage guard skipped:', e);
     });
@@ -3386,7 +3488,9 @@ if (cachedPublicData && !bypassPublicCache) {
         config = data.config || {};
         if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
-        applyClientConsoleSwitchFromConfig(config);
+        refreshClientConsoleSwitch({ reason: 'PUBLIC_CACHE_RENDER' }).catch(() => {
+            sendClientConsoleSwitchToServiceWorker(false, 'PUBLIC_CACHE_RENDER_EXCEPTION');
+        });
 
         FIXED_VOL_MUS = sanitizeVolume(WILD_ASSETS.vol_musica || WILD_ASSETS.val_c13);
         FIXED_VOL_AMB = sanitizeVolume(WILD_ASSETS.vol_ambienza || WILD_ASSETS.val_c14);
@@ -3506,7 +3610,9 @@ const publicCachePayload = {
             config = data.config || {};
             if (!config.soglie && config.soglie_calcolate) config.soglie = config.soglie_calcolate;
 
-            applyClientConsoleSwitchFromConfig(config);
+            refreshClientConsoleSwitch({ reason: 'INITDATA_REMOTE' }).catch(() => {
+                sendClientConsoleSwitchToServiceWorker(false, 'INITDATA_REMOTE_EXCEPTION');
+            });
 
             allTrips = data.events || [];
             allOpenDays = data.opendays || [];
@@ -7482,7 +7588,9 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js')
                 .then(() => {
-                    sendClientConsoleSwitchToServiceWorker(readRememberedClientConsoleSwitch());
+                    refreshClientConsoleSwitch({ reason: 'SW_REGISTERED' }).catch(() => {
+                        sendClientConsoleSwitchToServiceWorker(false, 'SW_REGISTERED_EXCEPTION');
+                    });
                 })
                 .catch(err => {});
         });
