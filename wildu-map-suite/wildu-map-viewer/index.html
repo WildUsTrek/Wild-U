@@ -593,6 +593,7 @@ const ALL_AREAS_VALUE = "__ALL__";
 const WILDU_SECURE_LAUNCH_COLLECTION = "wildu_runtime_launches";
 const WILDU_SECURE_SESSION_KEY = "wildu_secure_session_mapviewer";
 const WILDU_SECURE_SESSION_MS = 11 * 60 * 60 * 1000; // 11 ore: primo passaggio obbligatorio dalla app madre, poi uso comodo
+const WILDU_SECURE_LAUNCH_BRIDGE_PREFIX = "wildu_secure_launch_bridge:";
 const WILDU_MAPVIEWER_TARGET_KEY = "wildu-map-suite/wildu-map-viewer";
 const WILDU_MAPVIEWER_ALLOWED_KIND = "secure_redirect";
 
@@ -666,6 +667,44 @@ function waitForWilduAuthUser(timeoutMs = 7000) {
     });
   });
 }
+
+function readWilduLaunchBridge(launchId) {
+  const cleanLaunchId = String(launchId || "").trim();
+  if (!cleanLaunchId) return null;
+
+  try {
+    const raw = localStorage.getItem(WILDU_SECURE_LAUNCH_BRIDGE_PREFIX + cleanLaunchId);
+    if (!raw) return null;
+
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return null;
+
+    const expiresAt = Number(data.expiresAt || 0);
+    const targetKey = normalizeWilduSecureTargetKey(data.targetKey || data.targetUrl);
+    const targetKind = String(data.targetKind || "").trim();
+    const source = String(data.source || "").trim();
+
+    if (String(data.launchId || "") !== cleanLaunchId) return null;
+    if (source !== "wild-u-client") return null;
+    if (targetKind !== WILDU_MAPVIEWER_ALLOWED_KIND) return null;
+    if (targetKey !== WILDU_MAPVIEWER_TARGET_KEY) return null;
+    if (!expiresAt || expiresAt <= Date.now()) return null;
+
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearWilduLaunchBridge(launchId) {
+  const cleanLaunchId = String(launchId || "").trim();
+  if (!cleanLaunchId) return;
+
+  try {
+    localStorage.removeItem(WILDU_SECURE_LAUNCH_BRIDGE_PREFIX + cleanLaunchId);
+  } catch (_) {}
+}
+
 
 function readWilduSecureSession() {
   try {
@@ -791,9 +830,7 @@ function showSecureLaunchBlocked(reason, details = "") {
 async function validateWilduSecureLaunchOrSession() {
   setStatus("Verifica accesso Wild-U...", false, true);
 
-  // 1) Se una sessione locale valida esiste già, lasciamo entrare subito.
-  // Questo è il comportamento voluto: ticket breve solo per il primo passaggio
-  // dalla app madre, poi uso comodo della mappa per 11 ore.
+  // 1) Sessione locale già valida: entra subito.
   const savedSession = readWilduSecureSession();
   if (savedSession) {
     removeWilduLaunchParamFromUrl();
@@ -801,7 +838,7 @@ async function validateWilduSecureLaunchOrSession() {
     return true;
   }
 
-  // 2) Senza sessione locale, serve per forza un ticket fresco dalla app madre.
+  // 2) Primo ingresso: serve launch dalla app madre.
   const launchId = String(params.get("launch") || "").trim();
 
   if (!launchId) {
@@ -809,12 +846,34 @@ async function validateWilduSecureLaunchOrSession() {
     return false;
   }
 
+  // 3) Bridge locale scritto dalla app madre.
+  // Questo è il passaggio anti-bypass: se non sei passato dalla madre,
+  // questo bridge non esiste nel browser.
+  const bridge = readWilduLaunchBridge(launchId);
+
+  if (bridge) {
+    writeWilduSecureSession(
+      { uid: bridge.uid || "wild-u-client" },
+      {
+        targetKind: bridge.targetKind,
+        targetKey: bridge.targetKey,
+        targetUrl: bridge.targetUrl
+      }
+    );
+
+    clearWilduLaunchBridge(launchId);
+    removeWilduLaunchParamFromUrl();
+    setStatus("Accesso dalla app Wild-U verificato. Avvio mappa...", false);
+    return true;
+  }
+
+  // 4) Fallback forte: se il bridge manca, proviamo comunque verifica Auth + Firestore.
+  // Utile per browser dove Auth si reidrata bene o per debug rules.
   if (!navigator.onLine) {
     showSecureLaunchBlocked("OFFLINE");
     return false;
   }
 
-  // 3) Il primo ingresso deve essere autenticato e verificato via Firestore.
   const user = await waitForWilduAuthUser();
 
   if (!user || !user.uid) {
@@ -869,6 +928,7 @@ async function validateWilduSecureLaunchOrSession() {
     }
 
     writeWilduSecureSession(user, data);
+    clearWilduLaunchBridge(launchId);
     removeWilduLaunchParamFromUrl();
     setStatus("Accesso verificato. Avvio mappa...", false);
     return true;
