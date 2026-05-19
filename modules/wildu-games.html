@@ -1,0 +1,814 @@
+<div id="wildu-games-module" style="
+    min-height: 90vh;
+    padding: 24px 16px 120px 16px;
+    box-sizing: border-box;
+    color: var(--w-text);
+">
+
+    <button id="wildu-games-back-hub" onclick="closeModule()" style="
+        position: fixed;
+        bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(88vw, 360px);
+        padding: 15px 22px;
+        background: linear-gradient(135deg, #d4af37, #f1c40f, #d4af37);
+        color: #000;
+        border: none;
+        border-radius: 999px;
+        font-weight: 900;
+        font-size: 15px;
+        box-shadow: 0 8px 26px rgba(0,0,0,0.75), 0 0 18px rgba(212,175,55,0.28);
+        z-index: 10000;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    ">
+        🔙 Torna all’Hub
+    </button>
+
+    <div id="wildu-games-menu">
+        <div style="text-align:center; margin: 10px auto 24px auto; max-width: 520px;">
+            <div style="
+                width: 76px;
+                height: 76px;
+                margin: 0 auto 14px auto;
+                border-radius: 50%;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-size: 42px;
+                background:
+                    radial-gradient(circle at top, rgba(212,175,55,0.32), transparent 58%),
+                    rgba(255,255,255,0.06);
+                border: 1px solid rgba(212,175,55,0.45);
+                box-shadow: inset 0 0 18px rgba(212,175,55,0.10), 0 8px 24px rgba(0,0,0,0.35);
+            ">🎮</div>
+
+            <h1 style="
+                color: var(--w-gold);
+                margin: 0;
+                font-size: 27px;
+                line-height: 1.05;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            ">
+                Giochi Wildu
+            </h1>
+
+            <p style="
+                color:#aaa;
+                font-size: 14px;
+                line-height: 1.5;
+                margin: 12px auto 0 auto;
+                max-width: 420px;
+            ">
+                Scegli una sfida del bosco. L’elenco arriva dalla Media Suite Admin e può cambiare senza modificare questo modulo.
+            </p>
+        </div>
+
+        <div id="wildu-games-status" style="
+            max-width:560px;
+            margin:0 auto 16px auto;
+            padding:14px 16px;
+            border-radius:16px;
+            border:1px solid rgba(212,175,55,0.28);
+            background:rgba(255,255,255,0.045);
+            color:#aaa;
+            font-size:13px;
+            line-height:1.45;
+            text-align:center;
+        ">
+            Caricamento giochi...
+        </div>
+
+        <div id="wildu-games-list" style="
+            display:grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            max-width: 560px;
+            margin: 0 auto;
+        "></div>
+    </div>
+
+    <div id="wildu-game-fullscreen" aria-hidden="true" style="
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        display: none;
+        background: #050505;
+        z-index: 30000;
+        overflow: hidden;
+    ">
+        <button id="wildu-close-game-fullscreen" type="button" aria-label="Chiudi gioco" style="
+            position: absolute;
+            top: calc(14px + env(safe-area-inset-top, 0px));
+            right: calc(14px + env(safe-area-inset-right, 0px));
+            width: 58px;
+            height: 58px;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.85);
+            background: rgba(0,0,0,0.78);
+            color: #fff;
+            font-size: 34px;
+            font-weight: 900;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 8px 26px rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            z-index: 30002;
+        ">×</button>
+
+        <div id="wildu-game-frame-title" style="
+            position:absolute;
+            left:calc(14px + env(safe-area-inset-left, 0px));
+            top:calc(18px + env(safe-area-inset-top, 0px));
+            right:90px;
+            z-index:30002;
+            color:#fff;
+            font-size:13px;
+            font-weight:900;
+            text-transform:uppercase;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            pointer-events:none;
+            opacity:.86;
+        "></div>
+
+        <div id="wildu-game-frame-shell" style="
+            position: absolute;
+            inset: 0;
+            padding-top: calc(70px + env(safe-area-inset-top, 0px));
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            padding-left: env(safe-area-inset-left, 0px);
+            padding-right: env(safe-area-inset-right, 0px);
+            box-sizing: border-box;
+            background: #000;
+        ">
+            <iframe
+                id="wildu-game-frame"
+                title="Gioco Wildu"
+                src="about:blank"
+                allow="fullscreen; autoplay; gamepad"
+                allowfullscreen
+                style="
+                    width: 100%;
+                    height: 100%;
+                    border: 0;
+                    display: block;
+                    background: #000;
+                "
+            ></iframe>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    console.log("[WILDU GIOCHI] Launcher dinamico avviato");
+
+    const GAME_RUNTIME_COLLECTION = "wildu_media_runtime";
+    const GAME_RUNTIME_DOC = "game_versions";
+    const SECURE_BRIDGE_PREFIX = "wildu_secure_launch_bridge:";
+    const SECURE_BRIDGE_TTL_MS = 2 * 60 * 1000;
+    const DEFAULT_OPEN_MODE = "secure_iframe";
+
+    const statusEl = document.getElementById("wildu-games-status");
+    const listEl = document.getElementById("wildu-games-list");
+    const overlayEl = document.getElementById("wildu-game-fullscreen");
+    const frameEl = document.getElementById("wildu-game-frame");
+    const frameTitleEl = document.getElementById("wildu-game-frame-title");
+    const closeBtn = document.getElementById("wildu-close-game-fullscreen");
+
+    let games = [];
+    let previousBodyOverflow = "";
+    let previousHtmlOverflow = "";
+
+    function setStatus(message, isError) {
+        if (!statusEl) return;
+
+        statusEl.style.display = message ? "block" : "none";
+        statusEl.style.borderColor = isError ? "rgba(255,68,68,0.45)" : "rgba(212,175,55,0.28)";
+        statusEl.style.color = isError ? "#ffb3b3" : "#aaa";
+        statusEl.innerHTML = message || "";
+    }
+
+    function showToastSafe(message) {
+        if (typeof window.showToast === "function") {
+            window.showToast(message);
+        } else {
+            console.log("[WILDU GIOCHI]", message);
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value == null ? "" : value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function normalizeUrl(rawUrl) {
+        return String(rawUrl == null ? "" : rawUrl).trim();
+    }
+
+    function normalizeOpenMode(value) {
+        const mode = String(value || DEFAULT_OPEN_MODE).trim().toLowerCase();
+        if (mode === "secure-iframe") return "secure_iframe";
+        if (mode === "secure-redirect") return "secure_redirect";
+        if (mode === "newtab") return "new_tab";
+        return mode || DEFAULT_OPEN_MODE;
+    }
+
+    function normalizeTargetKey(raw) {
+        let value = String(raw || "").trim();
+        if (!value) return "";
+
+        value = value.split("?")[0].split("#")[0].trim();
+
+        try {
+            if (/^https?:\/\//i.test(value)) {
+                value = new URL(value).pathname;
+            } else if (value.indexOf("/") === 0) {
+                // già path assoluto, pulito sotto
+            } else {
+                value = value.replace(/^\.\/+/, "");
+            }
+        } catch (_) {}
+
+        return value
+            .replace(/\\/g, "/")
+            .replace(/^\/+/, "")
+            .replace(/^Wild-U\//i, "")
+            .replace(/\/index\.html$/i, "/index.html")
+            .replace(/\/+$/, "");
+    }
+
+    function resolveVersionedGameUrl(rawUrl, rev) {
+        const clean = normalizeUrl(rawUrl);
+        if (!clean) return "";
+
+        const safeRev = Math.max(1, parseInt(rev, 10) || 1);
+
+        try {
+            if (
+                window.WILDU_MODULE &&
+                typeof window.WILDU_MODULE.getUrl === "function"
+            ) {
+                return window.WILDU_MODULE.getUrl(clean);
+            }
+        } catch (e) {}
+
+        try {
+            if (typeof window.buildVersionedModuleUrl === "function") {
+                return window.buildVersionedModuleUrl(clean, safeRev);
+            }
+        } catch (e) {}
+
+        try {
+            const u = new URL(clean, window.location.href);
+            u.searchParams.set("mr", String(safeRev));
+            return u.toString();
+        } catch (_) {
+            const sep = clean.indexOf("?") >= 0 ? "&" : "?";
+            return clean + sep + "mr=" + encodeURIComponent(String(safeRev));
+        }
+    }
+
+    function getCurrentUidSafe() {
+        try {
+            if (window.auth && window.auth.currentUser && window.auth.currentUser.uid) {
+                return window.auth.currentUser.uid;
+            }
+        } catch (_) {}
+
+        try {
+            if (window.firebase && firebase.auth && firebase.auth().currentUser && firebase.auth().currentUser.uid) {
+                return firebase.auth().currentUser.uid;
+            }
+        } catch (_) {}
+
+        return "";
+    }
+
+    function writeSecureLaunchBridgeFromUrl(secureUrl, game) {
+        try {
+            const u = new URL(String(secureUrl || ""), window.location.href);
+            const launchId = String(u.searchParams.get("launch") || "").trim();
+
+            if (!launchId) {
+                console.warn("[WILDU GIOCHI] secureUrl senza launch, bridge non scritto", secureUrl);
+                return;
+            }
+
+            const targetUrl = normalizeUrl(game.url);
+            const targetKey = normalizeTargetKey(game.targetKey || game.url || targetUrl);
+
+            localStorage.setItem(
+                SECURE_BRIDGE_PREFIX + launchId,
+                JSON.stringify({
+                    launchId: launchId,
+                    uid: getCurrentUidSafe(),
+                    targetKind: "secure_iframe",
+                    targetKey: targetKey,
+                    targetUrl: targetUrl,
+                    requiredGrade: String(game.grade || ""),
+                    moduleRev: Math.max(1, parseInt(game.rev, 10) || 1),
+                    createdAt: Date.now(),
+                    expiresAt: Date.now() + SECURE_BRIDGE_TTL_MS,
+                    source: "wild-u-client"
+                })
+            );
+
+            console.log("[WILDU GIOCHI] Bridge secure_iframe scritto", {
+                launchId,
+                targetKey
+            });
+        } catch (e) {
+            console.warn("[WILDU GIOCHI] bridge secure_iframe non scritto:", e);
+        }
+    }
+
+    function deriveTitleFromUrl(rawUrl) {
+        const clean = normalizeTargetKey(rawUrl);
+        const parts = clean.split("/").filter(Boolean);
+        const last = parts.length ? parts[parts.length - 2] || parts[parts.length - 1] : "gioco";
+        return String(last || "gioco")
+            .replace(/[-_]+/g, " ")
+            .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    function normalizeGameEntry(key, raw) {
+        const data = raw && typeof raw === "object" ? raw : {};
+        const url = normalizeUrl(
+            data.Link_Risorsa ||
+            data.link_risorsa ||
+            data.targetUrl ||
+            data.gameUrl ||
+            data.url ||
+            data.URL ||
+            data.path ||
+            key
+        );
+
+        if (!url) return null;
+        if (data.enabled === false || data.status === "DISABLED" || data.status === "ARCHIVED") return null;
+
+        const rev = Math.max(1, parseInt(
+            data.rev ??
+            data.game_rev ??
+            data.module_rev ??
+            data.version ??
+            data.Versione ??
+            data.versione ??
+            1,
+            10
+        ) || 1);
+
+        const title = String(
+            data.Titolo ||
+            data.title ||
+            data.Title ||
+            data.nome ||
+            deriveTitleFromUrl(url)
+        ).trim();
+
+        const description = String(
+            data.Descrizione ||
+            data.description ||
+            data.desc ||
+            data.notes ||
+            ""
+        ).trim();
+
+        const icon = String(
+            data.icon ||
+            data.emoji ||
+            data.Categoria ||
+            data.category ||
+            "🎮"
+        ).trim();
+
+        const accent = String(
+            data.accentColor ||
+            data.accent ||
+            data.color ||
+            ""
+        ).trim();
+
+        return {
+            id: normalizeTargetKey(data.url || url || key),
+            key: String(key || url),
+            title,
+            description,
+            icon,
+            accent,
+            url,
+            rev,
+            openMode: normalizeOpenMode(data.openMode || data.open_mode || data.mode || DEFAULT_OPEN_MODE),
+            grade: String(data.Grado_Minimo || data.gradeRequired || data.requiredGrade || "").trim(),
+            duration: String(data.duration || data.durata || data.Durata || "").trim(),
+            label: String(data.label || data.badge || data.tipo || "Gioco").trim(),
+            sortOrder: Number(data.sortOrder ?? data.ordine ?? data.order ?? 999),
+            targetKey: normalizeTargetKey(data.targetKey || data.cacheScope || url)
+        };
+    }
+
+    function extractGames(runtime) {
+        const data = runtime && typeof runtime === "object" ? runtime : {};
+        const bucket =
+            data.games && typeof data.games === "object"
+                ? data.games
+                : data.Games && typeof data.Games === "object"
+                    ? data.Games
+                    : data.items && typeof data.items === "object"
+                        ? data.items
+                        : data;
+
+        const skipKeys = {
+            updatedAt: true,
+            generatedAt: true,
+            lastBumpAt: true,
+            publicVersion: true,
+            rev: true,
+            version: true,
+            modules: true,
+            meta: true
+        };
+
+        const out = [];
+        const seen = new Set();
+
+        Object.keys(bucket || {}).forEach(function (key) {
+            if (skipKeys[key]) return;
+
+            const raw = bucket[key];
+            if (!raw || typeof raw !== "object") return;
+
+            const game = normalizeGameEntry(key, raw);
+            if (!game) return;
+
+            const uniqueKey = game.id || game.url;
+            if (seen.has(uniqueKey)) return;
+
+            seen.add(uniqueKey);
+            out.push(game);
+        });
+
+        out.sort(function (a, b) {
+            if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+            return a.title.localeCompare(b.title);
+        });
+
+        return out;
+    }
+
+    async function loadGameRuntime() {
+        if (
+            window.WILDU_GAME_RUNTIME &&
+            typeof window.WILDU_GAME_RUNTIME.get === "function"
+        ) {
+            return await window.WILDU_GAME_RUNTIME.get();
+        }
+
+        if (window.firebase && firebase.firestore) {
+            const snap = await firebase.firestore()
+                .collection(GAME_RUNTIME_COLLECTION)
+                .doc(GAME_RUNTIME_DOC)
+                .get();
+
+            return snap.exists ? (snap.data() || {}) : {};
+        }
+
+        throw new Error("Runtime giochi non disponibile nella app madre.");
+    }
+
+    function getCardTheme(game, index) {
+        const fallback = index % 2 === 0
+            ? { accent: "var(--w-gold)", rgb: "212,175,55", bg1: "rgba(212,175,55,0.30)", bg2: "rgba(45,90,39,0.96)" }
+            : { accent: "#7cc7ff", rgb: "120,190,255", bg1: "rgba(120,190,255,0.28)", bg2: "rgba(32,55,70,0.96)" };
+
+        if (game.accent) {
+            return {
+                accent: game.accent,
+                rgb: "212,175,55",
+                bg1: "rgba(212,175,55,0.24)",
+                bg2: "rgba(32,55,70,0.96)"
+            };
+        }
+
+        return fallback;
+    }
+
+    function buildGameCard(game, index) {
+        const theme = getCardTheme(game, index);
+        const locked = game.grade ? `<span style="font-size:11px; color:${theme.accent}; font-weight:900;">Grado: ${escapeHtml(game.grade)}</span>` : "";
+        const duration = game.duration ? escapeHtml(game.duration) : "Durata variabile";
+
+        return `
+            <button type="button" data-wildu-game-index="${index}" style="
+                position:relative;
+                overflow:hidden;
+                min-height: 172px;
+                border: 1px solid rgba(${theme.rgb},0.50);
+                border-radius: 22px;
+                padding: 22px;
+                text-align:left;
+                cursor:pointer;
+                color:#fff;
+                background:
+                    radial-gradient(circle at top left, ${theme.bg1}, transparent 42%),
+                    linear-gradient(135deg, ${theme.bg2}, rgba(18,18,18,0.98));
+                box-shadow: 0 10px 28px rgba(0,0,0,0.45), 0 0 18px rgba(${theme.rgb},0.09);
+            ">
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div style="
+                        width: 64px;
+                        height: 64px;
+                        min-width:64px;
+                        border-radius: 18px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        font-size: 38px;
+                        background: rgba(0,0,0,0.24);
+                        border:1px solid rgba(255,255,255,0.12);
+                    ">${escapeHtml(game.icon)}</div>
+
+                    <div style="min-width:0;">
+                        <div style="
+                            color:${theme.accent};
+                            font-size: 11px;
+                            font-weight: 900;
+                            letter-spacing: 1px;
+                            text-transform: uppercase;
+                            margin-bottom: 5px;
+                        ">${escapeHtml(game.label)}</div>
+
+                        <div style="
+                            color:#fff;
+                            font-size: 21px;
+                            font-weight: 900;
+                            line-height: 1.1;
+                            text-transform: uppercase;
+                        ">${escapeHtml(game.title)}</div>
+
+                        <div style="
+                            color:#d5d5d5;
+                            font-size: 13px;
+                            line-height: 1.35;
+                            margin-top: 8px;
+                        ">${escapeHtml(game.description || "Mini-gioco Wild-U pronto per la community.")}</div>
+
+                        ${locked ? `<div style="margin-top:7px;">${locked}</div>` : ""}
+                    </div>
+                </div>
+
+                <div style="
+                    margin-top:16px;
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                    gap:12px;
+                ">
+                    <span style="color:#aaa; font-size:12px; font-weight:800;">${duration}</span>
+                    <span style="
+                        background:${theme.accent};
+                        color:#000;
+                        border-radius:999px;
+                        padding:8px 12px;
+                        font-size:12px;
+                        font-weight:900;
+                    ">GIOCA ➔</span>
+                </div>
+            </button>
+        `;
+    }
+
+    function renderGames() {
+        if (!listEl) return;
+
+        if (!games.length) {
+            listEl.innerHTML = `
+                <div class="card" style="border-left-color:#ffb84d; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">📭</div>
+                    <h3 style="color:#ffcc88; margin:0 0 8px 0;">Nessun gioco pubblicato</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        Vai nella <strong>Media Suite Admin → Giochi</strong>, abilita almeno un gioco,
+                        poi ricarica questa app con <code>?gameRefresh=1</code>.
+                    </p>
+                </div>
+            `;
+            return;
+        }
+
+        listEl.innerHTML = games.map(buildGameCard).join("");
+
+        Array.from(listEl.querySelectorAll("[data-wildu-game-index]")).forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                const index = parseInt(this.getAttribute("data-wildu-game-index"), 10);
+                const game = games[index];
+                if (game) openGame(game).catch(function (err) {
+                    console.error("[WILDU GIOCHI] apertura gioco fallita:", err);
+                    showToastSafe("Gioco non disponibile. Riprova dalla app.");
+                    setStatus("Errore apertura gioco: " + String(err && err.message || err), true);
+                });
+            });
+        });
+    }
+
+    function checkGrade(game) {
+        if (!game.grade) return true;
+
+        if (typeof window.checkRankMet === "function") {
+            if (!window.checkRankMet(game.grade)) {
+                showToastSafe("🔒 Grado richiesto: " + String(game.grade).toUpperCase());
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function openGameFrame(game, url) {
+        if (!overlayEl || !frameEl) {
+            throw new Error("Overlay gioco non trovato.");
+        }
+
+        previousBodyOverflow = document.body.style.overflow || "";
+        previousHtmlOverflow = document.documentElement.style.overflow || "";
+
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+
+        if (frameTitleEl) {
+            frameTitleEl.textContent = game.title || "Gioco Wildu";
+        }
+
+        overlayEl.style.display = "block";
+        overlayEl.setAttribute("aria-hidden", "false");
+        frameEl.setAttribute("title", game.title || "Gioco Wildu");
+        frameEl.setAttribute("src", url);
+
+        try {
+            frameEl.focus();
+        } catch (e) {}
+
+        console.log("[WILDU GIOCHI] gioco aperto", {
+            title: game.title,
+            url,
+            openMode: game.openMode,
+            rev: game.rev
+        });
+    }
+
+    async function openGame(game) {
+        if (!checkGrade(game)) return;
+
+        const mode = normalizeOpenMode(game.openMode);
+        const targetUrl = normalizeUrl(game.url);
+
+        if (!targetUrl) {
+            throw new Error("URL gioco mancante.");
+        }
+
+        if (mode === "secure_iframe") {
+            if (typeof window.openWilduSecureIframe !== "function") {
+                throw new Error("openWilduSecureIframe non disponibile nella app madre.");
+            }
+
+            showToastSafe("Preparazione gioco sicuro...");
+            const secureUrl = await window.openWilduSecureIframe(targetUrl, game.grade || "", game.rev || 1);
+            writeSecureLaunchBridgeFromUrl(secureUrl, game);
+            openGameFrame(game, secureUrl);
+            return;
+        }
+
+        if (mode === "iframe" || mode === "module" || mode === "game") {
+            openGameFrame(game, resolveVersionedGameUrl(targetUrl, game.rev));
+            return;
+        }
+
+        if (mode === "secure_redirect") {
+            if (typeof window.openWilduSecureRedirect !== "function") {
+                throw new Error("openWilduSecureRedirect non disponibile nella app madre.");
+            }
+
+            await window.openWilduSecureRedirect(targetUrl, game.grade || "", game.rev || 1);
+            return;
+        }
+
+        if (mode === "redirect") {
+            window.location.href = resolveVersionedGameUrl(targetUrl, game.rev);
+            return;
+        }
+
+        if (mode === "new_tab") {
+            const opened = window.open(resolveVersionedGameUrl(targetUrl, game.rev), "_blank", "noopener,noreferrer");
+            if (!opened) {
+                window.location.href = resolveVersionedGameUrl(targetUrl, game.rev);
+            }
+            return;
+        }
+
+        // Fallback prudente: iframe semplice.
+        openGameFrame(game, resolveVersionedGameUrl(targetUrl, game.rev));
+    }
+
+    function closeGameFrame() {
+        if (!overlayEl || !frameEl) return;
+
+        overlayEl.style.display = "none";
+        overlayEl.setAttribute("aria-hidden", "true");
+
+        // Scarica il gioco e ferma loop/audio/canvas.
+        frameEl.setAttribute("src", "about:blank");
+
+        document.body.style.overflow = previousBodyOverflow;
+        document.documentElement.style.overflow = previousHtmlOverflow;
+
+        if (frameTitleEl) frameTitleEl.textContent = "";
+
+        console.log("[WILDU GIOCHI] gioco chiuso");
+    }
+
+    function bindCloseEvents() {
+        if (closeBtn) {
+            closeBtn.addEventListener("click", closeGameFrame);
+        }
+
+        document.addEventListener("keydown", function (e) {
+            if (
+                e.key === "Escape" &&
+                overlayEl &&
+                overlayEl.style.display !== "none"
+            ) {
+                closeGameFrame();
+            }
+        });
+    }
+
+    async function bootGamesLauncher() {
+        try {
+            setStatus("Caricamento giochi dalla Media Suite Admin...");
+            const runtime = await loadGameRuntime();
+            games = extractGames(runtime);
+
+            window.WILDU_LAST_GAMES_RUNTIME = runtime || null;
+            window.WILDU_LAST_GAMES_LIST = games;
+
+            if (!games.length) {
+                setStatus("", false);
+            } else {
+                setStatus(`${games.length} giochi caricati da <code>wildu_media_runtime/game_versions</code>.`);
+                setTimeout(function () {
+                    setStatus("");
+                }, 3200);
+            }
+
+            renderGames();
+
+            console.log("[WILDU GIOCHI] giochi renderizzati da game_versions", {
+                count: games.length,
+                games: games.map(function (g) {
+                    return {
+                        title: g.title,
+                        url: g.url,
+                        rev: g.rev,
+                        openMode: g.openMode,
+                        grade: g.grade
+                    };
+                })
+            });
+        } catch (e) {
+            console.error("[WILDU GIOCHI] caricamento game_versions fallito:", e);
+
+            setStatus(
+                `Non riesco a leggere <code>wildu_media_runtime/game_versions</code>.<br>
+                Controlla connessione, regole Firestore o cache. Dettaglio: ${escapeHtml(e.message || e)}`,
+                true
+            );
+
+            if (listEl) {
+                listEl.innerHTML = `
+                    <div class="card" style="border-left-color:#ff4444; text-align:center;">
+                        <div style="font-size:42px; margin-bottom:10px;">⚠️</div>
+                        <h3 style="color:#ff6666; margin:0 0 8px 0;">Giochi non disponibili</h3>
+                        <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                            Il launcher non deve usare link statici: serve la sorgente dinamica <code>game_versions</code>.
+                        </p>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    bindCloseEvents();
+    bootGamesLauncher();
+})();
+</script>
