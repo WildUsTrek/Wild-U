@@ -6478,7 +6478,18 @@ async function rememberWilduRuntimeRevAndMaybeClear(rawUrl, effectiveRev) {
 
     const previousRev = previous ? Math.max(1, parseInt(previous.rev, 10) || 1) : null;
 
-    if (previousRev && previousRev !== nextRev) {
+    const isGameRuntime =
+        typeof isWilduGameRuntimeUrl === "function" &&
+        isWilduGameRuntimeUrl(rawUrl);
+
+    const firstSeenGame = !previousRev && isGameRuntime;
+    const changedRev = !!previousRev && previousRev !== nextRev;
+
+    // Giochi:
+    // - se la rev cambia, puliamo la cache collegata;
+    // - se è il primo giro dopo questa patch, puliamo una volta per evitare asset vecchi
+    //   già presenti prima che esistesse il tracking runtime del gioco.
+    if (changedRev || firstSeenGame) {
         await clearWilduCorrelatedRuntimeCaches(rawUrl);
     }
 
@@ -6504,7 +6515,9 @@ window.WILDU_RUNTIME_VERSIONS = {
     resolveRev: function (rawUrl, fallbackRev) {
         return resolveWilduEffectiveRev(rawUrl, fallbackRev || window.currentModuleRev || 1, WILDU_RUNTIME_VERSION_MEMORY);
     },
-    clearCorrelated: clearWilduCorrelatedRuntimeCaches
+    clearCorrelated: clearWilduCorrelatedRuntimeCaches,
+    remember: rememberWilduRuntimeRevAndMaybeClear,
+    rememberSoon: rememberWilduRuntimeRevAndMaybeClearSoon
 };
 
 // =========================================================
