@@ -202,13 +202,22 @@
 
     tags.forEach(function (tag) {
       if (tagAllowsClientPublicVersion(tag)) {
-        publicMap[tag.tagSlug] = Number(tag.publicVersion || 0);
-        meta[tag.tagSlug] = {
+        var metaEntry = {
           title: tag.title || tag.tagSlug,
           renderer: tag.renderer || 'none',
           allowedCategories: Array.isArray(tag.allowedCategories) ? tag.allowedCategories : [],
           tabs: Array.isArray(tag.tabs) ? tag.tabs : []
         };
+
+        // Impostazioni leggere Biblioteca client.
+        // Restano nel tag "biblioteca" e vengono esposte al client tramite public_versions.meta.
+        if (tag.tagSlug === 'biblioteca') {
+          metaEntry.bookRequiredGrade = String(tag.bookRequiredGrade || '').trim();
+          metaEntry.real_news = String(tag.real_news || '').trim();
+        }
+
+        publicMap[tag.tagSlug] = Number(tag.publicVersion || 0);
+        meta[tag.tagSlug] = metaEntry;
       }
     });
 
@@ -264,6 +273,35 @@
     await syncRuntimePublicVersions();
   }
 
+  async function updateBibliotecaClientSettings(input) {
+    var user = root.requireCurrentUser();
+    input = input || {};
+
+    var now = root.FieldValue.serverTimestamp();
+
+    var bookRequiredGrade = String(input.bookRequiredGrade || '').trim();
+    var realNews = String(input.real_news || '').trim();
+
+    await tagRef('biblioteca').set({
+      tagSlug: 'biblioteca',
+
+      // Campi client-facing leggeri.
+      bookRequiredGrade: bookRequiredGrade,
+      real_news: realNews,
+
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+
+      bibliotecaSettingsUpdatedAt: now,
+      bibliotecaSettingsUpdatedByUid: user.uid,
+      bibliotecaSettingsUpdatedByEmail: user.email || null
+    }, { merge: true });
+
+    await syncRuntimePublicVersions();
+    return getTag('biblioteca');
+  }
+
   root.TagService = {
     listTags: listTags,
     getTag: getTag,
@@ -275,6 +313,7 @@
     collectMediaTagSlugs: collectMediaTagSlugs,
     mediaPublicImpact: mediaPublicImpact,
     tagAllowsClientPublicVersion: tagAllowsClientPublicVersion,
-    normalizeAllowedCategories: normalizeAllowedCategories
+    normalizeAllowedCategories: normalizeAllowedCategories,
+    updateBibliotecaClientSettings: updateBibliotecaClientSettings
   };
 })();
