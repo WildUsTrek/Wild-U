@@ -670,6 +670,7 @@
     await loadRuntimeManifestQuietly();
     renderTags();
     fillTagDropdowns();
+    renderLibraryClientSettingsCardState();
     renderDashboard();
     renderDebug();
   }
@@ -774,6 +775,34 @@
 
   function renderModuleGradeOptions() {
     var select = root.$('#module-grade');
+    if (select) {
+      var current = select.value || '';
+      var options = state.moduleGradeOptions || [];
+
+      select.innerHTML =
+        '<option value="">Nessun grado / pubblico</option>' +
+        options.map(function (item) {
+          return '<option value="' + root.escapeHtml(item.value) + '">' +
+            root.escapeHtml(item.label) +
+            '</option>';
+        }).join('');
+
+      if (current && options.some(function (item) { return item.value === current; })) {
+        select.value = current;
+      }
+    }
+
+    renderLibraryBookRequiredGradeOptions();
+  }
+
+  function getBibliotecaTagFromState() {
+    return (state.tags || []).find(function (tag) {
+      return tag && tag.tagSlug === 'biblioteca';
+    }) || null;
+  }
+
+  function renderLibraryBookRequiredGradeOptions() {
+    var select = document.getElementById('library-books-required-grade');
     if (!select) return;
 
     var current = select.value || '';
@@ -787,9 +816,236 @@
           '</option>';
       }).join('');
 
-    if (current && options.some(function (item) { return item.value === current; })) {
+    if (current) {
+      var exists = options.some(function (item) {
+        return item.value === current;
+      });
+
+      if (!exists) {
+        var opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + ' (salvato)';
+        select.appendChild(opt);
+      }
+
       select.value = current;
     }
+  }
+
+  function renderLibraryClientSettingsCardState() {
+    var tag = getBibliotecaTagFromState();
+
+    renderLibraryBookRequiredGradeOptions();
+
+    var gradeSelect = document.getElementById('library-books-required-grade');
+    var newsInput = document.getElementById('library-real-news');
+    var currentBox = document.getElementById('library-client-settings-current');
+
+    if (!gradeSelect && !newsInput && !currentBox) return;
+
+    var savedGrade = tag ? String(tag.bookRequiredGrade || '').trim() : '';
+    var savedNews = tag ? String(tag.real_news || '').trim() : '';
+
+    if (gradeSelect) {
+      if (savedGrade) {
+        var exists = Array.prototype.some.call(gradeSelect.options, function (opt) {
+          return opt.value === savedGrade;
+        });
+
+        if (!exists) {
+          var opt = document.createElement('option');
+          opt.value = savedGrade;
+          opt.textContent = savedGrade + ' (salvato)';
+          gradeSelect.appendChild(opt);
+        }
+      }
+
+      gradeSelect.value = savedGrade;
+    }
+
+    if (newsInput) {
+      newsInput.value = savedNews;
+    }
+
+    if (currentBox) {
+      currentBox.innerHTML =
+        '<span class="chip">Libri: ' + root.escapeHtml(savedGrade || 'pubblico') + '</span> ' +
+        '<span class="chip">real_news: ' + (savedNews ? 'presente' : 'vuoto') + '</span>';
+    }
+  }
+
+  async function saveLibraryClientSettingsFromForm(evt) {
+    if (evt && evt.preventDefault) evt.preventDefault();
+
+    if (!root.TagService || typeof root.TagService.updateBibliotecaClientSettings !== 'function') {
+      throw new Error('TagService non aggiornato: manca updateBibliotecaClientSettings(). Controlla cache/versione bootstrap.');
+    }
+
+    var gradeSelect = document.getElementById('library-books-required-grade');
+    var newsInput = document.getElementById('library-real-news');
+
+    await root.TagService.updateBibliotecaClientSettings({
+      bookRequiredGrade: gradeSelect ? gradeSelect.value : '',
+      real_news: newsInput ? newsInput.value : ''
+    });
+
+    root.toast('Impostazioni Biblioteca salvate e public_versions.meta.biblioteca aggiornato.', 'success');
+
+    await refreshTags();
+  }
+
+  // =========================================================
+  // CLIENT APP CONFIG — Biblioteca Libri + real_news
+  // =========================================================
+  // Fonte:
+  // - PARAMETERS_PARTNER/client_config.biblioteca_libri_grado_minimo
+  // - PARAMETERS_PARTNER/client_config.real_news
+  //
+  // Nota:
+  // Non tocca catalogo media, R2, tag, giochi o moduli.
+  // È configurazione globale della client app.
+
+  function getClientBooksMinGradeValue() {
+    var cfg = state.partnerClientConfig || {};
+    return String(cfg.biblioteca_libri_grado_minimo || '').trim();
+  }
+
+  function renderClientBooksGradeOptions() {
+    var select = document.getElementById('client-books-min-grade');
+    if (!select) return;
+
+    var current = select.value || getClientBooksMinGradeValue();
+    var options = state.moduleGradeOptions || [];
+
+    select.innerHTML =
+      '<option value="">Nessun grado / pubblico</option>' +
+      options.map(function (item) {
+        return '<option value="' + root.escapeHtml(item.value) + '">' +
+          root.escapeHtml(item.label) +
+          '</option>';
+      }).join('');
+
+    if (current) {
+      var exists = Array.prototype.some.call(select.options, function (opt) {
+        return opt.value === current;
+      });
+
+      if (!exists) {
+        var opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + ' (salvato)';
+        select.appendChild(opt);
+      }
+
+      select.value = current;
+    }
+  }
+
+  function renderClientContentConfigState() {
+    var cfg = state.partnerClientConfig || {};
+
+    renderClientBooksGradeOptions();
+
+    var newsField = document.getElementById('client-real-news');
+    if (newsField && document.activeElement !== newsField) {
+      newsField.value = String(cfg.real_news || '');
+    }
+
+    var current = document.getElementById('client-content-config-current');
+    if (!current) return;
+
+    var grade = getClientBooksMinGradeValue();
+    var news = String(cfg.real_news || '').trim();
+
+    var updatedBy = cfg.client_content_config_updatedByEmail ||
+      cfg.client_content_config_updatedByUid ||
+      '';
+
+    var updatedAt = root.toDateTimeLabel
+      ? root.toDateTimeLabel(cfg.client_content_config_updatedAt)
+      : '';
+
+    current.innerHTML =
+      '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">' +
+        '<span class="badge ' + (grade ? 'warn' : 'good') + '">' +
+          'Libri: ' + root.escapeHtml(grade || 'pubblici / nessun grado') +
+        '</span>' +
+        '<span class="badge ' + (news ? 'good' : 'warn') + '">' +
+          'real_news: ' + root.escapeHtml(news ? 'presente' : 'vuota') +
+        '</span>' +
+      '</div>' +
+      '<div style="margin-top:8px;">' +
+        root.escapeHtml(
+          [updatedAt, updatedBy].filter(Boolean).join(' — ') ||
+          'Nessun aggiornamento registrato.'
+        ) +
+      '</div>';
+  }
+
+  async function refreshClientContentConfig() {
+    if (!root.db) throw new Error('Firestore non inizializzato.');
+
+    var snap = await root.db
+      .collection('PARAMETERS_PARTNER')
+      .doc('client_config')
+      .get();
+
+    state.partnerClientConfig = snap.exists ? (snap.data() || {}) : {};
+
+    state.moduleGradeOptions = buildModuleGradeOptions(
+      state.partnerClientConfig,
+      state.legacyModuleResources
+    );
+
+    renderModuleGradeOptions();
+    renderClientContentConfigState();
+    renderClientConsoleSwitchCardState();
+    renderGlobalCacheNukeCardState();
+    renderDebug();
+
+    root.toast('Config client ricaricata.', 'success');
+  }
+
+  async function saveClientContentConfig(evt) {
+    if (evt && evt.preventDefault) evt.preventDefault();
+
+    if (!root.db) throw new Error('Firestore non inizializzato.');
+    if (!state.currentUser) throw new Error('Login richiesto.');
+
+    var gradeSelect = document.getElementById('client-books-min-grade');
+    var newsField = document.getElementById('client-real-news');
+
+    var grade = gradeSelect ? String(gradeSelect.value || '').trim() : '';
+    var realNews = newsField ? String(newsField.value || '').trim() : '';
+
+    var user = root.requireCurrentUser();
+    var now = root.FieldValue.serverTimestamp();
+
+    var patch = {
+      biblioteca_libri_grado_minimo: grade,
+      real_news: realNews,
+
+      client_content_config_updatedAt: now,
+      client_content_config_updatedByUid: user.uid,
+      client_content_config_updatedByEmail: user.email || null
+    };
+
+    await root.db
+      .collection('PARAMETERS_PARTNER')
+      .doc('client_config')
+      .set(patch, { merge: true });
+
+    state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
+      biblioteca_libri_grado_minimo: grade,
+      real_news: realNews,
+      client_content_config_updatedByUid: user.uid,
+      client_content_config_updatedByEmail: user.email || null
+    });
+
+    renderClientContentConfigState();
+    renderDebug();
+
+    root.toast('Configurazione client salvata: Libri + real_news.', 'success');
   }
 
   async function loadPartnerModuleContextQuietly() {
@@ -812,6 +1068,7 @@
       );
 
       renderModuleGradeOptions();
+      renderClientContentConfigState();
       renderClientConsoleSwitchCardState();
       renderGlobalCacheNukeCardState();
     } catch (e) {
@@ -819,6 +1076,7 @@
       state.legacyModuleResources = { error: e.message || String(e) };
       state.moduleGradeOptions = [];
       renderModuleGradeOptions();
+      renderClientContentConfigState();
       renderClientConsoleSwitchCardState();
       renderGlobalCacheNukeCardState();
     }
@@ -2766,6 +3024,37 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     
     root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
     root.$('#btn-refresh-module-grades').addEventListener('click', function () { run(loadPartnerModuleContextQuietly); });
+        var librarySettingsForm = document.getElementById('library-client-settings-form');
+    if (librarySettingsForm) {
+      librarySettingsForm.addEventListener('submit', function (evt) {
+        run(saveLibraryClientSettingsFromForm, evt);
+      });
+    }
+
+    var refreshLibrarySettingsBtn = document.getElementById('btn-refresh-library-client-settings');
+    if (refreshLibrarySettingsBtn) {
+      refreshLibrarySettingsBtn.addEventListener('click', function () {
+        run(async function () {
+          await loadPartnerModuleContextQuietly();
+          await refreshTags();
+          root.toast('Impostazioni Biblioteca ricaricate.', 'success');
+        });
+      });
+    }
+
+        var clientContentConfigForm = document.getElementById('client-content-config-form');
+    if (clientContentConfigForm) {
+      clientContentConfigForm.addEventListener('submit', function (evt) {
+        run(saveClientContentConfig, evt);
+      });
+    }
+
+    var refreshClientContentConfigBtn = document.getElementById('btn-refresh-client-content-config');
+    if (refreshClientContentConfigBtn) {
+      refreshClientContentConfigBtn.addEventListener('click', function () {
+        run(refreshClientContentConfig);
+      });
+    }
 
     var refreshSystemAudioBtn = root.$('#btn-refresh-system-audio');
     if (refreshSystemAudioBtn) {
@@ -2919,6 +3208,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
         renderGameVersions();
         renderModuleVersions();
         renderSystemAudio();
+        renderLibraryClientSettingsCardState();
         renderDashboard();
         renderDebug();
       }
