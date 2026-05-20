@@ -48,6 +48,7 @@
       <button class="tab-btn" data-tab="games">Giochi</button>
       <button class="tab-btn" data-tab="modules">Moduli</button>
       <button class="tab-btn" data-tab="audio">Audio App</button>
+      <button class="tab-btn" data-tab="client-config">Client App</button>
       <button class="tab-btn" data-tab="debug">Debug</button>
     </nav>
 
@@ -155,6 +156,49 @@
           <p><code>version</code> cambia quando cambia qualsiasi media collegato al tag.</p>
           <p><code>publicVersion</code> cambia solo se cambia un contenuto pubblico di un tag renderizzabile dalla client app.</p>
           <p><strong>Immagini</strong> ha <code>clientRenderable:false</code>: può avere <code>version</code>, ma non deve obbligare refresh client.</p>
+        </article>
+
+        <article class="card">
+          <h2>Impostazioni Biblioteca client</h2>
+          <p class="muted">
+            Impostazioni leggere lette dal client tramite <code>public_versions.meta.biblioteca</code>.
+            Non creano nuovi file, non toccano R2 e non modificano i PDF caricati.
+          </p>
+
+          <form id="library-client-settings-form" class="form-grid">
+            <div class="field third">
+              <label for="library-books-required-grade">Grado minimo Libri</label>
+              <select id="library-books-required-grade">
+                <option value="">Nessun grado / pubblico</option>
+              </select>
+              <small class="muted">
+                Governa solo il tab Libri lato app. Manuali e Guide resta pubblico secondo le regole già presenti.
+              </small>
+            </div>
+
+            <div class="field full">
+              <label for="library-real-news">real_news</label>
+              <textarea
+                id="library-real-news"
+                placeholder="Messaggio dinamico da mostrare nella Biblioteca client, sopra la news/anteprima."
+              ></textarea>
+              <small class="muted">
+                Campo dinamico per comunicazioni admin. Verrà salvato nel tag <code>biblioteca</code>.
+              </small>
+            </div>
+
+            <div class="field full">
+              <label>Stato</label>
+              <div id="library-client-settings-current" class="small-text">
+                Impostazioni non ancora caricate.
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Salva impostazioni Biblioteca</button>
+              <button data-requires-auth type="button" id="btn-refresh-library-client-settings">Ricarica impostazioni</button>
+            </div>
+          </form>
         </article>
 
         <article class="card">
@@ -285,9 +329,6 @@
 
   <button data-requires-auth id="btn-refresh-media" type="button">Ricarica</button>
 </form>
-
-          <button data-requires-auth id="btn-refresh-media" type="button">Ricarica</button>
-        </form>
         <div id="media-list" class="media-list">
           <div class="empty">Login richiesto.</div>
         </div>
@@ -792,6 +833,74 @@
         </article>
       </div>
     </section>
+
+    <section id="tab-client-config" class="tab-panel">
+      <div class="grid">
+        <article class="card half">
+          <h2>📚 Biblioteca Client</h2>
+          <p class="muted">
+            Configurazione globale letta dalla client app per decidere il grado minimo richiesto
+            per aprire i contenuti della tab <strong>Libri</strong>.
+          </p>
+
+          <form id="client-content-config-form" class="form-grid">
+            <div class="field full">
+              <label for="client-books-min-grade">Grado minimo per Libri</label>
+              <select id="client-books-min-grade">
+                <option value="">Carica gradi da Firestore...</option>
+              </select>
+              <small class="muted">
+                Campo salvato in <code>PARAMETERS_PARTNER/client_config.biblioteca_libri_grado_minimo</code>.
+                Se vuoto, i Libri non hanno blocco grado lato client.
+              </small>
+            </div>
+
+            <div class="field full">
+              <label for="client-real-news">News reale dinamica</label>
+              <textarea
+                id="client-real-news"
+                rows="8"
+                placeholder="Scrivi qui il messaggio reale da mostrare nella client app..."
+              ></textarea>
+              <small class="muted">
+                Campo salvato in <code>PARAMETERS_PARTNER/client_config.real_news</code>.
+                La client app lo renderizzerà come card informativa quando presente.
+              </small>
+            </div>
+
+            <div class="field full">
+              <label>Stato configurazione</label>
+              <div id="client-content-config-current" class="small-text" style="padding-top:8px;">—</div>
+            </div>
+
+            <div class="form-actions">
+              <button data-requires-auth type="submit">Salva configurazione client</button>
+              <button data-requires-auth type="button" id="btn-refresh-client-content-config">Ricarica config client</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card half">
+          <h2>🧭 Regole operative</h2>
+          <p>
+            Questa sezione non modifica file R2, catalogo media, tag, giochi o moduli.
+            Scrive solo campi globali dentro <code>client_config</code>.
+          </p>
+
+          <ul>
+            <li><strong>Manuali e Guide</strong>: restano la sezione principale e più accessibile.</li>
+            <li><strong>Libri</strong>: possono richiedere un grado minimo deciso qui.</li>
+            <li><strong>real_news</strong>: messaggio editoriale dinamico mostrato nel client quando presente.</li>
+          </ul>
+
+          <p class="muted">
+            Più avanti useremo questa stessa area per collegare la generazione reader PDF
+            quando avremo completato il lato service/reader.
+          </p>
+        </article>
+      </div>
+    </section>
+
 
     <section id="tab-debug" class="tab-panel">
       <article class="card">
