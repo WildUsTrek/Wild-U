@@ -2940,6 +2940,11 @@ const DEBUG_WILDU_PAGE = true;
 const WILDU_CONSOLE_SWITCH_CACHE_KEY = 'wildConsoleSwitchCache';
 const WILDU_CONSOLE_SWITCH_TTL_MS = 24 * 60 * 60 * 1000; // 24 ore, solo per console_switch
 let WILDU_SW_CONSOLE_ALLOWED = false;
+
+// Switch separato: decide SOLO se mostrare il pannello audio debug.
+// Fonte: PARAMETERS_PARTNER/client_config.audio_debug_panel_switch
+let WILDU_AUDIO_DEBUG_PANEL_ALLOWED = false;
+
 let WILDU_CONSOLE_SWITCH_PROMISE = null;
 
 // =========================================================
@@ -2983,10 +2988,42 @@ function pageDebug(type, details) {
     console.log('[WILDU PAGE]', type, details || {});
 }
 
+function removeWilduAudioDebugPanelIfPresent() {
+    try {
+        const panel = document.getElementById('wildu-audio-debug-panel');
+        if (panel) panel.remove();
+
+        const copyBox = document.getElementById('wildu-audio-debug-copybox');
+        if (copyBox) copyBox.remove();
+
+        if (wildAudioDebugPanelTimer) {
+            try { clearInterval(wildAudioDebugPanelTimer); } catch (e) {}
+            wildAudioDebugPanelTimer = null;
+        }
+    } catch (e) {}
+}
+
+function setWilduAudioDebugPanelAllowed(value, reason) {
+    WILDU_AUDIO_DEBUG_PANEL_ALLOWED = value === true;
+
+    if (!WILDU_AUDIO_DEBUG_PANEL_ALLOWED) {
+        removeWilduAudioDebugPanelIfPresent();
+    }
+
+    pageDebug('AUDIO_DEBUG_PANEL_SWITCH_SET', {
+        value: WILDU_AUDIO_DEBUG_PANEL_ALLOWED,
+        reason: reason || ''
+    });
+}
+
+function wilduAudioDebugPanelIsAllowed() {
+    return WILDU_AUDIO_DEBUG_PANEL_ALLOWED === true;
+}
+
 function wilduAudioDebugEnabled() {
-    // Dogana unica: se Admin Suite ha acceso console_switch,
-    // il pannello audio debug è autorizzato. Nessun parametro URL.
-    return wilduConsoleIsEnabled();
+    // console_switch = abilita log/trace generali.
+    // audio_debug_panel_switch = abilita SOLO il pannello audio debug.
+    return wilduConsoleIsEnabled() && wilduAudioDebugPanelIsAllowed();
 }
 
 function wilduAudioDebugLog(type, details) {
@@ -3714,6 +3751,7 @@ function readConsoleSwitchCache() {
 
         return {
             value: data.value === true,
+            audioPanel: data.audioPanel === true,
             savedAt: savedAt,
             source: data.source || "cache"
         };
@@ -3722,10 +3760,13 @@ function readConsoleSwitchCache() {
     }
 }
 
-function writeConsoleSwitchCache(value, source) {
+function writeConsoleSwitchCache(value, source, extra) {
+    extra = extra || {};
+
     try {
         localStorage.setItem(WILDU_CONSOLE_SWITCH_CACHE_KEY, JSON.stringify({
             value: value === true,
+            audioPanel: extra.audioPanel === true,
             savedAt: Date.now(),
             source: source || "firestore"
         }));
@@ -3771,10 +3812,14 @@ async function refreshClientConsoleSwitch(options = {}) {
     if (!force) {
         const cached = readConsoleSwitchCache();
         if (cached) {
+            const audioPanelEnabled = cached.value === true && cached.audioPanel === true;
+
+            setWilduAudioDebugPanelAllowed(audioPanelEnabled, reason + '_TTL_CACHE');
             sendClientConsoleSwitchToServiceWorker(cached.value, reason + '_TTL_CACHE');
 
             pageDebug('SW_CONSOLE_SWITCH_TTL_CACHE', {
                 value: cached.value,
+                audioPanel: audioPanelEnabled,
                 ageMs: Date.now() - cached.savedAt
             });
 
@@ -3788,6 +3833,7 @@ async function refreshClientConsoleSwitch(options = {}) {
 
     WILDU_CONSOLE_SWITCH_PROMISE = (async () => {
         // Default sicuro: spegni prima, accendi solo se Firestore conferma true.
+        setWilduAudioDebugPanelAllowed(false, reason + '_DEFAULT_OFF');
         sendClientConsoleSwitchToServiceWorker(false, reason + '_DEFAULT_OFF');
 
         if (!navigator.onLine) {
@@ -3802,18 +3848,30 @@ async function refreshClientConsoleSwitch(options = {}) {
                 .get({ source: 'server' });
 
             const data = snap.exists ? (snap.data() || {}) : {};
+
             const enabled = data.console_switch === true;
 
-            writeConsoleSwitchCache(enabled, 'firestore');
+            // Nuovo switch separato:
+            // - se console_switch è false, il pannello resta comunque spento;
+            // - se console_switch è true, questo decide SOLO il pannello audio.
+            const audioPanelEnabled = enabled && data.audio_debug_panel_switch === true;
+
+            writeConsoleSwitchCache(enabled, 'firestore', {
+                audioPanel: audioPanelEnabled
+            });
+
+            setWilduAudioDebugPanelAllowed(audioPanelEnabled, reason + '_FIRESTORE');
             sendClientConsoleSwitchToServiceWorker(enabled, reason + '_FIRESTORE');
 
             pageDebug('SW_CONSOLE_SWITCH_FIRESTORE', {
                 reason,
-                enabled
+                enabled,
+                audioPanel: audioPanelEnabled
             });
 
             return enabled;
         } catch (e) {
+            setWilduAudioDebugPanelAllowed(false, reason + '_READ_FAILED');
             sendClientConsoleSwitchToServiceWorker(false, reason + '_READ_FAILED');
 
             pageDebug('SW_CONSOLE_SWITCH_READ_FAILED_DEFAULT_OFF', {
@@ -4626,11 +4684,12 @@ async function init() {
         console.warn('Global cache epoch check skipped:', e);
     }
 
-    refreshClientConsoleSwitch({ reason: 'BOOT' }).then(() => {
-        maybeInstallWilduAudioDebugPanel('BOOT_AFTER_CONSOLE_SWITCH');
-    }).catch(() => {
-        sendClientConsoleSwitchToServiceWorker(false, 'BOOT_EXCEPTION');
-    });
+    refreshClientConsoleSwitch({ reason: 'BOOT', force: true }).then(() => {
+    maybeInstallWilduAudioDebugPanel('BOOT_AFTER_CONSOLE_SWITCH');
+}).catch(() => {
+    setWilduAudioDebugPanelAllowed(false, 'BOOT_EXCEPTION');
+    sendClientConsoleSwitchToServiceWorker(false, 'BOOT_EXCEPTION');
+});
 
         maybeRunStorageGuard({ aggressive: false }).catch((e) => {
         console.warn('Storage guard skipped:', e);
