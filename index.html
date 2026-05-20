@@ -29,7 +29,7 @@
         #toast-msg { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--w-green); color: #fff; padding: 12px 24px; border-radius: 25px; z-index: 9999; display: none; font-weight: 900; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 14px; white-space: nowrap; }
         .hero-header { width: 100%; height: 160px; background-image: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=1000'); background-size: cover; background-position: center; position: relative; border-bottom: 3px solid var(--w-green); } .hero-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(0deg, var(--w-dark) 5%, transparent 100%); } .hero-title { position: absolute; top: 40%; width: 100%; text-align: center; text-transform: uppercase; letter-spacing: 2px; font-size: 30px; font-weight: 900; color: #fff; text-shadow: 2px 2px 10px rgba(0,0,0,0.9); z-index: 2; }
 
-/* --- WILDU NAVBAR FISSA REALE: NO BANDANA FLOTTANTE --- */
+/* --- WILDU NAVBAR STICKY REALE + AUDIO INTEGRATO --- */
 
 /* Scudo nero solo per la safe-area fisica del telefono.
    Serve a impedire che, su alcuni browser mobile, si vedano card
@@ -101,35 +101,27 @@ body::before {
     box-shadow: 0 0 12px var(--w-green);
 }
 
-/* Riserva reale a destra: impedisce ai bottoni nav di finire sotto la dock audio. */
-.nav {
-    padding-right: calc(56px + env(safe-area-inset-right, 0px));
-}
-
-/* --- WILDU AUDIO TOGGLE DOCK: destra navbar, fuori dallo scroll --- */
+/* --- WILDU AUDIO TOGGLE: parte reale della navbar, non più inseguitore fixed --- */
 #wildu-audio-nav-dock {
     --wildu-audio-button-size: 34px;
-    --wildu-audio-button-y: 6px;
 
-    position: fixed;
-    right: 0;
-    top: 0;
+    position: sticky;
+    right: calc(-12px - env(safe-area-inset-right, 0px));
 
-    width: calc(48px + env(safe-area-inset-right, 0px));
-    min-width: calc(48px + env(safe-area-inset-right, 0px));
-    height: 50px;
+    flex: 0 0 calc(54px + env(safe-area-inset-right, 0px));
+    align-self: stretch;
 
     display: none;
-    align-items: flex-start;
+    align-items: center;
     justify-content: flex-end;
 
-    z-index: 1210;
+    z-index: 3;
 
-    padding: 0 calc(7px + env(safe-area-inset-right, 0px)) 0 8px;
+    margin: -2px calc(-12px - env(safe-area-inset-right, 0px)) -2px 0;
+    padding: 0 calc(10px + env(safe-area-inset-right, 0px)) 0 14px;
     box-sizing: border-box;
 
-    background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.82) 38%, #000 100%);
-    border-bottom: 1px solid rgba(255,255,255,0.045);
+    background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.88) 34%, #000 100%);
 
     pointer-events: auto;
 }
@@ -138,14 +130,13 @@ body::before {
     width: var(--wildu-audio-button-size);
     min-width: var(--wildu-audio-button-size);
     height: var(--wildu-audio-button-size);
-    margin-top: var(--wildu-audio-button-y);
 
     display: flex;
     align-items: center;
     justify-content: center;
 
     border: 1px solid rgba(214,175,55,.55);
-    background: rgba(18,18,18,.82);
+    background: rgba(18,18,18,.86);
     color: #d4af37;
 
     font-weight: 900;
@@ -2402,8 +2393,45 @@ function requireLoggedAccess(reason, options = {}) {
         }
     }
 
+    function isWilduModuleLauncherEvent(evt) {
+        try {
+            const target = evt && evt.target;
+            if (!target || !target.closest) return false;
+
+            // Il pulsante audio deve restare un gesto valido.
+            if (
+                target.closest("#wildu-audio-nav-dock") ||
+                target.closest("#wildu-audio-unlock-button")
+            ) {
+                return false;
+            }
+
+            // Moduli caricati dalla sorgente runtime.
+            if (target.closest("[data-wildu-module-launcher='1']")) return true;
+
+            // Paracadute per eventuali card già renderizzate o vecchi template.
+            if (target.closest("#dynamic-resources-list .resource-item")) return true;
+
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function handleWilduAudioStartGesture(evt) {
         if (isWilduAudioDebugEvent(evt)) return;
+
+        // Primo tap iOS su una card modulo: NON deve sbloccare la musica default.
+        // Sarà openModule/handleModuleAudio a decidere STOP, audio modulo o default.
+        if (isWilduModuleLauncherEvent(evt)) {
+            try {
+                wilduAudioDebugLog("GLOBAL_GESTURE_SKIPPED_MODULE_LAUNCHER", {
+                    mode: wildModuleAudioMode,
+                    muted: wildAudioUserMutedForSession === true
+                });
+            } catch (e) {}
+            return;
+        }
 
         // OFF utente: nessun click generico deve riaccendere musica/ambienza.
         if (wildAudioUserMutedForSession === true) return;
@@ -8848,7 +8876,7 @@ async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapsh
 
         return `
         
-            <div class="resource-item" onclick="openWilduRuntimeResource('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev}, '${escapeWilduJsString(res.openMode || "module")}')">
+            <div class="resource-item" data-wildu-module-launcher="1" onclick="openWilduRuntimeResource('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev}, '${escapeWilduJsString(res.openMode || "module")}')">
                 
                 <div class="resource-info">
                     <span class="resource-icon">${displayCategory}</span>
@@ -9064,6 +9092,19 @@ function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode)
 
     const rev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
+    if (mode === "module") {
+        const earlyAudio = resolveWilduModuleAudioInstruction(a);
+
+        if (earlyAudio === "STOP") {
+            setWildModuleAudioMode("stop", "runtime-resource-prelock-stop");
+            stopCurrentModuleAudio();
+            stopWildDefaultBackgroundAudio("runtime-resource-prelock-stop");
+        } else if (earlyAudio && /^https?:\/\//i.test(earlyAudio)) {
+            setWildModuleAudioMode("module", "runtime-resource-prelock-url");
+            stopWildDefaultBackgroundAudio("runtime-resource-prelock-url");
+        }
+    }
+
     if (mode === "secure_redirect") {
         showToast("Apertura sicura in corso...");
         openWilduSecureRedirect(targetUrl, r, rev).catch(function (err) {
@@ -9112,6 +9153,19 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     if (!checkRankMet(r)) {
         showToast("🔒 Grado richiesto: " + r.toUpperCase());
         return;
+    }
+
+    // Pre-lock audio immediato: su iOS il primo tap non deve accendere
+    // musica/ambienza default mentre il modulo sta ancora caricando runtime/rev.
+    const earlyModuleAudio = resolveWilduModuleAudioInstruction(a);
+
+    if (earlyModuleAudio === "STOP") {
+        setWildModuleAudioMode("stop", "module-open-prelock-stop");
+        stopCurrentModuleAudio();
+        stopWildDefaultBackgroundAudio("module-open-prelock-stop");
+    } else if (earlyModuleAudio && /^https?:\/\//i.test(earlyModuleAudio)) {
+        setWildModuleAudioMode("module", "module-open-prelock-url");
+        stopWildDefaultBackgroundAudio("module-open-prelock-url");
     }
 
     const legacyModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
@@ -9528,9 +9582,20 @@ async function loadWilduAudioBuffer(url) {
 
     async function startWilduBufferLoop(key, url, targetVolume) {
         const safeVolume = clampWildVolume(targetVolume);
+        const isDefaultBackgroundKey = key === "music" || key === "ambience";
 
         if (!url || safeVolume <= 0) {
             stopWilduBufferLoop(key);
+            return false;
+        }
+
+        if (isDefaultBackgroundKey && isWildDefaultBackgroundBlocked()) {
+            stopWilduBufferLoop(key);
+            wilduAudioDebugLog("BUFFER_LOOP_SKIPPED_DEFAULT_BLOCKED", {
+                key: key,
+                mode: wildModuleAudioMode,
+                muted: wildAudioUserMutedForSession === true
+            });
             return false;
         }
 
@@ -9580,6 +9645,18 @@ async function loadWilduAudioBuffer(url) {
         });
 
         const buffer = await loadWilduAudioBuffer(url);
+
+        // Se durante resume/fetch/decode l'utente è entrato in un modulo STOP,
+        // non creare il loop in ritardo: è il race visto su iOS al primo tap.
+        if (isDefaultBackgroundKey && isWildDefaultBackgroundBlocked()) {
+            stopWilduBufferLoop(key);
+            wilduAudioDebugLog("BUFFER_LOOP_CANCELLED_AFTER_AWAIT_DEFAULT_BLOCKED", {
+                key: key,
+                mode: wildModuleAudioMode,
+                muted: wildAudioUserMutedForSession === true
+            });
+            return false;
+        }
 
         stopWilduBufferLoop(key);
 
@@ -10074,71 +10151,39 @@ function syncWilduAudioNavDockPosition() {
             if (!dock || !nav) return;
 
             const navStyle = window.getComputedStyle(nav);
-            const navRect = nav.getBoundingClientRect();
-
             const navHidden =
                 navStyle.display === 'none' ||
-                navRect.width <= 0 ||
-                navRect.height <= 0 ||
-                navRect.bottom <= 0 ||
-                navRect.top >= window.innerHeight;
+                navStyle.visibility === 'hidden' ||
+                nav.offsetParent === null;
 
-            if (navHidden) {
-                dock.style.display = 'none';
-                return;
-            }
-
-            const activeNavButton =
-                nav.querySelector('button.active') ||
-                nav.querySelector('button');
-
-            let buttonY = 6;
-            let buttonSize = 34;
-
-            if (activeNavButton) {
-                const btnRect = activeNavButton.getBoundingClientRect();
-
-                const candidateSize = Math.max(
-                    30,
-                    Math.min(34, Math.round(btnRect.height - 6))
-                );
-
-                buttonSize = candidateSize;
-
-                buttonY = Math.max(
-                    4,
-                    Math.round(
-                        (btnRect.top - navRect.top) +
-                        ((btnRect.height - buttonSize) / 2)
-                    )
-                );
-            }
-
-            dock.style.display = 'flex';
-            dock.style.top = Math.max(0, Math.round(navRect.top)) + 'px';
-            dock.style.height = Math.max(44, Math.round(navRect.height)) + 'px';
-            dock.style.setProperty('--wildu-audio-button-size', buttonSize + 'px');
-            dock.style.setProperty('--wildu-audio-button-y', buttonY + 'px');
+            dock.style.display = navHidden ? 'none' : 'flex';
         } catch (e) {}
     }
 
     function ensureWilduAudioNavDock() {
         let dock = document.getElementById('wildu-audio-nav-dock');
+        const nav = document.querySelector('.nav');
 
         if (!dock) {
             dock = document.createElement('div');
             dock.id = 'wildu-audio-nav-dock';
+        }
+
+        // Il bottone audio ora vive dentro la navbar reale:
+        // niente position:fixed, niente inseguimento su scroll, niente ritardo mobile.
+        if (nav && dock.parentNode !== nav) {
+            nav.appendChild(dock);
+        } else if (!nav && !dock.parentNode) {
             document.body.appendChild(dock);
         }
 
         if (!window.__wilduAudioNavDockListenersBound) {
             window.__wilduAudioNavDockListenersBound = true;
 
-            window.addEventListener('scroll', syncWilduAudioNavDockPosition, { passive: true });
             window.addEventListener('resize', syncWilduAudioNavDockPosition, { passive: true });
+            window.addEventListener('orientationchange', syncWilduAudioNavDockPosition, { passive: true });
 
             try {
-                const nav = document.querySelector('.nav');
                 if (nav && typeof MutationObserver === 'function') {
                     const observer = new MutationObserver(syncWilduAudioNavDockPosition);
                     observer.observe(nav, {
@@ -10172,8 +10217,6 @@ function syncWilduAudioNavDockPosition() {
                 }, { passive: false });
             }
 
-            // Il bottone vive nella dock, non più dentro lo scroll della navbar:
-            // niente clipping, niente spazio destro casuale, niente click ambiguo sui tab sotto.
             if (btn.parentNode !== dock) {
                 dock.appendChild(btn);
             }
@@ -10187,7 +10230,7 @@ function syncWilduAudioNavDockPosition() {
             pageDebug('AUDIO_TOGGLE_BUTTON_SHOWN', {
                 reason: reason || '',
                 muted: wildAudioUserMutedForSession,
-                position: 'nav-right-dock'
+                position: 'inside-sticky-nav'
             });
         } catch (e) {}
     }
