@@ -1522,17 +1522,103 @@
     root.$('#upload-progress-label').textContent = label || '';
   }
 
+  function normalizeCatalogTagText(value) {
+    return String(value == null ? '' : value)
+      .trim()
+      .toLowerCase();
+  }
+
+  function getCatalogSecondaryTagFilter() {
+    var input = document.getElementById('filter-secondary-tag');
+    return normalizeCatalogTagText(input ? input.value : '');
+  }
+
+  function getMediaSecondaryTags(item) {
+    if (!item || !Array.isArray(item.tags)) return [];
+
+    return item.tags
+      .map(function (tag) {
+        return String(tag == null ? '' : tag).trim();
+      })
+      .filter(Boolean)
+      .filter(function (tag, index, arr) {
+        var key = normalizeCatalogTagText(tag);
+        return arr.findIndex(function (x) {
+          return normalizeCatalogTagText(x) === key;
+        }) === index;
+      });
+  }
+
+  function mediaMatchesSecondaryTag(item, wantedTag) {
+    wantedTag = normalizeCatalogTagText(wantedTag);
+    if (!wantedTag) return true;
+
+    return getMediaSecondaryTags(item).some(function (tag) {
+      var clean = normalizeCatalogTagText(tag);
+      return clean === wantedTag || clean.indexOf(wantedTag) !== -1;
+    });
+  }
+
+  function renderMediaSecondaryTagsHtml(item) {
+    var tags = getMediaSecondaryTags(item);
+
+    if (!tags.length) {
+      return '<span class="chip">tag descr.: —</span>';
+    }
+
+    return tags.map(function (tag) {
+      return '<span class="chip">#' + root.escapeHtml(tag) + '</span>';
+    }).join('');
+  }
+
+  function fillCatalogSecondaryTagsDatalist(items) {
+    var list = document.getElementById('catalog-secondary-tags-list');
+    if (!list) return;
+
+    var map = {};
+
+    (Array.isArray(items) ? items : []).forEach(function (item) {
+      getMediaSecondaryTags(item).forEach(function (tag) {
+        var key = normalizeCatalogTagText(tag);
+        if (key) map[key] = tag;
+      });
+    });
+
+    list.innerHTML = Object.keys(map)
+      .sort()
+      .map(function (key) {
+        return '<option value="' + root.escapeHtml(map[key]) + '"></option>';
+      })
+      .join('');
+  }
+
+
   async function refreshMedia() {
     if (!root.db) return;
+
     var filters = {
       tagSlug: root.$('#filter-tag').value || '',
       kind: root.$('#filter-kind').value || '',
       subcategory: root.$('#filter-subcategory').value || '',
       status: root.$('#filter-status').value || '',
       visibility: root.$('#filter-visibility').value || '',
-      limit: 80
+
+      // Il filtro "tag descrittivo" è locale.
+      // Alziamo il limite per non perdere risultati prima del filtro.
+      limit: 200
     };
-    state.media = await root.MediaService.listMedia(filters);
+
+    var secondaryTag = getCatalogSecondaryTagFilter();
+    var fetchedMedia = await root.MediaService.listMedia(filters);
+
+    fillCatalogSecondaryTagsDatalist(fetchedMedia);
+
+    state.media = secondaryTag
+      ? fetchedMedia.filter(function (item) {
+          return mediaMatchesSecondaryTag(item, secondaryTag);
+        })
+      : fetchedMedia;
+
     renderMedia();
     renderDashboard();
     renderDebug();
@@ -1563,7 +1649,8 @@
           '<div class="chip-row">' +
             '<span class="chip">' + root.escapeHtml(kindLabel(item.kind || '—')) + '</span>' +
             (sub ? '<span class="chip">' + root.escapeHtml(sub) + '</span>' : '') +
-            '<span class="chip">tag: ' + root.escapeHtml(item.tagSlug || '—') + '</span>' +
+            '<span class="chip">tag principale: ' + root.escapeHtml(item.tagSlug || '—') + '</span>' +
+            renderMediaSecondaryTagsHtml(item) +
             '<span class="chip ' + (item.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(item.status || '—') + '</span>' +
             '<span class="chip">' + root.escapeHtml(item.visibility || '—') + '</span>' +
             '<span class="chip">' + root.formatBytes(item.sizeBytes) + '</span>' +
@@ -2609,6 +2696,12 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     }
 
     root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
+        var secondaryTagFilter = document.getElementById('filter-secondary-tag');
+    if (secondaryTagFilter) {
+      secondaryTagFilter.addEventListener('input', function () {
+        run(refreshMedia);
+      });
+    }
     document.body.addEventListener('click', function (evt) {
       var editBtn = evt.target.closest('[data-edit-tag]');
       if (editBtn) return editTag(editBtn.dataset.editTag);
