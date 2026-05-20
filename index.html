@@ -1599,7 +1599,7 @@ const WilduMediaClient = (() => {
         };
     }
 
-    function buildAudioCard(item) {
+     function buildAudioCard(item) {
         const title = escapeHtml(item.title || item.Titolo || "Audio Wild-U");
         const description = escapeHtml(item.description || item.Descrizione || "");
         const fileUrl = safeString(item.fileUrl);
@@ -1615,7 +1615,14 @@ const WilduMediaClient = (() => {
                         <h3 style="margin:0 0 8px 0; color:#7cc7ff; font-size:18px;">${title}</h3>
                         ${description ? `<p style="margin:0 0 12px 0; color:#bbb; font-size:14px; line-height:1.45;">${description}</p>` : ""}
                         ${duration ? `<div style="color:#777; font-size:11px; font-weight:900; margin-bottom:8px;">${escapeHtml(duration)}</div>` : ""}
-                        <audio controls preload="none" style="width:100%;">
+                        <audio
+                            controls
+                            preload="none"
+                            controlsList="nodownload noplaybackrate"
+                            disableRemotePlayback
+                            oncontextmenu="return false;"
+                            style="width:100%;"
+                        >
                             <source src="${escapeHtml(fileUrl)}">
                             Il tuo browser non supporta l’audio.
                         </audio>
@@ -1667,6 +1674,74 @@ const WilduMediaClient = (() => {
     function renderRadio(mountEl, result) {
         const items = Array.isArray(result.items) ? result.items : [];
 
+        function collectRadioItemTagValues(item) {
+            const values = [];
+
+            function pushValue(value) {
+                if (value === undefined || value === null) return;
+
+                if (Array.isArray(value)) {
+                    value.forEach(pushValue);
+                    return;
+                }
+
+                if (typeof value === "object") {
+                    Object.keys(value).forEach(key => {
+                        pushValue(value[key]);
+                    });
+                    return;
+                }
+
+                const clean = safeString(value);
+                if (clean) values.push(clean);
+            }
+
+            if (!item || typeof item !== "object") return values;
+
+            // Campi possibili, tenuti larghi perché la Media Suite può avere
+            // metadati storici o futuri con nomi diversi.
+            pushValue(item.tag);
+            pushValue(item.Tag);
+            pushValue(item.tags);
+            pushValue(item.Tags);
+
+            // DB reale Wildu Media Suite:
+            // tagSlug resta "radio" per far caricare il file nel modulo Radio.
+            // La divisione Puntate/Canzoni si basa invece su tags/searchTokens/tagSlugs.
+            pushValue(item.tagSlugs);
+            pushValue(item.TagSlugs);
+            pushValue(item.searchTokens);
+            pushValue(item.SearchTokens);
+
+            pushValue(item.tagName);
+            pushValue(item.TagName);
+            pushValue(item.tagLabel);
+            pushValue(item.TagLabel);
+            pushValue(item.modulo);
+            pushValue(item.Modulo);
+            pushValue(item.module);
+            pushValue(item.Module);
+            pushValue(item.category);
+            pushValue(item.Category);
+            pushValue(item.categoria);
+            pushValue(item.Categoria);
+            pushValue(item.subcategory);
+            pushValue(item.Subcategory);
+            pushValue(item.sottocategoria);
+            pushValue(item.Sottocategoria);
+
+            return values;
+        }
+
+        function isRadioSongItem(item) {
+            return collectRadioItemTagValues(item).some(value => {
+                return /^canzon/i.test(safeString(value));
+            });
+        }
+
+        const songs = items.filter(isRadioSongItem);
+        const episodes = items.filter(item => !isRadioSongItem(item));
+
         if (!items.length) {
             mountEl.innerHTML = `
                 <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
@@ -1680,7 +1755,101 @@ const WilduMediaClient = (() => {
             return;
         }
 
-        mountEl.innerHTML = items.map(buildAudioCard).join("");
+        mountEl.innerHTML = `
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <button type="button" data-wildu-radio-tab="episodes" style="
+                    flex:1;
+                    padding:12px 10px;
+                    border-radius:999px;
+                    border:1px solid rgba(120,190,255,0.55);
+                    background:#7cc7ff;
+                    color:#000;
+                    font-size:12px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                ">Puntate Radio</button>
+
+                <button type="button" data-wildu-radio-tab="songs" style="
+                    flex:1;
+                    padding:12px 10px;
+                    border-radius:999px;
+                    border:1px solid rgba(212,175,55,0.55);
+                    background:rgba(212,175,55,0.10);
+                    color:var(--w-gold);
+                    font-size:12px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                ">Canzoni</button>
+            </div>
+
+            <div data-wildu-radio-panel="episodes"></div>
+            <div data-wildu-radio-panel="songs" style="display:none;"></div>
+        `;
+
+        const episodesPanel = mountEl.querySelector('[data-wildu-radio-panel="episodes"]');
+        const songsPanel = mountEl.querySelector('[data-wildu-radio-panel="songs"]');
+
+        episodesPanel.innerHTML = episodes.length
+            ? episodes.map(buildAudioCard).join("")
+            : `
+                <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">🎙️</div>
+                    <h3 style="color:#7cc7ff; margin:0 0 8px 0;">Nessuna puntata disponibile</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        Le puntate radio appariranno qui.
+                    </p>
+                </div>
+            `;
+
+        songsPanel.innerHTML = songs.length
+            ? songs.map(buildAudioCard).join("")
+            : `
+                <div class="card" style="border-left-color:var(--w-gold); text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">🎵</div>
+                    <h3 style="color:var(--w-gold); margin:0 0 8px 0;">Nessuna canzone disponibile</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        I file con tag che inizia per “canzon” appariranno qui.
+                    </p>
+                </div>
+            `;
+
+        const tabButtons = Array.from(mountEl.querySelectorAll("[data-wildu-radio-tab]"));
+
+        function setRadioTab(tab) {
+            tabButtons.forEach(btn => {
+                const isActive = btn.getAttribute("data-wildu-radio-tab") === tab;
+
+                if (tab === "episodes") {
+                    btn.style.background = isActive
+                        ? "#7cc7ff"
+                        : (btn.getAttribute("data-wildu-radio-tab") === "songs" ? "rgba(212,175,55,0.10)" : "rgba(120,190,255,0.12)");
+                    btn.style.color = isActive
+                        ? "#000"
+                        : (btn.getAttribute("data-wildu-radio-tab") === "songs" ? "var(--w-gold)" : "#7cc7ff");
+                } else {
+                    btn.style.background = isActive
+                        ? "var(--w-gold)"
+                        : (btn.getAttribute("data-wildu-radio-tab") === "episodes" ? "rgba(120,190,255,0.12)" : "rgba(212,175,55,0.10)");
+                    btn.style.color = isActive
+                        ? "#000"
+                        : (btn.getAttribute("data-wildu-radio-tab") === "episodes" ? "#7cc7ff" : "var(--w-gold)");
+                }
+            });
+
+            Array.from(mountEl.querySelectorAll("[data-wildu-radio-panel]")).forEach(panel => {
+                panel.style.display = panel.getAttribute("data-wildu-radio-panel") === tab
+                    ? "block"
+                    : "none";
+            });
+        }
+
+        tabButtons.forEach(btn => {
+            btn.addEventListener("click", function () {
+                setRadioTab(this.getAttribute("data-wildu-radio-tab"));
+            });
+        });
+
+        setRadioTab("episodes");
     }
 
     function renderBiblioteca(mountEl, result) {
@@ -11876,7 +12045,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
     </div>
 
- <div id="amazon-footer-wrapper">
+ <div id="amazon-footer-wrapper">
         <div class="amazon-slider" id="amazon-slider-engine">
         </div>
     </div>
