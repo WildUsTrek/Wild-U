@@ -1624,6 +1624,106 @@
     renderDebug();
   }
 
+  function findMediaById(id) {
+    id = String(id || '').trim();
+    return state.media.find(function (item) {
+      return String(item.id || '') === id;
+    }) || null;
+  }
+
+  function mediaTagsToInputValue(item) {
+    return Array.isArray(item && item.tags)
+      ? item.tags.filter(Boolean).join(', ')
+      : '';
+  }
+
+  function parseMediaTagsInput(value) {
+    if (typeof root.parseTags === 'function') {
+      return root.parseTags(value || '');
+    }
+
+    return String(value || '')
+      .split(',')
+      .map(function (x) { return x.trim().toLowerCase(); })
+      .filter(Boolean)
+      .filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+  }
+
+  function closeMediaMetadataEditor() {
+    var modal = document.getElementById('media-metadata-modal');
+    if (modal) modal.style.display = 'none';
+
+    var form = document.getElementById('media-metadata-form');
+    if (form) form.reset();
+  }
+
+  function openMediaMetadataEditor(id) {
+    var item = findMediaById(id);
+
+    if (!item) {
+      root.toast('Media non trovato nel catalogo corrente. Ricarica il catalogo.', 'error');
+      return;
+    }
+
+    var modal = document.getElementById('media-metadata-modal');
+    if (!modal) {
+      root.toast('Modale metadati non trovata: controlla index.html/cache.', 'error');
+      return;
+    }
+
+    var fileLabel = [
+      item.kind || '',
+      item.objectKey || '',
+      item.fileUrl || ''
+    ].filter(Boolean).join(' | ');
+
+    document.getElementById('media-edit-id').value = item.id || '';
+    document.getElementById('media-edit-file-readonly').value = fileLabel;
+    document.getElementById('media-edit-title').value = item.title || '';
+    document.getElementById('media-edit-tags').value = mediaTagsToInputValue(item);
+    document.getElementById('media-edit-description').value = item.description || '';
+    document.getElementById('media-edit-sort').value = Number(item.sortOrder || 0);
+    document.getElementById('media-edit-status').value = item.status || 'ACTIVE';
+    document.getElementById('media-edit-visibility').value = item.visibility || 'PUBLIC';
+    document.getElementById('media-edit-subcategory').value = item.subcategory || '';
+    document.getElementById('media-edit-client-renderable').value = item.clientRenderable === false ? 'false' : 'true';
+    document.getElementById('media-edit-version-note').value = item.mediaVersionNote || '';
+
+    modal.style.display = 'flex';
+  }
+
+  async function saveMediaMetadata(evt) {
+    if (evt && evt.preventDefault) evt.preventDefault();
+
+    var id = String(document.getElementById('media-edit-id').value || '').trim();
+    if (!id) throw new Error('ID media mancante.');
+
+    var title = String(document.getElementById('media-edit-title').value || '').trim();
+    if (!title) throw new Error('Titolo obbligatorio.');
+
+    var patch = {
+      title: title,
+      description: String(document.getElementById('media-edit-description').value || '').trim(),
+      tags: parseMediaTagsInput(document.getElementById('media-edit-tags').value || ''),
+      sortOrder: Number(document.getElementById('media-edit-sort').value || 0),
+      status: document.getElementById('media-edit-status').value || 'ACTIVE',
+      visibility: document.getElementById('media-edit-visibility').value || 'PUBLIC',
+      subcategory: document.getElementById('media-edit-subcategory').value || null,
+      clientRenderable: document.getElementById('media-edit-client-renderable').value === 'true',
+      mediaVersionNote: String(document.getElementById('media-edit-version-note').value || '').trim() || null
+    };
+
+    await root.MediaService.updateMedia(id, patch);
+
+    closeMediaMetadataEditor();
+
+    root.toast('Metadati aggiornati. Versioni e manifesto riallineati se necessario.', 'success');
+
+    await refreshTags();
+    await refreshMedia();
+  }
+
+
   function mediaPreviewHtml(item) {
     if (item.kind === 'image') {
       return '<img class="media-thumb" src="' + root.escapeHtml(item.fileUrl) + '" alt="">';
@@ -1662,6 +1762,7 @@
         '<div class="media-preview">' + mediaPreviewHtml(item) + '</div>' +
         '<div class="media-actions">' +
           '<button class="small" data-open-url="' + root.escapeHtml(item.fileUrl || '') + '">Apri</button>' +
+          '<button class="small" data-edit-media-metadata="' + root.escapeHtml(item.id) + '">Modifica metadati</button>' +
           '<button class="small" data-version-media="' + root.escapeHtml(item.id) + '">+1 versione</button>' +
           '<button class="small warn" data-archive-media="' + root.escapeHtml(item.id) + '">Archivia</button>' +
           '<button class="small danger" data-hard-delete-media="' + root.escapeHtml(item.id) + '">Elimina + R2</button>' +
@@ -2696,6 +2797,26 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     }
 
     root.$('#catalog-filters').addEventListener('change', function () { run(refreshMedia); });
+        var mediaMetadataForm = document.getElementById('media-metadata-form');
+    if (mediaMetadataForm) {
+      mediaMetadataForm.addEventListener('submit', function (evt) {
+        run(saveMediaMetadata, evt);
+      });
+    }
+
+    var mediaMetadataCancelBtn = document.getElementById('btn-media-metadata-cancel');
+    if (mediaMetadataCancelBtn) {
+      mediaMetadataCancelBtn.addEventListener('click', function () {
+        closeMediaMetadataEditor();
+      });
+    }
+
+    var mediaMetadataModal = document.getElementById('media-metadata-modal');
+    if (mediaMetadataModal) {
+      mediaMetadataModal.addEventListener('click', function (evt) {
+        if (evt.target === mediaMetadataModal) closeMediaMetadataEditor();
+      });
+    }
         var secondaryTagFilter = document.getElementById('filter-secondary-tag');
     if (secondaryTagFilter) {
       secondaryTagFilter.addEventListener('input', function () {
@@ -2711,6 +2832,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var openBtn = evt.target.closest('[data-open-url]');
       if (openBtn) return window.open(openBtn.dataset.openUrl, '_blank', 'noopener');
+
+            var editMediaMetadataBtn = evt.target.closest('[data-edit-media-metadata]');
+      if (editMediaMetadataBtn) return openMediaMetadataEditor(editMediaMetadataBtn.dataset.editMediaMetadata);
 
       var editGameBtn = evt.target.closest('[data-edit-game]');
       if (editGameBtn) return fillGameForm(findGameVersion(editGameBtn.dataset.editGame));
