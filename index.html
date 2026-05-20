@@ -2592,6 +2592,12 @@ function requireLoggedAccess(reason, options = {}) {
 
         // Primo tap iOS su una card modulo: NON deve sbloccare la musica default.
         // Sarà openModule/handleModuleAudio a decidere STOP, audio modulo o default.
+        //
+        // IMPORTANTE:
+        // Qui NON facciamo reconcile prima del return, perché durante il tap sul launcher
+        // il modulo non è ancora stato aperto nel DOM. Se resettassimo qui, potremmo
+        // creare una finestra in cui la musica default parte prima che handleModuleAudio()
+        // applichi STOP.
         if (isWilduModuleLauncherEvent(evt)) {
             try {
                 wilduAudioDebugLog("GLOBAL_GESTURE_SKIPPED_MODULE_LAUNCHER", {
@@ -2601,6 +2607,11 @@ function requireLoggedAccess(reason, options = {}) {
             } catch (e) {}
             return;
         }
+
+        // Da qui in poi NON siamo su un launcher modulo:
+        // se wildModuleAudioMode è rimasto STOP ma il modulo non è realmente aperto,
+        // è uno stato marcio da reload/pageshow e va ripulito.
+        reconcileWilduModuleAudioModeFromDom("global-gesture-before-check");
 
         // OFF utente: nessun click generico deve riaccendere musica/ambienza.
         if (wildAudioUserMutedForSession === true) return;
@@ -10224,15 +10235,59 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
         updateWilduAudioToggleButton();
     }
 
- function hasActiveWilduSessionAudio() {
+    function isWilduModuleActuallyOpen() {
         try {
-            if (wildBufferAudioLoops && wildBufferAudioLoops.has("music")) return true;
-            if (wildBufferAudioLoops && wildBufferAudioLoops.has("ambience")) return true;
-            if (aMus && !aMus.paused) return true;
-            if (aAmb && !aAmb.paused) return true;
-        } catch (e) {}
+            const m = document.getElementById('module-container');
+            if (!m) return false;
 
-        return false;
+            if (m.classList.contains('hidden')) return false;
+
+            const html = String(m.innerHTML || '').trim();
+            if (!html) return false;
+
+            const style = window.getComputedStyle(m);
+            if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function reconcileWilduModuleAudioModeFromDom(reason) {
+        try {
+            const moduleOpen = isWilduModuleActuallyOpen();
+
+            // Se eravamo rimasti in STOP ma il modulo non è più davvero aperto,
+            // quello STOP è stale: lo eliminiamo.
+            if (!moduleOpen && wildModuleAudioMode !== "default") {
+                setWildModuleAudioMode("default", reason || "dom-reconcile-no-open-module");
+
+                if (currentModuleAudio) {
+                    stopCurrentModuleAudio();
+                }
+
+                wildAudioNeedsUserResume = false;
+                wildAudioPausedByHidden = false;
+
+                wilduAudioDebugLog("MODULE_AUDIO_MODE_STALE_RESET", {
+                    reason: reason || "",
+                    moduleOpen: moduleOpen,
+                    mode: wildModuleAudioMode
+                });
+
+                updateWilduAudioToggleButton();
+                return true;
+            }
+
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isWilduModuleStopReallyActive() {
+        return wildModuleAudioMode === "stop" && isWilduModuleActuallyOpen();
     }
 
     function updateWilduAudioToggleButton() {
@@ -10240,13 +10295,19 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
             const btn = document.getElementById('wildu-audio-unlock-button');
             if (!btn) return;
 
-            const blockedByModuleStop = wildModuleAudioMode === "stop";
+            // Prima riallineiamo eventuale STOP rimasto appeso dopo reload/pageshow.
+            reconcileWilduModuleAudioModeFromDom("update-toggle-button");
+
+            const blockedByModuleStop = isWilduModuleStopReallyActive();
             const muted = wildAudioUserMutedForSession === true || blockedByModuleStop;
 
             btn.textContent = muted ? '🔇' : '🔊';
+
             btn.title = blockedByModuleStop
-            ? 'Audio disattivato in questo modulo'
-            : (muted ? 'Audio spento per questa sessione' : 'Audio acceso');  
+                ? 'Audio disattivato in questo modulo'
+                : (wildAudioUserMutedForSession === true
+                    ? 'Audio spento per questa sessione'
+                    : 'Audio acceso');
 
             btn.setAttribute(
                 'aria-label',
@@ -10282,13 +10343,17 @@ function stopWilduUserSessionAudio(reason) {
     }
 
     function toggleWilduUserSessionAudio() {
-        // Se il modulo corrente ha Audio = STOP, il pulsante NON deve
+        // Riallinea prima lo stato: STOP vale solo se il modulo è davvero aperto.
+        reconcileWilduModuleAudioModeFromDom("toggle-before-check");
+
+        // Se il modulo corrente ha Audio = STOP ed è davvero aperto, il pulsante NON deve
         // riaccendere musica/ambienza di sistema, nemmeno come toggle manuale.
-        if (wildModuleAudioMode === "stop") {
+        if (isWilduModuleStopReallyActive()) {
             stopWildDefaultBackgroundAudio("button-blocked-module-stop");
 
             wilduAudioDebugLog("AUDIO_TOGGLE_BLOCKED_MODULE_STOP", {
                 mode: wildModuleAudioMode,
+                moduleOpen: isWilduModuleActuallyOpen(),
                 userMuted: wildAudioUserMutedForSession === true
             });
 
@@ -11959,8 +12024,18 @@ document.addEventListener('DOMContentLoaded', () => {
     syncAmazonFooterViewportOffset();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
+
+    // Anti-stato marcio dopo reload da modulo STOP:
+    // se il modulo non è realmente aperto, l'audio torna in default.
+    reconcileWilduModuleAudioModeFromDom("domcontentloaded");
+
     init();
     initAmazonSponsors();
+});
+
+window.addEventListener('pageshow', () => {
+    reconcileWilduModuleAudioModeFromDom("pageshow");
+    updateWilduAudioToggleButton();
 });
 
 
