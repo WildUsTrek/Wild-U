@@ -1599,6 +1599,388 @@ const WilduMediaClient = (() => {
         };
     }
 
+
+    // =========================================================
+    // WILDU PDF READER — viewer in-app leggero con PDF.js
+    // =========================================================
+    // Caricamento on-demand: PDF.js viene scaricato solo quando premi
+    // "Visualizza in app", non durante il bootstrap della app.
+    const WILDU_PDFJS_VERSION = "3.11.174";
+    const WILDU_PDFJS_SCRIPT_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    const WILDU_PDFJS_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    let wilduPdfJsLoadPromise = null;
+    let wilduPdfResizeHandler = null;
+    let wilduPdfResizeTimer = null;
+
+    function loadWilduPdfJs() {
+        if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function") {
+            try {
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = WILDU_PDFJS_WORKER_URL;
+            } catch (e) {}
+            return Promise.resolve(window.pdfjsLib);
+        }
+
+        if (wilduPdfJsLoadPromise) return wilduPdfJsLoadPromise;
+
+        wilduPdfJsLoadPromise = new Promise((resolve, reject) => {
+            const existing = document.getElementById("wildu-pdfjs-lib");
+
+            if (existing) {
+                existing.addEventListener("load", () => {
+                    try {
+                        window.pdfjsLib.GlobalWorkerOptions.workerSrc = WILDU_PDFJS_WORKER_URL;
+                    } catch (e) {}
+                    resolve(window.pdfjsLib);
+                });
+
+                existing.addEventListener("error", () => reject(new Error("PDF.js non caricato.")));
+                return;
+            }
+
+            const script = document.createElement("script");
+            script.id = "wildu-pdfjs-lib";
+            script.src = WILDU_PDFJS_SCRIPT_URL;
+            script.async = true;
+
+            script.onload = () => {
+                try {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = WILDU_PDFJS_WORKER_URL;
+                } catch (e) {}
+
+                if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument !== "function") {
+                    reject(new Error("PDF.js caricato ma non disponibile."));
+                    return;
+                }
+
+                resolve(window.pdfjsLib);
+            };
+
+            script.onerror = () => reject(new Error("Impossibile caricare PDF.js."));
+            document.head.appendChild(script);
+        });
+
+        return wilduPdfJsLoadPromise;
+    }
+
+    function ensureWilduPdfReaderShell() {
+        let overlay = document.getElementById("wildu-pdf-reader-modal");
+
+        if (overlay) {
+            return {
+                overlay,
+                title: document.getElementById("wildu-pdf-reader-title"),
+                body: document.getElementById("wildu-pdf-reader-body"),
+                canvasWrap: document.getElementById("wildu-pdf-reader-canvas-wrap"),
+                status: document.getElementById("wildu-pdf-reader-status"),
+                pageLabel: document.getElementById("wildu-pdf-reader-page-label"),
+                btnPrev: document.getElementById("wildu-pdf-reader-prev"),
+                btnNext: document.getElementById("wildu-pdf-reader-next"),
+                btnZoomOut: document.getElementById("wildu-pdf-reader-zoom-out"),
+                btnZoomIn: document.getElementById("wildu-pdf-reader-zoom-in"),
+                btnClose: document.getElementById("wildu-pdf-reader-close"),
+                btnExternal: document.getElementById("wildu-pdf-reader-external")
+            };
+        }
+
+        overlay = document.createElement("div");
+        overlay.id = "wildu-pdf-reader-modal";
+        overlay.style.cssText = [
+            "position:fixed",
+            "inset:0",
+            "z-index:26000",
+            "display:none",
+            "background:rgba(0,0,0,.96)",
+            "color:#fff",
+            "font-family:-apple-system,BlinkMacSystemFont,Roboto,sans-serif",
+            "box-sizing:border-box"
+        ].join(";");
+
+        overlay.innerHTML = `
+            <div style="
+                position:sticky;
+                top:0;
+                z-index:2;
+                background:linear-gradient(180deg, rgba(10,14,18,.98), rgba(10,14,18,.92));
+                border-bottom:1px solid rgba(124,199,255,.25);
+                padding:calc(10px + env(safe-area-inset-top,0px)) 10px 10px 10px;
+                box-sizing:border-box;
+                box-shadow:0 8px 24px rgba(0,0,0,.55);
+            ">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <button id="wildu-pdf-reader-close" type="button" style="
+                        width:36px;
+                        height:36px;
+                        border-radius:999px;
+                        border:1px solid rgba(255,255,255,.22);
+                        background:#222;
+                        color:#fff;
+                        font-weight:900;
+                        cursor:pointer;
+                    ">×</button>
+
+                    <div style="min-width:0; flex:1;">
+                        <div style="font-size:10px; color:#7cc7ff; font-weight:900; text-transform:uppercase; letter-spacing:.9px;">
+                            Lettura in app
+                        </div>
+                        <div id="wildu-pdf-reader-title" style="
+                            color:#fff;
+                            font-size:14px;
+                            font-weight:900;
+                            white-space:nowrap;
+                            overflow:hidden;
+                            text-overflow:ellipsis;
+                        ">PDF Wildu</div>
+                    </div>
+
+                    <a id="wildu-pdf-reader-external" href="#" target="_blank" rel="noopener" style="
+                        color:#000;
+                        background:#7cc7ff;
+                        border-radius:999px;
+                        padding:9px 10px;
+                        text-decoration:none;
+                        font-size:10px;
+                        font-weight:900;
+                        text-transform:uppercase;
+                        white-space:nowrap;
+                    ">Apri</a>
+                </div>
+
+                <div style="
+                    display:grid;
+                    grid-template-columns:auto auto 1fr auto auto;
+                    gap:7px;
+                    align-items:center;
+                    margin-top:10px;
+                ">
+                    <button id="wildu-pdf-reader-prev" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">‹</button>
+                    <button id="wildu-pdf-reader-next" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">›</button>
+
+                    <div id="wildu-pdf-reader-page-label" style="text-align:center; color:#aaa; font-size:11px; font-weight:900;">
+                        Pagina -
+                    </div>
+
+                    <button id="wildu-pdf-reader-zoom-out" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">−</button>
+                    <button id="wildu-pdf-reader-zoom-in" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">+</button>
+                </div>
+            </div>
+
+            <div id="wildu-pdf-reader-body" style="
+                height:calc(100vh - 112px);
+                overflow:auto;
+                -webkit-overflow-scrolling:touch;
+                padding:12px 8px calc(22px + env(safe-area-inset-bottom,0px)) 8px;
+                box-sizing:border-box;
+            ">
+                <div id="wildu-pdf-reader-status" style="
+                    text-align:center;
+                    color:#7cc7ff;
+                    font-weight:900;
+                    padding:40px 12px;
+                    font-size:14px;
+                ">Caricamento PDF...</div>
+
+                <div id="wildu-pdf-reader-canvas-wrap" style="
+                    width:100%;
+                    display:flex;
+                    justify-content:center;
+                    align-items:flex-start;
+                "></div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        return ensureWilduPdfReaderShell();
+    }
+
+    function closeWilduPdfReader() {
+        try {
+            const overlay = document.getElementById("wildu-pdf-reader-modal");
+            if (overlay) overlay.style.display = "none";
+
+            if (wilduPdfResizeHandler) {
+                window.removeEventListener("resize", wilduPdfResizeHandler);
+                wilduPdfResizeHandler = null;
+            }
+
+            if (wilduPdfResizeTimer) {
+                clearTimeout(wilduPdfResizeTimer);
+                wilduPdfResizeTimer = null;
+            }
+        } catch (e) {}
+    }
+
+    async function openWilduPdfInApp(fileUrl, title) {
+        const cleanUrl = safeString(fileUrl);
+        const cleanTitle = safeString(title) || "Documento Wildu";
+
+        if (!cleanUrl) return;
+
+        const ui = ensureWilduPdfReaderShell();
+
+        ui.overlay.style.display = "block";
+        ui.title.textContent = cleanTitle;
+        ui.status.style.display = "block";
+        ui.status.textContent = "Caricamento PDF...";
+        ui.canvasWrap.innerHTML = "";
+        ui.pageLabel.textContent = "Pagina -";
+        ui.btnExternal.href = cleanUrl;
+
+        ui.btnClose.onclick = closeWilduPdfReader;
+
+        let pdfDoc = null;
+        let currentPage = 1;
+        let currentZoom = 1;
+        let renderToken = 0;
+
+        async function renderPage(pageNum) {
+            if (!pdfDoc) return;
+
+            const token = ++renderToken;
+
+            ui.status.style.display = "block";
+            ui.status.textContent = "Rendering pagina...";
+            ui.canvasWrap.innerHTML = "";
+
+            try {
+                const page = await pdfDoc.getPage(pageNum);
+                if (token !== renderToken) return;
+
+                const baseViewport = page.getViewport({ scale: 1 });
+                const bodyWidth = Math.max(260, ui.body.clientWidth - 18);
+                const fitScale = bodyWidth / baseViewport.width;
+                const cssScale = Math.max(0.45, Math.min(2.4, fitScale * currentZoom));
+                const viewport = page.getViewport({ scale: cssScale });
+
+                const outputScale = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d", { alpha: false });
+
+                canvas.width = Math.floor(viewport.width * outputScale);
+                canvas.height = Math.floor(viewport.height * outputScale);
+                canvas.style.width = Math.floor(viewport.width) + "px";
+                canvas.style.height = Math.floor(viewport.height) + "px";
+                canvas.style.maxWidth = "100%";
+                canvas.style.background = "#fff";
+                canvas.style.borderRadius = "8px";
+                canvas.style.boxShadow = "0 8px 25px rgba(0,0,0,.7)";
+
+                ctx.setTransform(outputScale, 0, 0, outputScale, 0, 0);
+
+                ui.canvasWrap.appendChild(canvas);
+
+                await page.render({
+                    canvasContext: ctx,
+                    viewport
+                }).promise;
+
+                if (token !== renderToken) return;
+
+                ui.status.style.display = "none";
+                ui.pageLabel.textContent = "Pagina " + currentPage + " / " + pdfDoc.numPages;
+
+                ui.btnPrev.disabled = currentPage <= 1;
+                ui.btnNext.disabled = currentPage >= pdfDoc.numPages;
+                ui.btnPrev.style.opacity = ui.btnPrev.disabled ? ".35" : "1";
+                ui.btnNext.style.opacity = ui.btnNext.disabled ? ".35" : "1";
+            } catch (e) {
+                ui.status.style.display = "block";
+                ui.status.innerHTML = `
+                    <div style="color:#ff7777; font-weight:900; margin-bottom:8px;">PDF non leggibile in app</div>
+                    <div style="color:#aaa; font-size:13px; line-height:1.45;">
+                        Usa “Apri” o “Scarica PDF”. Se succede solo su questo file, potrebbe essere troppo grande o bloccato da CORS.
+                    </div>
+                `;
+            }
+        }
+
+        try {
+            const pdfjs = await loadWilduPdfJs();
+
+            const loadingTask = pdfjs.getDocument({
+                url: cleanUrl,
+                withCredentials: false
+            });
+
+            pdfDoc = await loadingTask.promise;
+            currentPage = 1;
+            currentZoom = 1;
+
+            ui.btnPrev.onclick = () => {
+                if (!pdfDoc || currentPage <= 1) return;
+                currentPage--;
+                renderPage(currentPage);
+            };
+
+            ui.btnNext.onclick = () => {
+                if (!pdfDoc || currentPage >= pdfDoc.numPages) return;
+                currentPage++;
+                renderPage(currentPage);
+            };
+
+            ui.btnZoomOut.onclick = () => {
+                currentZoom = Math.max(0.7, Number((currentZoom - 0.15).toFixed(2)));
+                renderPage(currentPage);
+            };
+
+            ui.btnZoomIn.onclick = () => {
+                currentZoom = Math.min(1.8, Number((currentZoom + 0.15).toFixed(2)));
+                renderPage(currentPage);
+            };
+
+            if (wilduPdfResizeHandler) {
+                window.removeEventListener("resize", wilduPdfResizeHandler);
+            }
+
+            wilduPdfResizeHandler = () => {
+                if (wilduPdfResizeTimer) clearTimeout(wilduPdfResizeTimer);
+                wilduPdfResizeTimer = setTimeout(() => {
+                    const overlay = document.getElementById("wildu-pdf-reader-modal");
+                    if (overlay && overlay.style.display !== "none" && pdfDoc) {
+                        renderPage(currentPage);
+                    }
+                }, 180);
+            };
+
+            window.addEventListener("resize", wilduPdfResizeHandler, { passive: true });
+
+            await renderPage(currentPage);
+        } catch (e) {
+            ui.status.style.display = "block";
+            ui.status.innerHTML = `
+                <div style="color:#ff7777; font-weight:900; margin-bottom:8px;">Viewer PDF non disponibile</div>
+                <div style="color:#aaa; font-size:13px; line-height:1.45;">
+                    Puoi comunque aprire o scaricare il PDF dal pulsante in alto.
+                </div>
+            `;
+        }
+    }
+
+    function bindBibliotecaPdfActions(mountEl) {
+        if (!mountEl || mountEl.dataset.wilduPdfActionsBound === "1") return;
+
+        mountEl.dataset.wilduPdfActionsBound = "1";
+
+        mountEl.addEventListener("click", function (evt) {
+            const btn = evt.target && evt.target.closest
+                ? evt.target.closest("[data-wildu-pdf-view='1']")
+                : null;
+
+            if (!btn) return;
+
+            evt.preventDefault();
+            evt.stopPropagation();
+
+            openWilduPdfInApp(
+                btn.getAttribute("data-url") || "",
+                btn.getAttribute("data-title") || "Documento Wildu"
+            );
+        });
+    }
+
+
     function buildAudioCard(item) {
         const title = escapeHtml(item.title || item.Titolo || "Audio Wild-U");
         const description = escapeHtml(item.description || item.Descrizione || "");
@@ -1691,41 +2073,135 @@ const WilduMediaClient = (() => {
         });
     }
 
-    function buildPdfCard(item) {
+    function buildPdfCard(item, options = {}) {
         const title = escapeHtml(item.title || item.Titolo || "Documento Wild-U");
+        const rawTitle = safeString(item.title || item.Titolo || "Documento Wild-U");
         const description = escapeHtml(item.description || item.Descrizione || "");
         const fileUrl = safeString(item.fileUrl);
         const subcategory = safeString(item.subcategory);
 
         if (!fileUrl) return "";
 
-        const badge = subcategory === "libri"
-            ? "📚 Libro"
-            : "📘 Manuale / Guida";
+        const locked = options.locked === true;
+        const requiredGrade = safeString(options.requiredGrade);
+        const allowInAppViewer = options.allowInAppViewer !== false && !locked;
+        const sectionLabel = safeString(options.sectionLabel) || (
+            subcategory === "libri" ? "📚 Libro" : "📘 Manuale / Guida"
+        );
 
-        return `
-            <div class="card" style="border-left-color:var(--w-gold); margin-bottom:16px;">
-                <div style="display:flex; gap:14px; align-items:flex-start;">
-                    <div style="font-size:34px; line-height:1;">📄</div>
-                    <div style="flex:1; min-width:0;">
-                        <div style="color:#777; font-size:11px; font-weight:900; text-transform:uppercase; margin-bottom:6px;">${escapeHtml(badge)}</div>
-                        <h3 style="margin:0 0 8px 0; color:var(--w-gold); font-size:18px;">${title}</h3>
-                        ${description ? `<p style="margin:0 0 14px 0; color:#bbb; font-size:14px; line-height:1.45;">${description}</p>` : ""}
-                        <a href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener" style="
-                            display:inline-flex;
+        const leftColor = subcategory === "libri" ? "var(--w-gold)" : "#7cc7ff";
+
+        let actionsHtml = "";
+
+        if (locked) {
+            actionsHtml = `
+                <div style="
+                    margin-top:14px;
+                    padding:12px;
+                    border-radius:12px;
+                    background:rgba(212,175,55,0.08);
+                    border:1px solid rgba(212,175,55,0.35);
+                    color:var(--w-gold);
+                    font-size:12px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                    text-align:center;
+                ">
+                    🔒 Richiede grado ${escapeHtml(requiredGrade || "superiore")}
+                </div>
+            `;
+        } else {
+            actionsHtml = `
+                <div style="
+                    display:grid;
+                    grid-template-columns:${allowInAppViewer ? "1fr 1fr" : "1fr"};
+                    gap:8px;
+                    margin-top:14px;
+                ">
+                    ${allowInAppViewer ? `
+                        <button
+                            type="button"
+                            data-wildu-pdf-view="1"
+                            data-url="${escapeHtml(fileUrl)}"
+                            data-title="${escapeHtml(rawTitle)}"
+                            style="
+                                padding:12px 10px;
+                                border-radius:999px;
+                                border:0;
+                                background:#7cc7ff;
+                                color:#000;
+                                font-size:11px;
+                                font-weight:900;
+                                text-transform:uppercase;
+                                cursor:pointer;
+                            "
+                        >Visualizza in app</button>
+                    ` : ""}
+
+                    <a
+                        href="${escapeHtml(fileUrl)}"
+                        target="_blank"
+                        rel="noopener"
+                        download
+                        style="
+                            display:flex;
                             align-items:center;
                             justify-content:center;
-                            padding:11px 14px;
+                            padding:12px 10px;
                             border-radius:999px;
-                            background:var(--w-gold);
-                            color:#000;
+                            background:rgba(255,255,255,0.07);
+                            border:1px solid rgba(255,255,255,0.15);
+                            color:#fff;
                             text-decoration:none;
-                            font-size:12px;
+                            font-size:11px;
                             font-weight:900;
                             text-transform:uppercase;
-                        ">Apri PDF</a>
-                    </div>
+                        "
+                    >Scarica PDF</a>
                 </div>
+            `;
+        }
+
+        return `
+            <div class="card" style="
+                border-left-color:${leftColor};
+                margin-bottom:14px;
+                padding:16px;
+                border-radius:16px;
+                background:
+                    radial-gradient(circle at top left, rgba(124,199,255,0.10), transparent 42%),
+                    var(--w-card);
+                box-shadow:0 6px 18px rgba(0,0,0,0.48);
+            ">
+                <div style="
+                    color:${leftColor};
+                    font-size:10px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                    letter-spacing:.75px;
+                    margin-bottom:7px;
+                ">${escapeHtml(sectionLabel)}</div>
+
+                <h3 style="
+                    margin:0 0 8px 0;
+                    color:#fff;
+                    font-size:17px;
+                    line-height:1.18;
+                    font-weight:900;
+                ">${title}</h3>
+
+                ${description ? `<p style="
+                    margin:0;
+                    color:#bdbdbd;
+                    font-size:13px;
+                    line-height:1.42;
+                    display:-webkit-box;
+                    -webkit-line-clamp:3;
+                    -webkit-box-orient:vertical;
+                    overflow:hidden;
+                ">${description}</p>` : ""}
+
+                ${actionsHtml}
             </div>
         `;
     }
@@ -1954,63 +2430,243 @@ const WilduMediaClient = (() => {
     function renderBiblioteca(mountEl, result) {
         const items = Array.isArray(result.items) ? result.items : [];
 
-        function isManualiGuide(value) {
-            const clean = safeString(value);
-            return clean === "manuali-guide" || clean === "manuali_guide";
+        function isBookItem(item) {
+            return safeString(item && item.subcategory) === "libri";
         }
 
-        const libri = items.filter(item => safeString(item.subcategory) === "libri");
-        const manuali = items.filter(item => isManualiGuide(item.subcategory));
+        function getDefaultBookRequiredGrade() {
+            const fromConfig = typeof config !== "undefined" && config
+                ? safeString(config.biblioteca_libri_grado)
+                : "";
+
+            const fromAssets = typeof WILD_ASSETS !== "undefined" && WILD_ASSETS
+                ? safeString(WILD_ASSETS.biblioteca_libri_grado)
+                : "";
+
+            // Fallback prudente: i libri sono più alti dei manuali.
+            return fromConfig || fromAssets || "Sentinella";
+        }
+
+        function getRequiredGradeForBook(item) {
+            return safeString(
+                item.requiredGrade ||
+                item.gradoMinimo ||
+                item.Grado_Minimo ||
+                item.gradeRequired ||
+                item.accessGrade ||
+                item.requiredRank ||
+                getDefaultBookRequiredGrade()
+            );
+        }
+
+        function canUserAccessGrade(grade) {
+            const clean = safeString(grade);
+            if (!clean) return true;
+
+            try {
+                if (typeof checkRankMet === "function") {
+                    return checkRankMet(clean);
+                }
+            } catch (e) {}
+
+            try {
+                if (window.checkRankMet && typeof window.checkRankMet === "function") {
+                    return window.checkRankMet(clean);
+                }
+            } catch (e) {}
+
+            return false;
+        }
+
+        function getDailyNewsItem(list) {
+            const source = Array.isArray(list) ? list.filter(Boolean) : [];
+            if (!source.length) return null;
+
+            const dayKey = new Date().toISOString().slice(0, 10);
+            const seedText = dayKey + "|" + source.map(x => safeString(x.id || x.title || x.fileUrl)).join("|");
+
+            let seed = 0;
+            for (let i = 0; i < seedText.length; i++) {
+                seed = ((seed << 5) - seed) + seedText.charCodeAt(i);
+                seed |= 0;
+            }
+
+            const idx = Math.abs(seed) % source.length;
+            return source[idx];
+        }
+
+        const libri = items.filter(isBookItem);
+
+        // Tutto ciò che NON è libro finisce in Manuali e Guide.
+        // Così anche PDF vecchi senza subcategory non spariscono.
+        const manuali = items.filter(item => !isBookItem(item));
+
+        const newsItem = getDailyNewsItem(manuali);
+
+        if (!items.length) {
+            mountEl.innerHTML = `
+                <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
+                    <div style="font-size:42px; margin-bottom:10px;">📚</div>
+                    <h3 style="color:#7cc7ff; margin:0 0 8px 0;">Biblioteca vuota</h3>
+                    <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
+                        Nessun documento disponibile per ora.
+                    </p>
+                </div>
+            `;
+            return;
+        }
 
         mountEl.innerHTML = `
-            <div style="display:flex; gap:8px; margin-bottom:16px;">
-                <button type="button" data-wildu-media-tab="libri" style="
-                    flex:1;
-                    padding:12px 10px;
+            <div style="
+                display:grid;
+                grid-template-columns:1fr 1fr 1fr;
+                gap:7px;
+                margin-bottom:14px;
+                position:sticky;
+                top:calc(52px + env(safe-area-inset-top,0px));
+                z-index:25;
+                background:rgba(18,18,18,.94);
+                backdrop-filter:blur(10px);
+                padding:8px 0;
+            ">
+                <button type="button" data-wildu-media-tab="manuali_guide" style="
+                    padding:11px 7px;
                     border-radius:999px;
-                    border:1px solid rgba(212,175,55,0.55);
-                    background:var(--w-gold);
+                    border:1px solid rgba(124,199,255,.50);
+                    background:#7cc7ff;
                     color:#000;
-                    font-size:12px;
+                    font-size:10px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                ">Manuali</button>
+
+                <button type="button" data-wildu-media-tab="news" style="
+                    padding:11px 7px;
+                    border-radius:999px;
+                    border:1px solid rgba(212,175,55,.55);
+                    background:rgba(212,175,55,.10);
+                    color:var(--w-gold);
+                    font-size:10px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                ">News</button>
+
+                <button type="button" data-wildu-media-tab="libri" style="
+                    padding:11px 7px;
+                    border-radius:999px;
+                    border:1px solid rgba(212,175,55,.55);
+                    background:rgba(212,175,55,.10);
+                    color:var(--w-gold);
+                    font-size:10px;
                     font-weight:900;
                     text-transform:uppercase;
                 ">Libri</button>
-
-                <button type="button" data-wildu-media-tab="manuali_guide" style="
-                    flex:1;
-                    padding:12px 10px;
-                    border-radius:999px;
-                    border:1px solid rgba(120,190,255,0.55);
-                    background:rgba(120,190,255,0.12);
-                    color:#7cc7ff;
-                    font-size:12px;
-                    font-weight:900;
-                    text-transform:uppercase;
-                ">Manuali e Guide</button>
             </div>
 
-            <div data-wildu-media-panel="libri"></div>
-            <div data-wildu-media-panel="manuali_guide" style="display:none;"></div>
+            <div data-wildu-media-panel="manuali_guide"></div>
+            <div data-wildu-media-panel="news" style="display:none;"></div>
+            <div data-wildu-media-panel="libri" style="display:none;"></div>
         `;
 
-        const libriPanel = mountEl.querySelector('[data-wildu-media-panel="libri"]');
         const manualiPanel = mountEl.querySelector('[data-wildu-media-panel="manuali_guide"]');
+        const newsPanel = mountEl.querySelector('[data-wildu-media-panel="news"]');
+        const libriPanel = mountEl.querySelector('[data-wildu-media-panel="libri"]');
 
-        libriPanel.innerHTML = libri.length
-            ? libri.map(buildPdfCard).join("")
+        manualiPanel.innerHTML = manuali.length
+            ? manuali.map(item => buildPdfCard(item, {
+                sectionLabel: "📘 Manuale / Guida",
+                allowInAppViewer: true
+            })).join("")
             : `
-                <div class="card" style="border-left-color:var(--w-gold); text-align:center;">
-                    <div style="font-size:42px; margin-bottom:10px;">📚</div>
-                    <p style="color:#aaa; font-size:14px; margin:0;">Nessun libro disponibile per ora.</p>
+                <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
+                    <div style="font-size:40px; margin-bottom:10px;">📘</div>
+                    <p style="color:#aaa; font-size:14px; margin:0;">Nessun manuale o guida disponibile per ora.</p>
                 </div>
             `;
 
-        manualiPanel.innerHTML = manuali.length
-            ? manuali.map(buildPdfCard).join("")
+        newsPanel.innerHTML = newsItem
+            ? `
+                <div style="
+                    border-radius:20px;
+                    padding:18px;
+                    margin-bottom:14px;
+                    background:
+                        radial-gradient(circle at top left, rgba(212,175,55,.22), transparent 45%),
+                        linear-gradient(135deg, rgba(45,90,39,.80), rgba(18,18,18,.98));
+                    border:1px solid rgba(212,175,55,.38);
+                    box-shadow:0 8px 26px rgba(0,0,0,.55);
+                ">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="
+                            width:44px;
+                            height:44px;
+                            border-radius:16px;
+                            display:flex;
+                            align-items:center;
+                            justify-content:center;
+                            background:rgba(212,175,55,.16);
+                            border:1px solid rgba(212,175,55,.35);
+                            font-size:24px;
+                            flex:0 0 auto;
+                        ">🗞️</div>
+
+                        <div style="min-width:0;">
+                            <div style="
+                                color:var(--w-gold);
+                                font-size:10px;
+                                font-weight:900;
+                                text-transform:uppercase;
+                                letter-spacing:.9px;
+                                margin-bottom:4px;
+                            ">Consiglio del giorno</div>
+
+                            <div style="
+                                color:#fff;
+                                font-size:18px;
+                                font-weight:950;
+                                line-height:1.12;
+                            ">${escapeHtml(newsItem.title || newsItem.Titolo || "Documento consigliato")}</div>
+                        </div>
+                    </div>
+
+                    ${newsItem.description ? `<p style="
+                        color:#ddd;
+                        font-size:13px;
+                        line-height:1.45;
+                        margin:14px 0 0 0;
+                    ">${escapeHtml(newsItem.description)}</p>` : ""}
+                </div>
+
+                ${buildPdfCard(newsItem, {
+                    sectionLabel: "🗞️ News / Lettura consigliata",
+                    allowInAppViewer: true
+                })}
+            `
             : `
-                <div class="card" style="border-left-color:#7cc7ff; text-align:center;">
-                    <div style="font-size:42px; margin-bottom:10px;">📘</div>
-                    <p style="color:#aaa; font-size:14px; margin:0;">Nessun manuale o guida disponibile per ora.</p>
+                <div class="card" style="border-left-color:var(--w-gold); text-align:center;">
+                    <div style="font-size:40px; margin-bottom:10px;">🗞️</div>
+                    <p style="color:#aaa; font-size:14px; margin:0;">Nessuna news disponibile per ora.</p>
+                </div>
+            `;
+
+        libriPanel.innerHTML = libri.length
+            ? libri.map(item => {
+                const requiredGrade = getRequiredGradeForBook(item);
+                const locked = !canUserAccessGrade(requiredGrade);
+
+                return buildPdfCard(item, {
+                    sectionLabel: "📚 Libro",
+                    requiredGrade,
+                    locked,
+                    // Libri: file potenzialmente grandi.
+                    // Lasciamo scarica/apri esterno, niente PDF.js di default.
+                    allowInAppViewer: false
+                });
+            }).join("")
+            : `
+                <div class="card" style="border-left-color:var(--w-gold); text-align:center;">
+                    <div style="font-size:40px; margin-bottom:10px;">📚</div>
+                    <p style="color:#aaa; font-size:14px; margin:0;">Nessun libro disponibile per ora.</p>
                 </div>
             `;
 
@@ -2018,11 +2674,21 @@ const WilduMediaClient = (() => {
 
         function setTab(tab) {
             tabButtons.forEach(btn => {
-                const active = btn.getAttribute("data-wildu-media-tab") === tab;
+                const key = btn.getAttribute("data-wildu-media-tab");
+                const active = key === tab;
+                const isGold = key === "news" || key === "libri";
+
                 btn.style.background = active
-                    ? (tab === "libri" ? "var(--w-gold)" : "#7cc7ff")
-                    : (tab === "libri" ? "rgba(212,175,55,0.10)" : "rgba(120,190,255,0.12)");
-                btn.style.color = active ? "#000" : (tab === "libri" ? "var(--w-gold)" : "#7cc7ff");
+                    ? (isGold ? "var(--w-gold)" : "#7cc7ff")
+                    : (isGold ? "rgba(212,175,55,.10)" : "rgba(124,199,255,.10)");
+
+                btn.style.color = active
+                    ? "#000"
+                    : (isGold ? "var(--w-gold)" : "#7cc7ff");
+
+                btn.style.boxShadow = active
+                    ? "0 0 14px rgba(212,175,55,.20)"
+                    : "none";
             });
 
             Array.from(mountEl.querySelectorAll("[data-wildu-media-panel]")).forEach(panel => {
@@ -2036,7 +2702,10 @@ const WilduMediaClient = (() => {
             });
         });
 
-        setTab("libri");
+        // Default richiesto: Manuali e Guide, non Libri.
+        setTab("manuali_guide");
+
+        bindBibliotecaPdfActions(mountEl);
     }
 
     async function renderTag(options = {}) {
