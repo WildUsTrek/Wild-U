@@ -1599,7 +1599,7 @@ const WilduMediaClient = (() => {
         };
     }
 
-     function buildAudioCard(item) {
+    function buildAudioCard(item) {
         const title = escapeHtml(item.title || item.Titolo || "Audio Wild-U");
         const description = escapeHtml(item.description || item.Descrizione || "");
         const fileUrl = safeString(item.fileUrl);
@@ -1608,20 +1608,79 @@ const WilduMediaClient = (() => {
         if (!fileUrl) return "";
 
         return `
-            <div class="card" style="border-left-color:#7cc7ff; margin-bottom:16px;">
-                <div style="display:flex; gap:14px; align-items:flex-start;">
-                    <div style="font-size:34px; line-height:1;">🎧</div>
-                    <div style="flex:1; min-width:0;">
-                        <h3 style="margin:0 0 8px 0; color:#7cc7ff; font-size:18px;">${title}</h3>
-                        ${description ? `<p style="margin:0 0 12px 0; color:#bbb; font-size:14px; line-height:1.45;">${description}</p>` : ""}
-                        ${duration ? `<div style="color:#777; font-size:11px; font-weight:900; margin-bottom:8px;">${escapeHtml(duration)}</div>` : ""}
+            <div class="card" style="
+                border-left-color:#7cc7ff;
+                margin-bottom:12px;
+                padding:14px;
+                border-radius:15px;
+                background:
+                    linear-gradient(135deg, rgba(124,199,255,0.055), rgba(255,255,255,0.025)),
+                    var(--w-card);
+                box-shadow:0 5px 16px rgba(0,0,0,0.45);
+            ">
+                <div style="
+                    display:grid;
+                    grid-template-columns:38px 1fr;
+                    gap:12px;
+                    align-items:flex-start;
+                ">
+                    <div style="
+                        width:38px;
+                        height:38px;
+                        min-width:38px;
+                        border-radius:999px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        background:rgba(124,199,255,0.12);
+                        border:1px solid rgba(124,199,255,0.34);
+                        color:#7cc7ff;
+                        font-size:16px;
+                        font-weight:900;
+                        box-shadow:inset 0 0 13px rgba(124,199,255,0.08);
+                        margin-top:1px;
+                    ">▶</div>
+
+                    <div style="min-width:0;">
+                        <h3 style="
+                            margin:0 0 5px 0;
+                            color:#eaf7ff;
+                            font-size:16px;
+                            line-height:1.16;
+                            font-weight:900;
+                            letter-spacing:0.1px;
+                        ">${title}</h3>
+
+                        ${description ? `<p style="
+                            margin:0 0 9px 0;
+                            color:#b7b7b7;
+                            font-size:12px;
+                            line-height:1.35;
+                            display:-webkit-box;
+                            -webkit-line-clamp:2;
+                            -webkit-box-orient:vertical;
+                            overflow:hidden;
+                        ">${description}</p>` : ""}
+
+                        ${duration ? `<div style="
+                            color:#777;
+                            font-size:10px;
+                            font-weight:900;
+                            margin-bottom:7px;
+                            text-transform:uppercase;
+                            letter-spacing:0.6px;
+                        ">${escapeHtml(duration)}</div>` : ""}
+
                         <audio
                             controls
                             preload="none"
                             controlsList="nodownload noplaybackrate"
-                            disableRemotePlayback
                             oncontextmenu="return false;"
-                            style="width:100%;"
+                            style="
+                                width:100%;
+                                height:34px;
+                                display:block;
+                            "
                         >
                             <source src="${escapeHtml(fileUrl)}">
                             Il tuo browser non supporta l’audio.
@@ -1756,30 +1815,52 @@ const WilduMediaClient = (() => {
         }
 
         mountEl.innerHTML = `
-            <div style="display:flex; gap:8px; margin-bottom:16px;">
+            <div style="
+                display:grid;
+                grid-template-columns:1fr 1fr;
+                gap:9px;
+                margin:0 0 16px 0;
+                padding:4px;
+                border-radius:999px;
+                background:rgba(255,255,255,0.045);
+                border:1px solid rgba(255,255,255,0.08);
+                box-shadow:inset 0 0 12px rgba(0,0,0,0.25);
+            ">
                 <button type="button" data-wildu-radio-tab="episodes" style="
-                    flex:1;
-                    padding:12px 10px;
+                    width:100%;
+                    padding:11px 9px;
                     border-radius:999px;
-                    border:1px solid rgba(120,190,255,0.55);
-                    background:#7cc7ff;
-                    color:#000;
-                    font-size:12px;
+                    border:1px solid rgba(120,190,255,0.45);
+                    background:rgba(120,190,255,0.12);
+                    color:#7cc7ff;
+                    font-size:11px;
                     font-weight:900;
                     text-transform:uppercase;
-                ">Puntate Radio</button>
+                    letter-spacing:0.35px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    gap:6px;
+                    box-sizing:border-box;
+                "><span>🎙️</span><span>Puntate</span></button>
 
                 <button type="button" data-wildu-radio-tab="songs" style="
-                    flex:1;
-                    padding:12px 10px;
+                    width:100%;
+                    padding:11px 9px;
                     border-radius:999px;
-                    border:1px solid rgba(212,175,55,0.55);
+                    border:1px solid rgba(212,175,55,0.45);
                     background:rgba(212,175,55,0.10);
                     color:var(--w-gold);
-                    font-size:12px;
+                    font-size:11px;
                     font-weight:900;
                     text-transform:uppercase;
-                ">Canzoni</button>
+                    letter-spacing:0.35px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    gap:6px;
+                    box-sizing:border-box;
+                "><span>🎵</span><span>Canzoni</span></button>
             </div>
 
             <div data-wildu-radio-panel="episodes"></div>
@@ -1817,23 +1898,25 @@ const WilduMediaClient = (() => {
 
         function setRadioTab(tab) {
             tabButtons.forEach(btn => {
-                const isActive = btn.getAttribute("data-wildu-radio-tab") === tab;
+                const btnTab = btn.getAttribute("data-wildu-radio-tab");
+                const isActive = btnTab === tab;
+                const isSongs = btnTab === "songs";
 
-                if (tab === "episodes") {
-                    btn.style.background = isActive
-                        ? "#7cc7ff"
-                        : (btn.getAttribute("data-wildu-radio-tab") === "songs" ? "rgba(212,175,55,0.10)" : "rgba(120,190,255,0.12)");
-                    btn.style.color = isActive
-                        ? "#000"
-                        : (btn.getAttribute("data-wildu-radio-tab") === "songs" ? "var(--w-gold)" : "#7cc7ff");
-                } else {
-                    btn.style.background = isActive
-                        ? "var(--w-gold)"
-                        : (btn.getAttribute("data-wildu-radio-tab") === "episodes" ? "rgba(120,190,255,0.12)" : "rgba(212,175,55,0.10)");
-                    btn.style.color = isActive
-                        ? "#000"
-                        : (btn.getAttribute("data-wildu-radio-tab") === "episodes" ? "#7cc7ff" : "var(--w-gold)");
-                }
+                btn.style.background = isActive
+                    ? (isSongs ? "var(--w-gold)" : "#7cc7ff")
+                    : (isSongs ? "rgba(212,175,55,0.10)" : "rgba(120,190,255,0.12)");
+
+                btn.style.color = isActive
+                    ? "#000"
+                    : (isSongs ? "var(--w-gold)" : "#7cc7ff");
+
+                btn.style.borderColor = isActive
+                    ? (isSongs ? "rgba(212,175,55,0.95)" : "rgba(120,190,255,0.95)")
+                    : (isSongs ? "rgba(212,175,55,0.45)" : "rgba(120,190,255,0.45)");
+
+                btn.style.boxShadow = isActive
+                    ? (isSongs ? "0 0 14px rgba(212,175,55,0.28)" : "0 0 14px rgba(124,199,255,0.25)")
+                    : "none";
             });
 
             Array.from(mountEl.querySelectorAll("[data-wildu-radio-panel]")).forEach(panel => {
@@ -1849,7 +1932,12 @@ const WilduMediaClient = (() => {
             });
         });
 
-        setRadioTab("episodes");
+        // Default reale:
+        // - apre Puntate Radio se esiste almeno una puntata;
+        // - se Puntate è vuoto ma ci sono Canzoni, apre Canzoni;
+        // - se sono vuoti entrambi, non si arriva qui perché il caso !items.length è già gestito sopra.
+        const defaultRadioTab = episodes.length ? "episodes" : "songs";
+        setRadioTab(defaultRadioTab);
     }
 
     function renderBiblioteca(mountEl, result) {
