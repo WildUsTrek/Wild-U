@@ -8982,121 +8982,245 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         }
     }
 
-    async function loadWilduAudioBuffer(url) {
-        const cleanUrl = String(url || "").trim();
-        if (!cleanUrl) throw new Error("Audio buffer URL mancante");
+    function stripWilduAudioRuntimeQuery(url) {
+    const raw = String(url || "").trim();
+    if (!raw) return raw;
 
-        const cached = wildBufferAudioCache.get(cleanUrl);
-        if (cached) return cached;
+    try {
+        const u = new URL(raw, window.location.href);
 
-        const ctx = getWildAudioContext();
-        if (!ctx) throw new Error("AudioContext non disponibile");
+        // Questi parametri sono nostri, non sono parte reale del file R2.
+        // Su iOS il player nativo suona l'URL puro: il buffer deve provarlo per primo.
+        u.searchParams.delete("wildu_cors");
+        u.searchParams.delete("wildu_buffer");
+        u.searchParams.delete("_wb");
 
-        const requestUrls = [];
+        return u.toString();
+    } catch (e) {
+        return raw
+            .replace(/[?&]wildu_cors=[^&]*/g, "")
+            .replace(/[?&]wildu_buffer=[^&]*/g, "")
+            .replace(/[?&]_wb=[^&]*/g, "")
+            .replace(/\?&/, "?")
+            .replace(/[?&]$/, "");
+    }
+}
+
+function pushUniqueWilduAudioUrl(list, url) {
+    const clean = String(url || "").trim();
+    if (!clean) return;
+
+    if (list.indexOf(clean) < 0) {
+        list.push(clean);
+    }
+}
+
+function loadWilduAudioArrayBufferXHR(url, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+        let xhr = null;
 
         try {
-            const u1 = new URL(cleanUrl, window.location.href);
-            requestUrls.push(u1.toString());
+            xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.responseType = "arraybuffer";
+            xhr.timeout = timeoutMs || 9000;
+            xhr.withCredentials = false;
 
-            // Safari/iPhone può restare appeso a una risposta cacheata senza header CORS buoni.
-            // Forziamo quindi una seconda prova no-store con query nuova.
-            const u2 = new URL(cleanUrl, window.location.href);
-            u2.searchParams.set("wildu_buffer", "1");
-            u2.searchParams.set("_wb", String(Date.now()));
-            requestUrls.push(u2.toString());
+            xhr.onload = function () {
+                const status = Number(xhr.status || 0);
 
-            // Terza prova: togliamo il vecchio parametro tecnico, lasciando un bust pulito.
-            const u3 = new URL(cleanUrl, window.location.href);
-            u3.searchParams.delete("wildu_cors");
-            u3.searchParams.set("wildu_buffer", "1");
-            u3.searchParams.set("_wb", String(Date.now() + 1));
-            requestUrls.push(u3.toString());
+                wilduAudioDebugLog("BUFFER_XHR_RESPONSE", {
+                    url: url,
+                    status: status,
+                    contentType: xhr.getResponseHeader("content-type") || "",
+                    contentLength: xhr.getResponseHeader("content-length") || "",
+                    accessControlAllowOrigin: xhr.getResponseHeader("access-control-allow-origin") || ""
+                });
+
+                if (status >= 200 && status < 300 && xhr.response) {
+                    resolve(xhr.response);
+                    return;
+                }
+
+                reject(new Error("XHR audio buffer fallito: status=" + status));
+            };
+
+            xhr.onerror = function () {
+                reject(new Error("XHR audio buffer network error"));
+            };
+
+            xhr.ontimeout = function () {
+                reject(new Error("XHR audio buffer timeout"));
+            };
+
+            xhr.onabort = function () {
+                reject(new Error("XHR audio buffer abort"));
+            };
+
+            xhr.send();
         } catch (e) {
-            requestUrls.push(cleanUrl);
+            reject(new Error("XHR audio buffer throw: " + (e && e.message ? e.message : String(e))));
+        }
+    });
+}
+
+async function fetchWilduAudioArrayBufferWithFallback(requestUrl) {
+    let fetchError = "";
+
+    try {
+        wilduAudioDebugLog("BUFFER_FETCH_ATTEMPT", {
+            url: requestUrl
+        });
+
+        const res = await fetch(requestUrl, {
+            method: "GET",
+            mode: "cors",
+            credentials: "omit",
+            cache: "reload",
+            redirect: "follow"
+        });
+
+        const headersInfo = {
+            url: requestUrl,
+            status: res.status,
+            ok: res.ok,
+            type: res.type,
+            contentType: res.headers.get("content-type") || "",
+            contentLength: res.headers.get("content-length") || "",
+            acceptRanges: res.headers.get("accept-ranges") || "",
+            contentRange: res.headers.get("content-range") || "",
+            accessControlAllowOrigin: res.headers.get("access-control-allow-origin") || ""
+        };
+
+        wilduAudioDebugLog("BUFFER_FETCH_RESPONSE", headersInfo);
+
+        if (!res.ok) {
+            throw new Error("Fetch audio buffer fallito: " + res.status + " " + res.statusText);
         }
 
-        let lastError = "";
+        const arr = await res.arrayBuffer();
 
-        for (const requestUrl of requestUrls) {
-            try {
-                wilduAudioDebugLog("BUFFER_FETCH_ATTEMPT", {
-                    url: requestUrl
-                });
+        return {
+            via: "fetch",
+            arrayBuffer: arr
+        };
+    } catch (e) {
+        fetchError = e && e.message ? e.message : String(e);
 
-                const res = await fetch(requestUrl, {
-                    method: "GET",
-                    mode: "cors",
-                    credentials: "omit",
-                    cache: "no-store",
-                    redirect: "follow"
-                });
-
-                const headersInfo = {
-                    status: res.status,
-                    ok: res.ok,
-                    type: res.type,
-                    contentType: res.headers.get("content-type") || "",
-                    contentLength: res.headers.get("content-length") || "",
-                    acceptRanges: res.headers.get("accept-ranges") || "",
-                    contentRange: res.headers.get("content-range") || "",
-                    accessControlAllowOrigin: res.headers.get("access-control-allow-origin") || ""
-                };
-
-                wilduAudioDebugLog("BUFFER_FETCH_RESPONSE", headersInfo);
-
-                if (!res.ok) {
-                    throw new Error("Fetch audio buffer fallito: " + res.status + " " + res.statusText);
-                }
-
-                const arr = await res.arrayBuffer();
-
-                wilduAudioDebugLog("BUFFER_ARRAYBUFFER_OK", {
-                    url: requestUrl,
-                    bytes: arr ? arr.byteLength : 0
-                });
-
-                if (!arr || arr.byteLength < 1024) {
-                    throw new Error("Audio buffer troppo piccolo o vuoto: " + (arr ? arr.byteLength : 0));
-                }
-
-                let decoded = null;
-
-                try {
-                    decoded = await ctx.decodeAudioData(arr.slice(0));
-                } catch (decodeErr) {
-                    throw new Error(
-                        "decodeAudioData fallito: " +
-                        (decodeErr && decodeErr.message ? decodeErr.message : String(decodeErr))
-                    );
-                }
-
-                if (!decoded || !decoded.duration) {
-                    throw new Error("decodeAudioData non ha prodotto un buffer valido");
-                }
-
-                wildBufferAudioCache.set(cleanUrl, decoded);
-                wildBufferAudioCache.set(requestUrl, decoded);
-
-                wilduAudioDebugLog("BUFFER_DECODE_OK", {
-                    url: requestUrl,
-                    duration: decoded.duration,
-                    sampleRate: decoded.sampleRate,
-                    channels: decoded.numberOfChannels
-                });
-
-                return decoded;
-            } catch (e) {
-                lastError = e && e.message ? e.message : String(e);
-
-                wilduAudioDebugLog("BUFFER_FETCH_OR_DECODE_FAILED", {
-                    url: requestUrl,
-                    error: lastError
-                });
-            }
-        }
-
-        throw new Error(lastError || "Audio buffer Load failed");
+        wilduAudioDebugLog("BUFFER_FETCH_FAILED_TRY_XHR", {
+            url: requestUrl,
+            error: fetchError
+        });
     }
+
+    try {
+        wilduAudioDebugLog("BUFFER_XHR_ATTEMPT", {
+            url: requestUrl
+        });
+
+        const arr = await loadWilduAudioArrayBufferXHR(requestUrl, 9000);
+
+        return {
+            via: "xhr",
+            arrayBuffer: arr
+        };
+    } catch (e) {
+        const xhrError = e && e.message ? e.message : String(e);
+
+        throw new Error("fetch=" + fetchError + " | xhr=" + xhrError);
+    }
+}
+
+async function loadWilduAudioBuffer(url) {
+    const cleanUrl = String(url || "").trim();
+    if (!cleanUrl) throw new Error("Audio buffer URL mancante");
+
+    const canonicalUrl = stripWilduAudioRuntimeQuery(cleanUrl);
+
+    const cached =
+        wildBufferAudioCache.get(canonicalUrl) ||
+        wildBufferAudioCache.get(cleanUrl);
+
+    if (cached) return cached;
+
+    const ctx = getWildAudioContext();
+    if (!ctx) throw new Error("AudioContext non disponibile");
+
+    const requestUrls = [];
+
+    try {
+        // Ordine corretto per iOS:
+        // 1) URL R2 puro, quello che il player nativo iPhone apre e suona.
+        // 2) URL ricevuto dall'elemento audio, per compatibilità PC/cache attuale.
+        // 3) URL puro con bust leggero, solo se i primi due falliscono.
+        pushUniqueWilduAudioUrl(requestUrls, canonicalUrl);
+        pushUniqueWilduAudioUrl(requestUrls, cleanUrl);
+
+        const busted = new URL(canonicalUrl, window.location.href);
+        busted.searchParams.set("wildu_buffer", "1");
+        busted.searchParams.set("_wb", String(Date.now()));
+        pushUniqueWilduAudioUrl(requestUrls, busted.toString());
+    } catch (e) {
+        pushUniqueWilduAudioUrl(requestUrls, canonicalUrl || cleanUrl);
+    }
+
+    let lastError = "";
+
+    for (const requestUrl of requestUrls) {
+        try {
+            const loaded = await fetchWilduAudioArrayBufferWithFallback(requestUrl);
+            const arr = loaded && loaded.arrayBuffer ? loaded.arrayBuffer : null;
+
+            wilduAudioDebugLog("BUFFER_ARRAYBUFFER_OK", {
+                url: requestUrl,
+                via: loaded && loaded.via ? loaded.via : "",
+                bytes: arr ? arr.byteLength : 0
+            });
+
+            if (!arr || arr.byteLength < 1024) {
+                throw new Error("Audio buffer troppo piccolo o vuoto: " + (arr ? arr.byteLength : 0));
+            }
+
+            let decoded = null;
+
+            try {
+                decoded = await ctx.decodeAudioData(arr.slice(0));
+            } catch (decodeErr) {
+                throw new Error(
+                    "decodeAudioData fallito: " +
+                    (decodeErr && decodeErr.message ? decodeErr.message : String(decodeErr))
+                );
+            }
+
+            if (!decoded || !decoded.duration) {
+                throw new Error("decodeAudioData non ha prodotto un buffer valido");
+            }
+
+            wildBufferAudioCache.set(canonicalUrl, decoded);
+            wildBufferAudioCache.set(cleanUrl, decoded);
+            wildBufferAudioCache.set(requestUrl, decoded);
+
+            wilduAudioDebugLog("BUFFER_DECODE_OK", {
+                url: requestUrl,
+                via: loaded && loaded.via ? loaded.via : "",
+                duration: decoded.duration,
+                sampleRate: decoded.sampleRate,
+                channels: decoded.numberOfChannels
+            });
+
+            return decoded;
+        } catch (e) {
+            lastError = e && e.message ? e.message : String(e);
+
+            wilduAudioDebugLog("BUFFER_FETCH_OR_DECODE_FAILED", {
+                url: requestUrl,
+                error: lastError
+            });
+        }
+    }
+
+    throw new Error(lastError || "Audio buffer Load failed");
+}
 
     function stopWilduBufferLoop(key) {
         try {
