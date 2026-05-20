@@ -2206,7 +2206,14 @@ function requireLoggedAccess(reason, options = {}) {
     function isWilduAudioDebugEvent(evt) {
         try {
             const target = evt && evt.target;
-            return !!(target && target.closest && target.closest("#wildu-audio-debug-panel"));
+            return !!(
+    target &&
+    target.closest &&
+    (
+        target.closest("#wildu-audio-debug-panel") ||
+        target.closest("#wildu-audio-debug-copybox")
+    )
+);
         } catch (e) {
             return false;
         }
@@ -3283,11 +3290,75 @@ function buildWilduAudioDebugCopyText() {
 async function copyWilduAudioDebugReport() {
     const text = buildWilduAudioDebugCopyText();
 
+    function openManualCopyBox(message) {
+        try {
+            let box = document.getElementById("wildu-audio-debug-copybox");
+            if (box) box.remove();
+
+            const wrap = document.createElement("div");
+            wrap.id = "wildu-audio-debug-copybox";
+            wrap.style.cssText = [
+                "position:fixed",
+                "left:8px",
+                "right:8px",
+                "top:calc(70px + env(safe-area-inset-top,0px))",
+                "bottom:calc(8px + env(safe-area-inset-bottom,0px))",
+                "z-index:1000000",
+                "background:rgba(5,8,7,.98)",
+                "border:2px solid #d4af37",
+                "border-radius:14px",
+                "box-shadow:0 18px 65px rgba(0,0,0,.85)",
+                "padding:10px",
+                "box-sizing:border-box",
+                "display:flex",
+                "flex-direction:column",
+                "gap:8px"
+            ].join(";");
+
+            wrap.innerHTML = '' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;color:#f6d889;font-weight:900;font-family:system-ui,sans-serif;">' +
+                    '<span>📋 Debug audio da copiare</span>' +
+                    '<button type="button" id="wildu-audio-debug-copybox-close" style="background:#333;color:#fff;border:1px solid #666;border-radius:8px;padding:7px 10px;">Chiudi</button>' +
+                '</div>' +
+                '<div style="color:#ddd;font-size:12px;font-family:system-ui,sans-serif;">' +
+                    (message || 'Se la copia automatica non funziona, tieni premuto nel testo, seleziona tutto e copia.') +
+                '</div>' +
+                '<textarea id="wildu-audio-debug-copybox-text" readonly style="' +
+                    'flex:1;width:100%;min-height:50vh;box-sizing:border-box;background:#111;color:#fff;' +
+                    'border:1px solid #555;border-radius:10px;padding:10px;font-size:11px;' +
+                    'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;' +
+                    '-webkit-user-select:text;user-select:text;' +
+                '"></textarea>';
+
+            document.body.appendChild(wrap);
+
+            const ta = document.getElementById("wildu-audio-debug-copybox-text");
+            ta.value = text;
+
+            const close = document.getElementById("wildu-audio-debug-copybox-close");
+            if (close) close.onclick = function (evt) {
+                try { evt.preventDefault(); evt.stopPropagation(); } catch (e) {}
+                wrap.remove();
+            };
+
+            setTimeout(() => {
+                try {
+                    ta.focus();
+                    ta.select();
+                    ta.setSelectionRange(0, ta.value.length);
+                } catch (e) {}
+            }, 80);
+        } catch (e) {
+            alert("Impossibile aprire box copia debug: " + (e && e.message ? e.message : String(e)));
+        }
+    }
+
+    // Prova clipboard, ma NON fidarti: apri comunque il box manuale.
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            try { showToast("Debug audio copiato."); } catch (_) {}
-            wilduAudioDebugLog("COPY_REPORT_OK", { method: "navigator.clipboard" });
+            openManualCopyBox("Ho provato anche la copia automatica. Se non trovi il testo negli appunti, copia manualmente da qui.");
+            try { showToast("Debug audio pronto da copiare."); } catch (_) {}
             return true;
         }
     } catch (e) {
@@ -3298,39 +3369,7 @@ async function copyWilduAudioDebugReport() {
         } catch (_) {}
     }
 
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "readonly");
-    ta.style.position = "fixed";
-    ta.style.left = "8px";
-    ta.style.right = "8px";
-    ta.style.bottom = "8px";
-    ta.style.width = "calc(100vw - 16px)";
-    ta.style.height = "45vh";
-    ta.style.zIndex = "1000000";
-    ta.style.background = "#111";
-    ta.style.color = "#fff";
-    ta.style.border = "2px solid #d4af37";
-    ta.style.borderRadius = "12px";
-    ta.style.padding = "12px";
-    ta.style.fontSize = "12px";
-    ta.style.boxSizing = "border-box";
-
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-
-    try {
-        const ok = document.execCommand("copy");
-        if (ok) {
-            document.body.removeChild(ta);
-            try { showToast("Debug audio copiato."); } catch (_) {}
-            wilduAudioDebugLog("COPY_REPORT_OK", { method: "execCommand" });
-            return true;
-        }
-    } catch (e) {}
-
-    alert("Copia automatica non riuscita. Ho aperto il testo debug: selezionalo e copialo manualmente.");
+    openManualCopyBox("Copia automatica non disponibile su questo telefono. Copia manualmente da qui.");
     return false;
 }
 
@@ -3511,7 +3550,7 @@ function renderWilduAudioDebugPanel() {
         rowAudio((s.audioElements && s.audioElements.spin) || s.spin, "spin") +
         rowAudio((s.audioElements && s.audioElements.end) || s.end, "end") +
 
-        '<details style="border-top:1px solid rgba(255,255,255,.12); padding-top:6px; margin-top:8px;">' +
+        '<details open style="border-top:1px solid rgba(255,255,255,.12); padding-top:6px; margin-top:8px;">' +
             '<summary style="color:#f6d889;font-weight:900;">Eventi recenti</summary>' +
             (eventsHtml || '<div>Nessun evento audio.</div>') +
         '</details>';
@@ -3621,12 +3660,12 @@ function maybeInstallWilduAudioDebugPanel(reason) {
 
     renderWilduAudioDebugPanel();
 
-    if (!wildAudioDebugPanelTimer) {
-        wildAudioDebugPanelTimer = setInterval(() => {
-            if (wilduAudioDebugEnabled() && document.getElementById("wildu-audio-debug-panel")) {
-                renderWilduAudioDebugPanel();
-            }
-        }, 1500);
+    // Non fare auto-render periodico del pannello:
+    // su smartphone ricreava innerHTML ogni 1,5s e impediva di aprire/chiudere dettagli,
+    // premere bottoni e selezionare/copiare il debug.
+    if (wildAudioDebugPanelTimer) {
+        try { clearInterval(wildAudioDebugPanelTimer); } catch (e) {}
+        wildAudioDebugPanelTimer = null;
     }
 }
 
