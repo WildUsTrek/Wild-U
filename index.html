@@ -2034,16 +2034,132 @@ const WilduMediaClient = (() => {
 
         let fullText = "";
 
+        function buildReadableTextFromPdfItems(items) {
+            const cleanItems = (items || [])
+                .map(it => {
+                    const str = safeString(it.str);
+                    const tr = Array.isArray(it.transform) ? it.transform : [];
+
+                    return {
+                        text: str,
+                        x: Number(tr[4] || 0),
+                        y: Number(tr[5] || 0),
+                        w: Number(it.width || 0),
+                        h: Math.abs(Number(tr[3] || 0)) || 10
+                    };
+                })
+                .filter(it => it.text);
+
+            if (!cleanItems.length) return "";
+
+            // Raggruppa per riga usando la coordinata Y.
+            // Nei PDF la Y può avere micro-variazioni anche sulla stessa riga.
+            const lineTolerance = 4;
+            const lines = [];
+
+            cleanItems
+                .sort((a, b) => {
+                    if (Math.abs(b.y - a.y) > lineTolerance) return b.y - a.y;
+                    return a.x - b.x;
+                })
+                .forEach(item => {
+                    let line = lines.find(l => Math.abs(l.y - item.y) <= lineTolerance);
+
+                    if (!line) {
+                        line = {
+                            y: item.y,
+                            h: item.h,
+                            items: []
+                        };
+                        lines.push(line);
+                    }
+
+                    line.items.push(item);
+                    line.y = (line.y + item.y) / 2;
+                    line.h = Math.max(line.h, item.h);
+                });
+
+            lines.sort((a, b) => b.y - a.y);
+
+            const renderedLines = lines.map(line => {
+                line.items.sort((a, b) => a.x - b.x);
+
+                let out = "";
+                let prev = null;
+
+                line.items.forEach(item => {
+                    if (!prev) {
+                        out += item.text;
+                        prev = item;
+                        return;
+                    }
+
+                    const prevEnd = prev.x + Math.max(prev.w, prev.text.length * 4);
+                    const gap = item.x - prevEnd;
+
+                    // Se il gap orizzontale è ampio, aggiunge spazio extra.
+                    // Serve per evitare parole/colonne schiacciate.
+                    if (gap > 18) {
+                        out += "  ";
+                    } else if (gap > 2 && !/\s$/.test(out)) {
+                        out += " ";
+                    }
+
+                    out += item.text;
+                    prev = item;
+                });
+
+                return {
+                    y: line.y,
+                    h: line.h,
+                    text: out.replace(/[ \t]+/g, " ").trim()
+                };
+            }).filter(l => l.text);
+
+            if (!renderedLines.length) return "";
+
+            const paragraphs = [];
+            let current = [];
+
+            for (let i = 0; i < renderedLines.length; i++) {
+                const line = renderedLines[i];
+                const prev = renderedLines[i - 1];
+
+                if (!prev) {
+                    current.push(line.text);
+                    continue;
+                }
+
+                const verticalGap = Math.abs(prev.y - line.y);
+                const normalLineHeight = Math.max(prev.h, line.h, 10);
+
+                const previousLooksEnded =
+                    /[.!?:;…»")\]]$/.test(prev.text) ||
+                    prev.text.length < 55;
+
+                const bigGap = verticalGap > normalLineHeight * 1.55;
+
+                if (bigGap && previousLooksEnded) {
+                    if (current.length) paragraphs.push(current.join(" "));
+                    current = [line.text];
+                } else {
+                    current.push(line.text);
+                }
+            }
+
+            if (current.length) paragraphs.push(current.join(" "));
+
+            return paragraphs
+                .map(p => p.replace(/[ \t]+/g, " ").trim())
+                .filter(Boolean)
+                .join("\n\n");
+        }
+
         for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
             const page = await pdfDoc.getPage(pageNum);
             const textContent = await page.getTextContent();
 
-            const pageText = (textContent.items || [])
-                .map(it => safeString(it.str))
-                .filter(Boolean)
-                .join(" ")
-                .replace(/\s+/g, " ")
-                .trim();
+            const pageText = buildReadableTextFromPdfItems(textContent.items || []);
 
             if (pageText) {
                 fullText += "\n\n" + pageText;
