@@ -3546,19 +3546,59 @@ function renderWilduAudioDebugPanel() {
 
     const musicBtn = document.getElementById("wildu-audio-debug-music");
     if (musicBtn) musicBtn.onclick = async function (evt) {
-        guardWilduAudioDebugEvent(evt);
-        wilduAudioDebugLog("MANUAL_TEST_MUSIC_TAP", {});
-        const ok = await playWilduAudioElement(aMus, "manual-music");
-        if (ok) fadeAudio(aMus, FIXED_VOL_MUS || 0.01);
+        try { guardWilduAudioDebugEvent(evt); } catch (_) {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch (e) {}
+        }
+
+        wilduAudioDebugLog("MANUAL_TEST_MUSIC_TAP", {
+            src: aMus && aMus.src ? aMus.src : "",
+            target: FIXED_VOL_MUS
+        });
+
+        try {
+            if (aMus && aMus.src && isWilduSystemAudioUrl(aMus.src)) {
+                silenceNativeSystemAudioElement(aMus);
+                await startWilduBufferLoop("music", aMus.src, FIXED_VOL_MUS || 0.01);
+            } else {
+                const ok = await playWilduAudioElement(aMus, "manual-music");
+                if (ok) fadeAudio(aMus, FIXED_VOL_MUS || 0.01);
+            }
+        } catch (e) {
+            wilduAudioDebugLog("MANUAL_TEST_MUSIC_FAILED", {
+                error: e && e.message ? e.message : String(e)
+            });
+            markWilduAudioNeedsUserStart("manual-test-music-failed", e);
+        }
+
         setTimeout(renderWilduAudioDebugPanel, 500);
     };
 
     const ambBtn = document.getElementById("wildu-audio-debug-amb");
     if (ambBtn) ambBtn.onclick = async function (evt) {
-        guardWilduAudioDebugEvent(evt);
-        wilduAudioDebugLog("MANUAL_TEST_AMBIENCE_TAP", {});
-        const ok = await playWilduAudioElement(aAmb, "manual-ambience");
-        if (ok) fadeAudio(aAmb, FIXED_VOL_AMB || 0.01);
+        try { guardWilduAudioDebugEvent(evt); } catch (_) {
+            try { evt.preventDefault(); evt.stopPropagation(); } catch (e) {}
+        }
+
+        wilduAudioDebugLog("MANUAL_TEST_AMBIENCE_TAP", {
+            src: aAmb && aAmb.src ? aAmb.src : "",
+            target: FIXED_VOL_AMB
+        });
+
+        try {
+            if (aAmb && aAmb.src && isWilduSystemAudioUrl(aAmb.src)) {
+                silenceNativeSystemAudioElement(aAmb);
+                await startWilduBufferLoop("ambience", aAmb.src, FIXED_VOL_AMB || 0.001);
+            } else {
+                const ok = await playWilduAudioElement(aAmb, "manual-ambience");
+                if (ok) fadeAudio(aAmb, FIXED_VOL_AMB || 0.001);
+            }
+        } catch (e) {
+            wilduAudioDebugLog("MANUAL_TEST_AMBIENCE_FAILED", {
+                error: e && e.message ? e.message : String(e)
+            });
+            markWilduAudioNeedsUserStart("manual-test-ambience-failed", e);
+        }
+
         setTimeout(renderWilduAudioDebugPanel, 500);
     };
 
@@ -8904,7 +8944,7 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     }
 
     async function loadWilduAudioBuffer(url) {
-        const cleanUrl = String(url || "");
+        const cleanUrl = String(url || "").trim();
         if (!cleanUrl) throw new Error("Audio buffer URL mancante");
 
         const cached = wildBufferAudioCache.get(cleanUrl);
@@ -8913,21 +8953,110 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         const ctx = getWildAudioContext();
         if (!ctx) throw new Error("AudioContext non disponibile");
 
-        const res = await fetch(cleanUrl, {
-            method: "GET",
-            mode: "cors",
-            cache: "force-cache"
-        });
+        const requestUrls = [];
 
-        if (!res.ok) {
-            throw new Error("Fetch audio buffer fallito: " + res.status + " " + res.statusText);
+        try {
+            const u1 = new URL(cleanUrl, window.location.href);
+            requestUrls.push(u1.toString());
+
+            // Safari/iPhone può restare appeso a una risposta cacheata senza header CORS buoni.
+            // Forziamo quindi una seconda prova no-store con query nuova.
+            const u2 = new URL(cleanUrl, window.location.href);
+            u2.searchParams.set("wildu_buffer", "1");
+            u2.searchParams.set("_wb", String(Date.now()));
+            requestUrls.push(u2.toString());
+
+            // Terza prova: togliamo il vecchio parametro tecnico, lasciando un bust pulito.
+            const u3 = new URL(cleanUrl, window.location.href);
+            u3.searchParams.delete("wildu_cors");
+            u3.searchParams.set("wildu_buffer", "1");
+            u3.searchParams.set("_wb", String(Date.now() + 1));
+            requestUrls.push(u3.toString());
+        } catch (e) {
+            requestUrls.push(cleanUrl);
         }
 
-        const arr = await res.arrayBuffer();
-        const decoded = await ctx.decodeAudioData(arr.slice(0));
+        let lastError = "";
 
-        wildBufferAudioCache.set(cleanUrl, decoded);
-        return decoded;
+        for (const requestUrl of requestUrls) {
+            try {
+                wilduAudioDebugLog("BUFFER_FETCH_ATTEMPT", {
+                    url: requestUrl
+                });
+
+                const res = await fetch(requestUrl, {
+                    method: "GET",
+                    mode: "cors",
+                    credentials: "omit",
+                    cache: "no-store",
+                    redirect: "follow"
+                });
+
+                const headersInfo = {
+                    status: res.status,
+                    ok: res.ok,
+                    type: res.type,
+                    contentType: res.headers.get("content-type") || "",
+                    contentLength: res.headers.get("content-length") || "",
+                    acceptRanges: res.headers.get("accept-ranges") || "",
+                    contentRange: res.headers.get("content-range") || "",
+                    accessControlAllowOrigin: res.headers.get("access-control-allow-origin") || ""
+                };
+
+                wilduAudioDebugLog("BUFFER_FETCH_RESPONSE", headersInfo);
+
+                if (!res.ok) {
+                    throw new Error("Fetch audio buffer fallito: " + res.status + " " + res.statusText);
+                }
+
+                const arr = await res.arrayBuffer();
+
+                wilduAudioDebugLog("BUFFER_ARRAYBUFFER_OK", {
+                    url: requestUrl,
+                    bytes: arr ? arr.byteLength : 0
+                });
+
+                if (!arr || arr.byteLength < 1024) {
+                    throw new Error("Audio buffer troppo piccolo o vuoto: " + (arr ? arr.byteLength : 0));
+                }
+
+                let decoded = null;
+
+                try {
+                    decoded = await ctx.decodeAudioData(arr.slice(0));
+                } catch (decodeErr) {
+                    throw new Error(
+                        "decodeAudioData fallito: " +
+                        (decodeErr && decodeErr.message ? decodeErr.message : String(decodeErr))
+                    );
+                }
+
+                if (!decoded || !decoded.duration) {
+                    throw new Error("decodeAudioData non ha prodotto un buffer valido");
+                }
+
+                wildBufferAudioCache.set(cleanUrl, decoded);
+                wildBufferAudioCache.set(requestUrl, decoded);
+
+                wilduAudioDebugLog("BUFFER_DECODE_OK", {
+                    url: requestUrl,
+                    duration: decoded.duration,
+                    sampleRate: decoded.sampleRate,
+                    channels: decoded.numberOfChannels
+                });
+
+                return decoded;
+            } catch (e) {
+                lastError = e && e.message ? e.message : String(e);
+
+                wilduAudioDebugLog("BUFFER_FETCH_OR_DECODE_FAILED", {
+                    url: requestUrl,
+                    error: lastError
+                });
+            }
+        }
+
+        throw new Error(lastError || "Audio buffer Load failed");
     }
 
     function stopWilduBufferLoop(key) {
