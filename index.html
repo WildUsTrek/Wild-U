@@ -1863,8 +1863,65 @@ const WilduMediaClient = (() => {
             : text;
     }
 
-    function buildWilduReaderBlockHtml(block) {
+
+    function buildWilduReaderSoftBreakHtml() {
+        return '<br><span style="display:block; height:8px;"></span>';
+    }
+
+    function buildWilduReaderParagraphDividerHtml() {
+        return `
+            <div style="
+                height:1px;
+                width:100%;
+                margin:22px 0 20px 0;
+                background:linear-gradient(
+                    90deg,
+                    transparent,
+                    rgba(212,175,55,.34),
+                    rgba(124,199,255,.18),
+                    transparent
+                );
+            "></div>
+        `;
+    }
+
+    function formatWilduReaderTextBeauty(rawText) {
+        const clean = normalizeWilduReaderText(rawText);
+        if (!clean) return "";
+
+        // 1) Protezione minima: non spezziamo numeri decimali tipo 3.14
+        // perché la regola agisce solo su "." seguito da spazio/fine frase.
+        let html = escapeHtml(clean);
+
+        // 2) Paragrafi veri già presenti nel testo:
+        // due spazi/righe + riga divisiva elegante.
+        html = html.replace(/\n{2,}/g, function () {
+            return '<br><br>' + buildWilduReaderParagraphDividerHtml();
+        });
+
+        // 3) Singolo a capo residuo: lo rendiamo leggibile ma leggero.
+        html = html.replace(/\n/g, buildWilduReaderSoftBreakHtml());
+
+        // 4) Punto seguito da spazio: forza a capo morbido.
+        // Esempio: "Fine frase. Nuova frase" diventa:
+        // Fine frase.
+        // Nuova frase
+        html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
+
+        // 5) Due punti seguiti da spazio: forza a capo morbido.
+        // Esempio: "Attenzione: testo" diventa:
+        // Attenzione:
+        // testo
+        html = html.replace(/:([\s]+)(?=\S)/g, ":" + buildWilduReaderSoftBreakHtml());
+
+        return html;
+    }
+
+
+    function buildWilduReaderBlockHtml(block, index) {
         if (!block) return "";
+
+        const blockIndex = Number(index || 0);
 
         if (block.type === "html") {
             // Nota: qui assumiamo che in futuro Admin Suite salvi HTML già sanitizzato.
@@ -1899,7 +1956,7 @@ const WilduMediaClient = (() => {
                     color:#fff;
                     font-size:23px;
                     line-height:1.18;
-                    margin:28px 0 12px 0;
+                    margin:${blockIndex > 0 ? "32px" : "8px"} 0 12px 0;
                     letter-spacing:.1px;
                 ">${escapeHtml(block.text)}</h2>
             `;
@@ -1907,6 +1964,7 @@ const WilduMediaClient = (() => {
 
         if (block.type === "quote") {
             return `
+                ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
                 <blockquote style="
                     margin:22px 0;
                     padding:15px 16px;
@@ -1917,12 +1975,13 @@ const WilduMediaClient = (() => {
                     font-size:17px;
                     line-height:1.6;
                     font-style:italic;
-                ">${escapeHtml(block.text)}</blockquote>
+                ">${formatWilduReaderTextBeauty(block.text)}</blockquote>
             `;
         }
 
         if (block.type === "note") {
             return `
+                ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
                 <div style="
                     margin:20px 0;
                     padding:14px 15px;
@@ -1932,18 +1991,19 @@ const WilduMediaClient = (() => {
                     color:#dff3ff;
                     font-size:15px;
                     line-height:1.55;
-                ">${escapeHtml(block.text)}</div>
+                ">${formatWilduReaderTextBeauty(block.text)}</div>
             `;
         }
 
         return `
+            ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
             <p style="
                 color:#ededed;
                 font-size:18px;
                 line-height:1.72;
-                margin:0 0 18px 0;
+                margin:0 0 20px 0;
                 letter-spacing:.05px;
-            ">${escapeHtml(block.text)}</p>
+            ">${formatWilduReaderTextBeauty(block.text)}</p>
         `;
     }
 
@@ -2001,7 +2061,7 @@ const WilduMediaClient = (() => {
 
             ${metaHtml}
 
-            ${blocks.map(buildWilduReaderBlockHtml).join("")}
+            ${blocks.map((block, index) => buildWilduReaderBlockHtml(block, index)).join("")}
         `;
 
         ui.canvasWrap.appendChild(articleEl);
