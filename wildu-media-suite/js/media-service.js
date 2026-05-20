@@ -153,10 +153,64 @@
     if (!before) throw new Error('Media non trovato: ' + id);
 
     var safePatch = Object.assign({}, patch || {});
+
+    // Campi identità/creazione: mai modificabili da update generico.
     delete safePatch.id;
     delete safePatch.createdAt;
     delete safePatch.createdByUid;
     delete safePatch.createdByEmail;
+
+    // Campi fisici R2/file: NON modificabili dalla modale metadati.
+    // Per cambiare file si elimina/archivia e si carica un nuovo media.
+    delete safePatch.fileUrl;
+    delete safePatch.objectKey;
+    delete safePatch.storageProvider;
+    delete safePatch.uploadMode;
+    delete safePatch.originalFileName;
+    delete safePatch.contentType;
+    delete safePatch.sizeBytes;
+    delete safePatch.durationSeconds;
+    delete safePatch.width;
+    delete safePatch.height;
+    delete safePatch.pageCount;
+
+    // Versione tecnica: resta governata da bumpMediaVersion().
+    delete safePatch.mediaVersion;
+    delete safePatch.mediaVersionUpdatedAt;
+    delete safePatch.mediaVersionUpdatedByUid;
+    delete safePatch.mediaVersionUpdatedByEmail;
+
+    if (safePatch.title !== undefined) {
+      safePatch.title = String(safePatch.title || '').trim();
+    }
+
+    if (safePatch.description !== undefined) {
+      safePatch.description = String(safePatch.description || '').trim();
+    }
+
+    if (safePatch.status !== undefined) {
+      safePatch.status = String(safePatch.status || 'ACTIVE').trim().toUpperCase();
+    }
+
+    if (safePatch.visibility !== undefined) {
+      safePatch.visibility = String(safePatch.visibility || 'PUBLIC').trim().toUpperCase();
+    }
+
+    if (safePatch.sortOrder !== undefined) {
+      safePatch.sortOrder = Number(safePatch.sortOrder || 0);
+    }
+
+    if (safePatch.clientRenderable !== undefined) {
+      safePatch.clientRenderable = safePatch.clientRenderable === true || String(safePatch.clientRenderable) === 'true';
+    }
+
+    if (safePatch.mediaVersionNote !== undefined) {
+      safePatch.mediaVersionNote = String(safePatch.mediaVersionNote || '').trim() || null;
+    }
+
+    if (safePatch.tags !== undefined) {
+      safePatch.tags = root.parseTags(safePatch.tags);
+    }
 
     if (safePatch.tagSlug) safePatch.tagSlug = root.slugify(safePatch.tagSlug);
     if (safePatch.kind) safePatch.kind = root.slugify(safePatch.kind);
@@ -165,6 +219,21 @@
     if (safePatch.tagSlugs) safePatch.tagSlugs = safePatch.tagSlugs.map(root.slugify).filter(Boolean);
 
     var afterCandidate = Object.assign({}, before, safePatch);
+
+    if (
+      safePatch.title !== undefined ||
+      safePatch.description !== undefined ||
+      safePatch.tags !== undefined
+    ) {
+      safePatch.searchTokens = root.parseTags([
+        afterCandidate.title || '',
+        afterCandidate.description || '',
+        Array.isArray(afterCandidate.tags) ? afterCandidate.tags.join(',') : ''
+      ].join(','));
+
+      afterCandidate.searchTokens = safePatch.searchTokens;
+    }
+
     validateMediaRouting(afterCandidate);
 
     safePatch.updatedAt = root.FieldValue.serverTimestamp();
