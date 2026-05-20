@@ -103,55 +103,59 @@ body::before {
 
 /* Riserva reale a destra: impedisce ai bottoni nav di finire sotto la dock audio. */
 .nav {
-    padding-right: calc(68px + env(safe-area-inset-right, 0px));
+    padding-right: calc(56px + env(safe-area-inset-right, 0px));
 }
 
 /* --- WILDU AUDIO TOGGLE DOCK: destra navbar, fuori dallo scroll --- */
 #wildu-audio-nav-dock {
+    --wildu-audio-button-size: 34px;
+    --wildu-audio-button-y: 6px;
+
     position: fixed;
     right: 0;
     top: 0;
 
-    width: calc(56px + env(safe-area-inset-right, 0px));
-    min-width: calc(56px + env(safe-area-inset-right, 0px));
+    width: calc(48px + env(safe-area-inset-right, 0px));
+    min-width: calc(48px + env(safe-area-inset-right, 0px));
     height: 50px;
 
     display: none;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-end;
 
     z-index: 1210;
 
-    padding: 0 calc(8px + env(safe-area-inset-right, 0px)) 0 10px;
+    padding: 0 calc(7px + env(safe-area-inset-right, 0px)) 0 8px;
     box-sizing: border-box;
 
-    background: linear-gradient(90deg, rgba(0,0,0,0), #000 24%, #000 100%);
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.82) 38%, #000 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.045);
 
     pointer-events: auto;
 }
 
 #wildu-audio-nav-dock #wildu-audio-unlock-button {
-    width: 38px;
-    min-width: 38px;
-    height: 38px;
+    width: var(--wildu-audio-button-size);
+    min-width: var(--wildu-audio-button-size);
+    height: var(--wildu-audio-button-size);
+    margin-top: var(--wildu-audio-button-y);
 
     display: flex;
     align-items: center;
     justify-content: center;
 
-    border: 1px solid rgba(214,175,55,.72);
-    background: rgba(18,18,18,.94);
+    border: 1px solid rgba(214,175,55,.55);
+    background: rgba(18,18,18,.82);
     color: #d4af37;
 
-    font-weight: 950;
-    font-size: 17px;
+    font-weight: 900;
+    font-size: 15px;
     line-height: 1;
 
     border-radius: 999px;
-    box-shadow: 0 5px 14px rgba(0,0,0,.55);
+    box-shadow: 0 3px 9px rgba(0,0,0,.42);
 
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(7px);
     cursor: pointer;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
@@ -2243,21 +2247,68 @@ function requireLoggedAccess(reason, options = {}) {
     // default = fuori modulo, musica/ambienza consentite se utente non ha OFF.
     // stop    = modulo con Audio STOP, musica/ambienza vietate.
     // module  = modulo con audio proprio, musica/ambienza default vietate.
-    let wildModuleAudioMode = "default";
+    const WILDU_MODULE_AUDIO_MODE_SESSION_KEY = "wilduModuleAudioModeForSession";
+    const WILDU_MODULE_AUDIO_MODE_TTL_MS = 10 * 60 * 1000;
+
+    function readWilduModuleAudioModeFromSession() {
+        try {
+            const raw = sessionStorage.getItem(WILDU_MODULE_AUDIO_MODE_SESSION_KEY);
+            if (!raw) return "default";
+
+            const data = JSON.parse(raw);
+            if (!data || typeof data !== "object") return "default";
+
+            const age = Date.now() - Number(data.ts || 0);
+            if (!Number.isFinite(age) || age < 0 || age > WILDU_MODULE_AUDIO_MODE_TTL_MS) {
+                sessionStorage.removeItem(WILDU_MODULE_AUDIO_MODE_SESSION_KEY);
+                return "default";
+            }
+
+            const mode = String(data.mode || "default").toLowerCase();
+            return mode === "stop" || mode === "module" ? mode : "default";
+        } catch (e) {
+            return "default";
+        }
+    }
+
+    function writeWilduModuleAudioModeToSession(mode, reason) {
+        try {
+            const clean = String(mode || "default").toLowerCase();
+
+            if (clean === "default") {
+                sessionStorage.removeItem(WILDU_MODULE_AUDIO_MODE_SESSION_KEY);
+                return;
+            }
+
+            sessionStorage.setItem(WILDU_MODULE_AUDIO_MODE_SESSION_KEY, JSON.stringify({
+                mode: clean === "stop" || clean === "module" ? clean : "default",
+                reason: String(reason || ""),
+                ts: Date.now()
+            }));
+        } catch (e) {}
+    }
+
+    let wildModuleAudioMode = readWilduModuleAudioModeFromSession();
 
     function setWildModuleAudioMode(mode, reason) {
         const clean = String(mode || "default").toLowerCase();
+
         wildModuleAudioMode =
             clean === "stop" || clean === "module"
                 ? clean
                 : "default";
 
+        writeWilduModuleAudioModeToSession(wildModuleAudioMode, reason || "");
+
         try {
             wilduAudioDebugLog("MODULE_AUDIO_MODE_SET", {
                 mode: wildModuleAudioMode,
-                reason: reason || ""
+                reason: reason || "",
+                persisted: wildModuleAudioMode !== "default"
             });
         } catch (e) {}
+
+        updateWilduAudioToggleButton();
     }
 
     function isWildDefaultBackgroundBlocked() {
@@ -2286,6 +2337,16 @@ function requireLoggedAccess(reason, options = {}) {
                 mode: wildModuleAudioMode,
                 userMuted: wildAudioUserMutedForSession === true
             });
+        } catch (e) {}
+    }
+
+
+        // Se la pagina viene ricaricata mentre era aperto un modulo STOP,
+    // il divieto deve sopravvivere al boot almeno per questa sessione breve.
+    // Altrimenti il primo tap post-reload può riaccendere musica/ambienza.
+    if (wildModuleAudioMode === "stop") {
+        try {
+            stopWildDefaultBackgroundAudio("boot-persisted-module-stop");
         } catch (e) {}
     }
 
@@ -10013,23 +10074,51 @@ function syncWilduAudioNavDockPosition() {
             if (!dock || !nav) return;
 
             const navStyle = window.getComputedStyle(nav);
-            const rect = nav.getBoundingClientRect();
+            const navRect = nav.getBoundingClientRect();
 
             const navHidden =
                 navStyle.display === 'none' ||
-                rect.width <= 0 ||
-                rect.height <= 0 ||
-                rect.bottom <= 0 ||
-                rect.top >= window.innerHeight;
+                navRect.width <= 0 ||
+                navRect.height <= 0 ||
+                navRect.bottom <= 0 ||
+                navRect.top >= window.innerHeight;
 
             if (navHidden) {
                 dock.style.display = 'none';
                 return;
             }
 
+            const activeNavButton =
+                nav.querySelector('button.active') ||
+                nav.querySelector('button');
+
+            let buttonY = 6;
+            let buttonSize = 34;
+
+            if (activeNavButton) {
+                const btnRect = activeNavButton.getBoundingClientRect();
+
+                const candidateSize = Math.max(
+                    30,
+                    Math.min(34, Math.round(btnRect.height - 6))
+                );
+
+                buttonSize = candidateSize;
+
+                buttonY = Math.max(
+                    4,
+                    Math.round(
+                        (btnRect.top - navRect.top) +
+                        ((btnRect.height - buttonSize) / 2)
+                    )
+                );
+            }
+
             dock.style.display = 'flex';
-            dock.style.top = Math.max(0, Math.round(rect.top)) + 'px';
-            dock.style.height = Math.max(46, Math.round(rect.height)) + 'px';
+            dock.style.top = Math.max(0, Math.round(navRect.top)) + 'px';
+            dock.style.height = Math.max(44, Math.round(navRect.height)) + 'px';
+            dock.style.setProperty('--wildu-audio-button-size', buttonSize + 'px');
+            dock.style.setProperty('--wildu-audio-button-y', buttonY + 'px');
         } catch (e) {}
     }
 
@@ -11631,6 +11720,13 @@ function bindWilduStickyNavSafeArea() {
         const shouldBeStuck = window.scrollY > 0 && rect.top <= 0;
 
         nav.classList.toggle('nav-is-stuck', shouldBeStuck);
+
+        // La dock audio dipende dalla geometria reale della nav.
+        // Dopo il cambio classe nav-is-stuck va riallineata subito,
+        // altrimenti su mobile può slittare verso l'alto rispetto alle tab.
+        if (typeof syncWilduAudioNavDockPosition === 'function') {
+            syncWilduAudioNavDockPosition();
+        }
     }
 
     function requestStickyUpdate() {
