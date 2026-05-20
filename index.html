@@ -1618,77 +1618,77 @@ const WilduMediaClient = (() => {
                     var(--w-card);
                 box-shadow:0 5px 16px rgba(0,0,0,0.45);
             ">
-                <div style="
-                    display:grid;
-                    grid-template-columns:38px 1fr;
-                    gap:12px;
-                    align-items:flex-start;
-                ">
-                    <div style="
-                        width:38px;
-                        height:38px;
-                        min-width:38px;
-                        border-radius:999px;
-                        display:flex;
-                        align-items:center;
-                        justify-content:center;
-                        background:rgba(124,199,255,0.12);
-                        border:1px solid rgba(124,199,255,0.34);
-                        color:#7cc7ff;
+                <div style="min-width:0;">
+                    <h3 style="
+                        margin:0 0 5px 0;
+                        color:#eaf7ff;
                         font-size:16px;
+                        line-height:1.16;
                         font-weight:900;
-                        box-shadow:inset 0 0 13px rgba(124,199,255,0.08);
-                        margin-top:1px;
-                    ">▶</div>
+                        letter-spacing:0.1px;
+                    ">${title}</h3>
 
-                    <div style="min-width:0;">
-                        <h3 style="
-                            margin:0 0 5px 0;
-                            color:#eaf7ff;
-                            font-size:16px;
-                            line-height:1.16;
-                            font-weight:900;
-                            letter-spacing:0.1px;
-                        ">${title}</h3>
+                    ${description ? `<p style="
+                        margin:0 0 9px 0;
+                        color:#b7b7b7;
+                        font-size:12px;
+                        line-height:1.35;
+                        display:-webkit-box;
+                        -webkit-line-clamp:2;
+                        -webkit-box-orient:vertical;
+                        overflow:hidden;
+                    ">${description}</p>` : ""}
 
-                        ${description ? `<p style="
-                            margin:0 0 9px 0;
-                            color:#b7b7b7;
-                            font-size:12px;
-                            line-height:1.35;
-                            display:-webkit-box;
-                            -webkit-line-clamp:2;
-                            -webkit-box-orient:vertical;
-                            overflow:hidden;
-                        ">${description}</p>` : ""}
+                    ${duration ? `<div style="
+                        color:#777;
+                        font-size:10px;
+                        font-weight:900;
+                        margin-bottom:7px;
+                        text-transform:uppercase;
+                        letter-spacing:0.6px;
+                    ">${escapeHtml(duration)}</div>` : ""}
 
-                        ${duration ? `<div style="
-                            color:#777;
-                            font-size:10px;
-                            font-weight:900;
-                            margin-bottom:7px;
-                            text-transform:uppercase;
-                            letter-spacing:0.6px;
-                        ">${escapeHtml(duration)}</div>` : ""}
-
-                        <audio
-                            controls
-                            preload="none"
-                            controlsList="nodownload noplaybackrate"
-                            oncontextmenu="return false;"
-                            style="
-                                width:100%;
-                                height:34px;
-                                display:block;
-                            "
-                        >
-                            <source src="${escapeHtml(fileUrl)}">
-                            Il tuo browser non supporta l’audio.
-                        </audio>
-                    </div>
+                    <audio
+                        data-wildu-radio-audio="1"
+                        controls
+                        preload="none"
+                        controlsList="nodownload noplaybackrate"
+                        oncontextmenu="return false;"
+                        style="
+                            width:100%;
+                            height:34px;
+                            display:block;
+                        "
+                    >
+                        <source src="${escapeHtml(fileUrl)}">
+                        Il tuo browser non supporta l’audio.
+                    </audio>
                 </div>
             </div>
         `;
+    }
+
+    function bindRadioExclusivePlayback(mountEl) {
+        if (!mountEl) return;
+
+        const audios = Array.from(mountEl.querySelectorAll('audio[data-wildu-radio-audio="1"]'));
+
+        audios.forEach(audio => {
+            if (!audio || audio.dataset.wilduExclusiveBound === "1") return;
+
+            audio.dataset.wilduExclusiveBound = "1";
+
+            audio.addEventListener("play", function () {
+                audios.forEach(other => {
+                    if (!other || other === audio) return;
+
+                    try { other.pause(); } catch (e) {}
+
+                    // Reset prudente: evita caos se l’utente tocca 3 player di fila.
+                    try { other.currentTime = 0; } catch (e) {}
+                });
+            });
+        });
     }
 
     function buildPdfCard(item) {
@@ -1920,9 +1920,17 @@ const WilduMediaClient = (() => {
             });
 
             Array.from(mountEl.querySelectorAll("[data-wildu-radio-panel]")).forEach(panel => {
-                panel.style.display = panel.getAttribute("data-wildu-radio-panel") === tab
-                    ? "block"
-                    : "none";
+                const isActivePanel = panel.getAttribute("data-wildu-radio-panel") === tab;
+
+                panel.style.display = isActivePanel ? "block" : "none";
+
+                // Se cambio tab, nessun audio nascosto deve continuare a suonare.
+                if (!isActivePanel) {
+                    Array.from(panel.querySelectorAll('audio[data-wildu-radio-audio="1"]')).forEach(audio => {
+                        try { audio.pause(); } catch (e) {}
+                        try { audio.currentTime = 0; } catch (e) {}
+                    });
+                }
             });
         }
 
@@ -1938,6 +1946,9 @@ const WilduMediaClient = (() => {
         // - se sono vuoti entrambi, non si arriva qui perché il caso !items.length è già gestito sopra.
         const defaultRadioTab = episodes.length ? "episodes" : "songs";
         setRadioTab(defaultRadioTab);
+
+        // Un solo audio Radio alla volta.
+        bindRadioExclusivePlayback(mountEl);
     }
 
     function renderBiblioteca(mountEl, result) {
@@ -2472,6 +2483,11 @@ function requireLoggedAccess(reason, options = {}) {
     // Usiamo fetch + decodeAudioData + GainNode per musica e ambienza.
     let wildBufferAudioCache = new Map();
     let wildBufferAudioLoops = new Map();
+
+    // Lock anti re-entry:
+    // evita triplo start/restart quando dopo cache nucleare arrivano touchstart,
+    // click e bootstrap mentre il primo decode/start è ancora in corso.
+    let wildAudioStartInFlightPromise = null;
 
     // Mobile audio unlock:
     // su smartphone il primo tap può arrivare prima che gli asset audio siano pronti.
@@ -10651,6 +10667,37 @@ function syncWilduAudioNavDockPosition() {
     }
 
     async function startAudioMixer(options = {}) {
+        if (wildAudioStartInFlightPromise) {
+            try {
+                wilduAudioDebugLog("START_MIXER_SKIPPED_IN_FLIGHT", {
+                    reason: options && options.reason ? options.reason : "",
+                    mode: wildModuleAudioMode,
+                    muted: wildAudioUserMutedForSession === true
+                });
+            } catch (e) {}
+
+            return wildAudioStartInFlightPromise;
+        }
+
+        wildAudioStartInFlightPromise = startAudioMixerUnlocked(options).finally(() => {
+            wildAudioStartInFlightPromise = null;
+
+            // Paracadute conservativo:
+            // se durante lo start asincrono l’utente mette OFF o entra in modulo STOP/module,
+            // spegniamo comunque la musica/ambienza default appena lo start finisce.
+            try {
+                if (typeof isWildDefaultBackgroundBlocked === "function" && isWildDefaultBackgroundBlocked()) {
+                    stopWildDefaultBackgroundAudio("start-mixer-post-lock-guard");
+                }
+
+                updateWilduAudioToggleButton();
+            } catch (e) {}
+        });
+
+        return wildAudioStartInFlightPromise;
+    }
+
+    async function startAudioMixerUnlocked(options = {}) {
     // OFF utente: blocco forte. Solo il toggle ON può forzare riaccensione.
     if (wildAudioUserMutedForSession === true && options.forceUserToggle !== true) {
         stopWildDefaultBackgroundAudio("start-mixer-blocked-user-muted");
