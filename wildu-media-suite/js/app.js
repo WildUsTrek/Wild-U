@@ -1738,15 +1738,30 @@
     );
   }
 
+  function getClientAudioDebugPanelSwitchValue() {
+    return !!(
+      state.partnerClientConfig &&
+      state.partnerClientConfig.audio_debug_panel_switch === true
+    );
+  }
+
   function renderClientConsoleSwitchCardState() {
     var select = document.getElementById('client-console-switch');
+    var audioSelect = document.getElementById('client-audio-debug-panel-switch');
+
     var label = document.getElementById('client-console-switch-current');
+    var audioLabel = document.getElementById('client-audio-debug-panel-current');
     var updated = document.getElementById('client-console-switch-updated');
 
     var value = getClientConsoleSwitchValue();
+    var audioValue = getClientAudioDebugPanelSwitchValue();
 
     if (select) {
       select.value = value ? 'true' : 'false';
+    }
+
+    if (audioSelect) {
+      audioSelect.value = audioValue ? 'true' : 'false';
     }
 
     if (label) {
@@ -1755,10 +1770,30 @@
         : '<span class="badge good">SILENZIOSO</span>';
     }
 
+    if (audioLabel) {
+      audioLabel.innerHTML = audioValue
+        ? '<span class="badge warn">PANNELLO AUDIO ON</span>'
+        : '<span class="badge good">PANNELLO AUDIO OFF</span>';
+    }
+
     if (updated) {
       var cfg = state.partnerClientConfig || {};
-      var who = cfg.console_switch_updatedByEmail || cfg.console_switch_updatedByUid || '';
-      var when = root.toDateTimeLabel ? root.toDateTimeLabel(cfg.console_switch_updatedAt) : '';
+
+      var who =
+        cfg.console_switch_updatedByEmail ||
+        cfg.audio_debug_panel_updatedByEmail ||
+        cfg.console_switch_updatedByUid ||
+        cfg.audio_debug_panel_updatedByUid ||
+        '';
+
+      var whenValue =
+        cfg.console_switch_updatedAt ||
+        cfg.audio_debug_panel_updatedAt ||
+        null;
+
+      var when = root.toDateTimeLabel && whenValue
+        ? root.toDateTimeLabel(whenValue)
+        : '';
 
       updated.textContent = who || when
         ? 'Ultimo aggiornamento: ' + [when, who].filter(Boolean).join(' — ')
@@ -1773,23 +1808,40 @@
     var select = document.getElementById('client-console-switch');
     if (!select) throw new Error('Controllo console switch non trovato.');
 
+    var audioSelect = document.getElementById('client-audio-debug-panel-switch');
+
     var value = select.value === 'true';
+    var audioValue = audioSelect ? audioSelect.value === 'true' : false;
+
     var user = root.requireCurrentUser();
+    var now = root.FieldValue.serverTimestamp();
 
     await root.db
       .collection('PARAMETERS_PARTNER')
       .doc('client_config')
       .set({
         console_switch: value,
-        console_switch_updatedAt: root.FieldValue.serverTimestamp(),
+        console_switch_updatedAt: now,
         console_switch_updatedByUid: user.uid,
-        console_switch_updatedByEmail: user.email || null
+        console_switch_updatedByEmail: user.email || null,
+
+        // Switch separato: decide SOLO se mostrare il pannello audio debug nel client.
+        // Il client lo userà insieme a console_switch:
+        // console_switch=true + audio_debug_panel_switch=true => pannello visibile.
+        audio_debug_panel_switch: audioValue,
+        audio_debug_panel_updatedAt: now,
+        audio_debug_panel_updatedByUid: user.uid,
+        audio_debug_panel_updatedByEmail: user.email || null
       }, { merge: true });
 
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
       console_switch: value,
       console_switch_updatedByUid: user.uid,
-      console_switch_updatedByEmail: user.email || null
+      console_switch_updatedByEmail: user.email || null,
+
+      audio_debug_panel_switch: audioValue,
+      audio_debug_panel_updatedByUid: user.uid,
+      audio_debug_panel_updatedByEmail: user.email || null
     });
 
     renderClientConsoleSwitchCardState();
@@ -1797,8 +1849,12 @@
 
     root.toast(
       value
-        ? 'Console switch attivato: il client potrà rendere il Service Worker loquace.'
-        : 'Console switch disattivato: il client potrà rendere il Service Worker silenzioso.',
+        ? (
+            audioValue
+              ? 'Console switch ON e pannello audio debug ON.'
+              : 'Console switch ON, ma pannello audio debug OFF.'
+          )
+        : 'Console switch OFF: client, SW e pannello audio resteranno silenziosi.',
       'success'
     );
   }
@@ -1952,31 +2008,49 @@
     card.innerHTML = '' +
       '<h2>🎛️ Console switch client / Service Worker</h2>' +
       '<p class="muted">' +
-        'Scrive <code>console_switch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
-        'Il client userà questo valore per rendere il Service Worker silenzioso oppure loquace.' +
+        'Scrive <code>console_switch</code> e <code>audio_debug_panel_switch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
+        'Il primo controlla log/debug generali; il secondo decide solo se mostrare il pannello audio debug nel client.' +
       '</p>' +
       '<p class="small-text">' +
-        'Questa scheda non modifica ancora il Service Worker: prepara solo la configurazione centrale. ' +
-        'La patch Client + SW arriverà nello step successivo.' +
+        'Regola consigliata: tieni <code>console_switch=true</code> solo durante debug. ' +
+        'Accendi <code>audio_debug_panel_switch=true</code> solo quando vuoi vedere il pannello audio su smartphone.' +
       '</p>' +
       '<div class="form-grid">' +
+
         '<div class="field third">' +
           '<label for="client-console-switch">Console switch</label>' +
           '<select id="client-console-switch">' +
-            '<option value="false">false — SW silenzioso</option>' +
-            '<option value="true">true — SW loquace/debug</option>' +
+            '<option value="false">false — SW/log silenziosi</option>' +
+            '<option value="true">true — SW/log loquaci</option>' +
           '</select>' +
         '</div>' +
         '<div class="field third">' +
-          '<label>Stato attuale</label>' +
+          '<label>Stato console</label>' +
           '<div id="client-console-switch-current" style="padding-top:10px;">—</div>' +
         '</div>' +
         '<div class="field third">' +
           '<label>Audit</label>' +
           '<div id="client-console-switch-updated" class="small-text" style="padding-top:10px;">—</div>' +
         '</div>' +
+
+        '<div class="field third">' +
+          '<label for="client-audio-debug-panel-switch">Pannello audio debug</label>' +
+          '<select id="client-audio-debug-panel-switch">' +
+            '<option value="false">false — pannello nascosto</option>' +
+            '<option value="true">true — pannello visibile</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="field third">' +
+          '<label>Stato pannello audio</label>' +
+          '<div id="client-audio-debug-panel-current" style="padding-top:10px;">—</div>' +
+        '</div>' +
+        '<div class="field third">' +
+          '<label>Regola</label>' +
+          '<div class="small-text" style="padding-top:10px;">Il pannello audio si apre solo se entrambi gli switch sono ON.</div>' +
+        '</div>' +
+
         '<div class="form-actions full">' +
-          '<button data-requires-auth type="button" id="btn-save-client-console-switch">Salva console switch</button>' +
+          '<button data-requires-auth type="button" id="btn-save-client-console-switch">Salva switch client</button>' +
         '</div>' +
       '</div>';
 
