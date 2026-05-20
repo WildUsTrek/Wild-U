@@ -100,6 +100,59 @@ body::before {
     color: #fff;
     box-shadow: 0 0 12px var(--w-green);
 }
+
+/* --- WILDU AUDIO TOGGLE: appendice destra della navbar --- */
+.nav #wildu-audio-unlock-button {
+    position: sticky;
+    right: 0;
+
+    flex: 0 0 38px;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    z-index: 3;
+
+    margin-left: 6px;
+    margin-right: 0;
+
+    border: 1px solid rgba(214,175,55,.72);
+    background: rgba(18,18,18,.94);
+    color: #d4af37;
+
+    font-weight: 950;
+    font-size: 17px;
+    line-height: 1;
+
+    border-radius: 999px;
+    box-shadow:
+        -8px 0 12px rgba(0,0,0,.72),
+        0 5px 14px rgba(0,0,0,.45);
+
+    backdrop-filter: blur(8px);
+    cursor: pointer;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav #wildu-audio-unlock-button::before {
+    content: "";
+    position: absolute;
+    left: -18px;
+    top: -4px;
+    bottom: -4px;
+    width: 18px;
+    background: linear-gradient(90deg, rgba(0,0,0,0), #000);
+    pointer-events: none;
+}
+
+.nav #wildu-audio-unlock-button:active {
+    transform: scale(.96);
+}
         
         .resource-item { display: flex; align-items: center; justify-content: space-between; background: var(--w-card); padding: 20px; border-radius: 16px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); cursor: pointer; } .resource-item:active { background: #252525; } .resource-info { display: flex; align-items: center; gap: 15px; } .resource-icon { font-size: 24px; } .resource-name { font-weight: 800; color: #fff; }
 .container {
@@ -9945,16 +9998,31 @@ function stopWilduUserSessionAudio(reason) {
         updateWilduAudioToggleButton();
     }
 
-    function showWilduAudioUnlockButton(reason) {
+function showWilduAudioUnlockButton(reason) {
         try {
             if (!hasWilduPlayableSystemAudio()) return;
 
             let btn = document.getElementById('wildu-audio-unlock-button');
+            const nav = document.querySelector('.nav');
 
             if (!btn) {
                 btn = document.createElement('button');
                 btn.id = 'wildu-audio-unlock-button';
                 btn.type = 'button';
+
+                btn.addEventListener('click', function (evt) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    toggleWilduUserSessionAudio();
+                }, { passive: false });
+            }
+
+            // Il bottone audio deve vivere nella navbar, come appendice sticky a destra.
+            // Se era stato creato in body da versioni precedenti, lo spostiamo senza ricrearlo.
+            if (nav && btn.parentNode !== nav) {
+                nav.appendChild(btn);
+            } else if (!nav && !btn.parentNode) {
+                // Fallback raro: se la nav non esiste, non perdiamo il controllo audio.
                 btn.style.cssText = [
                     'position:fixed',
                     'right:calc(10px + env(safe-area-inset-right,0px))',
@@ -9966,7 +10034,7 @@ function stopWilduUserSessionAudio(reason) {
                     'align-items:center',
                     'justify-content:center',
                     'border:1px solid rgba(214,175,55,.72)',
-                    'background:rgba(18,18,18,.86)',
+                    'background:rgba(18,18,18,.94)',
                     'color:#d4af37',
                     'font-weight:950',
                     'font-size:17px',
@@ -9979,13 +10047,10 @@ function stopWilduUserSessionAudio(reason) {
                     '-webkit-tap-highlight-color:transparent'
                 ].join(';');
 
-                btn.addEventListener('click', function (evt) {
-                    evt.preventDefault();
-                    evt.stopPropagation();
-                    toggleWilduUserSessionAudio();
-                }, { passive: false });
-
                 document.body.appendChild(btn);
+            } else if (nav) {
+                // Se entra in nav, lo stile è governato dal CSS .nav #wildu-audio-unlock-button.
+                btn.removeAttribute('style');
             }
 
             wildAudioUnlockButtonShown = true;
@@ -9994,7 +10059,7 @@ function stopWilduUserSessionAudio(reason) {
             pageDebug('AUDIO_TOGGLE_BUTTON_SHOWN', {
                 reason: reason || '',
                 muted: wildAudioUserMutedForSession,
-                position: 'top-header-fixed'
+                position: nav ? 'nav-sticky-right' : 'fixed-fallback'
             });
         } catch (e) {}
     }
