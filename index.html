@@ -9156,7 +9156,19 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         const ctx = getWildAudioContext();
         if (!ctx) throw new Error("AudioContext non disponibile");
 
-        await resumeWildAudioContext();
+        primeWilduAudioContextNow("buffer-loop-" + key + "-before-resume");
+
+        wilduAudioDebugLog("BUFFER_CONTEXT_BEFORE_RESUME", {
+            key: key,
+            state: ctx.state || ""
+        });
+
+        await resumeWildAudioContextWithTimeout("buffer-loop-" + key, 2200);
+
+        wilduAudioDebugLog("BUFFER_CONTEXT_READY", {
+            key: key,
+            state: ctx.state || ""
+        });
 
         const buffer = await loadWilduAudioBuffer(url);
 
@@ -9248,6 +9260,155 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
             return null;
         }
     }
+
+
+    function pushWilduAudioDebugEventNoRender(type, details) {
+    try {
+        if (typeof wilduConsoleIsEnabled === "function" && !wilduConsoleIsEnabled()) return;
+
+        const entry = {
+            ts: new Date().toISOString(),
+            type: String(type || "AUDIO_DEBUG"),
+            details: details || {}
+        };
+
+        wildAudioLastAction = entry.type;
+
+        if (entry.details && entry.details.error) {
+            wildAudioLastError = String(entry.details.error || "");
+        }
+
+        wildAudioDebugEvents.push(entry);
+        if (wildAudioDebugEvents.length > 50) {
+            wildAudioDebugEvents = wildAudioDebugEvents.slice(-50);
+        }
+    } catch (e) {}
+}
+
+function primeWilduAudioContextNow(reason) {
+    let ctx = null;
+
+    try {
+        ctx = getWildAudioContext();
+    } catch (e) {
+        pushWilduAudioDebugEventNoRender("CTX_PRIME_GET_CONTEXT_FAILED", {
+            reason: reason || "",
+            error: e && e.message ? e.message : String(e)
+        });
+        return false;
+    }
+
+    if (!ctx) {
+        pushWilduAudioDebugEventNoRender("CTX_PRIME_NO_CONTEXT", {
+            reason: reason || ""
+        });
+        return false;
+    }
+
+    pushWilduAudioDebugEventNoRender("CTX_PRIME_ENTER", {
+        reason: reason || "",
+        state: ctx.state || ""
+    });
+
+    if (ctx.state === "running") {
+        return true;
+    }
+
+    // iOS/Safari: proviamo il vecchio trucco del buffer silenzioso
+    // immediatamente nel gesto utente, prima di snapshot/render/debug pesanti.
+    try {
+        const silentBuffer = ctx.createBuffer(1, 1, 22050);
+        const silentSource = ctx.createBufferSource();
+        silentSource.buffer = silentBuffer;
+        silentSource.connect(ctx.destination);
+        silentSource.start(0);
+
+        pushWilduAudioDebugEventNoRender("CTX_PRIME_SILENT_SOURCE_STARTED", {
+            reason: reason || "",
+            state: ctx.state || ""
+        });
+    } catch (e) {
+        pushWilduAudioDebugEventNoRender("CTX_PRIME_SILENT_SOURCE_FAILED", {
+            reason: reason || "",
+            state: ctx.state || "",
+            error: e && e.message ? e.message : String(e)
+        });
+    }
+
+    try {
+        if (ctx.resume) {
+            const p = ctx.resume();
+
+            if (p && typeof p.then === "function") {
+                p.then(() => {
+                    pushWilduAudioDebugEventNoRender("CTX_PRIME_RESUME_PROMISE_OK", {
+                        reason: reason || "",
+                        state: ctx.state || ""
+                    });
+                }).catch((e) => {
+                    pushWilduAudioDebugEventNoRender("CTX_PRIME_RESUME_PROMISE_FAILED", {
+                        reason: reason || "",
+                        state: ctx.state || "",
+                        error: e && e.message ? e.message : String(e)
+                    });
+                });
+            }
+        }
+    } catch (e) {
+        pushWilduAudioDebugEventNoRender("CTX_PRIME_RESUME_THROW", {
+            reason: reason || "",
+            state: ctx.state || "",
+            error: e && e.message ? e.message : String(e)
+        });
+    }
+
+    return ctx.state === "running";
+}
+
+async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
+    const ctx = getWildAudioContext();
+
+    if (!ctx) {
+        throw new Error("AudioContext non disponibile");
+    }
+
+    if (ctx.state === "running") {
+        return true;
+    }
+
+    primeWilduAudioContextNow(reason || "resume-timeout-helper");
+
+    if (ctx.state === "running") {
+        return true;
+    }
+
+    let resumePromise = null;
+
+    try {
+        resumePromise = ctx.resume ? ctx.resume() : Promise.resolve();
+    } catch (e) {
+        throw new Error("AudioContext resume throw: " + (e && e.message ? e.message : String(e)));
+    }
+
+    const result = await Promise.race([
+        Promise.resolve(resumePromise).then(() => "resume-resolved").catch((e) => {
+            return "resume-rejected:" + (e && e.message ? e.message : String(e));
+        }),
+        new Promise(resolve => setTimeout(() => resolve("resume-timeout"), timeoutMs))
+    ]);
+
+    pushWilduAudioDebugEventNoRender("CTX_RESUME_RACE_RESULT", {
+        reason: reason || "",
+        result: result,
+        state: ctx.state || ""
+    });
+
+    if (ctx.state !== "running") {
+        throw new Error("AudioContext non sbloccato: " + result + " / state=" + ctx.state);
+    }
+
+    return true;
+}
 
     function resumeWildAudioContext() {
         try {
@@ -9534,9 +9695,14 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     }
 
     async function startAudioMixer() {
-        wilduAudioDebugLog('START_MIXER_ENTER', {
-            snapshot: collectWilduAudioDebugSnapshot()
-        });
+    // Prima cosa assoluta nel gesto utente:
+    // su iPhone l'AudioContext deve essere "primed" prima di qualunque render/snapshot pesante.
+    primeWilduAudioContextNow('startAudioMixer-first-instruction');
+
+    wilduAudioDebugLog('START_MIXER_ENTER', {
+        ctxStateNow: getWilduAudioCtxStateSafe(),
+        snapshot: collectWilduAudioDebugSnapshot()
+    });
 
         if (!hasWilduPlayableSystemAudio()) {
             wildAudioNeedsUserStart = true;
