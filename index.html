@@ -2167,6 +2167,18 @@ function requireLoggedAccess(reason, options = {}) {
     let wildAudioNeedsUserStart = false;
     let wildAudioUnlockButtonShown = false;
 
+    // Toggle utente, SOLO sessione corrente:
+    // true = l'utente ha spento musica/ambienza per questa sessione.
+    const WILDU_AUDIO_USER_MUTED_SESSION_KEY = "wilduAudioUserMutedForSession";
+    let wildAudioUserMutedForSession = false;
+
+    try {
+        wildAudioUserMutedForSession =
+            sessionStorage.getItem(WILDU_AUDIO_USER_MUTED_SESSION_KEY) === "1";
+    } catch (e) {
+        wildAudioUserMutedForSession = false;
+    }
+
     // Debug audio mobile: si attiva SOLO quando Admin Suite -> console_switch è ON.
     let wildAudioDebugEvents = [];
     let wildAudioLastError = "";
@@ -2221,6 +2233,14 @@ function requireLoggedAccess(reason, options = {}) {
 
     function handleWilduAudioStartGesture(evt) {
         if (isWilduAudioDebugEvent(evt)) return;
+
+        // Se l'utente ha spento l'audio per questa sessione,
+        // nessun tap/click generico deve riaccenderlo.
+        if (wildAudioUserMutedForSession === true) return;
+
+        // Se è già attivo, non richiamare startAudioMixer a ogni click.
+        if (audioInited === true && hasActiveWilduSessionAudio()) return;
+
         startAudioMixer();
     }
 
@@ -9336,6 +9356,34 @@ async function loadWilduAudioBuffer(url) {
             return false;
         }
 
+        // Idempotenza: se il loop è già attivo con lo stesso URL,
+        // NON ricreiamo AudioBufferSourceNode e NON facciamo ripartire la musica da zero.
+        try {
+            const existing = wildBufferAudioLoops.get(key);
+
+            if (
+                existing &&
+                existing.source &&
+                existing.gain &&
+                existing.url === url
+            ) {
+                existing.targetVolume = safeVolume;
+
+                try {
+                    existing.gain.gain.value = safeVolume;
+                } catch (e) {}
+
+                wilduAudioDebugLog("BUFFER_LOOP_ALREADY_ACTIVE", {
+                    key: key,
+                    url: url,
+                    volume: safeVolume,
+                    startedAt: existing.startedAt || 0
+                });
+
+                return true;
+            }
+        } catch (e) {}
+
         const ctx = getWildAudioContext();
         if (!ctx) throw new Error("AudioContext non disponibile");
 
@@ -9734,52 +9782,144 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
         }
     }
 
-    function hideWilduAudioUnlockButton() {
+    function setWilduAudioUserMutedForSession(value, reason) {
+        wildAudioUserMutedForSession = value === true;
+
+        try {
+            sessionStorage.setItem(
+                WILDU_AUDIO_USER_MUTED_SESSION_KEY,
+                wildAudioUserMutedForSession ? "1" : "0"
+            );
+        } catch (e) {}
+
+        wilduAudioDebugLog("AUDIO_USER_SESSION_TOGGLE", {
+            muted: wildAudioUserMutedForSession,
+            reason: reason || ""
+        });
+
+        updateWilduAudioToggleButton();
+    }
+
+ function hasActiveWilduSessionAudio() {
+        try {
+            if (wildBufferAudioLoops && wildBufferAudioLoops.has("music")) return true;
+            if (wildBufferAudioLoops && wildBufferAudioLoops.has("ambience")) return true;
+            if (aMus && !aMus.paused) return true;
+            if (aAmb && !aAmb.paused) return true;
+        } catch (e) {}
+
+        return false;
+    }
+
+    function updateWilduAudioToggleButton() {
         try {
             const btn = document.getElementById('wildu-audio-unlock-button');
-            if (btn) btn.remove();
-            wildAudioUnlockButtonShown = false;
+            if (!btn) return;
+
+            const muted = wildAudioUserMutedForSession === true;
+
+            btn.textContent = muted ? '🔇' : '🔊';
+            btn.title = muted ? 'Audio spento per questa sessione' : 'Audio acceso';
+            btn.setAttribute(
+                'aria-label',
+                muted ? 'Riattiva audio Wild-U' : 'Spegni audio Wild-U'
+            );
+
+            btn.style.opacity = muted ? '0.72' : '1';
+            btn.style.borderColor = muted
+                ? 'rgba(160,160,160,.55)'
+                : 'rgba(214,175,55,.72)';
+            btn.style.color = muted ? '#cfcfcf' : '#d4af37';
         } catch (e) {}
+    }
+
+function stopWilduUserSessionAudio(reason) {
+        try {
+            stopAllWilduBufferLoops();
+            stopOneWilduAudio(aMus, { reset: false });
+            stopOneWilduAudio(aAmb, { reset: false });
+
+            audioInited = false;
+            wildAudioNeedsUserStart = false;
+            wildAudioNeedsUserResume = false;
+            wildAudioPausedByHidden = false;
+
+            wilduAudioDebugLog("AUDIO_USER_SESSION_STOPPED", {
+                reason: reason || "",
+                scope: "music-ambience-only"
+            });
+
+            updateWilduAudioToggleButton();
+        } catch (e) {}
+    }
+
+    function toggleWilduUserSessionAudio() {
+        if (wildAudioUserMutedForSession) {
+            setWilduAudioUserMutedForSession(false, "button-on");
+            startAudioMixer({ forceUserToggle: true });
+            return;
+        }
+
+        setWilduAudioUserMutedForSession(true, "button-off");
+        stopWilduUserSessionAudio("button-off");
+    }
+
+    function hideWilduAudioUnlockButton() {
+        // Nome storico mantenuto per non rompere le chiamate esistenti.
+        // Ora NON rimuove più il bottone: lo mantiene come toggle utente ON/OFF.
+        updateWilduAudioToggleButton();
     }
 
     function showWilduAudioUnlockButton(reason) {
         try {
-            if (wildAudioUnlockButtonShown) return;
             if (!hasWilduPlayableSystemAudio()) return;
 
+            let btn = document.getElementById('wildu-audio-unlock-button');
+
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = 'wildu-audio-unlock-button';
+                btn.type = 'button';
+                btn.style.cssText = [
+                    'position:fixed',
+                    'right:calc(10px + env(safe-area-inset-right,0px))',
+                    'top:calc(10px + env(safe-area-inset-top,0px))',
+                    'z-index:1301',
+                    'width:38px',
+                    'height:38px',
+                    'display:flex',
+                    'align-items:center',
+                    'justify-content:center',
+                    'border:1px solid rgba(214,175,55,.72)',
+                    'background:rgba(18,18,18,.86)',
+                    'color:#d4af37',
+                    'font-weight:950',
+                    'font-size:17px',
+                    'line-height:1',
+                    'border-radius:999px',
+                    'box-shadow:0 6px 18px rgba(0,0,0,.45)',
+                    'backdrop-filter:blur(8px)',
+                    'cursor:pointer',
+                    'padding:0',
+                    '-webkit-tap-highlight-color:transparent'
+                ].join(';');
+
+                btn.addEventListener('click', function (evt) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    toggleWilduUserSessionAudio();
+                }, { passive: false });
+
+                document.body.appendChild(btn);
+            }
+
             wildAudioUnlockButtonShown = true;
+            updateWilduAudioToggleButton();
 
-            const btn = document.createElement('button');
-            btn.id = 'wildu-audio-unlock-button';
-            btn.type = 'button';
-            btn.textContent = '🔊 Attiva audio';
-            btn.style.cssText = [
-                'position:fixed',
-                'left:50%',
-                'bottom:calc(92px + env(safe-area-inset-bottom,0px))',
-                'transform:translateX(-50%)',
-                'z-index:999999',
-                'border:1px solid rgba(214,175,55,.75)',
-                'background:linear-gradient(135deg,#2d5a27,#d4af37)',
-                'color:#fff',
-                'font-weight:950',
-                'font-size:15px',
-                'border-radius:999px',
-                'padding:13px 20px',
-                'box-shadow:0 12px 35px rgba(0,0,0,.55)',
-                'cursor:pointer'
-            ].join(';');
-
-            btn.addEventListener('click', function (evt) {
-                evt.preventDefault();
-                evt.stopPropagation();
-                startAudioMixer();
-            }, { passive: false });
-
-            document.body.appendChild(btn);
-
-            pageDebug('AUDIO_UNLOCK_BUTTON_SHOWN', {
-                reason: reason || ''
+            pageDebug('AUDIO_TOGGLE_BUTTON_SHOWN', {
+                reason: reason || '',
+                muted: wildAudioUserMutedForSession,
+                position: 'top-header-fixed'
             });
         } catch (e) {}
     }
@@ -9877,7 +10017,27 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
         ensureWildAudioNode(audio);
     }
 
-    async function startAudioMixer() {
+    async function startAudioMixer(options = {}) {
+    // Rispetta il toggle utente: se ha spento l'audio per questa sessione,
+    // solo il bottone ON può forzare la riaccensione.
+    if (wildAudioUserMutedForSession === true && options.forceUserToggle !== true) {
+        wilduAudioDebugLog('START_MIXER_SKIPPED_USER_MUTED', {
+            reason: options.reason || '',
+            muted: true
+        });
+        return false;
+    }
+
+    // Se è già attivo, non rifare fetch/decode/start.
+    if (audioInited === true && hasActiveWilduSessionAudio() && options.forceUserToggle !== true) {
+        wilduAudioDebugLog('START_MIXER_SKIPPED_ALREADY_ACTIVE', {
+            bufferMusic: getWilduBufferLoopInfo("music"),
+            bufferAmbience: getWilduBufferLoopInfo("ambience")
+        });
+        updateWilduAudioToggleButton();
+        return true;
+    }
+
     // Prima cosa assoluta nel gesto utente:
     // su iPhone l'AudioContext deve essere "primed" prima di qualunque render/snapshot pesante.
     primeWilduAudioContextNow('startAudioMixer-first-instruction');
@@ -10126,6 +10286,12 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
     }
 
     async function resumeWilduAudioAfterHiddenPage() {
+        if (wildAudioUserMutedForSession === true) {
+            wildAudioPausedByHidden = false;
+            wildAudioNeedsUserResume = false;
+            return;
+        }
+
         if (!wildAudioPausedByHidden || !audioInited) return;
 
         if (wildAudioResumeRetryTimer) {
