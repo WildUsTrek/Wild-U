@@ -1,4 +1,4 @@
-/* global firebase, WILDU_MEDIA_CONFIG */
+/* global firebase, WILDU_MEDIA_CONFIG */ 
 (function () {
   'use strict';
 
