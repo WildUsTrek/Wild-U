@@ -2179,6 +2179,56 @@ function requireLoggedAccess(reason, options = {}) {
         wildAudioUserMutedForSession = false;
     }
 
+    // Policy audio modulo:
+    // default = fuori modulo, musica/ambienza consentite se utente non ha OFF.
+    // stop    = modulo con Audio STOP, musica/ambienza vietate.
+    // module  = modulo con audio proprio, musica/ambienza default vietate.
+    let wildModuleAudioMode = "default";
+
+    function setWildModuleAudioMode(mode, reason) {
+        const clean = String(mode || "default").toLowerCase();
+        wildModuleAudioMode =
+            clean === "stop" || clean === "module"
+                ? clean
+                : "default";
+
+        try {
+            wilduAudioDebugLog("MODULE_AUDIO_MODE_SET", {
+                mode: wildModuleAudioMode,
+                reason: reason || ""
+            });
+        } catch (e) {}
+    }
+
+    function isWildDefaultBackgroundBlocked() {
+        return wildAudioUserMutedForSession === true || wildModuleAudioMode !== "default";
+    }
+
+    function hasWildDefaultBackgroundActive() {
+        try {
+            if (wildBufferAudioLoops && wildBufferAudioLoops.has("music")) return true;
+            if (wildBufferAudioLoops && wildBufferAudioLoops.has("ambience")) return true;
+            if (aMus && !aMus.paused) return true;
+            if (aAmb && !aAmb.paused) return true;
+        } catch (e) {}
+
+        return false;
+    }
+
+    function stopWildDefaultBackgroundAudio(reason) {
+        try {
+            stopAllWilduBufferLoops();
+            stopOneWilduAudio(aMus, { reset: false });
+            stopOneWilduAudio(aAmb, { reset: false });
+
+            wilduAudioDebugLog("DEFAULT_BACKGROUND_STOPPED", {
+                reason: reason || "",
+                mode: wildModuleAudioMode,
+                userMuted: wildAudioUserMutedForSession === true
+            });
+        } catch (e) {}
+    }
+
     // Debug audio mobile: si attiva SOLO quando Admin Suite -> console_switch è ON.
     let wildAudioDebugEvents = [];
     let wildAudioLastError = "";
@@ -2234,19 +2284,21 @@ function requireLoggedAccess(reason, options = {}) {
     function handleWilduAudioStartGesture(evt) {
         if (isWilduAudioDebugEvent(evt)) return;
 
-        // Se l'utente ha spento l'audio per questa sessione,
-        // nessun tap/click generico deve riaccenderlo.
+        // OFF utente: nessun click generico deve riaccendere musica/ambienza.
         if (wildAudioUserMutedForSession === true) return;
 
-        // Se è già attivo, non richiamare startAudioMixer a ogni click.
-        if (audioInited === true && hasActiveWilduSessionAudio()) return;
+        // Dentro moduli STOP o moduli con audio proprio, i click NON devono riaccendere
+        // la musica/ambienza naturale della app.
+        if (wildModuleAudioMode !== "default") return;
 
-        startAudioMixer();
+        // Se musica/ambienza sono già attive, non richiamare startAudioMixer a ogni click.
+        if (audioInited === true && hasWildDefaultBackgroundActive()) return;
+
+        startAudioMixer({ reason: "global-user-gesture" });
     }
 
     document.addEventListener('touchstart', handleWilduAudioStartGesture, { passive: true });
     document.addEventListener('click', handleWilduAudioStartGesture);
-
 
 
     // 1. Funzione per attivare/disattivare la modalità modifica
@@ -7505,18 +7557,11 @@ if (profKeyEl) {
             if (currentModuleAudio) { 
                 currentModuleAudio.pause(); 
                 currentModuleAudio = null; 
-            } 
-        }
-        
-        setTimeout(() => { 
-            if (aMus && FIXED_VOL_MUS > 0) {
-                fadeAudio(aMus, FIXED_VOL_MUS);
             }
 
-            if (aAmb && FIXED_VOL_AMB > 0) {
-                fadeAudio(aAmb, FIXED_VOL_AMB);
-            }
-        }, 100);
+            setWildModuleAudioMode("default", "show-tab-cleared-module");
+            restoreDefaultAudio();
+        }
         
         if (id === 'profile') { 
             if (cachedXPData) {
@@ -9013,7 +9058,19 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     }
 }
     
-    function closeModule() { if(document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex'; const m = document.getElementById('module-container'); if(m) { m.innerHTML = ''; m.classList.add('hidden'); } restoreDefaultAudio(); show(currentTab); }
+    function closeModule() {
+    if (document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex';
+
+    const m = document.getElementById('module-container');
+    if (m) {
+        m.innerHTML = '';
+        m.classList.add('hidden');
+    }
+
+    setWildModuleAudioMode("default", "closeModule");
+    restoreDefaultAudio();
+    show(currentTab);
+}
     
     function clampWildVolume(value) {
         const n = Number(value);
@@ -9816,10 +9873,14 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
             const btn = document.getElementById('wildu-audio-unlock-button');
             if (!btn) return;
 
-            const muted = wildAudioUserMutedForSession === true;
+            const blockedByModuleStop = wildModuleAudioMode === "stop";
+            const muted = wildAudioUserMutedForSession === true || blockedByModuleStop;
 
             btn.textContent = muted ? '🔇' : '🔊';
-            btn.title = muted ? 'Audio spento per questa sessione' : 'Audio acceso';
+            btn.title = blockedByModuleStop
+            ? 'Audio disattivato in questo modulo'
+            : (muted ? 'Audio spento per questa sessione' : 'Audio acceso');  
+
             btn.setAttribute(
                 'aria-label',
                 muted ? 'Riattiva audio Wild-U' : 'Spegni audio Wild-U'
@@ -9854,9 +9915,23 @@ function stopWilduUserSessionAudio(reason) {
     }
 
     function toggleWilduUserSessionAudio() {
+        // Se il modulo corrente ha Audio = STOP, il pulsante NON deve
+        // riaccendere musica/ambienza di sistema, nemmeno come toggle manuale.
+        if (wildModuleAudioMode === "stop") {
+            stopWildDefaultBackgroundAudio("button-blocked-module-stop");
+
+            wilduAudioDebugLog("AUDIO_TOGGLE_BLOCKED_MODULE_STOP", {
+                mode: wildModuleAudioMode,
+                userMuted: wildAudioUserMutedForSession === true
+            });
+
+            updateWilduAudioToggleButton();
+            return;
+        }
+
         if (wildAudioUserMutedForSession) {
             setWilduAudioUserMutedForSession(false, "button-on");
-            startAudioMixer({ forceUserToggle: true });
+            startAudioMixer({ forceUserToggle: true, reason: "button-on" });
             return;
         }
 
@@ -10018,22 +10093,66 @@ function stopWilduUserSessionAudio(reason) {
     }
 
     async function startAudioMixer(options = {}) {
-    // Rispetta il toggle utente: se ha spento l'audio per questa sessione,
-    // solo il bottone ON può forzare la riaccensione.
+    // OFF utente: blocco forte. Solo il toggle ON può forzare riaccensione.
     if (wildAudioUserMutedForSession === true && options.forceUserToggle !== true) {
+        stopWildDefaultBackgroundAudio("start-mixer-blocked-user-muted");
+
         wilduAudioDebugLog('START_MIXER_SKIPPED_USER_MUTED', {
             reason: options.reason || '',
-            muted: true
+            muted: true,
+            mode: wildModuleAudioMode
         });
+
+        updateWilduAudioToggleButton();
         return false;
     }
 
-    // Se è già attivo, non rifare fetch/decode/start.
-    if (audioInited === true && hasActiveWilduSessionAudio() && options.forceUserToggle !== true) {
+    // Modulo STOP: blocco forte. Nessun click dentro il modulo deve riaccendere
+    // musica/ambienza naturale della app.
+    if (wildModuleAudioMode === "stop") {
+        stopWildDefaultBackgroundAudio("start-mixer-blocked-module-stop");
+
+        wilduAudioDebugLog('START_MIXER_SKIPPED_MODULE_STOP', {
+            reason: options.reason || '',
+            mode: wildModuleAudioMode,
+            muted: wildAudioUserMutedForSession === true
+        });
+
+        updateWilduAudioToggleButton();
+        return false;
+    }
+
+    // Modulo con audio proprio: non avviare musica/ambienza default.
+    // Se currentModuleAudio esiste, lasciamo proseguire la funzione:
+    // il ramo già presente sotto proverà a far suonare l'audio modulo.
+    if (
+        wildModuleAudioMode === "module" &&
+        !(currentModuleAudio && currentModuleAudio.src)
+    ) {
+        stopWildDefaultBackgroundAudio("start-mixer-blocked-module-mode-no-audio");
+
+        wilduAudioDebugLog('START_MIXER_SKIPPED_MODULE_MODE_NO_AUDIO', {
+            reason: options.reason || '',
+            mode: wildModuleAudioMode
+        });
+
+        updateWilduAudioToggleButton();
+        return false;
+    }
+
+    // Fuori modulo: se musica/ambienza sono già attive, non rifare fetch/decode/start.
+    if (
+        wildModuleAudioMode === "default" &&
+        audioInited === true &&
+        hasWildDefaultBackgroundActive() &&
+        options.forceUserToggle !== true
+    ) {
         wilduAudioDebugLog('START_MIXER_SKIPPED_ALREADY_ACTIVE', {
+            reason: options.reason || '',
             bufferMusic: getWilduBufferLoopInfo("music"),
             bufferAmbience: getWilduBufferLoopInfo("ambience")
         });
+
         updateWilduAudioToggleButton();
         return true;
     }
@@ -10286,9 +10405,25 @@ function stopWilduUserSessionAudio(reason) {
     }
 
     async function resumeWilduAudioAfterHiddenPage() {
-        if (wildAudioUserMutedForSession === true) {
+        // OFF utente o modulo STOP: non deve ripartire nulla dopo background/ritorno app.
+        if (wildAudioUserMutedForSession === true || wildModuleAudioMode === "stop") {
+            if (wildAudioResumeRetryTimer) {
+                clearTimeout(wildAudioResumeRetryTimer);
+                wildAudioResumeRetryTimer = null;
+            }
+
+            stopWildDefaultBackgroundAudio("resume-blocked-user-or-module-stop");
+
             wildAudioPausedByHidden = false;
             wildAudioNeedsUserResume = false;
+
+            try {
+                wilduAudioDebugLog("RESUME_SKIPPED_USER_OR_MODULE_STOP", {
+                    userMuted: wildAudioUserMutedForSession === true,
+                    mode: wildModuleAudioMode
+                });
+            } catch (e) {}
+
             return;
         }
 
@@ -10305,32 +10440,56 @@ function stopWilduUserSessionAudio(reason) {
 
         function restartExpectedAudio() {
             try {
-                if (currentModuleAudio && currentModuleAudio.src) {
-                    const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
-                    fadeAudio(currentModuleAudio, target);
+                // Se nel frattempo l'utente ha spento o siamo in modulo STOP, non riaccendere.
+                if (wildAudioUserMutedForSession === true || wildModuleAudioMode === "stop") {
+                    stopWildDefaultBackgroundAudio("restart-expected-blocked-user-or-stop");
                     return;
                 }
 
-                restoreDefaultAudio();
+                // Modulo con audio proprio: riprendi solo quello, non musica/ambienza default.
+                if (wildModuleAudioMode === "module") {
+                    if (currentModuleAudio && currentModuleAudio.src) {
+                        const target = FIXED_VOL_MUS > 0 ? FIXED_VOL_MUS : 0.25;
+                        fadeAudio(currentModuleAudio, target);
+                    }
+                    return;
+                }
+
+                // Fuori modulo: ripristina solo se siamo davvero in default.
+                if (wildModuleAudioMode === "default") {
+                    restoreDefaultAudio();
+                }
             } catch (e) {}
         }
 
         restartExpectedAudio();
 
         // Controllo leggermente ritardato: alcuni browser riprendono il contesto,
-        // ma l'HTMLAudioElement resta ancora paused dopo il primo tentativo.
+        // ma l'audio può restare sospeso dopo il primo tentativo.
         wildAudioResumeRetryTimer = setTimeout(() => {
             wildAudioResumeRetryTimer = null;
 
-            const somethingShouldPlay =
-                (currentModuleAudio && currentModuleAudio.src) ||
-                (aMus && aMus.src && FIXED_VOL_MUS > 0) ||
-                (aAmb && aAmb.src && FIXED_VOL_AMB > 0);
+            if (wildAudioUserMutedForSession === true || wildModuleAudioMode === "stop") {
+                stopWildDefaultBackgroundAudio("resume-retry-blocked-user-or-stop");
+                wildAudioNeedsUserResume = false;
+                return;
+            }
 
-            const somethingActuallyPlaying =
-                (currentModuleAudio && !currentModuleAudio.paused) ||
-                (aMus && !aMus.paused) ||
-                (aAmb && !aAmb.paused);
+            let somethingShouldPlay = false;
+            let somethingActuallyPlaying = false;
+
+            if (wildModuleAudioMode === "module") {
+                somethingShouldPlay = !!(currentModuleAudio && currentModuleAudio.src);
+                somethingActuallyPlaying = !!(currentModuleAudio && !currentModuleAudio.paused);
+            } else if (wildModuleAudioMode === "default") {
+                somethingShouldPlay =
+                    !!(aMus && aMus.src && FIXED_VOL_MUS > 0) ||
+                    !!(aAmb && aAmb.src && FIXED_VOL_AMB > 0);
+
+                // Per iPhone/WebAudio, musica e ambienza possono essere buffer loop,
+                // non HTMLAudioElement in play. Quindi controlliamo anche i buffer.
+                somethingActuallyPlaying = hasWildDefaultBackgroundActive();
+            }
 
             if (somethingShouldPlay && !somethingActuallyPlaying) {
                 wildAudioNeedsUserResume = true;
@@ -10345,9 +10504,12 @@ function stopWilduUserSessionAudio(reason) {
         wildAudioPausedByHidden = false;
 
         // Se il browser ha rifiutato resume perché vuole un gesto utente,
-        // il prossimo tap/click richiamerà startAudioMixer().
+        // il prossimo tap/click richiamerà startAudioMixer(),
+        // ma solo se non siamo in OFF utente o modulo STOP.
         if (!ctxReady) {
-            wildAudioNeedsUserResume = true;
+            wildAudioNeedsUserResume =
+                wildAudioUserMutedForSession !== true &&
+                wildModuleAudioMode !== "stop";
         }
     }
 
@@ -10398,15 +10560,15 @@ function stopWilduUserSessionAudio(reason) {
             const resolved = resolveWilduModuleAudioInstruction(instruction);
 
             if (resolved === "STOP") {
+                setWildModuleAudioMode("stop", "module-audio-stop");
                 stopCurrentModuleAudio();
-                fadeAudio(aMus, 0);
-                fadeAudio(aAmb, 0);
+                stopWildDefaultBackgroundAudio("module-stop");
                 return;
             }
 
             if (resolved && /^https?:\/\//i.test(resolved)) {
-                fadeAudio(aMus, 0);
-                fadeAudio(aAmb, 0);
+                setWildModuleAudioMode("module", "module-audio-url");
+                stopWildDefaultBackgroundAudio("module-custom-audio");
                 stopCurrentModuleAudio();
 
                 currentModuleAudio = new Audio();
@@ -10430,10 +10592,9 @@ function stopWilduUserSessionAudio(reason) {
 
             // Se il modulo ha una chiave non migrata o un valore vuoto,
             // non trasformiamo mai quel valore in STOP per errore.
+            setWildModuleAudioMode("default", "module-audio-empty");
             stopCurrentModuleAudio();
-
-            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
-            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
+            restoreDefaultAudio();
         } catch(e) {}
     }
 
@@ -10451,8 +10612,20 @@ function stopWilduUserSessionAudio(reason) {
                 });
             }
 
-            if (aMus && FIXED_VOL_MUS > 0) fadeAudio(aMus, FIXED_VOL_MUS);
-            if (aAmb && FIXED_VOL_AMB > 0) fadeAudio(aAmb, FIXED_VOL_AMB);
+            if (isWildDefaultBackgroundBlocked()) {
+                stopWildDefaultBackgroundAudio("restore-default-blocked");
+                return;
+            }
+
+            // Con il nuovo motore iOS, musica/ambienza di sistema possono essere buffer WebAudio.
+            // startAudioMixer è idempotente: se il loop è già attivo non lo ricrea.
+            startAudioMixer({ reason: "restore-default-audio" }).catch(e => {
+                try {
+                    wilduAudioDebugLog("RESTORE_DEFAULT_AUDIO_FAILED", {
+                        error: e && e.message ? e.message : String(e)
+                    });
+                } catch (_) {}
+            });
         } catch(e) {}
     }
 
