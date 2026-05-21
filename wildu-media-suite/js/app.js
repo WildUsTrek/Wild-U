@@ -2022,7 +2022,8 @@
     if (hasReaderBuild(item)) {
       var count = Number(item.readerBlockCount || (Array.isArray(item.readerBlocks) ? item.readerBlocks.length : 0) || 0);
       var version = Number(item.readerVersion || 1);
-      var label = 'reader v' + version + (count ? ' · ' + count + ' blocchi' : '');
+      var imgCount = Number(item.readerImageCount || 0);
+      var label = 'reader v' + version + (count ? ' · ' + count + ' blocchi' : '') + (imgCount ? ' · ' + imgCount + ' immagini' : '');
       return '<span class="chip good">' + root.escapeHtml(label) + '</span>';
     }
 
@@ -2035,7 +2036,7 @@
     var id = root.escapeHtml(item.id || '');
 
     return '' +
-      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader automatico</button>' +
+      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader bello</button>' +
       (hasReaderBuild(item)
         ? '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
         : '');
@@ -2961,8 +2962,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var ok = confirm(
       'Genero automaticamente il reader per:\n\n' +
       (item.title || 'PDF senza titolo') +
-      '\n\nL’app leggerà da sola quante pagine ha il PDF e processerà tutte quelle utili entro un limite tecnico di sicurezza.' +
-      '\n\nIl file PDF R2 NON verrà modificato. Verranno aggiornati solo i metadati reader del catalogo.'
+      '\n\nL’app leggerà da sola quante pagine ha il PDF, riordinerà Fonte/Fonti in fondo e proverà a creare immagini editoriali ottimizzate.' +
+      '\n\nIl PDF originale R2 NON verrà modificato. Eventuali immagini reader saranno salvate come WebP leggeri su R2 e il catalogo riceverà solo i metadati reader.'
     );
 
     if (!ok) return;
@@ -2983,9 +2984,16 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       Number(patch.readerBlockCount || 0) +
       ' blocchi, ' +
       Number(patch.readerPagesProcessed || 0) +
-      ' pagine processate.',
+      ' pagine, ' +
+      Number(patch.readerImageCount || 0) +
+      ' immagini.',
       'success'
     );
+
+    if (Array.isArray(patch.readerImageErrors) && patch.readerImageErrors.length) {
+      console.warn('[WILDU READER] Alcune immagini non sono state generate/caricate:', patch.readerImageErrors);
+      root.toast('Reader generato, ma alcune immagini sono state saltate. Vedi console/debug.', 'info');
+    }
 
     await refreshTags();
     await refreshMedia();
