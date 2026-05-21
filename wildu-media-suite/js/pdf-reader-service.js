@@ -26,6 +26,14 @@
   var MIN_VISUAL_RATIO = 0.010;
   var VISUAL_SAMPLE_STEP = 6;
 
+  // V6.1: ritaglio automatico dei margini bianchi nei crop immagine.
+  // Non cambia il PDF originale e non tocca il client: agisce solo sulle nuove immagini reader generate.
+  var IMAGE_CROP_AUTO_TIGHTEN = true;
+  var IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO = 0.30;
+  var IMAGE_CROP_TIGHTEN_PADDING_RATIO = 0.08;
+  var IMAGE_CROP_TIGHTEN_MIN_PADDING = 14;
+  var IMAGE_CROP_TIGHTEN_SAMPLE_STEP = 4;
+
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
   }
@@ -1113,6 +1121,98 @@
     return candidates;
   }
 
+
+  function tightenReaderImageBounds(sourceCanvas, bounds) {
+    if (!IMAGE_CROP_AUTO_TIGHTEN || !sourceCanvas || !bounds) return bounds;
+
+    var ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+    var canvasW = sourceCanvas.width;
+    var canvasH = sourceCanvas.height;
+
+    var x0 = Math.max(0, Math.floor(bounds.x || 0));
+    var y0 = Math.max(0, Math.floor(bounds.y || 0));
+    var w0 = Math.min(canvasW - x0, Math.ceil(bounds.w || 0));
+    var h0 = Math.min(canvasH - y0, Math.ceil(bounds.h || 0));
+
+    if (w0 < MIN_IMAGE_CROP_WIDTH || h0 < MIN_IMAGE_CROP_HEIGHT) return bounds;
+
+    var data;
+    try {
+      data = ctx.getImageData(x0, y0, w0, h0).data;
+    } catch (e) {
+      return bounds;
+    }
+
+    var step = IMAGE_CROP_TIGHTEN_SAMPLE_STEP;
+    var minX = w0;
+    var minY = h0;
+    var maxX = -1;
+    var maxY = -1;
+    var visualCount = 0;
+
+    for (var y = 0; y < h0; y += step) {
+      for (var x = 0; x < w0; x += step) {
+        var idx = ((y * w0) + x) * 4;
+        var r = data[idx];
+        var g = data[idx + 1];
+        var b = data[idx + 2];
+        var a = data[idx + 3];
+
+        if (isPixelVisual(r, g, b, a)) {
+          visualCount++;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (!visualCount || maxX < minX || maxY < minY) return bounds;
+
+    var visualW = maxX - minX + 1;
+    var visualH = maxY - minY + 1;
+    if (visualW < 24 || visualH < 24) return bounds;
+
+    var padX = Math.max(IMAGE_CROP_TIGHTEN_MIN_PADDING, Math.round(visualW * IMAGE_CROP_TIGHTEN_PADDING_RATIO));
+    var padY = Math.max(IMAGE_CROP_TIGHTEN_MIN_PADDING, Math.round(visualH * IMAGE_CROP_TIGHTEN_PADDING_RATIO));
+
+    var maxInsetX = Math.round(w0 * IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO);
+    var maxInsetY = Math.round(h0 * IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO);
+
+    var nx1 = Math.max(x0, x0 + minX - padX);
+    var ny1 = Math.max(y0, y0 + minY - padY);
+    var nx2 = Math.min(x0 + w0, x0 + maxX + padX);
+    var ny2 = Math.min(y0 + h0, y0 + maxY + padY);
+
+    // Limite anti-taglio: non stringe mai oltre circa il 30% per lato.
+    nx1 = Math.min(nx1, x0 + maxInsetX);
+    ny1 = Math.min(ny1, y0 + maxInsetY);
+    nx2 = Math.max(nx2, x0 + w0 - maxInsetX);
+    ny2 = Math.max(ny2, y0 + h0 - maxInsetY);
+
+    var nw = Math.round(nx2 - nx1);
+    var nh = Math.round(ny2 - ny1);
+
+    if (nw < MIN_IMAGE_CROP_WIDTH || nh < MIN_IMAGE_CROP_HEIGHT) return bounds;
+
+    // Se il guadagno è microscopico, lascia il crop originale.
+    var oldArea = w0 * h0;
+    var newArea = nw * nh;
+    if (!oldArea || newArea / oldArea > 0.94) return bounds;
+
+    return Object.assign({}, bounds, {
+      x: Math.round(nx1),
+      y: Math.round(ny1),
+      w: nw,
+      h: nh,
+      yCanvasTop: Math.round(ny1),
+      yCanvasBottom: Math.round(ny1 + nh),
+      tightened: true,
+      tightenMode: 'auto-white-margin-v6-1'
+    });
+  }
+
   function canvasToBlob(canvas, type, quality) {
     return new Promise(function (resolve, reject) {
       try {
@@ -1127,6 +1227,8 @@
   }
 
   async function cropCanvasToOptimizedBlob(sourceCanvas, bounds) {
+    bounds = tightenReaderImageBounds(sourceCanvas, bounds);
+
     var scaleDown = bounds.w > IMAGE_OUTPUT_MAX_WIDTH ? IMAGE_OUTPUT_MAX_WIDTH / bounds.w : 1;
     var outW = Math.max(1, Math.round(bounds.w * scaleDown));
     var outH = Math.max(1, Math.round(bounds.h * scaleDown));
