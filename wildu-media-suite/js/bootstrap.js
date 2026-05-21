@@ -1,4 +1,4 @@
-const WILDU_MEDIA_BOOT_VERSION = '0.4.9';
+const WILDU_MEDIA_BOOT_VERSION = '0.5.0';
  
 // Import versionato della config pubblica.
 // Serve a evitare che il Service Worker o il browser tengano una config vecchia.
@@ -11,6 +11,7 @@ const scripts = [
   'js/runtime-service.js',
   'js/r2-worker-service.js',
   'js/media-service.js',
+  'js/pdf-reader-service.js',
   'js/client-version-helper.js',
   'js/app.js'
 ];
