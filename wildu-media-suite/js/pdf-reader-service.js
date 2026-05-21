@@ -43,6 +43,15 @@
   var IMAGE_CROP_HERO_TEXT_TOP_ZONE_RATIO = 0.44;
   var IMAGE_CROP_INLINE_TEXT_EDGE_ZONE_RATIO = 0.24;
 
+  // V6.3.3: la hero può contenere più componenti visuali nella stessa fascia
+  // (foto principale + logo/badge isolato in alto a destra). In quel caso non
+  // va fatta l'unione di tutto: scegliamo il componente dominante e ignoriamo
+  // il piccolo overlay, così non resta una grande fascia bianca laterale.
+  var IMAGE_CROP_HERO_DOMINANT_COMPONENT = true;
+  var IMAGE_CROP_HERO_DOMINANT_SAMPLE_STEP = 4;
+  var IMAGE_CROP_HERO_DOMINANT_MIN_RATIO = 0.18;
+  var IMAGE_CROP_HERO_DOMINANT_SECONDARY_RATIO = 1.65;
+
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
   }
@@ -1113,7 +1122,7 @@
       yCanvasTop: Math.round(newY),
       yCanvasBottom: Math.round(newY + newH),
       textClamped: true,
-      textClampMode: isHero ? 'hero-text-top-exclusion-v6-3-2' : 'inline-text-edge-exclusion-v6-3-2'
+      textClampMode: isHero ? 'hero-text-top-exclusion-v6-3-3' : 'inline-text-edge-exclusion-v6-3-3'
     });
   }
 
@@ -1276,6 +1285,134 @@
   }
 
 
+
+  function findDominantHeroVisualLocalBoundsFromData(data, w0, h0) {
+    if (!IMAGE_CROP_HERO_DOMINANT_COMPONENT || !data || w0 < MIN_IMAGE_CROP_WIDTH || h0 < MIN_IMAGE_CROP_HEIGHT) return null;
+
+    var step = IMAGE_CROP_HERO_DOMINANT_SAMPLE_STEP;
+    var cols = Math.ceil(w0 / step);
+    var rows = Math.ceil(h0 / step);
+    var mask = new Uint8Array(cols * rows);
+    var visited = new Uint8Array(cols * rows);
+    var queue = [];
+    var totalVisual = 0;
+
+    function idx(col, row) { return row * cols + col; }
+
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        var x = Math.min(w0 - 1, Math.floor(col * step + step / 2));
+        var y = Math.min(h0 - 1, Math.floor(row * step + step / 2));
+        var p = ((y * w0) + x) * 4;
+        if (isPixelVisual(data[p], data[p + 1], data[p + 2], data[p + 3])) {
+          mask[idx(col, row)] = 1;
+          totalVisual++;
+        }
+      }
+    }
+
+    if (totalVisual < 30) return null;
+
+    var components = [];
+
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var start = idx(c, r);
+        if (!mask[start] || visited[start]) continue;
+
+        var minC = c;
+        var maxC = c;
+        var minR = r;
+        var maxR = r;
+        var count = 0;
+
+        queue.length = 0;
+        queue.push(start);
+        visited[start] = 1;
+
+        while (queue.length) {
+          var cur = queue.pop();
+          var cr = Math.floor(cur / cols);
+          var cc = cur - cr * cols;
+          count++;
+
+          if (cc < minC) minC = cc;
+          if (cc > maxC) maxC = cc;
+          if (cr < minR) minR = cr;
+          if (cr > maxR) maxR = cr;
+
+          var neighbors = [
+            [cc + 1, cr], [cc - 1, cr], [cc, cr + 1], [cc, cr - 1],
+            [cc + 1, cr + 1], [cc - 1, cr - 1], [cc + 1, cr - 1], [cc - 1, cr + 1]
+          ];
+
+          for (var n = 0; n < neighbors.length; n++) {
+            var nc = neighbors[n][0];
+            var nr = neighbors[n][1];
+            if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+            var ni = idx(nc, nr);
+            if (!mask[ni] || visited[ni]) continue;
+            visited[ni] = 1;
+            queue.push(ni);
+          }
+        }
+
+        if (count < 18) continue;
+
+        var x1 = Math.max(0, minC * step);
+        var y1 = Math.max(0, minR * step);
+        var x2 = Math.min(w0, (maxC + 1) * step);
+        var y2 = Math.min(h0, (maxR + 1) * step);
+        var cw = x2 - x1;
+        var ch = y2 - y1;
+        var area = cw * ch;
+
+        if (cw < MIN_IMAGE_CROP_WIDTH || ch < MIN_IMAGE_CROP_HEIGHT) continue;
+
+        components.push({
+          x1: x1,
+          y1: y1,
+          x2: x2,
+          y2: y2,
+          w: cw,
+          h: ch,
+          count: count,
+          area: area,
+          score: area * Math.min(0.65, count / Math.max(1, (maxC - minC + 1) * (maxR - minR + 1)))
+        });
+      }
+    }
+
+    if (!components.length) return null;
+
+    components.sort(function (a, b) { return b.score - a.score; });
+    var main = components[0];
+    var second = components[1] || null;
+    var bboxArea = w0 * h0;
+
+    // Se il componente dominante è minuscolo rispetto al crop, non facciamo nulla.
+    // Se invece è chiaramente più importante del secondo, stiamo probabilmente vedendo
+    // foto principale + overlay/logo separato: tagliamo sul componente dominante.
+    var largeEnough = main.area / Math.max(1, bboxArea) >= IMAGE_CROP_HERO_DOMINANT_MIN_RATIO;
+    var dominatesSecond = !second || main.score / Math.max(1, second.score) >= IMAGE_CROP_HERO_DOMINANT_SECONDARY_RATIO;
+    var trimsMeaningfully = (main.w < w0 * 0.92) || (main.h < h0 * 0.92);
+
+    if (!largeEnough || !dominatesSecond || !trimsMeaningfully) return null;
+
+    // Padding minimo per non mordere il soggetto prima del bleed center-preserving.
+    var padX = Math.max(4, Math.round(main.w * 0.012));
+    var padY = Math.max(4, Math.round(main.h * 0.012));
+
+    return {
+      minX: Math.max(0, main.x1 - padX),
+      minY: Math.max(0, main.y1 - padY),
+      maxX: Math.min(w0 - 1, main.x2 + padX),
+      maxY: Math.min(h0 - 1, main.y2 + padY),
+      reason: 'dominant-hero-component-v6-3-3',
+      removedSecondaryComponents: components.length - 1
+    };
+  }
+
   function tightenReaderImageBounds(sourceCanvas, bounds) {
     if (!IMAGE_CROP_AUTO_TIGHTEN || !sourceCanvas || !bounds) return bounds;
 
@@ -1329,6 +1466,21 @@
     if (visualW < 24 || visualH < 24) return bounds;
 
     var isHero = safeString(bounds.roleHint || bounds.role).toLowerCase() === 'hero';
+
+    var dominantHeroLocal = null;
+    if (isHero) {
+      dominantHeroLocal = findDominantHeroVisualLocalBoundsFromData(data, w0, h0);
+      if (dominantHeroLocal) {
+        minX = dominantHeroLocal.minX;
+        minY = dominantHeroLocal.minY;
+        maxX = dominantHeroLocal.maxX;
+        maxY = dominantHeroLocal.maxY;
+        visualW = maxX - minX + 1;
+        visualH = maxY - minY + 1;
+        if (visualW < MIN_IMAGE_CROP_WIDTH || visualH < MIN_IMAGE_CROP_HEIGHT) return bounds;
+      }
+    }
+
     var bleedRatio = isHero ? IMAGE_CROP_HERO_BLEED_RATIO : IMAGE_CROP_INNER_BLEED_RATIO;
     var bleedMax = isHero ? IMAGE_CROP_HERO_BLEED_MAX_PX : IMAGE_CROP_INNER_BLEED_MAX_PX;
 
@@ -1385,7 +1537,9 @@
       yCanvasTop: Math.round(ny1),
       yCanvasBottom: Math.round(ny1 + nh),
       tightened: true,
-      tightenMode: isHero ? 'center-preserving-hero-bleed-v6-3-2' : 'center-preserving-inline-bleed-v6-3-2'
+      dominantHeroComponent: !!dominantHeroLocal,
+      removedSecondaryComponents: dominantHeroLocal ? dominantHeroLocal.removedSecondaryComponents : 0,
+      tightenMode: isHero ? 'center-preserving-hero-dominant-component-v6-3-3' : 'center-preserving-inline-bleed-v6-3-3'
     });
   }
 
@@ -2241,7 +2395,7 @@
       readerBuildMode: 'admin-browser-pdfjs-editorial-v6-diagnostics-preview',
       readerEditorialVersion: 6,
       readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
-      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-3-source-guard-center-bleed-cleanup',
+      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-3-3-hero-dominant-component',
       readerImageCount: imageCount,
       readerImageObjectKeys: collectReaderImageObjectKeys({ readerBlocks: blocks }),
       readerImageUrls: (blocks || []).filter(function (block) { return block && block.type === 'image' && block.url; }).map(function (block) { return block.url; }),
