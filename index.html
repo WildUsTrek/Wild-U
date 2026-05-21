@@ -1959,18 +1959,26 @@ const WilduMediaClient = (() => {
         }
 
         if (block.type === "image") {
+            const isHeroImage = role === "hero" || role === "cover" || role === "heroimage";
             return `
-                <figure style="margin:26px 0; padding:0;">
+                <figure style="
+                    margin:${isHeroImage ? "8px 0 30px 0" : "26px 0"};
+                    padding:${isHeroImage ? "10px" : "0"};
+                    border-radius:${isHeroImage ? "28px" : "0"};
+                    background:${isHeroImage ? "linear-gradient(135deg, rgba(212,175,55,.12), rgba(124,199,255,.07))" : "transparent"};
+                    border:${isHeroImage ? "1px solid rgba(212,175,55,.24)" : "0"};
+                    box-shadow:${isHeroImage ? "0 16px 46px rgba(0,0,0,.45)" : "none"};
+                ">
                     <img src="${escapeHtml(formatAssetLink(block.url))}" alt="${escapeHtml(block.alt || "")}" style="
                         width:100%;
-                        max-height:430px;
+                        max-height:${isHeroImage ? "520px" : "430px"};
                         object-fit:contain;
-                        border-radius:22px;
+                        border-radius:${isHeroImage ? "24px" : "22px"};
                         background:#111;
                         border:1px solid rgba(255,255,255,.12);
                         box-shadow:0 14px 38px rgba(0,0,0,.55);
                     ">
-                    ${block.caption ? `<figcaption style="color:#aaa; font-size:12px; line-height:1.4; margin-top:9px; text-align:center;">${escapeHtml(block.caption)}</figcaption>` : ""}
+                    ${block.caption ? `<figcaption style="color:${isHeroImage ? "#d9c88d" : "#aaa"}; font-size:12px; line-height:1.4; margin-top:10px; text-align:center;">${escapeHtml(block.caption)}</figcaption>` : ""}
                 </figure>
             `;
         }
