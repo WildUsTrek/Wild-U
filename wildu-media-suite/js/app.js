@@ -2023,8 +2023,13 @@
       var count = Number(item.readerBlockCount || (Array.isArray(item.readerBlocks) ? item.readerBlocks.length : 0) || 0);
       var version = Number(item.readerVersion || 1);
       var imgCount = Number(item.readerImageCount || 0);
-      var label = 'reader v' + version + (count ? ' · ' + count + ' blocchi' : '') + (imgCount ? ' · ' + imgCount + ' immagini' : '');
-      return '<span class="chip good">' + root.escapeHtml(label) + '</span>';
+      var quality = item.readerQualityScore !== undefined && item.readerQualityScore !== null
+        ? Number(item.readerQualityScore || 0)
+        : null;
+      var qualityLabel = quality !== null ? ' · Q' + quality + '%' : '';
+      var qualityClass = quality !== null && quality < 60 ? ' warn' : ' good';
+      var label = 'reader v' + version + (count ? ' · ' + count + ' blocchi' : '') + (imgCount ? ' · ' + imgCount + ' immagini' : '') + qualityLabel;
+      return '<span class="chip' + qualityClass + '">' + root.escapeHtml(label) + '</span>';
     }
 
     return '<span class="chip warn">reader: da generare</span>';
@@ -2036,9 +2041,10 @@
     var id = root.escapeHtml(item.id || '');
 
     return '' +
-      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader bello</button>' +
+      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader + anteprima</button>' +
       (hasReaderBuild(item)
-        ? '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
+        ? '<button class="small" data-preview-pdf-reader="' + id + '">Anteprima reader</button>' +
+          '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
         : '');
   }
 
@@ -2944,6 +2950,162 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
 
+
+  function buildPdfReaderPreviewHtmlFromSavedItem(item) {
+    if (!item) return '<div class="empty">Media mancante.</div>';
+
+    if (item.readerAdminPreviewHtml) return item.readerAdminPreviewHtml;
+
+    if (root.PdfReaderService && typeof root.PdfReaderService.buildAdminPreviewHtmlFromBlocks === 'function') {
+      return root.PdfReaderService.buildAdminPreviewHtmlFromBlocks(
+        item,
+        Array.isArray(item.readerBlocks) ? item.readerBlocks : [],
+        item.readerBuildReport || null
+      );
+    }
+
+    return '<pre>' + root.escapeHtml(JSON.stringify({
+      title: item.title,
+      readerPreview: item.readerPreview,
+      readerBlocks: item.readerBlocks || []
+    }, null, 2)) + '</pre>';
+  }
+
+  function sanitizeReaderPatchForSave(patch) {
+    var out = Object.assign({}, patch || {});
+
+    // Proprietà temporanee della modale admin: non devono finire nel catalogo Firestore.
+    delete out.readerAdminPreviewHtml;
+
+    // Limite prudente sui sospetti salvati: il report completo resta in readerBuildReport.
+    if (Array.isArray(out.readerSuspiciousBlocks)) {
+      out.readerSuspiciousBlocks = out.readerSuspiciousBlocks.slice(0, 24);
+    }
+
+    return out;
+  }
+
+  function showPdfReaderPreviewModal(item, patch, options) {
+    options = options || {};
+
+    return new Promise(function (resolve) {
+      var existing = document.getElementById('wildu-reader-preview-overlay');
+      if (existing) existing.remove();
+
+      var report = (patch && patch.readerBuildReport) || (item && item.readerBuildReport) || {};
+      var warnings = Array.isArray((patch && patch.readerWarnings) || (report && report.warnings))
+        ? ((patch && patch.readerWarnings) || report.warnings)
+        : [];
+      var suspicious = Array.isArray((patch && patch.readerSuspiciousBlocks) || (report && report.suspiciousBlocks))
+        ? ((patch && patch.readerSuspiciousBlocks) || report.suspiciousBlocks)
+        : [];
+      var confidence = patch && patch.readerQualityScore !== undefined
+        ? patch.readerQualityScore
+        : (item && item.readerQualityScore !== undefined ? item.readerQualityScore : report.confidence);
+
+      var html = (patch && patch.readerAdminPreviewHtml) || buildPdfReaderPreviewHtmlFromSavedItem(Object.assign({}, item || {}, patch || {}));
+
+      var overlay = document.createElement('div');
+      overlay.id = 'wildu-reader-preview-overlay';
+      overlay.style.cssText = [
+        'position:fixed',
+        'inset:0',
+        'z-index:999999',
+        'background:rgba(0,0,0,.76)',
+        'backdrop-filter:blur(10px)',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'padding:18px'
+      ].join(';');
+
+      function badge(label, tone) {
+        var bg = tone === 'good' ? 'rgba(107,213,138,.16)' : tone === 'warn' ? 'rgba(228,182,83,.16)' : tone === 'bad' ? 'rgba(238,106,106,.16)' : 'rgba(255,255,255,.08)';
+        var color = tone === 'good' ? '#bff7cd' : tone === 'warn' ? '#ffe7a5' : tone === 'bad' ? '#ffc5c5' : '#eef6ef';
+        return '<span style="display:inline-flex; padding:6px 9px; border-radius:999px; background:' + bg + '; color:' + color + '; font-size:12px; font-weight:950;">' + root.escapeHtml(label) + '</span>';
+      }
+
+      var conf = Number(confidence || 0);
+      var confTone = conf >= 82 ? 'good' : conf >= 60 ? 'warn' : 'bad';
+      var canSave = options.readOnly !== true;
+
+      overlay.innerHTML = '' +
+        '<div role="dialog" aria-modal="true" style="width:min(1180px,96vw); max-height:92vh; overflow:hidden; border-radius:24px; background:#17211b; color:#f3f8f4; border:1px solid rgba(255,255,255,.16); box-shadow:0 28px 100px rgba(0,0,0,.62); display:flex; flex-direction:column;">' +
+          '<div style="padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.12); display:flex; gap:12px; align-items:flex-start; justify-content:space-between;">' +
+            '<div style="min-width:0;">' +
+              '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">' +
+                badge('Anteprima Reader V6', 'good') +
+                badge('Confidenza ' + (Number.isFinite(conf) ? conf + '%' : '—'), confTone) +
+                badge('Blocchi ' + root.escapeHtml((patch && patch.readerBlockCount) || (report && report.blockCount) || 0), 'neutral') +
+                badge('Immagini ' + root.escapeHtml((patch && patch.readerImageCount) || (report && report.imageCount) || 0), 'neutral') +
+                badge('Fonti ' + root.escapeHtml((report && report.sourceCount) || 0), 'neutral') +
+              '</div>' +
+              '<h2 style="margin:0; color:#f6d889; font-size:24px; line-height:1.15;">' + root.escapeHtml((item && item.title) || 'PDF') + '</h2>' +
+              '<div style="margin-top:6px; color:#aebcaf; font-size:13px;">Controlla titoli, fonti e immagini prima di salvare nel catalogo.</div>' +
+            '</div>' +
+            '<button type="button" id="wildu-reader-preview-close" style="border:0; border-radius:999px; padding:10px 14px; background:#d6b25e; color:#1b1509; font-weight:950; cursor:pointer;">Chiudi</button>' +
+          '</div>' +
+          ((warnings.length || suspicious.length) ?
+            '<details open style="margin:12px 18px 0; border:1px solid rgba(228,182,83,.25); border-radius:15px; background:rgba(228,182,83,.08); padding:10px 12px; color:#ffe7a5;">' +
+              '<summary style="cursor:pointer; font-weight:950;">Diagnostica e blocchi sospetti</summary>' +
+              (warnings.length ? '<div style="margin-top:8px;"><strong>Avvisi:</strong><br>' + root.escapeHtml(warnings.join('\n')).replace(/\n/g, '<br>') + '</div>' : '') +
+              (suspicious.length ? '<pre style="white-space:pre-wrap; word-break:break-word; max-height:180px; overflow:auto; margin:10px 0 0; background:rgba(0,0,0,.25); border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:10px; color:#f4e6ba;">' + root.escapeHtml(JSON.stringify(suspicious.slice(0, 24), null, 2)) + '</pre>' : '') +
+            '</details>' : '') +
+          '<div style="flex:1; overflow:auto; padding:16px 18px;">' + html + '</div>' +
+          '<div style="padding:13px 18px; border-top:1px solid rgba(255,255,255,.12); display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">' +
+            '<button type="button" id="wildu-reader-preview-download" style="border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:10px 14px; background:rgba(255,255,255,.08); color:#f3f8f4; font-weight:900; cursor:pointer;">Scarica JSON debug</button>' +
+            (canSave ? '<button type="button" id="wildu-reader-preview-cancel" style="border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:10px 14px; background:rgba(255,255,255,.08); color:#f3f8f4; font-weight:900; cursor:pointer;">Annulla</button>' : '') +
+            (canSave ? '<button type="button" id="wildu-reader-preview-save" style="border:0; border-radius:999px; padding:10px 15px; background:#6bd58a; color:#092013; font-weight:950; cursor:pointer;">Salva reader</button>' : '') +
+          '</div>' +
+        '</div>';
+
+      document.body.appendChild(overlay);
+
+      function close(value) {
+        overlay.remove();
+        resolve(value);
+      }
+
+      var closeBtn = document.getElementById('wildu-reader-preview-close');
+      var cancelBtn = document.getElementById('wildu-reader-preview-cancel');
+      var saveBtn = document.getElementById('wildu-reader-preview-save');
+      var dlBtn = document.getElementById('wildu-reader-preview-download');
+
+      if (closeBtn) closeBtn.addEventListener('click', function () { close(false); });
+      if (cancelBtn) cancelBtn.addEventListener('click', function () { close(false); });
+      if (saveBtn) saveBtn.addEventListener('click', function () { close(true); });
+      if (dlBtn) dlBtn.addEventListener('click', function () {
+        var payload = {
+          media: item || null,
+          patch: patch ? sanitizeReaderPatchForSave(patch) : null,
+          report: report,
+          warnings: warnings,
+          suspicious: suspicious
+        };
+        var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'wildu-reader-preview-debug.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+
+      overlay.addEventListener('click', function (evt) {
+        if (evt.target === overlay) close(false);
+      });
+    });
+  }
+
+  async function previewPdfReaderForMedia(id) {
+    var item = findMediaById(id);
+    if (!item) throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
+    if (!hasReaderBuild(item)) throw new Error('Questo PDF non ha un reader generato da mostrare.');
+    await showPdfReaderPreviewModal(item, null, { readOnly: true });
+  }
+
   async function buildPdfReaderForMedia(id) {
     var item = findMediaById(id);
 
@@ -2977,16 +3139,24 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       }
     });
 
-    await root.MediaService.updateMedia(item.id, patch);
+    var approved = await showPdfReaderPreviewModal(item, patch, { readOnly: false });
+
+    if (!approved) {
+      root.toast('Reader generato in anteprima ma non salvato.', 'info');
+      return;
+    }
+
+    var patchToSave = sanitizeReaderPatchForSave(patch);
+    await root.MediaService.updateMedia(item.id, patchToSave);
 
     root.toast(
-      'Reader editoriale generato: ' +
+      'Reader editoriale V6 salvato: ' +
       Number(patch.readerBlockCount || 0) +
       ' blocchi, ' +
       Number(patch.readerPagesProcessed || 0) +
       ' pagine, ' +
       Number(patch.readerImageCount || 0) +
-      ' immagini.',
+      ' immagini, qualità ' + Number(patch.readerQualityScore || 0) + '%.',
       'success'
     );
 
@@ -3276,6 +3446,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var buildReaderBtn = evt.target.closest('[data-build-pdf-reader]');
       if (buildReaderBtn) return run(buildPdfReaderForMedia, buildReaderBtn.dataset.buildPdfReader);
+
+      var previewReaderBtn = evt.target.closest('[data-preview-pdf-reader]');
+      if (previewReaderBtn) return run(previewPdfReaderForMedia, previewReaderBtn.dataset.previewPdfReader);
 
       var clearReaderBtn = evt.target.closest('[data-clear-pdf-reader]');
       if (clearReaderBtn) return run(clearPdfReaderForMedia, clearReaderBtn.dataset.clearPdfReader);
