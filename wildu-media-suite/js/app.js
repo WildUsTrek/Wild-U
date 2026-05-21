@@ -2035,7 +2035,7 @@
     var id = root.escapeHtml(item.id || '');
 
     return '' +
-      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader</button>' +
+      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader automatico</button>' +
       (hasReaderBuild(item)
         ? '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
         : '');
@@ -2958,23 +2958,11 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       throw new Error('Reader Build disponibile solo per PDF.');
     }
 
-    var defaultPages = item.subcategory === 'libri' ? '60' : '35';
-    var rawPages = prompt(
-      'Quante pagine vuoi processare per il reader?\n' +
-      'Consiglio: Manuali 35, Libri 60. Massimo tecnico: 120.\n' +
-      'Il client leggerà readerBlocks già pronti senza estrarre il PDF.',
-      defaultPages
-    );
-
-    if (rawPages === null) return;
-
-    var maxPages = Math.max(1, Math.min(120, parseInt(rawPages, 10) || parseInt(defaultPages, 10)));
-
     var ok = confirm(
-      'Genero readerBlocks per:\\n\\n' +
+      'Genero automaticamente il reader per:\n\n' +
       (item.title || 'PDF senza titolo') +
-      '\\n\\nPagine da processare: ' + maxPages +
-      '\\n\\nIl file PDF R2 NON verrà modificato. Verranno aggiornati solo i metadati reader del catalogo.'
+      '\n\nL’app leggerà da sola quante pagine ha il PDF e processerà tutte quelle utili entro un limite tecnico di sicurezza.' +
+      '\n\nIl file PDF R2 NON verrà modificato. Verranno aggiornati solo i metadati reader del catalogo.'
     );
 
     if (!ok) return;
@@ -2982,7 +2970,6 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var lastMessage = '';
 
     var patch = await root.PdfReaderService.buildReaderPatchFromMedia(item, {
-      maxPages: maxPages,
       onProgress: function (message) {
         lastMessage = message || lastMessage;
         root.toast(lastMessage, 'info');
@@ -2992,7 +2979,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     await root.MediaService.updateMedia(item.id, patch);
 
     root.toast(
-      'Reader generato: ' +
+      'Reader editoriale generato: ' +
       Number(patch.readerBlockCount || 0) +
       ' blocchi, ' +
       Number(patch.readerPagesProcessed || 0) +
