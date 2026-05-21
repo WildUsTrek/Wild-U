@@ -260,18 +260,19 @@
     if (/https?:\/\//i.test(raw) || /\bwww\./i.test(raw)) return true;
     if (/\bdoi\s*:/i.test(raw) || /\bisbn\s*:/i.test(raw)) return true;
     if (/\b(consultato|accesso|fonte dati|elaborazione|archivio|biblioteca|ministero|istat|wikipedia|treccani|universita|università)\b/i.test(raw)) return true;
-    if (/^\s*(\[[0-9]+\]|[0-9]+[.)])\s+/.test(raw) && raw.length < 360) return true;
-    if (/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/.test(raw)) return true;
+    if (/^\s*(\[[0-9]+\]|[0-9]+[.)])\s+/.test(raw) && raw.length < 420) return true;
+    if (lineLooksLikeListItem(raw) && (/\([12][0-9]{3}\)/.test(raw) || /\b(nature|journal|plos|scientific|communications|senses|shinrin|mother tree|wohlleben|gagliano|simard|polak|joung|bear)\b/i.test(raw))) return true;
+    if (/\([12][0-9]{3}\)/.test(raw) && /[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+,\s*[A-Z]/.test(raw)) return true;
+    if (/\b(Nature|PLOS\s+ONE|Journal|Scientific Reports|Chemical Senses|Nature Communications)\b/i.test(raw)) return true;
+    if (/\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+,\s*[A-Z]\./.test(raw) && raw.length < 520) return true;
     if (/\b[a-z0-9-]+\.(it|com|org|net|edu|gov|eu)(\/|\b)/i.test(raw)) return true;
 
     return false;
   }
-
   function looksLikeArticleContinuation(text) {
     var raw = safeString(text);
     if (!raw) return false;
     if (looksLikeSourceCitation(raw)) return false;
-    if (looksLikeHeadingParagraph(raw)) return true;
     if (raw.length > 180) return true;
     if (/^[A-ZÀ-Ý][a-zà-ÿ].*[.!?]$/.test(raw) && raw.split(/\s+/).length >= 8) return true;
     return false;
@@ -282,11 +283,38 @@
     return /^(nota|attenzione|curiosita|curiosità|consiglio|importante)(?:\b|\s|:|-|–|—)/i.test(clean);
   }
 
-  function looksLikeHeadingParagraph(text) {
+  function looksLikeHeadingParagraph(text, meta) {
     var clean = safeString(text);
     if (!clean) return false;
 
-    if (clean.length <= 78 && !/[.!?]$/.test(clean)) return true;
+    meta = meta || {};
+
+    if (isSourcesParagraph(clean) || looksLikeNoteParagraph(clean) || lineLooksLikeListItem(clean)) return false;
+    if (/^scritto\s+da\b/i.test(clean)) return false;
+    if (/^nella\s+foto\s*:/i.test(clean)) return false;
+
+    var lines = clean.split(/\n+/).map(function (x) { return safeString(x); }).filter(Boolean);
+    var lineCount = Number(meta.lineCount || lines.length || 1);
+    var words = clean.split(/\s+/).filter(Boolean);
+
+    // Se il blocco è fatto da molte righe, quasi sempre è un paragrafo colonnare,
+    // non una serie di titoli.
+    if (lineCount > 2) return false;
+    if (clean.length > 125) return false;
+    if (words.length > 16) return false;
+
+    // Le righe che finiscono con virgola/semicolon sono quasi sempre wrap di paragrafo.
+    if (/[,;]$/.test(clean)) return false;
+
+    // Titoli forti: hanno due punti, punto interrogativo, parentesi esplicative
+    // o sono sezioni brevi senza punteggiatura finale.
+    if (/:/.test(clean) && clean.length <= 115) return true;
+    if (/\?$/.test(clean) && clean.length <= 90) return true;
+    if (/\([^)]+\)$/.test(clean) && clean.length <= 105) return true;
+
+    if (!/[.!]$/.test(clean) && clean.length <= 82 && words.length <= 10) {
+      if (!/^[a-zà-ÿ]/.test(clean)) return true;
+    }
 
     var letters = clean.replace(/[^A-Za-zÀ-ÿ]/g, '');
     if (letters.length >= 5) {
@@ -309,10 +337,28 @@
     }));
   }
 
+  function shouldAbsorbIntoOpenSourceCluster(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    if (/^nella\s+foto\s*:/i.test(raw)) return false;
+    if (/^scritto\s+da\b/i.test(raw)) return false;
+    if (isSourcesParagraph(raw) || looksLikeSourceCitation(raw)) return true;
+
+    // Continuazioni spezzate di citazioni già iniziate:
+    // es. "species in the field\". Nature..." oppure "intoxication in..."
+    if (/^[a-zà-ÿ]/.test(raw) && raw.length < 260) return true;
+    if (/^["“][^"]{8,260}/.test(raw)) return true;
+    if (/\b(Nature|PLOS\s+ONE|Journal|Scientific Reports|Chemical Senses|Nature Communications)\b/i.test(raw)) return true;
+    if (/\b[0-9]{3,4}\s*[-–]\s*[0-9]{2,4}\b/.test(raw)) return true;
+
+    return false;
+  }
+
   function moveSourcesBlocksToEnd(blocks) {
     var body = [];
     var sources = [];
     var pendingSourcesHeading = false;
+    var openSourceCluster = false;
 
     (Array.isArray(blocks) ? blocks : []).forEach(function (block) {
       if (!block) return;
@@ -326,31 +372,44 @@
         return;
       }
 
+      if (role === 'image-caption') {
+        body.push(block);
+        return;
+      }
+
       var explicitSource = role === 'sources' || isSourcesParagraph(text);
       var headingOnly = explicitSource && isSourcesHeadingOnly(text);
 
-      // Caso “Fonti” / “Bibliografia” come intestazione: non sposta tutto il seguito.
-      // Attiva solo una finestra breve; appena trova un paragrafo articolo vero, si ferma.
       if (headingOnly) {
         pendingSourcesHeading = true;
+        openSourceCluster = true;
         return;
       }
 
-      // Caso “Fonte: ...” nello stesso blocco: sposta solo quel blocco.
       if (explicitSource) {
         pushSourceBlock(sources, block, text);
         pendingSourcesHeading = false;
+        openSourceCluster = true;
         return;
       }
 
-      // Caso blocchi immediatamente dopo una intestazione Fonti/Bibliografia.
-      if (pendingSourcesHeading) {
-        if (looksLikeSourceCitation(text) && !looksLikeArticleContinuation(text)) {
+      if (pendingSourcesHeading || openSourceCluster) {
+        if (shouldAbsorbIntoOpenSourceCluster(text) && !looksLikeHeadingParagraph(text, { lineCount: 1 })) {
           pushSourceBlock(sources, block, text);
+          pendingSourcesHeading = false;
+          openSourceCluster = true;
           return;
         }
 
         pendingSourcesHeading = false;
+        openSourceCluster = false;
+      }
+
+      // Liste bibliografiche finali anche senza intestazione agganciata.
+      if (lineLooksLikeListItem(text) && looksLikeSourceCitation(text)) {
+        pushSourceBlock(sources, block, text);
+        openSourceCluster = true;
+        return;
       }
 
       body.push(block);
@@ -363,17 +422,23 @@
       { type: 'heading', role: 'sources-heading', text: 'Fonti e riferimenti' }
     ]).concat(sources);
   }
-
-  function classifyReaderParagraph(p, firstTextBlockDone) {
+  function classifyReaderParagraph(p, firstTextBlockDone, meta) {
     var type = 'paragraph';
     var role = '';
+    meta = meta || {};
 
-    if (isSourcesParagraph(p)) {
+    if (isSourcesParagraph(p) || looksLikeSourceCitation(p)) {
       type = 'note';
       role = 'sources';
+    } else if (/^nella\s+foto\s*:/i.test(safeString(p))) {
+      type = 'note';
+      role = 'image-caption';
+    } else if (/^scritto\s+da\b/i.test(safeString(p))) {
+      type = 'note';
+      role = 'author';
     } else if (looksLikeNoteParagraph(p)) {
       type = 'note';
-    } else if (looksLikeHeadingParagraph(p)) {
+    } else if (looksLikeHeadingParagraph(p, meta)) {
       type = 'heading';
     } else if (!firstTextBlockDone && p.length <= 520) {
       type = 'lead';
@@ -383,7 +448,6 @@
     if (role) block.role = role;
     return block;
   }
-
   function splitTextToBlocks(rawText) {
     var text = normalizeText(rawText);
     if (!text) return [];
@@ -447,11 +511,18 @@
     }
   }
 
+  function estimatePersistedPatchBytes(patch) {
+    var clone = Object.assign({}, patch || {});
+    // HTML di anteprima: utile alla modale admin, ma non deve forzare tagli ai readerBlocks.
+    delete clone.readerAdminPreviewHtml;
+    return estimatePatchBytes(clone);
+  }
+
   function trimPatchToFirestoreLimit(patch) {
     var next = Object.assign({}, patch);
     next.readerBlocks = Array.isArray(next.readerBlocks) ? next.readerBlocks.slice() : [];
 
-    while (next.readerBlocks.length > 20 && estimatePatchBytes(next) > MAX_PATCH_JSON_BYTES) {
+    while (next.readerBlocks.length > 20 && estimatePersistedPatchBytes(next) > MAX_PATCH_JSON_BYTES) {
       next.readerBlocks.pop();
     }
 
@@ -466,7 +537,8 @@
 
 
   function lineLooksLikeListItem(text) {
-    return /^\s*([•\-*–—]|[0-9]{1,3}[.)]|[A-Za-z][.)])\s+/.test(safeString(text));
+    // Include anche il bullet "" che spesso arriva dai PDF Word/LibreOffice.
+    return /^\s*([•\u2022\uF0B7▪▫◦‣\-*–—]|[0-9]{1,3}[.)]|[A-Za-z][.)])\s+/.test(safeString(text));
   }
 
   function lineLooksLikeStandalone(text) {
@@ -474,7 +546,6 @@
     if (!raw) return false;
     if (lineLooksLikeListItem(raw)) return true;
     if (isSourcesParagraph(raw) || looksLikeNoteParagraph(raw)) return true;
-    if (looksLikeHeadingParagraph(raw) && raw.length <= 110) return true;
     return false;
   }
 
@@ -487,17 +558,27 @@
     var veryBigGap = verticalGap > normalLineHeight * 2.15;
     var indentShift = Math.abs((line.xPdfMin || 0) - (prevLine.xPdfMin || 0));
 
-    if (veryBigGap) return true;
-    if (bigGap && (/[.!?:;…»")\]]$/.test(prevText) || prevText.length < 70 || text.length < 70)) return true;
+    // Nuova fonte o nuovo bullet: nuovo blocco.
+    if (isSourcesParagraph(text)) return true;
     if (lineLooksLikeListItem(text)) return true;
-    if (isSourcesParagraph(text) || isSourcesParagraph(prevText)) return true;
     if (looksLikeNoteParagraph(text)) return true;
-    if (looksLikeHeadingParagraph(text) && (bigGap || text.length <= 80)) return true;
-    if (indentShift > 34 && (bigGap || lineLooksLikeStandalone(text) || lineLooksLikeStandalone(prevText))) return true;
+
+    // Mai spezzare una citazione fonte solo perché la riga precedente iniziava con Fonte:
+    // il PDF la manda spesso su più righe.
+    if (isSourcesParagraph(prevText) || looksLikeSourceCitation(prevText)) {
+      if (!bigGap && !looksLikeHeadingParagraph(text, { lineCount: 1 })) return false;
+    }
+
+    if (veryBigGap) return true;
+
+    // Heading solo se c'è un vero stacco verticale: non basta una riga corta.
+    if (bigGap && looksLikeHeadingParagraph(text, { lineCount: 1 })) return true;
+
+    if (bigGap && (/[.!?:;…»")\]]$/.test(prevText) || prevText.length < 70 || text.length < 70)) return true;
+    if (indentShift > 34 && bigGap && (lineLooksLikeStandalone(text) || lineLooksLikeStandalone(prevText))) return true;
 
     return false;
   }
-
   function shouldKeepLineBreakInsideParagraph(prevLine, line, verticalGap, normalLineHeight) {
     if (!prevLine) return false;
 
@@ -507,17 +588,16 @@
     var indentShift = Math.abs((line.xPdfMin || 0) - (prevLine.xPdfMin || 0));
 
     if (lineLooksLikeListItem(text)) return true;
-    if (lineLooksLikeStandalone(text) || lineLooksLikeStandalone(prevText)) return true;
+    if (isSourcesParagraph(text) || looksLikeNoteParagraph(text)) return true;
     if (bigGap && (prevText.length < 95 || text.length < 95)) return true;
-    if (indentShift > 26 && (prevText.length < 120 || text.length < 120)) return true;
+    if (indentShift > 32 && bigGap && (prevText.length < 120 || text.length < 120)) return true;
 
     // Se la riga precedente finisce con punteggiatura forte e la riga dopo parte maiuscola,
-    // spesso nel PDF era un a capo intenzionale, non solo wrap tipografico.
-    if (/[.!?…]$/.test(prevText) && /^[A-ZÀ-Ý0-9]/.test(text) && prevText.length < 150) return true;
+    // preserva un a capo solo quando il blocco sembra davvero frase autonoma, non wrap stretto.
+    if (/[.!?…]$/.test(prevText) && /^[A-ZÀ-Ý0-9]/.test(text) && prevText.length < 115 && bigGap) return true;
 
     return false;
   }
-
   function joinLinesPreservingSemanticBreaks(lines) {
     var out = '';
 
@@ -640,7 +720,9 @@
         yPdfBottom: Math.min.apply(null, current.map(function (line) { return line.yPdf - line.hPdf; })),
         xPdfMin: Math.min.apply(null, current.map(function (line) { return line.xPdfMin; })),
         xPdfMax: Math.max.apply(null, current.map(function (line) { return line.xPdfMax; })),
-        lineCount: current.length
+        lineCount: current.length,
+        maxLineHeight: Math.max.apply(null, current.map(function (line) { return line.hPdf || 0; })),
+        avgLineHeight: current.reduce(function (sum, line) { return sum + (line.hPdf || 0); }, 0) / Math.max(1, current.length)
       });
       current = [];
     }
@@ -677,7 +759,7 @@
       var p = safeString(paragraph.text);
       if (!p) return;
 
-      var block = classifyReaderParagraph(p, !!firstTextBlockDoneRef.value);
+      var block = classifyReaderParagraph(p, !!firstTextBlockDoneRef.value, paragraph);
       block.page = pageNum;
       block.yCanvasTop = Math.max(0, (pageHeight - paragraph.yPdfTop) * scale);
       block.yCanvasBottom = Math.max(block.yCanvasTop, (pageHeight - paragraph.yPdfBottom) * scale);
@@ -1196,6 +1278,363 @@
     return blocks;
   }
 
+
+  function isImageCaptionBlock(block) {
+    var text = safeString(block && block.text);
+    return !!text && /^nella\s+foto\s*:/i.test(text);
+  }
+
+  function normalizeImageCaption(text) {
+    return safeString(text).replace(/^nella\s+foto\s*:\s*/i, 'Nella foto: ').trim();
+  }
+
+  function attachImageCaptionsToNearestImages(blocks) {
+    var list = Array.isArray(blocks) ? blocks.slice() : [];
+    var images = list.filter(function (b) { return b && b.type === 'image'; });
+    var out = [];
+
+    list.forEach(function (block) {
+      if (!isImageCaptionBlock(block)) {
+        out.push(block);
+        return;
+      }
+
+      var samePage = images.filter(function (img) {
+        return Number(img.page || 0) === Number(block.page || 0);
+      });
+
+      if (!samePage.length) {
+        return; // meglio non mostrare caption come titolo/paragrafo spurio.
+      }
+
+      var target = samePage
+        .map(function (img) {
+          var imgMid = ((img.yCanvasTop || 0) + (img.yCanvasBottom || img.yCanvasTop || 0)) / 2;
+          var blockMid = ((block.yCanvasTop || 0) + (block.yCanvasBottom || block.yCanvasTop || 0)) / 2;
+          return { img: img, d: Math.abs(imgMid - blockMid) };
+        })
+        .sort(function (a, b) { return a.d - b.d; })[0].img;
+
+      target.caption = normalizeImageCaption(block.text) || target.caption || '';
+      target.alt = target.caption || target.alt || '';
+    });
+
+    return out;
+  }
+
+
+  function isTextLikeReaderBlock(block) {
+    if (!block) return false;
+    if (block.type === 'image' || block.type === 'html' || block.type === 'divider') return false;
+    return !!safeString(block.text);
+  }
+
+  function normalizeReaderBlockTextInline(text) {
+    return safeString(text)
+      .replace(/[ \t]*\n+[ \t]*/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  function sentenceEndsStrong(text) {
+    return /[.!?…»")\]]$/.test(safeString(text));
+  }
+
+  function startsLowercaseOrContinuation(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    return /^[a-zà-ÿ(]/.test(raw) || /^(per|di|da|della|dell|del|e|ma|che|come|una|un|il|la|lo|le|gli|nel|nella|dei|delle)\b/i.test(raw);
+  }
+
+  function isWeakHeadingBlock(block, prevBlock, nextBlock) {
+    if (!block || block.type !== 'heading') return false;
+    var text = safeString(block.text);
+    var words = text.split(/\s+/).filter(Boolean);
+
+    if (!text) return true;
+    if (isSourcesParagraph(text) || looksLikeSourceCitation(text)) return true;
+    if (/^scritto\s+da\b/i.test(text) || /^nella\s+foto\s*:/i.test(text)) return true;
+
+    // Una riga che sembra frase spezzata dal layout non deve diventare titolo.
+    if (/[,;]$/.test(text)) return true;
+    if (startsLowercaseOrContinuation(text)) return true;
+    if (words.length > 13) return true;
+    if (text.length > 110) return true;
+
+    // Se è tra paragrafi e il precedente non è concluso, è quasi certamente wrap.
+    if (prevBlock && isTextLikeReaderBlock(prevBlock) && !sentenceEndsStrong(prevBlock.text)) return true;
+
+    // Se il blocco successivo è un'altra heading debole, questa è probabilmente una cascata di righe-paragrafo.
+    if (nextBlock && nextBlock.type === 'heading') {
+      var nt = safeString(nextBlock.text);
+      if (startsLowercaseOrContinuation(nt) || /[,;]$/.test(nt) || nt.split(/\s+/).length > 10) return true;
+    }
+
+    return false;
+  }
+
+  function mergeTextIntoBlock(target, addition, separator) {
+    if (!target) return;
+    var left = safeString(target.text);
+    var right = safeString(addition);
+    if (!right) return;
+    target.text = (left ? left + (separator || ' ') : '') + right;
+    target.text = target.text.replace(/[ \t]+/g, ' ').replace(/\n[ \t]+/g, '\n').trim();
+  }
+
+  function normalizeHeadingRuns(blocks) {
+    var src = Array.isArray(blocks) ? blocks.slice() : [];
+    var out = [];
+    var i = 0;
+
+    while (i < src.length) {
+      var block = src[i];
+      if (!block || block.type !== 'heading' || safeString(block.role).toLowerCase() === 'sources-heading') {
+        out.push(block);
+        i++;
+        continue;
+      }
+
+      var prev = out.length ? out[out.length - 1] : null;
+      var next = src[i + 1] || null;
+
+      if (!isWeakHeadingBlock(block, prev, next)) {
+        out.push(block);
+        i++;
+        continue;
+      }
+
+      // Heading debole: se il precedente è paragrafo/lead e non sembra chiuso, fondila lì.
+      if (prev && (prev.type === 'paragraph' || prev.type === 'lead') && !sentenceEndsStrong(prev.text)) {
+        mergeTextIntoBlock(prev, block.text, ' ');
+        i++;
+        continue;
+      }
+
+      // Altrimenti crea un paragrafo e assorbi eventuali heading deboli consecutive.
+      var paragraph = Object.assign({}, block, {
+        type: 'paragraph',
+        role: '',
+        text: normalizeReaderBlockTextInline(block.text)
+      });
+      delete paragraph.role;
+      i++;
+
+      while (i < src.length) {
+        var candidate = src[i];
+        if (!candidate || candidate.type !== 'heading' || !isWeakHeadingBlock(candidate, paragraph, src[i + 1] || null)) break;
+        mergeTextIntoBlock(paragraph, candidate.text, ' ');
+        paragraph.yCanvasBottom = Math.max(Number(paragraph.yCanvasBottom || 0), Number(candidate.yCanvasBottom || 0));
+        i++;
+      }
+
+      // Se il paragrafo creato termina ancora aperto, assorbi il primo paragrafo seguente di continuazione.
+      if (i < src.length && src[i] && src[i].type === 'paragraph' && (!sentenceEndsStrong(paragraph.text) || startsLowercaseOrContinuation(src[i].text))) {
+        mergeTextIntoBlock(paragraph, src[i].text, ' ');
+        paragraph.yCanvasBottom = Math.max(Number(paragraph.yCanvasBottom || 0), Number(src[i].yCanvasBottom || 0));
+        i++;
+      }
+
+      out.push(paragraph);
+    }
+
+    return out;
+  }
+
+  function hasBibliographyMarker(text) {
+    var clean = normalizeForEditorialMatch(text);
+    return /^(fonti|fonte|bibliografia|riferimenti|sitografia|fonti e approfondimenti|fonti consultate)(\b|\s|:|-|–|—)/.test(clean);
+  }
+
+  function strengthenSourceBlocks(blocks) {
+    var src = Array.isArray(blocks) ? blocks.slice() : [];
+    var out = [];
+    var inFinalBibliography = false;
+
+    src.forEach(function (block) {
+      if (!block) return;
+      var text = safeString(block.text);
+      var role = safeString(block.role).toLowerCase();
+
+      if (!isTextLikeReaderBlock(block)) {
+        out.push(block);
+        return;
+      }
+
+      if (hasBibliographyMarker(text)) {
+        var stripped = stripSourcesHeadingPrefix(text);
+        inFinalBibliography = true;
+        if (stripped && !isSourcesHeadingOnly(text)) {
+          out.push(Object.assign({}, block, { type: 'note', role: 'sources', text: stripped }));
+        }
+        return;
+      }
+
+      if (inFinalBibliography) {
+        if (/^nella\s+foto\s*:/i.test(text)) {
+          out.push(Object.assign({}, block, { type: 'note', role: 'image-caption' }));
+          return;
+        }
+        if (/^scritto\s+da\b/i.test(text)) {
+          out.push(Object.assign({}, block, { type: 'note', role: 'author' }));
+          return;
+        }
+        if (lineLooksLikeListItem(text) || looksLikeSourceCitation(text) || text.length < 460) {
+          out.push(Object.assign({}, block, { type: 'note', role: 'sources' }));
+          return;
+        }
+        inFinalBibliography = false;
+      }
+
+      if (role === 'sources' || isSourcesParagraph(text) || looksLikeSourceCitation(text)) {
+        out.push(Object.assign({}, block, { type: 'note', role: 'sources', text: stripSourcesHeadingPrefix(text) || text }));
+        return;
+      }
+
+      out.push(block);
+    });
+
+    return out;
+  }
+
+  function compactAdjacentSourceBlocks(blocks) {
+    var out = [];
+    (Array.isArray(blocks) ? blocks : []).forEach(function (block) {
+      if (!block) return;
+      var last = out.length ? out[out.length - 1] : null;
+      if (
+        last && block.role === 'sources' && last.role === 'sources' &&
+        Number(last.page || 0) === Number(block.page || 0) &&
+        safeString(last.text).length + safeString(block.text).length < 900
+      ) {
+        mergeTextIntoBlock(last, block.text, '\n');
+        last.yCanvasBottom = Math.max(Number(last.yCanvasBottom || 0), Number(block.yCanvasBottom || 0));
+        return;
+      }
+      out.push(block);
+    });
+    return out;
+  }
+
+  function postProcessReaderBlocks(blocks) {
+    var out = Array.isArray(blocks) ? blocks.slice() : [];
+    out = normalizeHeadingRuns(out);
+    out = strengthenSourceBlocks(out);
+    out = compactAdjacentSourceBlocks(out);
+    out = attachImageCaptionsToNearestImages(out);
+    out = moveSourcesBlocksToEnd(out);
+    return out;
+  }
+
+  function analyzeReaderBlocks(blocks, meta) {
+    meta = meta || {};
+    var list = Array.isArray(blocks) ? blocks : [];
+    var report = {
+      schemaVersion: 1,
+      engine: 'reader-v6',
+      pageCount: Number(meta.originalPageCount || 0),
+      pagesProcessed: Number(meta.pagesProcessed || 0),
+      blockCount: list.length,
+      paragraphCount: 0,
+      headingCount: 0,
+      imageCount: 0,
+      sourceCount: 0,
+      leadCount: 0,
+      noteCount: 0,
+      suspiciousBlocks: [],
+      warnings: [],
+      confidence: 100
+    };
+
+    list.forEach(function (block, index) {
+      if (!block) return;
+      var type = safeString(block.type || 'paragraph');
+      var role = safeString(block.role).toLowerCase();
+      var text = safeString(block.text);
+      if (type === 'paragraph') report.paragraphCount++;
+      if (type === 'heading') report.headingCount++;
+      if (type === 'image') report.imageCount++;
+      if (type === 'lead') report.leadCount++;
+      if (type === 'note') report.noteCount++;
+      if (role === 'sources') report.sourceCount++;
+
+      if (type === 'heading' && (isWeakHeadingBlock(block, list[index - 1], list[index + 1]) || text.length > 115)) {
+        report.suspiciousBlocks.push({ index: index, type: type, reason: 'heading_sospetto', text: text.slice(0, 160) });
+      }
+      if (type === 'paragraph' && looksLikeSourceCitation(text) && role !== 'sources') {
+        report.suspiciousBlocks.push({ index: index, type: type, reason: 'fonte_forse_non_spostata', text: text.slice(0, 160) });
+      }
+      if (role === 'sources' && text.length < 8) {
+        report.suspiciousBlocks.push({ index: index, type: type, reason: 'fonte_troppo_corta', text: text });
+      }
+    });
+
+    if (report.headingCount > Math.max(8, report.paragraphCount * 0.45)) {
+      report.warnings.push('Molti titoli rispetto ai paragrafi: controllare classificazione heading.');
+      report.confidence -= 18;
+    }
+    if (Number(meta.pagesProcessed || 0) >= 2 && report.imageCount === 0) {
+      report.warnings.push('Nessuna immagine rilevata: PDF forse testuale o detector troppo prudente.');
+      report.confidence -= 10;
+    }
+    if (report.sourceCount === 0 && list.some(function (b) { return looksLikeSourceCitation(safeString(b && b.text)); })) {
+      report.warnings.push('Possibili fonti rimaste nel corpo del testo.');
+      report.confidence -= 20;
+    }
+    if (report.suspiciousBlocks.length) {
+      report.confidence -= Math.min(35, report.suspiciousBlocks.length * 5);
+    }
+
+    report.confidence = Math.max(0, Math.min(100, report.confidence));
+    if (report.confidence >= 82) report.status = 'OK';
+    else if (report.confidence >= 60) report.status = 'CHECK';
+    else report.status = 'LOW_CONFIDENCE';
+
+    return report;
+  }
+
+  function buildAdminPreviewHtmlFromBlocks(media, blocks, report) {
+    function esc(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    function textHtml(text) {
+      return esc(text).replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+    }
+    var list = Array.isArray(blocks) ? blocks : [];
+    var body = list.slice(0, 80).map(function (block, index) {
+      var type = safeString(block && block.type || 'paragraph');
+      var role = safeString(block && block.role || '');
+      var badge = '<span style="font-size:10px; padding:3px 7px; border-radius:999px; background:rgba(255,255,255,.10); color:#d9e6d9;">' + esc(type + (role ? ':' + role : '')) + '</span>';
+      if (type === 'image') {
+        return '<figure style="margin:14px 0; padding:8px; border-radius:14px; border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.18);">' + badge + '<img src="' + esc(block.url || '') + '" style="display:block; width:100%; max-height:260px; object-fit:contain; margin-top:8px; border-radius:12px; background:#111;">' + (block.caption ? '<figcaption style="color:#cdbb7c; font-size:12px; margin-top:6px;">' + esc(block.caption) + '</figcaption>' : '') + '</figure>';
+      }
+      if (type === 'divider') return '<hr style="border:0; border-top:1px solid rgba(214,178,94,.35); margin:18px 0;">';
+      var tag = type === 'heading' ? 'h3' : 'div';
+      var color = role === 'sources' ? '#f4e6ba' : (type === 'heading' ? '#fff' : '#eaf1e7');
+      var bg = role === 'sources' ? 'rgba(214,178,94,.08)' : 'rgba(255,255,255,.035)';
+      return '<' + tag + ' style="margin:10px 0; padding:10px 12px; border-radius:12px; background:' + bg + '; color:' + color + '; line-height:1.48; font-size:' + (type === 'heading' ? '17px' : '14px') + ';">' + badge + '<div style="margin-top:6px;">' + textHtml(block.text || '') + '</div></' + tag + '>';
+    }).join('');
+    var r = report || {};
+    return '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif; color:#eef6ef;">' +
+      '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">' +
+      '<span style="padding:6px 9px; border-radius:999px; background:rgba(107,213,138,.14); color:#bff7cd; font-weight:900;">Confidenza ' + esc(r.confidence == null ? '—' : r.confidence + '%') + '</span>' +
+      '<span style="padding:6px 9px; border-radius:999px; background:rgba(255,255,255,.08);">Blocchi ' + esc(r.blockCount || list.length) + '</span>' +
+      '<span style="padding:6px 9px; border-radius:999px; background:rgba(255,255,255,.08);">Titoli ' + esc(r.headingCount || 0) + '</span>' +
+      '<span style="padding:6px 9px; border-radius:999px; background:rgba(255,255,255,.08);">Fonti ' + esc(r.sourceCount || 0) + '</span>' +
+      '<span style="padding:6px 9px; border-radius:999px; background:rgba(255,255,255,.08);">Immagini ' + esc(r.imageCount || 0) + '</span>' +
+      '</div>' +
+      ((r.warnings || []).length ? '<div style="border:1px solid rgba(228,182,83,.35); background:rgba(228,182,83,.10); border-radius:14px; padding:10px 12px; margin-bottom:12px; color:#ffe7a5;"><strong>Avvisi:</strong><br>' + esc((r.warnings || []).join('\n')).replace(/\n/g, '<br>') + '</div>' : '') +
+      '<h2 style="margin:0 0 10px; color:#f6d889;">' + esc(media && media.title || 'Anteprima reader') + '</h2>' +
+      body +
+      (list.length > 80 ? '<div style="margin:14px 0; color:#aebcaf;">Anteprima ridotta: mostrati primi 80 blocchi su ' + esc(list.length) + '.</div>' : '') +
+      '</div>';
+  }
+
   function mergeTextAndImageBlocks(textBlocks, imageBlocks) {
     var text = (textBlocks || []).slice().sort(function (a, b) {
       if ((a.page || 0) !== (b.page || 0)) return (a.page || 0) - (b.page || 0);
@@ -1230,7 +1669,7 @@
       out.push(images[imageIndex++]);
     }
 
-    return moveSourcesBlocksToEnd(out);
+    return postProcessReaderBlocks(out);
   }
 
   function buildPatchFromBlocks(media, blocks, meta) {
@@ -1241,15 +1680,23 @@
     var nextReaderVersion = Math.max(1, Number(meta.nextReaderVersion || media.readerVersion || 0) + (meta.nextReaderVersion ? 0 : 1));
     var preview = buildPreview(blocks, 900);
     var imageCount = (blocks || []).filter(function (block) { return block && block.type === 'image'; }).length;
+    var report = analyzeReaderBlocks(blocks, meta);
+    var previewHtml = buildAdminPreviewHtmlFromBlocks(media, blocks, report);
 
     var patch = {
       readerStatus: 'READY',
-      readerBuildMode: 'admin-browser-pdfjs-editorial-v4-images-lines-sources',
-      readerEditorialVersion: 4,
+      readerBuildMode: 'admin-browser-pdfjs-editorial-v6-diagnostics-preview',
+      readerEditorialVersion: 6,
       readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
-      readerImageStrategy: 'pdf-visual-components-plus-gaps-r2-webp-coordinate-merge-v4',
+      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6',
       readerImageCount: imageCount,
       readerImageErrors: Array.isArray(meta.imageErrors) ? meta.imageErrors.slice(0, 12) : [],
+      readerQualityScore: report.confidence,
+      readerQualityStatus: report.status,
+      readerBuildReport: report,
+      readerWarnings: report.warnings || [],
+      readerSuspiciousBlocks: report.suspiciousBlocks || [],
+      readerAdminPreviewHtml: previewHtml,
       readerVersion: nextReaderVersion,
       readerSourceMediaVersion: sourceVersion,
       readerGeneratedAt: root.FieldValue.serverTimestamp(),
@@ -1368,7 +1815,7 @@
       throw new Error('Nessun contenuto estraibile dal PDF. Probabile scansione/immagine: servirà OCR esterno o contenuto manuale.');
     }
 
-    onProgress('Preparazione reader editoriale V4: immagini, a capo reali e Fonti a cluster...');
+    onProgress('Preparazione reader editoriale V6: diagnostica, fonti, titoli e preview...');
     return buildPatchFromBlocks(media, blocks, {
       originalPageCount: pageCount,
       pagesProcessed: pagesToProcess,
@@ -1387,6 +1834,12 @@
       readerImageStrategy: null,
       readerImageCount: 0,
       readerImageErrors: null,
+      readerQualityScore: null,
+      readerQualityStatus: null,
+      readerBuildReport: null,
+      readerWarnings: null,
+      readerSuspiciousBlocks: null,
+      readerAdminPreviewHtml: null,
       readerVersion: Math.max(1, Number(media.readerVersion || 0) + 1),
       readerSourceMediaVersion: null,
       readerGeneratedAt: root.FieldValue.serverTimestamp(),
@@ -1410,6 +1863,8 @@
     isPdfMedia: isPdfMedia,
     loadPdfJs: loadPdfJs,
     buildReaderPatchFromMedia: buildReaderPatchFromMedia,
-    buildClearReaderPatch: buildClearReaderPatch
+    buildClearReaderPatch: buildClearReaderPatch,
+    buildAdminPreviewHtmlFromBlocks: buildAdminPreviewHtmlFromBlocks,
+    analyzeReaderBlocks: analyzeReaderBlocks
   };
 })();
