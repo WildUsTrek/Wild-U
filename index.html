@@ -4481,6 +4481,11 @@ function requireLoggedAccess(reason, options = {}) {
     let wildAudioNeedsUserStart = false;
     let wildAudioUnlockButtonShown = false;
 
+    // Guard minimale post-cache-nuke:
+    // ricorda solo che un gesto utente è arrivato prima degli asset audio pronti.
+    // Nessuna nuova UI, nessun toast, nessun cambio autoplay.
+    let wildAudioStartDeferredUntilAssetsReady = false;
+
     // Toggle utente, SOLO sessione corrente:
     // true = l'utente ha spento musica/ambienza per questa sessione.
     const WILDU_AUDIO_USER_MUTED_SESSION_KEY = "wilduAudioUserMutedForSession";
@@ -7263,7 +7268,7 @@ if (cachedPublicData && !bypassPublicCache) {
             myBookedTitles = [];
         }
 
-        if (data.resources) renderDynamicResources(data.resources);
+        renderDynamicResources(Array.isArray(data.resources) ? data.resources : []);
 
         buildFilters();
         filterTrips();
@@ -7387,7 +7392,7 @@ const publicCachePayload = {
             if (WILD_ASSETS['istruzioni_android']) document.getElementById('android-instructions').innerHTML = parseSheetText(WILD_ASSETS['istruzioni_android']);
             if (WILD_ASSETS['img_header']) document.getElementById('main-hero').style.backgroundImage = "url('" + formatAssetLink(WILD_ASSETS['img_header']) + "')";
 
-            if (data.resources) renderDynamicResources(data.resources);
+            renderDynamicResources(Array.isArray(data.resources) ? data.resources : []);
 
             buildFilters();
             filterTrips();
@@ -7417,6 +7422,16 @@ const publicCachePayload = {
 
         } catch (e) {
             console.error("Errore Mega-Pacchetto:", e);
+
+            // I moduli runtime non dipendono da getInitData/gateway:
+            // dopo cache nucleare proviamo comunque a renderizzarli da module_versions,
+            // invece di lasciare l'area Premi vuota se il mega-pacchetto inciampa.
+            try {
+                renderDynamicResources([]);
+            } catch (moduleRenderErr) {
+                console.warn("[WILDU MODULES] Render indipendente dopo errore init saltato:", moduleRenderErr);
+            }
+
             reconcileProfileShellWithClientSession();
 
             if (!regCtaSessionShown) {
@@ -10114,10 +10129,16 @@ let WILDU_RUNTIME_VERSION_LOADED_AT = 0;
 function shouldBypassWilduRuntimeVersionCache() {
     try {
         const params = new URLSearchParams(window.location.search || "");
+
+        function isTruthyBypassFlag(name) {
+            const raw = String(params.get(name) || "").trim().toLowerCase();
+            return !!raw && raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
+        }
+
         return (
-            params.get("moduleRefresh") === "1" ||
-            params.get("gameRefresh") === "1" ||
-            params.get("nocache") === "1" ||
+            isTruthyBypassFlag("moduleRefresh") ||
+            isTruthyBypassFlag("gameRefresh") ||
+            isTruthyBypassFlag("nocache") ||
             params.get("cache") === "off"
         );
     } catch (e) {
@@ -10167,7 +10188,7 @@ function buildWilduRuntimeKeyCandidates(rawUrl) {
     return Array.from(new Set(out));
 }
 
-function readWilduRuntimeVersionCache() {
+function readWilduRuntimeVersionCache(options = {}) {
     try {
         const raw = localStorage.getItem(WILDU_RUNTIME_VERSION_CACHE_KEY);
         if (!raw) return null;
@@ -10176,7 +10197,9 @@ function readWilduRuntimeVersionCache() {
         if (!parsed || typeof parsed !== "object") return null;
 
         const savedAt = Number(parsed.savedAt || 0);
-        if (!savedAt || Date.now() - savedAt > WILDU_RUNTIME_VERSION_TTL_MS) return null;
+        const allowStale = options.allowStale === true;
+        if (!savedAt) return null;
+        if (!allowStale && Date.now() - savedAt > WILDU_RUNTIME_VERSION_TTL_MS) return null;
 
         return parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
     } catch (e) {
@@ -10201,6 +10224,22 @@ function clearWilduRuntimeVersionCache() {
         WILDU_RUNTIME_VERSION_MEMORY = null;
         WILDU_RUNTIME_VERSION_LOADED_AT = 0;
     } catch (e) {}
+}
+
+function wilduRuntimeSleep(ms) {
+    return new Promise(function (resolve) {
+        setTimeout(resolve, Math.max(0, Number(ms || 0)));
+    });
+}
+
+function hasUsableWilduRuntimeModules(runtime) {
+    return !!(
+        runtime &&
+        typeof runtime === "object" &&
+        runtime.modules &&
+        typeof runtime.modules === "object" &&
+        Object.keys(runtime.modules).length > 0
+    );
 }
 
 async function getWilduRuntimeVersions(options = {}) {
@@ -10240,11 +10279,23 @@ async function getWilduRuntimeVersions(options = {}) {
     } catch (e) {
         console.warn("[WILDU RUNTIME VERSION] Lettura Firestore saltata:", e);
 
-        const fallback = {};
-        WILDU_RUNTIME_VERSION_MEMORY = fallback;
-        WILDU_RUNTIME_VERSION_LOADED_AT = Date.now();
+        // Dopo una cache nucleare non dobbiamo congelare un manifesto vuoto in RAM:
+        // se c'è una cache stale ancora valida come struttura la usiamo come paracadute,
+        // altrimenti lasciamo salire l'errore così il caller può ritentare.
+        if (options.allowStaleFallback !== false) {
+            const stale = readWilduRuntimeVersionCache({ allowStale: true });
+            if (hasUsableWilduRuntimeModules(stale)) {
+                WILDU_RUNTIME_VERSION_MEMORY = stale;
+                WILDU_RUNTIME_VERSION_LOADED_AT = 0;
+                return stale;
+            }
+        }
 
-        return fallback;
+        if (!force && hasUsableWilduRuntimeModules(WILDU_RUNTIME_VERSION_MEMORY)) {
+            return WILDU_RUNTIME_VERSION_MEMORY;
+        }
+
+        throw e;
     }
 }
 
@@ -11134,8 +11185,30 @@ function renderDynamicResources(resources) {
 }
 
 async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapshot) {
-    const runtime = await getWilduRuntimeVersions();
-    const modules = extractWilduRuntimeModules(runtime);
+    let runtime = null;
+    let modules = [];
+    let lastRuntimeError = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            runtime = await getWilduRuntimeVersions({
+                force: attempt > 0,
+                allowStaleFallback: attempt === 0
+            });
+
+            modules = extractWilduRuntimeModules(runtime);
+            if (modules.length || attempt === 2) break;
+        } catch (e) {
+            lastRuntimeError = e;
+            if (attempt === 2) throw e;
+        }
+
+        await wilduRuntimeSleep(350 + attempt * 450);
+    }
+
+    if (!modules.length && lastRuntimeError) {
+        throw lastRuntimeError;
+    }
 
     window.WILDU_LAST_MODULE_RUNTIME = runtime || null;
 
@@ -11510,7 +11583,14 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     const legacyModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
     // 1) Manifesto moduli contenitori.
-    const runtimeVersions = await getWilduRuntimeVersions();
+    // Se Firestore inciampa nel momento esatto del click, non blocchiamo il modulo:
+    // usiamo il moduleRev legacy già renderizzato sulla card e lasciamo il runtime come bonus.
+    let runtimeVersions = {};
+    try {
+        runtimeVersions = await getWilduRuntimeVersions();
+    } catch (e) {
+        console.warn("[WILDU RUNTIME VERSION] Manifesto modulo non disponibile, uso rev legacy:", e);
+    }
 
     // 2) Manifesto giochi specifici.
     // Lo carichiamo qui una volta, con TTL 3 ore, così quando il modulo giochi
@@ -12489,6 +12569,7 @@ function stopWilduUserSessionAudio(reason) {
 
             audioInited = false;
             wildAudioNeedsUserStart = false;
+            wildAudioStartDeferredUntilAssetsReady = false;
             wildAudioNeedsUserResume = false;
             wildAudioPausedByHidden = false;
 
@@ -12660,8 +12741,9 @@ function syncWilduAudioNavDockPosition() {
             FIXED_VOL_AMB
         });
 
-        // Se l’utente aveva già toccato troppo presto, ora mostriamo il tasto esplicito.
-        if (wildAudioNeedsUserStart || !audioInited) {
+        // Se l’utente aveva già toccato troppo presto, ora rendiamo disponibile
+        // il toggle già esistente. NON facciamo autoplay fuori dal gesto utente.
+        if (wildAudioStartDeferredUntilAssetsReady || wildAudioNeedsUserStart || !audioInited) {
             showWilduAudioUnlockButton('assets-ready');
         }
     }
@@ -12828,6 +12910,7 @@ function syncWilduAudioNavDockPosition() {
 
         if (!hasWilduPlayableSystemAudio()) {
             wildAudioNeedsUserStart = true;
+            wildAudioStartDeferredUntilAssetsReady = true;
 
             pageDebug('AUDIO_START_DEFERRED_ASSETS_NOT_READY', {
                 hasMusSrc: !!(aMus && aMus.src),
@@ -12843,11 +12926,12 @@ function syncWilduAudioNavDockPosition() {
                 FIXED_VOL_AMB
             });
 
-            return;
+            return false;
         }
 
         audioInited = true;
         wildAudioNeedsUserStart = false;
+        wildAudioStartDeferredUntilAssetsReady = false;
 
         let playedSomething = false;
 
