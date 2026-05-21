@@ -306,6 +306,28 @@
     return false;
   }
 
+
+  function looksLikeArticleContinuation(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    if (looksLikePureSourceLine(raw) || isSourcesParagraph(raw)) return false;
+    if (/^nella\s+foto\s*:/i.test(raw)) return false;
+    if (/^scritto\s+da\b/i.test(raw)) return false;
+
+    var words = raw.split(/\s+/).filter(Boolean);
+
+    // Blocchi lunghi o frasi complete sono quasi sempre testo narrativo/articolo,
+    // non continuazioni bibliografiche. Serve come guardia anti-overcapture fonti.
+    if (raw.length > 180) return true;
+    if (words.length >= 12 && /[.!?]$/.test(raw)) return true;
+    if (words.length >= 9 && /^[A-ZÀ-Ý][a-zà-ÿ]/.test(raw) && /[,.;:!?]/.test(raw)) return true;
+
+    // Titoli/sezioni articolo riconoscibili: non sono fonti.
+    if (lineLooksLikeStrongArticleHeading(raw)) return true;
+
+    return false;
+  }
+
   function looksLikeSourceContinuationLine(text, previousWasSource) {
     var raw = safeString(text);
     if (!raw || !previousWasSource) return false;
