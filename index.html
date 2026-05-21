@@ -1912,29 +1912,28 @@ const WilduMediaClient = (() => {
             type === "lead" ||
             role === "sources-heading";
 
+        const isSources = role === "sources";
         let html = escapeHtml(clean);
 
-        // Paragrafi veri già presenti dal builder Admin: li rispettiamo.
-        html = html.replace(/\n{2,}/g, function () {
-            return '<br><br>' + buildWilduReaderParagraphDividerHtml();
-        });
-
-        // Singolo a capo semantico preservato dal PDF builder.
-        html = html.replace(/\n/g, buildWilduReaderSoftBreakHtml());
-
-        // Punto seguito da spazio: respiro su smartphone, ma non nei titoli/lead.
-        if (!suppressColonBreak) {
-            html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
+        // V5: non inseriamo più divisori decorativi dentro ogni blocco testuale.
+        // I separatori devono arrivare solo come blocchi "divider" espliciti dal builder.
+        if (isSources) {
+            html = html.replace(/\n{2,}/g, "<br>");
+            html = html.replace(/\n/g, "<br>");
+            return html;
         }
 
-        // Due punti: SOLO testo normale / note / quote / fonti, mai heading/lead/header.
+        html = html.replace(/\n{2,}/g, "<br><br>");
+        html = html.replace(/\n/g, buildWilduReaderSoftBreakHtml());
+
+        // Punto e due punti: respiro su smartphone solo nel testo normale.
         if (!suppressColonBreak) {
+            html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
             html = html.replace(/:([\s]+)(?=\S)/g, ":" + buildWilduReaderSoftBreakHtml());
         }
 
         return html;
     }
-
 
     function buildWilduReaderBlockHtml(block, index) {
         if (!block) return "";
@@ -2026,7 +2025,6 @@ const WilduMediaClient = (() => {
 
         if (block.type === "quote") {
             return `
-                ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
                 <blockquote style="
                     margin:24px 0;
                     padding:17px 17px;
@@ -2043,23 +2041,23 @@ const WilduMediaClient = (() => {
 
         if (block.type === "note") {
             const isSources = role === "sources";
+            const isAuthor = role === "author";
             return `
-                ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
                 <div style="
-                    margin:21px 0;
-                    padding:15px 16px;
-                    border-radius:18px;
-                    border:1px solid ${isSources ? "rgba(212,175,55,.40)" : "rgba(124,199,255,.35)"};
-                    background:${isSources ? "rgba(212,175,55,.075)" : "rgba(124,199,255,.08)"};
+                    margin:${isSources ? "12px 0" : "18px 0"};
+                    padding:${isSources ? "12px 14px" : "15px 16px"};
+                    border-radius:${isSources ? "15px" : "18px"};
+                    border:1px solid ${isSources ? "rgba(212,175,55,.34)" : "rgba(124,199,255,.35)"};
+                    background:${isSources ? "rgba(212,175,55,.060)" : "rgba(124,199,255,.08)"};
                     color:${isSources ? "#f4e6ba" : "#dff3ff"};
                     font-size:${isSources ? "14px" : "15px"};
-                    line-height:1.58;
+                    line-height:${isSources ? "1.48" : "1.58"};
+                    font-style:${isAuthor ? "italic" : "normal"};
                 ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</div>
             `;
         }
 
         return `
-            ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
             <p style="
                 color:#ededed;
                 font-size:18px;
