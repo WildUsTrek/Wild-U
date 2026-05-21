@@ -36,6 +36,9 @@
   var IMAGE_CROP_INNER_BLEED_RATIO = 0.035;
   var IMAGE_CROP_INNER_BLEED_MAX_PX = 30;
   var IMAGE_CROP_INNER_BLEED_MIN_PX = 3;
+  var IMAGE_CROP_HERO_BLEED_RATIO = 0.012;
+  var IMAGE_CROP_HERO_BLEED_MAX_PX = 12;
+  var IMAGE_CROP_CENTER_PRESERVE = true;
 
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
@@ -262,33 +265,90 @@
     return raw.replace(/^\s*(fonte|fonti|bibliografia|riferimenti|riferimento|sitografia|fonti consultate|fonti e riferimenti)\s*[:\-–—]?\s*/i, '').trim();
   }
 
+  function sourceMarkerKind(text) {
+    var clean = normalizeForEditorialMatch(text);
+    if (/^fonte(?:\b|\s|:|-|–|—)/.test(clean)) return 'single';
+    if (/^(fonti|bibliografia|riferimenti|riferimento|sitografia|fonti consultate|fonti e riferimenti|fonti e approfondimenti)(?:\b|\s|:|-|–|—)/.test(clean)) return 'final';
+    return '';
+  }
+
+  function isFinalSourcesMarker(text) {
+    return sourceMarkerKind(text) === 'final';
+  }
+
+  function lineLooksLikeStrongArticleHeading(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    if (isSourcesParagraph(raw) || looksLikeNoteParagraph(raw) || /^scritto\s+da\b/i.test(raw) || /^nella\s+foto\s*:/i.test(raw)) return false;
+    if (/[,;]$/.test(raw)) return false;
+    if (/^[a-zà-ÿ]/.test(raw)) return false;
+
+    var words = raw.split(/\s+/).filter(Boolean);
+    if (words.length < 2 || words.length > 13) return false;
+    if (raw.length > 115) return false;
+
+    if (/:/.test(raw) || /\?$/.test(raw) || /\([^)]+\)$/.test(raw)) return true;
+    if (!/[.!]$/.test(raw) && words.length <= 9) return true;
+    return false;
+  }
+
+  function looksLikePureSourceLine(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    if (isSourcesParagraph(raw)) return true;
+    if (/https?:\/\//i.test(raw) || /\bwww\./i.test(raw)) return true;
+    if (/\bdoi\s*:/i.test(raw) || /\bisbn\s*:/i.test(raw)) return true;
+    if (lineLooksLikeListItem(raw) && (/\([12][0-9]{3}\)/.test(raw) || /\b(nature|journal|plos|scientific|communications|senses|shinrin|mother tree|wohlleben|gagliano|simard|polak|joung|bear)\b/i.test(raw))) return true;
+    if (/\([12][0-9]{3}\)/.test(raw) && /[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+,\s*[A-Z]/.test(raw)) return true;
+    if (/\b(Nature|PLOS\s+ONE|Journal|Scientific Reports|Chemical Senses|Nature Communications)\b/i.test(raw)) return true;
+    if (/\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+,\s*[A-Z]\./.test(raw) && raw.length < 360) return true;
+    if (/\b[a-z0-9-]+\.(it|com|org|net|edu|gov|eu)(\/|\b)/i.test(raw)) return true;
+    return false;
+  }
+
+  function looksLikeSourceContinuationLine(text, previousWasSource) {
+    var raw = safeString(text);
+    if (!raw || !previousWasSource) return false;
+    if (lineLooksLikeStrongArticleHeading(raw)) return false;
+    if (looksLikeArticleContinuation(raw) && raw.length > 90) return false;
+
+    // Continuazioni tipiche di citazioni mandate a capo dal PDF.
+    if (/^[a-zà-ÿ][^.!?]{0,180}(?:\.|,|;)?$/.test(raw) && /\b(field|journal|nature|plos|senses|communications|reports|intoxication|species|plants|soil)\b/i.test(raw)) return true;
+    if (/^['"“][^"”]{8,220}/.test(raw)) return true;
+    if (/\b[0-9]{3,4}\s*[-–,]\s*[0-9]{2,5}\.?$/.test(raw)) return true;
+    if (/\be\d{3,8}\.?$/i.test(raw)) return true;
+    if (/^[A-Z]\.$/.test(raw)) return true;
+    return false;
+  }
+
+  function sourceCitationHasLikelyEnd(text) {
+    var raw = safeString(text);
+    return /\b[0-9]{3,4}\s*[-–,]\s*[0-9]{2,5}\.?$/.test(raw) ||
+      /\be\d{3,8}\.?$/i.test(raw) ||
+      /\b(Nature|PLOS\s+ONE|Journal|Scientific Reports|Chemical Senses|Nature Communications)\b[^\n]{0,180}\.?$/i.test(raw);
+  }
+
   function looksLikeSourceCitation(text) {
     var raw = safeString(text);
     var clean = normalizeForEditorialMatch(raw);
     if (!clean) return false;
 
     if (isSourcesParagraph(raw)) return true;
-    if (/https?:\/\//i.test(raw) || /\bwww\./i.test(raw)) return true;
-    if (/\bdoi\s*:/i.test(raw) || /\bisbn\s*:/i.test(raw)) return true;
-    if (/\b(consultato|accesso|fonte dati|elaborazione|archivio|biblioteca|ministero|istat|wikipedia|treccani|universita|università)\b/i.test(raw)) return true;
-    if (/^\s*(\[[0-9]+\]|[0-9]+[.)])\s+/.test(raw) && raw.length < 420) return true;
-    if (lineLooksLikeListItem(raw) && (/\([12][0-9]{3}\)/.test(raw) || /\b(nature|journal|plos|scientific|communications|senses|shinrin|mother tree|wohlleben|gagliano|simard|polak|joung|bear)\b/i.test(raw))) return true;
-    if (/\([12][0-9]{3}\)/.test(raw) && /[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+,\s*[A-Z]/.test(raw)) return true;
-    if (/\b(Nature|PLOS\s+ONE|Journal|Scientific Reports|Chemical Senses|Nature Communications)\b/i.test(raw)) return true;
-    if (/\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+,\s*[A-Z]\./.test(raw) && raw.length < 520) return true;
-    if (/\b[a-z0-9-]+\.(it|com|org|net|edu|gov|eu)(\/|\b)/i.test(raw)) return true;
 
-    return false;
-  }
-  function looksLikeArticleContinuation(text) {
-    var raw = safeString(text);
-    if (!raw) return false;
-    if (looksLikeSourceCitation(raw)) return false;
-    if (raw.length > 180) return true;
-    if (/^[A-ZÀ-Ý][a-zà-ÿ].*[.!?]$/.test(raw) && raw.split(/\s+/).length >= 8) return true;
-    return false;
-  }
+    // Anti-overcapture: un blocco lungo che contiene anche narrazione o titoli articolo
+    // non è una fonte pura. Verrà eventualmente spezzato da splitMixedSourceBlocks().
+    var lines = raw.split(/\n+/).map(function (x) { return safeString(x); }).filter(Boolean);
+    if (raw.length > 520 && !lineLooksLikeListItem(raw)) return false;
+    if (lines.length >= 3) {
+      var articleish = lines.some(function (line) {
+        return lineLooksLikeStrongArticleHeading(line) || (looksLikeArticleContinuation(line) && !looksLikePureSourceLine(line));
+      });
+      var sourcish = lines.some(function (line) { return looksLikePureSourceLine(line); });
+      if (articleish && sourcish) return false;
+    }
 
+    return looksLikePureSourceLine(raw);
+  }
   function looksLikeNoteParagraph(text) {
     var clean = normalizeForEditorialMatch(text);
     return /^(nota|attenzione|curiosita|curiosità|consiglio|importante)(?:\b|\s|:|-|–|—)/i.test(clean);
@@ -348,20 +408,16 @@
     }));
   }
 
-  function shouldAbsorbIntoOpenSourceCluster(text) {
+  function shouldAbsorbIntoOpenSourceCluster(text, previousSourceText) {
     var raw = safeString(text);
     if (!raw) return false;
     if (/^nella\s+foto\s*:/i.test(raw)) return false;
     if (/^scritto\s+da\b/i.test(raw)) return false;
-    if (isSourcesParagraph(raw) || looksLikeSourceCitation(raw)) return true;
+    if (lineLooksLikeStrongArticleHeading(raw)) return false;
+    if (looksLikeArticleContinuation(raw) && raw.length > 90) return false;
 
-    // Continuazioni spezzate di citazioni già iniziate:
-    // es. "species in the field\". Nature..." oppure "intoxication in..."
-    if (/^[a-zà-ÿ]/.test(raw) && raw.length < 260) return true;
-    if (/^["“][^"]{8,260}/.test(raw)) return true;
-    if (/\b(Nature|PLOS\s+ONE|Journal|Scientific Reports|Chemical Senses|Nature Communications)\b/i.test(raw)) return true;
-    if (/\b[0-9]{3,4}\s*[-–]\s*[0-9]{2,4}\b/.test(raw)) return true;
-
+    if (isSourcesParagraph(raw) || looksLikePureSourceLine(raw)) return true;
+    if (looksLikeSourceContinuationLine(raw, !!previousSourceText)) return true;
     return false;
   }
 
@@ -400,15 +456,18 @@
       if (explicitSource) {
         pushSourceBlock(sources, block, text);
         pendingSourcesHeading = false;
-        openSourceCluster = true;
+        // Fonte: singolare è una citazione inline e NON deve aprire una modalità infinita.
+        // Solo intestazioni finali tipo Fonti/Bibliografia possono raccogliere i blocchi successivi.
+        openSourceCluster = isFinalSourcesMarker(text) || headingOnly;
         return;
       }
 
       if (pendingSourcesHeading || openSourceCluster) {
-        if (shouldAbsorbIntoOpenSourceCluster(text) && !looksLikeHeadingParagraph(text, { lineCount: 1 })) {
+        var lastSource = sources.length ? sources[sources.length - 1].text : '';
+        if (shouldAbsorbIntoOpenSourceCluster(text, lastSource) && !looksLikeHeadingParagraph(text, { lineCount: 1 })) {
           pushSourceBlock(sources, block, text);
           pendingSourcesHeading = false;
-          openSourceCluster = true;
+          openSourceCluster = isFinalSourcesMarker(lastSource) || isFinalSourcesMarker(text);
           return;
         }
 
@@ -1177,33 +1236,41 @@
     var visualH = maxY - minY + 1;
     if (visualW < 24 || visualH < 24) return bounds;
 
-    var padX = Math.max(IMAGE_CROP_TIGHTEN_MIN_PADDING, Math.round(visualW * IMAGE_CROP_TIGHTEN_PADDING_RATIO));
-    var padY = Math.max(IMAGE_CROP_TIGHTEN_MIN_PADDING, Math.round(visualH * IMAGE_CROP_TIGHTEN_PADDING_RATIO));
+    var isHero = safeString(bounds.roleHint || bounds.role).toLowerCase() === 'hero';
+    var bleedRatio = isHero ? IMAGE_CROP_HERO_BLEED_RATIO : IMAGE_CROP_INNER_BLEED_RATIO;
+    var bleedMax = isHero ? IMAGE_CROP_HERO_BLEED_MAX_PX : IMAGE_CROP_INNER_BLEED_MAX_PX;
 
-    var maxInsetX = Math.round(w0 * IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO);
-    var maxInsetY = Math.round(h0 * IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO);
+    var bleedX = Math.max(IMAGE_CROP_INNER_BLEED_MIN_PX, Math.min(bleedMax, Math.round(visualW * bleedRatio)));
+    var bleedY = Math.max(IMAGE_CROP_INNER_BLEED_MIN_PX, Math.min(bleedMax, Math.round(visualH * bleedRatio)));
 
-    var nx1 = Math.max(x0, x0 + minX - padX);
-    var ny1 = Math.max(y0, y0 + minY - padY);
-    var nx2 = Math.min(x0 + w0, x0 + maxX + padX);
-    var ny2 = Math.min(y0 + h0, y0 + maxY + padY);
+    var desiredW = Math.max(MIN_IMAGE_CROP_WIDTH, visualW - (bleedX * 2));
+    var desiredH = Math.max(MIN_IMAGE_CROP_HEIGHT, visualH - (bleedY * 2));
 
-    // Bleed editoriale: dopo aver trovato il bordo visivo, rosicchia leggermente dentro.
-    // Serve a togliere micro-bordi bianchi/impaginazione senza trasformare il crop in una pagina A4.
-    var bleedX = Math.max(IMAGE_CROP_INNER_BLEED_MIN_PX, Math.min(IMAGE_CROP_INNER_BLEED_MAX_PX, Math.round(visualW * IMAGE_CROP_INNER_BLEED_RATIO)));
-    var bleedY = Math.max(IMAGE_CROP_INNER_BLEED_MIN_PX, Math.min(IMAGE_CROP_INNER_BLEED_MAX_PX, Math.round(visualH * IMAGE_CROP_INNER_BLEED_RATIO)));
+    // V6.3: crop center-preserving. Prima V6.2 rosicchiava dai bordi del bbox e,
+    // in alcune hero, dava l'impressione di tagliare prendendo un lato come ancora.
+    // Ora il taglio resta simmetrico intorno al centro del contenuto visivo.
+    var centerX = x0 + minX + (visualW / 2);
+    var centerY = y0 + minY + (visualH / 2);
 
-    if ((nx2 - nx1) - (bleedX * 2) >= MIN_IMAGE_CROP_WIDTH) {
-      nx1 += bleedX;
-      nx2 -= bleedX;
-    }
+    var nx1 = Math.round(centerX - desiredW / 2);
+    var ny1 = Math.round(centerY - desiredH / 2);
+    var nx2 = Math.round(centerX + desiredW / 2);
+    var ny2 = Math.round(centerY + desiredH / 2);
 
-    if ((ny2 - ny1) - (bleedY * 2) >= MIN_IMAGE_CROP_HEIGHT) {
-      ny1 += bleedY;
-      ny2 -= bleedY;
-    }
+    // Clamp mantenendo quanto più possibile il centro.
+    if (nx1 < x0) { nx2 += (x0 - nx1); nx1 = x0; }
+    if (ny1 < y0) { ny2 += (y0 - ny1); ny1 = y0; }
+    if (nx2 > x0 + w0) { nx1 -= (nx2 - (x0 + w0)); nx2 = x0 + w0; }
+    if (ny2 > y0 + h0) { ny1 -= (ny2 - (y0 + h0)); ny2 = y0 + h0; }
 
-    // Limite anti-taglio: non stringe mai oltre circa il 36% per lato.
+    nx1 = Math.max(x0, nx1);
+    ny1 = Math.max(y0, ny1);
+    nx2 = Math.min(x0 + w0, nx2);
+    ny2 = Math.min(y0 + h0, ny2);
+
+    var maxInsetX = Math.round(w0 * (isHero ? 0.22 : IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO));
+    var maxInsetY = Math.round(h0 * (isHero ? 0.22 : IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO));
+
     nx1 = Math.min(nx1, x0 + maxInsetX);
     ny1 = Math.min(ny1, y0 + maxInsetY);
     nx2 = Math.max(nx2, x0 + w0 - maxInsetX);
@@ -1214,10 +1281,9 @@
 
     if (nw < MIN_IMAGE_CROP_WIDTH || nh < MIN_IMAGE_CROP_HEIGHT) return bounds;
 
-    // Se il guadagno è microscopico, lascia il crop originale.
     var oldArea = w0 * h0;
     var newArea = nw * nh;
-    if (!oldArea || newArea / oldArea > 0.94) return bounds;
+    if (!oldArea || newArea / oldArea > 0.965) return bounds;
 
     return Object.assign({}, bounds, {
       x: Math.round(nx1),
@@ -1227,7 +1293,7 @@
       yCanvasTop: Math.round(ny1),
       yCanvasBottom: Math.round(ny1 + nh),
       tightened: true,
-      tightenMode: 'auto-white-margin-inner-bleed-v6-2'
+      tightenMode: isHero ? 'center-preserving-hero-bleed-v6-3' : 'center-preserving-inline-bleed-v6-3'
     });
   }
 
@@ -1453,6 +1519,9 @@
     for (var i = 0; i < candidates.length && imageState.total < MAX_READER_IMAGES; i++) {
       var c = candidates[i];
       try {
+        var willBeHero = imageState.total === 0 && (pageNum === 1 || c.yCanvasTop < canvas.height * 0.28) && c.w >= canvas.width * 0.42;
+        c.roleHint = willBeHero ? 'hero' : 'inline';
+
         onProgress('Ottimizzo immagine pagina ' + pageNum + '...');
         var blob = await cropCanvasToOptimizedBlob(canvas, c);
 
@@ -1463,7 +1532,7 @@
         onProgress('Carico immagine reader ' + imageState.total + ' su R2...');
         var uploaded = await uploadReaderImage(media, blob, imageState.total, pageNum, nextReaderVersion);
 
-        var isHero = imageState.total === 1 && (pageNum === 1 || c.yCanvasTop < canvas.height * 0.28) && c.w >= canvas.width * 0.42;
+        var isHero = willBeHero;
 
         blocks.push({
           type: 'image',
@@ -1657,8 +1726,176 @@
     return /^(fonti|fonte|bibliografia|riferimenti|sitografia|fonti e approfondimenti|fonti consultate)(\b|\s|:|-|–|—)/.test(clean);
   }
 
+  function insertReaderSourceBoundaries(text) {
+    var out = safeString(text);
+    if (!out) return '';
+
+    out = out.replace(/\b(Fonte|Fonti|Bibliografia|Riferimenti|Riferimento|Sitografia|Fonti consultate|Fonti e riferimenti|Fonti e approfondimenti scientifici)\s*:\s*/ig, '\n@@WILDU_SOURCE_MARKER@@$1: ');
+
+    // Se dopo una citazione bibliografica completa riparte un titolo/sezione,
+    // forza un confine. Evita blocchi tipo fonte + nuovo capitolo.
+    out = out.replace(/((?:Nature|PLOS\s+ONE|Journal\s+of\s+African\s+Zoology|Journal|Scientific\s+Reports|Chemical\s+Senses|Nature\s+Communications)[^\n]{0,220}?(?:\d{1,4}\s*[-–,]\s*\d{2,5}|e\d{3,8})\.?)\s+([A-ZÀ-Ý][^\n.!?]{4,115}(?:\([^)]{2,80}\)|:|\?)?)/g, '$1\n$2');
+
+    return out.replace(/^\n+/, '').trim();
+  }
+
+  function pushLineGroupAsBlocks(out, proto, groupType, lines) {
+    lines = (lines || []).map(function (line) { return safeString(line); }).filter(Boolean);
+    if (!lines.length) return;
+
+    var base = Object.assign({}, proto || {});
+    delete base.role;
+
+    function pushBody(text, lineCount) {
+      var clean = safeString(text);
+      if (!clean) return;
+      var block = classifyReaderParagraph(clean, true, { lineCount: lineCount || 1 });
+      out.push(Object.assign({}, base, block, { text: clean }));
+    }
+
+    if (groupType === 'source') {
+      out.push(Object.assign({}, base, {
+        type: 'note',
+        role: 'sources',
+        text: stripSourcesHeadingPrefix(lines.join('\n')) || lines.join('\n')
+      }));
+      return;
+    }
+
+    if (groupType === 'caption') {
+      out.push(Object.assign({}, base, { type: 'note', role: 'image-caption', text: normalizeImageCaption(lines.join(' ')) }));
+      return;
+    }
+
+    if (groupType === 'author') {
+      out.push(Object.assign({}, base, { type: 'note', role: 'author', text: lines.join(' ') }));
+      return;
+    }
+
+    // Corpo: se il primo rigo è un titolo forte e dopo c'è testo, separa titolo/paragrafo.
+    if (lines.length > 1 && lineLooksLikeStrongArticleHeading(lines[0])) {
+      out.push(Object.assign({}, base, { type: 'heading', text: lines[0] }));
+      pushBody(lines.slice(1).join(' '), lines.length - 1);
+      return;
+    }
+
+    pushBody(lines.join(' '), lines.length);
+  }
+
+  function splitMixedSourceBlock(block) {
+    var text = safeString(block && block.text);
+    if (!text) return [block];
+
+    var role = safeString(block && block.role).toLowerCase();
+    var prepared = insertReaderSourceBoundaries(text);
+    var lines = prepared.split(/\n+/).map(function (line) { return safeString(line); }).filter(Boolean);
+
+    var hasMarker = /@@WILDU_SOURCE_MARKER@@/.test(prepared);
+    var hasSourceLine = lines.some(function (line) {
+      var cleanLine = line.replace('@@WILDU_SOURCE_MARKER@@', '');
+      return isSourcesParagraph(cleanLine) || looksLikePureSourceLine(cleanLine);
+    });
+    var hasArticleLine = lines.some(function (line) {
+      var cleanLine = line.replace('@@WILDU_SOURCE_MARKER@@', '');
+      return lineLooksLikeStrongArticleHeading(cleanLine) || (looksLikeArticleContinuation(cleanLine) && !looksLikePureSourceLine(cleanLine));
+    });
+
+    if (!hasMarker && !(role === 'sources' && hasSourceLine && hasArticleLine)) {
+      return [block];
+    }
+
+    var out = [];
+    var group = [];
+    var groupType = '';
+    var previousWasSource = false;
+    var finalBibliographyMode = false;
+
+    function flush() {
+      if (group.length) pushLineGroupAsBlocks(out, block, groupType || 'body', group);
+      group = [];
+      groupType = '';
+    }
+
+    function start(type, line) {
+      if (groupType && groupType !== type) flush();
+      groupType = type;
+      if (line) group.push(line);
+    }
+
+    lines.forEach(function (rawLine) {
+      var marker = rawLine.indexOf('@@WILDU_SOURCE_MARKER@@') !== -1;
+      var line = rawLine.replace('@@WILDU_SOURCE_MARKER@@', '').trim();
+      if (!line) return;
+
+      if (/^nella\s+foto\s*:/i.test(line)) {
+        flush();
+        start('caption', line);
+        flush();
+        previousWasSource = false;
+        return;
+      }
+
+      if (/^scritto\s+da\b/i.test(line)) {
+        flush();
+        start('author', line);
+        flush();
+        previousWasSource = false;
+        return;
+      }
+
+      if (marker) {
+        var kind = sourceMarkerKind(line);
+        if (kind === 'final') finalBibliographyMode = true;
+        var stripped = stripSourcesHeadingPrefix(line);
+        if (stripped) {
+          start('source', stripped);
+          previousWasSource = true;
+        } else {
+          flush();
+          previousWasSource = false;
+        }
+        return;
+      }
+
+      if (finalBibliographyMode) {
+        if (lineLooksLikeListItem(line) || looksLikePureSourceLine(line) || looksLikeSourceContinuationLine(line, previousWasSource)) {
+          start('source', line);
+          previousWasSource = true;
+          return;
+        }
+        // Se dopo una bibliografia appare testo narrativo vero, esci dalla modalità fonti.
+        finalBibliographyMode = false;
+      }
+
+      if (looksLikePureSourceLine(line) || looksLikeSourceContinuationLine(line, previousWasSource)) {
+        start('source', line);
+        previousWasSource = true;
+        if (sourceCitationHasLikelyEnd(line)) previousWasSource = false;
+        return;
+      }
+
+      start('body', line);
+      previousWasSource = false;
+    });
+
+    flush();
+    return out.length ? out : [block];
+  }
+
+  function splitMixedSourceBlocks(blocks) {
+    var out = [];
+    (Array.isArray(blocks) ? blocks : []).forEach(function (block) {
+      if (!block || !isTextLikeReaderBlock(block)) {
+        out.push(block);
+        return;
+      }
+      splitMixedSourceBlock(block).forEach(function (part) { out.push(part); });
+    });
+    return out;
+  }
+
   function strengthenSourceBlocks(blocks) {
-    var src = Array.isArray(blocks) ? blocks.slice() : [];
+    var src = splitMixedSourceBlocks(Array.isArray(blocks) ? blocks.slice() : []);
     var out = [];
     var inFinalBibliography = false;
 
@@ -1672,7 +1909,7 @@
         return;
       }
 
-      if (hasBibliographyMarker(text)) {
+      if (isFinalSourcesMarker(text)) {
         var stripped = stripSourcesHeadingPrefix(text);
         inFinalBibliography = true;
         if (stripped && !isSourcesHeadingOnly(text)) {
@@ -1681,16 +1918,24 @@
         return;
       }
 
+      if (sourceMarkerKind(text) === 'single') {
+        out.push(Object.assign({}, block, { type: 'note', role: 'sources', text: stripSourcesHeadingPrefix(text) || text }));
+        inFinalBibliography = false;
+        return;
+      }
+
       if (inFinalBibliography) {
         if (/^nella\s+foto\s*:/i.test(text)) {
           out.push(Object.assign({}, block, { type: 'note', role: 'image-caption' }));
+          inFinalBibliography = false;
           return;
         }
         if (/^scritto\s+da\b/i.test(text)) {
           out.push(Object.assign({}, block, { type: 'note', role: 'author' }));
+          inFinalBibliography = false;
           return;
         }
-        if (lineLooksLikeListItem(text) || looksLikeSourceCitation(text) || text.length < 460) {
+        if (lineLooksLikeListItem(text) || looksLikePureSourceLine(text) || looksLikeSourceContinuationLine(text, true)) {
           out.push(Object.assign({}, block, { type: 'note', role: 'sources' }));
           return;
         }
@@ -1899,7 +2144,7 @@
       readerBuildMode: 'admin-browser-pdfjs-editorial-v6-diagnostics-preview',
       readerEditorialVersion: 6,
       readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
-      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-2-tight-bleed-cleanup',
+      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-3-source-guard-center-bleed-cleanup',
       readerImageCount: imageCount,
       readerImageObjectKeys: collectReaderImageObjectKeys({ readerBlocks: blocks }),
       readerImageUrls: (blocks || []).filter(function (block) { return block && block.type === 'image' && block.url; }).map(function (block) { return block.url; }),
