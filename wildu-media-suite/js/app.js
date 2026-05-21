@@ -1992,6 +1992,55 @@
     return '<a href="' + root.escapeHtml(item.fileUrl) + '" target="_blank" rel="noopener">Apri PDF</a>';
   }
 
+  function isPdfMediaForReader(item) {
+    if (!item) return false;
+
+    if (root.PdfReaderService && typeof root.PdfReaderService.isPdfMedia === 'function') {
+      return root.PdfReaderService.isPdfMedia(item);
+    }
+
+    return String(item.kind || item.category || '').toLowerCase() === 'pdf' ||
+      String(item.contentType || '').toLowerCase().indexOf('application/pdf') === 0 ||
+      /\.pdf(\?|#|$)/i.test(String(item.fileUrl || item.objectKey || ''));
+  }
+
+  function hasReaderBuild(item) {
+    return !!(
+      item &&
+      (
+        (Array.isArray(item.readerBlocks) && item.readerBlocks.length) ||
+        item.readerPreview ||
+        item.readerText ||
+        item.readerHtml
+      )
+    );
+  }
+
+  function readerBuildChipHtml(item) {
+    if (!isPdfMediaForReader(item)) return '';
+
+    if (hasReaderBuild(item)) {
+      var count = Number(item.readerBlockCount || (Array.isArray(item.readerBlocks) ? item.readerBlocks.length : 0) || 0);
+      var version = Number(item.readerVersion || 1);
+      var label = 'reader v' + version + (count ? ' · ' + count + ' blocchi' : '');
+      return '<span class="chip good">' + root.escapeHtml(label) + '</span>';
+    }
+
+    return '<span class="chip warn">reader: da generare</span>';
+  }
+
+  function readerBuildActionsHtml(item) {
+    if (!isPdfMediaForReader(item)) return '';
+
+    var id = root.escapeHtml(item.id || '');
+
+    return '' +
+      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader</button>' +
+      (hasReaderBuild(item)
+        ? '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
+        : '');
+  }
+
   function renderMedia() {
     var wrap = root.$('#media-list');
     if (!state.media.length) {
@@ -2013,6 +2062,7 @@
             '<span class="chip">' + root.escapeHtml(item.visibility || '—') + '</span>' +
             '<span class="chip">' + root.formatBytes(item.sizeBytes) + '</span>' +
             '<span class="chip">v' + Number(item.mediaVersion || 1) + '</span>' +
+            readerBuildChipHtml(item) +
           '</div>' +
           '<p class="small-text"><code>' + root.escapeHtml(item.objectKey || '') + '</code></p>' +
           '<p class="small-text">Aggiornato: ' + root.toDateTimeLabel(item.updatedAt) + '</p>' +
@@ -2021,6 +2071,7 @@
         '<div class="media-actions">' +
           '<button class="small" data-open-url="' + root.escapeHtml(item.fileUrl || '') + '">Apri</button>' +
           '<button class="small" data-edit-media-metadata="' + root.escapeHtml(item.id) + '">Modifica metadati</button>' +
+          readerBuildActionsHtml(item) +
           '<button class="small" data-version-media="' + root.escapeHtml(item.id) + '">+1 versione</button>' +
           '<button class="small warn" data-archive-media="' + root.escapeHtml(item.id) + '">Archivia</button>' +
           '<button class="small danger" data-hard-delete-media="' + root.escapeHtml(item.id) + '">Elimina + R2</button>' +
@@ -2891,6 +2942,94 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     await refreshModuleVersions();
   }
 
+
+  async function buildPdfReaderForMedia(id) {
+    var item = findMediaById(id);
+
+    if (!item) {
+      throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
+    }
+
+    if (!root.PdfReaderService || typeof root.PdfReaderService.buildReaderPatchFromMedia !== 'function') {
+      throw new Error('PdfReaderService non caricato: controlla bootstrap.js e cache browser.');
+    }
+
+    if (!isPdfMediaForReader(item)) {
+      throw new Error('Reader Build disponibile solo per PDF.');
+    }
+
+    var defaultPages = item.subcategory === 'libri' ? '60' : '35';
+    var rawPages = prompt(
+      'Quante pagine vuoi processare per il reader?\n' +
+      'Consiglio: Manuali 35, Libri 60. Massimo tecnico: 120.\n' +
+      'Il client leggerà readerBlocks già pronti senza estrarre il PDF.',
+      defaultPages
+    );
+
+    if (rawPages === null) return;
+
+    var maxPages = Math.max(1, Math.min(120, parseInt(rawPages, 10) || parseInt(defaultPages, 10)));
+
+    var ok = confirm(
+      'Genero readerBlocks per:\\n\\n' +
+      (item.title || 'PDF senza titolo') +
+      '\\n\\nPagine da processare: ' + maxPages +
+      '\\n\\nIl file PDF R2 NON verrà modificato. Verranno aggiornati solo i metadati reader del catalogo.'
+    );
+
+    if (!ok) return;
+
+    var lastMessage = '';
+
+    var patch = await root.PdfReaderService.buildReaderPatchFromMedia(item, {
+      maxPages: maxPages,
+      onProgress: function (message) {
+        lastMessage = message || lastMessage;
+        root.toast(lastMessage, 'info');
+      }
+    });
+
+    await root.MediaService.updateMedia(item.id, patch);
+
+    root.toast(
+      'Reader generato: ' +
+      Number(patch.readerBlockCount || 0) +
+      ' blocchi, ' +
+      Number(patch.readerPagesProcessed || 0) +
+      ' pagine processate.',
+      'success'
+    );
+
+    await refreshTags();
+    await refreshMedia();
+  }
+
+  async function clearPdfReaderForMedia(id) {
+    var item = findMediaById(id);
+
+    if (!item) {
+      throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
+    }
+
+    if (!root.PdfReaderService || typeof root.PdfReaderService.buildClearReaderPatch !== 'function') {
+      throw new Error('PdfReaderService non caricato: controlla bootstrap.js e cache browser.');
+    }
+
+    if (!hasReaderBuild(item)) {
+      root.toast('Questo PDF non ha reader generato.', 'info');
+      return;
+    }
+
+    if (!confirm('Pulire i campi reader generati per questo PDF? Il file R2 non verrà toccato.')) return;
+
+    await root.MediaService.updateMedia(item.id, root.PdfReaderService.buildClearReaderPatch(item));
+
+    root.toast('Reader pulito e manifesto Biblioteca riallineato.', 'success');
+
+    await refreshTags();
+    await refreshMedia();
+  }
+
   async function bumpMediaVersion(id) {
     var note = prompt('Nota versione media (+1):', 'Aggiornamento file/metadati pubblico');
     if (note === null) return;
@@ -3139,6 +3278,12 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var editSystemAudioBtn = evt.target.closest('[data-edit-system-audio]');
       if (editSystemAudioBtn) return fillSystemAudioForm(editSystemAudioBtn.dataset.editSystemAudio);
+
+      var buildReaderBtn = evt.target.closest('[data-build-pdf-reader]');
+      if (buildReaderBtn) return run(buildPdfReaderForMedia, buildReaderBtn.dataset.buildPdfReader);
+
+      var clearReaderBtn = evt.target.closest('[data-clear-pdf-reader]');
+      if (clearReaderBtn) return run(clearPdfReaderForMedia, clearReaderBtn.dataset.clearPdfReader);
 
       var versionMediaBtn = evt.target.closest('[data-version-media]');
       if (versionMediaBtn) return run(bumpMediaVersion, versionMediaBtn.dataset.versionMedia);
