@@ -3080,21 +3080,39 @@ const WilduMediaClient = (() => {
     function renderBiblioteca(mountEl, result) {
         const items = Array.isArray(result.items) ? result.items : [];
 
-        function isBookItem(item) {
-            const sub = safeString(item && (
-                item.subcategory ||
-                item.Subcategory ||
-                item.sottocategoria ||
-                item.Sottocategoria ||
-                ""
-            )).toLowerCase();
+        function normalizeLibraryBookValue(value) {
+            return safeString(value)
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[\s_\-]+/g, "");
+        }
 
-            return sub === "libri" || sub === "libro" || sub === "books" || sub === "book";
+        function isBookItem(item) {
+            if (!item || typeof item !== "object") return false;
+
+            const values = [
+                item.subcategory,
+                item.Subcategory,
+                item.sottocategoria,
+                item.Sottocategoria,
+                item.type,
+                item.Tipo,
+                item.kind,
+                item.Kind
+            ];
+
+            return values.some(value => {
+                const clean = normalizeLibraryBookValue(value);
+                return clean === "libri" || clean === "libro" || clean === "book" || clean === "books";
+            });
         }
 
         function firstCleanBookGradeValue(values) {
-            for (let i = 0; i < values.length; i++) {
-                const clean = safeString(values[i]);
+            const list = Array.isArray(values) ? values : [];
+
+            for (const value of list) {
+                const clean = safeString(value);
                 if (clean) return clean;
             }
 
@@ -3133,7 +3151,8 @@ const WilduMediaClient = (() => {
                 assets.Grado_Minimo_Libri
             ]);
 
-            return fromConfig || fromAssets || "Sentinella";
+            // Fallback chiuso: se Admin/config non arriva, Libri resta riservato ai Veterani.
+            return fromConfig || fromAssets || "Veterano";
         }
 
         function getRequiredGradeForBook(item) {
@@ -3173,12 +3192,11 @@ const WilduMediaClient = (() => {
         }
 
         function canOpenLibraryBooksTab() {
-            const requiredGrade = getDefaultBookRequiredGrade();
-            return canUserAccessGrade(requiredGrade);
+            return canUserAccessGrade(getDefaultBookRequiredGrade());
         }
 
         function showLibraryBooksLocked(requiredGrade) {
-            const clean = safeString(requiredGrade) || "grado superiore";
+            const clean = safeString(requiredGrade) || "Veterano";
 
             try {
                 if (typeof showToast === "function") {
@@ -3445,7 +3463,11 @@ const WilduMediaClient = (() => {
 
         const tabButtons = Array.from(mountEl.querySelectorAll("[data-wildu-media-tab]"));
         const booksTabRequiredGrade = getDefaultBookRequiredGrade();
-        const booksTabLocked = libri.length > 0 && !canOpenLibraryBooksTab();
+
+        // Guard di tab, non solo di card: il click su “Libri” deve essere intercettato prima
+        // di mostrare il pannello. Non dipende da libri.length: la tab resta riservata anche
+        // se momentaneamente il catalogo non ha libri renderizzati.
+        const booksTabLocked = !canOpenLibraryBooksTab();
 
         tabButtons.forEach(btn => {
             if (btn.getAttribute("data-wildu-media-tab") !== "libri") return;
@@ -3468,7 +3490,6 @@ const WilduMediaClient = (() => {
                 if (!options.silent) {
                     showLibraryBooksLocked(booksTabRequiredGrade);
                 }
-
                 tab = "manuali_guide";
             } else {
                 tab = requestedTab;
@@ -3498,9 +3519,19 @@ const WilduMediaClient = (() => {
         }
 
         tabButtons.forEach(btn => {
-            btn.addEventListener("click", function () {
-                setTab(this.getAttribute("data-wildu-media-tab"));
-            });
+            btn.addEventListener("click", function (evt) {
+                const targetTab = this.getAttribute("data-wildu-media-tab");
+
+                if (targetTab === "libri" && booksTabLocked) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    showLibraryBooksLocked(booksTabRequiredGrade);
+                    setTab("manuali_guide", { silent: true });
+                    return;
+                }
+
+                setTab(targetTab);
+            }, true);
         });
 
         // Default richiesto: Manuali e Guide.
@@ -9490,44 +9521,45 @@ if (profKeyEl) {
     }
     
     function normalizeWilduRankName(value) {
-        let clean = String(value === undefined || value === null ? "" : value)
-            .trim()
-            .toLowerCase();
+        const raw = String(value === undefined || value === null ? "" : value).trim();
+        if (!raw) return "";
+
+        const clean = raw
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[’']/g, "")
+            .replace(/[\s_\-]+/g, " ")
+            .trim();
 
         if (!clean) return "";
 
+        if (clean === "novizio" || clean === "socio" || clean === "socio novizi" || clean === "soci novizi") return "socio novizio";
+        if (clean === "esploratori") return "esploratore";
+        if (clean === "sentinelle") return "sentinella";
+        if (clean === "veterani") return "veterano";
+        if (clean === "leggende") return "leggenda";
+        if (clean === "divinita" || clean === "divinita'" || clean === "divinita assoluta") return "divinita";
+
+        return clean;
+    }
+
+    function getCurrentWilduRankForAccess() {
+        const fromCache = cachedXPData && cachedXPData.grado
+            ? cachedXPData.grado
+            : "";
+
+        if (fromCache) return fromCache;
+
         try {
-            clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const key = wildUserKey ? ("lastG_" + wildUserKey) : "";
+            if (key) {
+                const fromStorage = localStorage.getItem(key);
+                if (fromStorage) return fromStorage;
+            }
         } catch (e) {}
 
-        clean = clean
-            .replace(/[_-]+/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-
-        const aliases = {
-            "pubblico": "",
-            "public": "",
-            "guest": "",
-            "ospite": "",
-            "free": "",
-            "libero": "",
-            "nessuno": "",
-            "socio": "socio novizio",
-            "novizio": "socio novizio",
-            "socio novizio": "socio novizio",
-            "esploratori": "esploratore",
-            "esploratore": "esploratore",
-            "sentinelle": "sentinella",
-            "sentinella": "sentinella",
-            "veterani": "veterano",
-            "veterano": "veterano",
-            "leggende": "leggenda",
-            "leggenda": "leggenda",
-            "divinita": "divinita"
-        };
-
-        return aliases.hasOwnProperty(clean) ? aliases[clean] : clean;
+        return "Socio Novizio";
     }
 
     function checkRankMet(reqRank) {
@@ -9543,17 +9575,14 @@ if (profKeyEl) {
             "divinita"
         ];
 
-        const rawUserRank = localStorage.getItem("lastG_" + wildUserKey) || "socio novizio";
-        const userRank = normalizeWilduRankName(rawUserRank);
+        const userRank = normalizeWilduRankName(getCurrentWilduRankForAccess());
 
         let uIdx = RANKS.indexOf(userRank);
         let rIdx = RANKS.indexOf(required);
 
         if (uIdx < 0) uIdx = 0;
 
-        // Prima il vecchio codice trasformava un grado richiesto sconosciuto in accesso libero
-        // perché rIdx diventava -1. Ora falliamo chiusi: se il requisito è scritto male,
-        // non apriamo contenuti riservati.
+        // Fallimento chiuso: se il requisito è scritto male, non aprire contenuti riservati.
         if (rIdx < 0) {
             console.warn("[WILDU RANK] Grado richiesto non riconosciuto:", reqRank);
             return false;
