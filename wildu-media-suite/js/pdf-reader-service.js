@@ -33,12 +33,15 @@
   var IMAGE_CROP_TIGHTEN_PADDING_RATIO = 0;
   var IMAGE_CROP_TIGHTEN_MIN_PADDING = 0;
   var IMAGE_CROP_TIGHTEN_SAMPLE_STEP = 4;
-  var IMAGE_CROP_INNER_BLEED_RATIO = 0.035;
-  var IMAGE_CROP_INNER_BLEED_MAX_PX = 30;
-  var IMAGE_CROP_INNER_BLEED_MIN_PX = 3;
-  var IMAGE_CROP_HERO_BLEED_RATIO = 0.012;
-  var IMAGE_CROP_HERO_BLEED_MAX_PX = 12;
+  var IMAGE_CROP_INNER_BLEED_RATIO = 0.046;
+  var IMAGE_CROP_INNER_BLEED_MAX_PX = 36;
+  var IMAGE_CROP_INNER_BLEED_MIN_PX = 4;
+  var IMAGE_CROP_HERO_BLEED_RATIO = 0.022;
+  var IMAGE_CROP_HERO_BLEED_MAX_PX = 20;
   var IMAGE_CROP_CENTER_PRESERVE = true;
+  var IMAGE_CROP_TEXT_SAFE_GAP_PX = 18;
+  var IMAGE_CROP_HERO_TEXT_TOP_ZONE_RATIO = 0.44;
+  var IMAGE_CROP_INLINE_TEXT_EDGE_ZONE_RATIO = 0.24;
 
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
@@ -1047,6 +1050,73 @@
   }
 
 
+
+  function horizontalOverlapRatioForRects(a, b) {
+    var x1 = Math.max(a.x1, b.x1);
+    var x2 = Math.min(a.x2, b.x2);
+    var inter = Math.max(0, x2 - x1);
+    var minW = Math.max(1, Math.min(a.x2 - a.x1, b.x2 - b.x1));
+    return inter / minW;
+  }
+
+  function verticalOverlapAmountForRects(a, b) {
+    var y1 = Math.max(a.y1, b.y1);
+    var y2 = Math.min(a.y2, b.y2);
+    return Math.max(0, y2 - y1);
+  }
+
+  function clampImageCandidateAwayFromText(candidate, textRects, canvas, isHero) {
+    if (!candidate || !textRects || !textRects.length || !canvas) return candidate;
+
+    var x = Math.max(0, Math.floor(candidate.x || 0));
+    var y = Math.max(0, Math.floor(candidate.y || 0));
+    var w = Math.min(canvas.width - x, Math.ceil(candidate.w || 0));
+    var h = Math.min(canvas.height - y, Math.ceil(candidate.h || 0));
+    if (w < MIN_IMAGE_CROP_WIDTH || h < MIN_IMAGE_CROP_HEIGHT) return candidate;
+
+    var box = { x1: x, y1: y, x2: x + w, y2: y + h };
+    var safeGap = IMAGE_CROP_TEXT_SAFE_GAP_PX;
+    var topLimit = y;
+    var bottomLimit = y + h;
+    var topZone = y + h * (isHero ? IMAGE_CROP_HERO_TEXT_TOP_ZONE_RATIO : IMAGE_CROP_INLINE_TEXT_EDGE_ZONE_RATIO);
+    var bottomZone = y + h * (1 - IMAGE_CROP_INLINE_TEXT_EDGE_ZONE_RATIO);
+
+    textRects.forEach(function (r) {
+      if (!r) return;
+      var textRect = { x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2 };
+      if (horizontalOverlapRatioForRects(box, textRect) < 0.18) return;
+      if (verticalOverlapAmountForRects(box, textRect) <= 0) return;
+
+      // Caso più importante: header/hero page 1. Se il candidato immagine invade un titolo
+      // già riconosciuto come testo PDF, il crop deve iniziare DOPO il testo, non sopra.
+      if (textRect.y1 <= topZone) {
+        topLimit = Math.max(topLimit, Math.ceil(textRect.y2 + safeGap));
+      }
+
+      // Per immagini inline, evita anche di inglobare testo/caption sotto il soggetto.
+      // Sulle hero non tagliamo il basso con aggressività: il rischio maggiore era il titolo in alto.
+      if (!isHero && textRect.y2 >= bottomZone) {
+        bottomLimit = Math.min(bottomLimit, Math.floor(textRect.y1 - safeGap));
+      }
+    });
+
+    var newY = Math.max(0, Math.min(topLimit, canvas.height));
+    var newBottom = Math.max(newY, Math.min(bottomLimit, canvas.height));
+    var newH = newBottom - newY;
+
+    if (newH < MIN_IMAGE_CROP_HEIGHT) return candidate;
+    if (newY === y && newH === h) return candidate;
+
+    return Object.assign({}, candidate, {
+      y: Math.round(newY),
+      h: Math.round(newH),
+      yCanvasTop: Math.round(newY),
+      yCanvasBottom: Math.round(newY + newH),
+      textClamped: true,
+      textClampMode: isHero ? 'hero-text-top-exclusion-v6-3-2' : 'inline-text-edge-exclusion-v6-3-2'
+    });
+  }
+
   function normalizeCandidateBounds(bounds, canvas) {
     if (!bounds) return null;
     var width = canvas.width;
@@ -1315,7 +1385,7 @@
       yCanvasTop: Math.round(ny1),
       yCanvasBottom: Math.round(ny1 + nh),
       tightened: true,
-      tightenMode: isHero ? 'center-preserving-hero-bleed-v6-3' : 'center-preserving-inline-bleed-v6-3'
+      tightenMode: isHero ? 'center-preserving-hero-bleed-v6-3-2' : 'center-preserving-inline-bleed-v6-3-2'
     });
   }
 
@@ -1542,6 +1612,11 @@
       var c = candidates[i];
       try {
         var willBeHero = imageState.total === 0 && (pageNum === 1 || c.yCanvasTop < canvas.height * 0.28) && c.w >= canvas.width * 0.42;
+        c.roleHint = willBeHero ? 'hero' : 'inline';
+
+        // V6.3.2: prima di stringere/bleedare, escludi hard il testo PDF riconosciuto.
+        // Risolve la hero che inglobava il titolo in alto: il crop viene ricentrato sotto il testo.
+        c = clampImageCandidateAwayFromText(c, textRects, canvas, willBeHero);
         c.roleHint = willBeHero ? 'hero' : 'inline';
 
         onProgress('Ottimizzo immagine pagina ' + pageNum + '...');
