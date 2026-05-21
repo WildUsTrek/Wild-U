@@ -1875,24 +1875,153 @@ const WilduMediaClient = (() => {
 
 
     function buildWilduReaderSoftBreakHtml() {
-        return '<br><span style="display:block; height:8px;"></span>';
+        return '<br><span style="display:block; height:7px;"></span>';
     }
 
     function buildWilduReaderParagraphDividerHtml() {
         return `
-            <div style="
+            <div aria-hidden="true" style="
                 height:1px;
                 width:100%;
-                margin:22px 0 20px 0;
+                margin:30px 0 26px 0;
                 background:linear-gradient(
                     90deg,
                     transparent,
-                    rgba(212,175,55,.34),
-                    rgba(124,199,255,.18),
+                    rgba(212,175,55,.36),
+                    rgba(124,199,255,.14),
                     transparent
                 );
             "></div>
         `;
+    }
+
+    function getWilduReaderBlockType(block) {
+        return safeString(block && block.type ? block.type : "").toLowerCase();
+    }
+
+    function getWilduReaderBlockRole(block) {
+        return safeString(block && block.role ? block.role : "").toLowerCase();
+    }
+
+    function isWilduReaderSourceBlock(block) {
+        const type = getWilduReaderBlockType(block);
+        const role = getWilduReaderBlockRole(block);
+
+        return (
+            role === "sources" ||
+            role === "source" ||
+            role === "sources-heading" ||
+            role === "sources-divider" ||
+            type === "sources"
+        );
+    }
+
+    function isWilduReaderHeroImage(block) {
+        return (
+            getWilduReaderBlockType(block) === "image" &&
+            getWilduReaderBlockRole(block) === "hero" &&
+            block &&
+            block.url
+        );
+    }
+
+    function getWilduReaderTextForStats(blocks) {
+        return normalizeWilduReaderText(
+            (blocks || [])
+                .filter(function (block) {
+                    const type = getWilduReaderBlockType(block);
+                    return type !== "image" && type !== "html";
+                })
+                .map(function (block) {
+                    return block && block.text ? block.text : "";
+                })
+                .join("\n\n")
+        );
+    }
+
+    function getWilduReaderReadingMinutes(blocks) {
+        const text = getWilduReaderTextForStats(blocks);
+        if (!text) return 1;
+
+        const words = text.split(/\s+/).filter(Boolean).length;
+        return Math.max(1, Math.round(words / 210));
+    }
+
+    function getWilduReaderPreviewLead(blocks, maxChars) {
+        maxChars = maxChars || 190;
+
+        const firstParagraph = (blocks || []).find(function (block) {
+            return (
+                getWilduReaderBlockType(block) === "paragraph" &&
+                !isWilduReaderSourceBlock(block) &&
+                normalizeWilduReaderText(block.text)
+            );
+        });
+
+        const text = normalizeWilduReaderText(firstParagraph ? firstParagraph.text : "");
+        if (!text) return "";
+
+        return text.length > maxChars
+            ? text.slice(0, maxChars).replace(/\s+\S*$/, "") + "…"
+            : text;
+    }
+
+    function findWilduReaderHeroImage(blocks) {
+        const hero = (blocks || []).find(isWilduReaderHeroImage);
+        if (hero) return hero;
+
+        return (blocks || []).find(function (block) {
+            return getWilduReaderBlockType(block) === "image" && block && block.url;
+        }) || null;
+    }
+
+    function getWilduReaderBodyBlocks(blocks, heroBlock) {
+        let skippedHero = false;
+
+        return (blocks || []).filter(function (block) {
+            if (!block) return false;
+            if (isWilduReaderSourceBlock(block)) return false;
+
+            if (heroBlock && block === heroBlock && !skippedHero) {
+                skippedHero = true;
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    function getWilduReaderSourceBlocks(blocks) {
+        return (blocks || []).filter(function (block) {
+            return block && isWilduReaderSourceBlock(block);
+        });
+    }
+
+    function findWilduReaderLeadIndex(blocks) {
+        for (let i = 0; i < blocks.length; i++) {
+            if (getWilduReaderBlockType(blocks[i]) === "paragraph") return i;
+        }
+
+        return -1;
+    }
+
+    function getWilduReaderTocBlocks(blocks) {
+        return (blocks || [])
+            .map(function (block, index) {
+                return { block: block, index: index };
+            })
+            .filter(function (entry) {
+                const block = entry.block;
+                const text = normalizeWilduReaderText(block && block.text ? block.text : "");
+
+                return (
+                    getWilduReaderBlockType(block) === "heading" &&
+                    !isWilduReaderSourceBlock(block) &&
+                    text &&
+                    text.length <= 90
+                );
+            })
+            .slice(0, 8);
     }
 
     function formatWilduReaderTextBeauty(rawText, blockType, blockRole) {
@@ -1902,174 +2031,445 @@ const WilduMediaClient = (() => {
         const type = safeString(blockType || "paragraph").toLowerCase();
         const role = safeString(blockRole || "").toLowerCase();
 
-        // In titoli/header/lead i due punti fanno spesso parte naturale del titolo:
-        // "Titolo: sottotitolo" deve restare sulla stessa riga.
-        const suppressColonBreak =
+        const isTitleLike =
             type === "heading" ||
             type === "title" ||
             type === "header" ||
             type === "herotitle" ||
             type === "lead" ||
+            role === "hero-title" ||
             role === "sources-heading";
 
-        const isSources = role === "sources";
+        const isSources =
+            role === "sources" ||
+            role === "source" ||
+            type === "sources";
+
         let html = escapeHtml(clean);
 
-        // V5: non inseriamo più divisori decorativi dentro ogni blocco testuale.
-        // I separatori devono arrivare solo come blocchi "divider" espliciti dal builder.
         if (isSources) {
             html = html.replace(/\n{2,}/g, "<br>");
             html = html.replace(/\n/g, "<br>");
             return html;
         }
 
+        if (isTitleLike) {
+            html = html.replace(/\n+/g, " ");
+            return html;
+        }
+
         html = html.replace(/\n{2,}/g, "<br><br>");
         html = html.replace(/\n/g, buildWilduReaderSoftBreakHtml());
 
-        // Punto e due punti: respiro su smartphone solo nel testo normale.
-        if (!suppressColonBreak) {
-            html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
-            html = html.replace(/:([\s]+)(?=\S)/g, ":" + buildWilduReaderSoftBreakHtml());
-        }
+        html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
+
+        // I due punti restano NON spezzati nei titoli/header/lead.
+        // Qui siamo in testo normale, quindi il soft break aiuta la lettura mobile.
+        html = html.replace(/:([\s]+)(?=\S)/g, ":" + buildWilduReaderSoftBreakHtml());
 
         return html;
     }
 
-    function buildWilduReaderBlockHtml(block, index) {
+    function buildWilduReaderImageHtml(block, blockIndex, options) {
+        options = options || {};
+
+        const role = getWilduReaderBlockRole(block);
+        const isHero = role === "hero" || options.hero === true;
+
+        const width = Number(block && block.width ? block.width : 0);
+        const isSmallImage = width > 0 && width < 360;
+
+        const figureMaxWidth = isHero
+            ? "100%"
+            : isSmallImage
+                ? "min(72%, 360px)"
+                : "min(100%, 680px)";
+
+        const imageMaxHeight = isHero ? "440px" : isSmallImage ? "280px" : "430px";
+        const radius = isHero ? "24px" : "18px";
+        const margin = isHero ? "18px 0 24px 0" : "28px auto";
+
+        return `
+            <figure style="
+                margin:${margin};
+                padding:0;
+                width:100%;
+                max-width:${figureMaxWidth};
+                text-align:center;
+            ">
+                <img src="${escapeHtml(formatAssetLink(block.url))}" alt="${escapeHtml(block.alt || "")}" loading="lazy" style="
+                    width:100%;
+                    max-height:${imageMaxHeight};
+                    object-fit:contain;
+                    border-radius:${radius};
+                    background:rgba(255,255,255,.025);
+                    border:1px solid rgba(255,255,255,.10);
+                    box-shadow:${isHero ? "0 18px 48px rgba(0,0,0,.55)" : "0 10px 28px rgba(0,0,0,.42)"};
+                    display:block;
+                ">
+                ${block.caption ? `<figcaption style="
+                    color:#aeb7bd;
+                    font-size:12px;
+                    line-height:1.45;
+                    margin-top:9px;
+                    text-align:center;
+                    font-style:italic;
+                ">${escapeHtml(block.caption)}</figcaption>` : ""}
+            </figure>
+        `;
+    }
+
+    function buildWilduReaderBlockHtml(block, index, context) {
         if (!block) return "";
 
-        const blockIndex = Number(index || 0);
-        const role = safeString(block.role || "").toLowerCase();
+        context = context || {};
 
-        if (block.type === "divider") {
+        const blockIndex = Number(index || 0);
+        const type = getWilduReaderBlockType(block);
+        const role = getWilduReaderBlockRole(block);
+        const safeText = normalizeWilduReaderText(block.text || "");
+
+        if (type === "html") {
             return `
                 <div style="
-                    width:100%;
-                    margin:32px 0 28px 0;
-                    display:flex;
-                    align-items:center;
-                    gap:12px;
+                    font-size:17px;
+                    line-height:1.72;
+                    color:#eee;
+                    margin:18px 0;
                 ">
-                    <span style="height:1px; flex:1; background:linear-gradient(90deg, transparent, rgba(212,175,55,.45));"></span>
-                    <span style="font-size:18px; color:var(--w-gold); opacity:.9;">✦</span>
-                    <span style="height:1px; flex:1; background:linear-gradient(90deg, rgba(212,175,55,.45), transparent);"></span>
-                </div>
-            `;
-        }
-
-        if (block.type === "html") {
-            return `
-                <div style="font-size:17px; line-height:1.72; color:#eee;">
                     ${block.html || ""}
                 </div>
             `;
         }
 
-        if (block.type === "image") {
-            const isHeroImage = role === "hero" || role === "cover" || role === "heroimage";
+        if (type === "image") {
+            return buildWilduReaderImageHtml(block, blockIndex);
+        }
+
+        if (type === "divider") {
+            return buildWilduReaderParagraphDividerHtml();
+        }
+
+        if (type === "heading") {
+            const anchorId = context.headingAnchorMap && context.headingAnchorMap[blockIndex]
+                ? context.headingAnchorMap[blockIndex]
+                : "";
+
             return `
-                <figure style="
-                    margin:${isHeroImage ? "8px 0 30px 0" : "26px 0"};
-                    padding:${isHeroImage ? "10px" : "0"};
-                    border-radius:${isHeroImage ? "28px" : "0"};
-                    background:${isHeroImage ? "linear-gradient(135deg, rgba(212,175,55,.12), rgba(124,199,255,.07))" : "transparent"};
-                    border:${isHeroImage ? "1px solid rgba(212,175,55,.24)" : "0"};
-                    box-shadow:${isHeroImage ? "0 16px 46px rgba(0,0,0,.45)" : "none"};
+                <section ${anchorId ? `id="${escapeHtml(anchorId)}"` : ""} style="
+                    scroll-margin-top:18px;
+                    margin:${blockIndex > 0 ? "38px" : "12px"} 0 14px 0;
                 ">
-                    <img src="${escapeHtml(formatAssetLink(block.url))}" alt="${escapeHtml(block.alt || "")}" style="
-                        width:100%;
-                        max-height:${isHeroImage ? "520px" : "430px"};
-                        object-fit:contain;
-                        border-radius:${isHeroImage ? "24px" : "22px"};
-                        background:#111;
-                        border:1px solid rgba(255,255,255,.12);
-                        box-shadow:0 14px 38px rgba(0,0,0,.55);
-                    ">
-                    ${block.caption ? `<figcaption style="color:${isHeroImage ? "#d9c88d" : "#aaa"}; font-size:12px; line-height:1.4; margin-top:10px; text-align:center;">${escapeHtml(block.caption)}</figcaption>` : ""}
-                </figure>
+                    <h2 style="
+                        color:#fff;
+                        font-size:24px;
+                        line-height:1.18;
+                        margin:0;
+                        letter-spacing:.05px;
+                        padding-left:13px;
+                        border-left:4px solid var(--w-gold);
+                        text-shadow:0 1px 12px rgba(0,0,0,.35);
+                    ">${formatWilduReaderTextBeauty(safeText, "heading", role)}</h2>
+                </section>
             `;
         }
 
-        if (block.type === "heading") {
-            const isSources = role === "sources-heading";
-            return `
-                <h2 style="
-                    color:${isSources ? "var(--w-gold)" : "#fff"};
-                    font-size:${isSources ? "21px" : "24px"};
-                    line-height:1.16;
-                    margin:${blockIndex > 0 ? "34px" : "8px"} 0 13px 0;
-                    letter-spacing:.1px;
-                    text-transform:${isSources ? "uppercase" : "none"};
-                ">${escapeHtml(block.text)}</h2>
-            `;
-        }
-
-        if (block.type === "lead") {
-            return `
-                <div style="
-                    margin:12px 0 26px 0;
-                    padding:18px 17px;
-                    border-radius:24px;
-                    border:1px solid rgba(212,175,55,.30);
-                    background:
-                        radial-gradient(circle at top left, rgba(212,175,55,.18), transparent 42%),
-                        linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
-                    color:#f5f1e5;
-                    font-size:19px;
-                    line-height:1.65;
-                    font-weight:650;
-                    box-shadow:0 10px 30px rgba(0,0,0,.34);
-                ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</div>
-            `;
-        }
-
-        if (block.type === "quote") {
+        if (type === "quote") {
             return `
                 <blockquote style="
-                    margin:24px 0;
-                    padding:17px 17px;
+                    margin:26px 0;
+                    padding:18px 18px;
                     border-left:4px solid var(--w-gold);
-                    background:rgba(212,175,55,.09);
-                    color:#f0e5c2;
+                    background:linear-gradient(135deg, rgba(212,175,55,.13), rgba(124,199,255,.05));
+                    color:#f4e8c6;
                     border-radius:18px;
-                    font-size:17px;
-                    line-height:1.65;
+                    font-size:18px;
+                    line-height:1.62;
                     font-style:italic;
-                ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</blockquote>
+                    box-shadow:0 10px 26px rgba(0,0,0,.22);
+                ">${formatWilduReaderTextBeauty(safeText, "quote", role)}</blockquote>
             `;
         }
 
-        if (block.type === "note") {
-            const isSources = role === "sources";
-            const isAuthor = role === "author";
+        if (type === "note" && role === "author") {
             return `
                 <div style="
-                    margin:${isSources ? "12px 0" : "18px 0"};
-                    padding:${isSources ? "12px 14px" : "15px 16px"};
-                    border-radius:${isSources ? "15px" : "18px"};
-                    border:1px solid ${isSources ? "rgba(212,175,55,.34)" : "rgba(124,199,255,.35)"};
-                    background:${isSources ? "rgba(212,175,55,.060)" : "rgba(124,199,255,.08)"};
-                    color:${isSources ? "#f4e6ba" : "#dff3ff"};
-                    font-size:${isSources ? "14px" : "15px"};
-                    line-height:${isSources ? "1.48" : "1.58"};
-                    font-style:${isAuthor ? "italic" : "normal"};
-                ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</div>
+                    margin:28px 0 18px 0;
+                    padding:13px 15px;
+                    border-radius:16px;
+                    background:rgba(212,175,55,.10);
+                    border:1px solid rgba(212,175,55,.28);
+                    color:#f0dfaa;
+                    font-size:15px;
+                    line-height:1.55;
+                    font-style:italic;
+                    text-align:right;
+                ">${formatWilduReaderTextBeauty(safeText, "note", role)}</div>
             `;
         }
+
+        if (type === "note") {
+            return `
+                <div style="
+                    margin:22px 0;
+                    padding:15px 16px;
+                    border-radius:18px;
+                    border:1px solid rgba(124,199,255,.30);
+                    background:rgba(124,199,255,.075);
+                    color:#dff3ff;
+                    font-size:15px;
+                    line-height:1.58;
+                    box-shadow:0 8px 22px rgba(0,0,0,.18);
+                ">${formatWilduReaderTextBeauty(safeText, "note", role)}</div>
+            `;
+        }
+
+        const isLead = blockIndex === context.leadIndex;
 
         return `
             <p style="
-                color:#ededed;
-                font-size:18px;
-                line-height:1.78;
-                margin:0 0 21px 0;
-                letter-spacing:.05px;
-            ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</p>
+                color:${isLead ? "#f4f1e8" : "#ededed"};
+                font-size:${isLead ? "19px" : "18px"};
+                line-height:${isLead ? "1.74" : "1.72"};
+                margin:${isLead ? "6px 0 24px 0" : "0 0 22px 0"};
+                letter-spacing:.04px;
+                ${isLead ? "font-weight:650;" : ""}
+            ">${formatWilduReaderTextBeauty(safeText, isLead ? "lead" : "paragraph", role)}</p>
         `;
     }
 
+    function buildWilduReaderHeroHtml(article, heroBlock, bodyBlocks) {
+        const title = escapeHtml(article && article.title ? article.title : "Documento Wildu");
+        const minutes = getWilduReaderReadingMinutes(bodyBlocks);
+        const lead = getWilduReaderPreviewLead(bodyBlocks);
+
+        const heroImg = heroBlock && heroBlock.url
+            ? buildWilduReaderImageHtml(heroBlock, 0, { hero: true })
+            : "";
+
+        return `
+            <section style="
+                margin:0 0 30px 0;
+                padding:0;
+                border-radius:28px;
+                overflow:hidden;
+                background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025));
+                border:1px solid rgba(255,255,255,.10);
+                box-shadow:0 20px 60px rgba(0,0,0,.42);
+            ">
+                ${heroImg ? `<div style="padding:14px 14px 0 14px;">${heroImg}</div>` : ""}
+
+                <div style="padding:${heroImg ? "4px 20px 22px 20px" : "22px 20px"};">
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        gap:8px;
+                        flex-wrap:wrap;
+                        margin-bottom:12px;
+                    ">
+                        <span style="
+                            display:inline-flex;
+                            align-items:center;
+                            gap:6px;
+                            padding:6px 10px;
+                            border-radius:999px;
+                            background:rgba(212,175,55,.14);
+                            color:#f4d777;
+                            border:1px solid rgba(212,175,55,.32);
+                            font-size:11px;
+                            font-weight:900;
+                            text-transform:uppercase;
+                            letter-spacing:.7px;
+                        ">📖 Lettura ottimizzata</span>
+
+                        <span style="
+                            display:inline-flex;
+                            align-items:center;
+                            padding:6px 10px;
+                            border-radius:999px;
+                            background:rgba(124,199,255,.10);
+                            color:#aee3ff;
+                            border:1px solid rgba(124,199,255,.22);
+                            font-size:11px;
+                            font-weight:800;
+                            text-transform:uppercase;
+                            letter-spacing:.55px;
+                        ">${minutes} min</span>
+                    </div>
+
+                    <h1 style="
+                        color:#fff;
+                        font-size:clamp(29px, 8vw, 42px);
+                        line-height:1.05;
+                        margin:0 0 12px 0;
+                        letter-spacing:-.45px;
+                        text-shadow:0 2px 20px rgba(0,0,0,.45);
+                    ">${title}</h1>
+
+                    ${lead ? `<p style="
+                        color:#d9e1df;
+                        font-size:18px;
+                        line-height:1.58;
+                        margin:0;
+                        font-weight:650;
+                    ">${escapeHtml(lead)}</p>` : ""}
+                </div>
+            </section>
+        `;
+    }
+
+    function buildWilduReaderTocHtml(tocEntries) {
+        if (!tocEntries || !tocEntries.length) return "";
+
+        return `
+            <details style="
+                margin:0 0 28px 0;
+                border-radius:18px;
+                border:1px solid rgba(255,255,255,.10);
+                background:rgba(255,255,255,.045);
+                overflow:hidden;
+            ">
+                <summary style="
+                    list-style:none;
+                    cursor:pointer;
+                    padding:14px 16px;
+                    color:#f2d474;
+                    font-size:13px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                    letter-spacing:.75px;
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                ">
+                    <span>Indice rapido</span>
+                    <span style="color:#8fa2a8; font-size:12px;">tocca</span>
+                </summary>
+
+                <div style="padding:0 16px 14px 16px;">
+                    ${tocEntries.map(function (entry, i) {
+                        const id = "wildu-reader-heading-" + entry.index;
+                        const text = normalizeWilduReaderText(entry.block.text || "");
+
+                        return `
+                            <a href="#${escapeHtml(id)}" style="
+                                display:block;
+                                color:#d8eef7;
+                                text-decoration:none;
+                                font-size:14px;
+                                line-height:1.4;
+                                padding:9px 0;
+                                border-top:${i === 0 ? "none" : "1px solid rgba(255,255,255,.08)"};
+                            ">${escapeHtml(text)}</a>
+                        `;
+                    }).join("")}
+                </div>
+            </details>
+        `;
+    }
+
+    function buildWilduReaderSourcesHtml(sourceBlocks) {
+        const sources = (sourceBlocks || []).filter(function (block) {
+            return (
+                getWilduReaderBlockRole(block) === "sources" ||
+                getWilduReaderBlockType(block) === "sources"
+            );
+        });
+
+        if (!sources.length) return "";
+
+        return `
+            <details style="
+                margin:34px 0 4px 0;
+                border-radius:22px;
+                border:1px solid rgba(212,175,55,.24);
+                background:linear-gradient(180deg, rgba(212,175,55,.10), rgba(255,255,255,.035));
+                overflow:hidden;
+            ">
+                <summary style="
+                    list-style:none;
+                    cursor:pointer;
+                    padding:16px 18px;
+                    color:#f4d777;
+                    font-size:14px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                    letter-spacing:.75px;
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                ">
+                    <span>Fonti e riferimenti</span>
+                    <span style="
+                        color:#c7b56d;
+                        font-size:12px;
+                        font-weight:800;
+                        text-transform:none;
+                        letter-spacing:0;
+                    ">${sources.length} fonti</span>
+                </summary>
+
+                <div style="padding:2px 18px 18px 18px;">
+                    ${sources.map(function (block) {
+                        return `
+                            <div style="
+                                margin:13px 0 0 0;
+                                padding:13px 14px;
+                                border-radius:15px;
+                                background:rgba(0,0,0,.18);
+                                border:1px solid rgba(255,255,255,.075);
+                                color:#d8d2bd;
+                                font-size:13px;
+                                line-height:1.48;
+                            ">${formatWilduReaderTextBeauty(block.text, "note", "sources")}</div>
+                        `;
+                    }).join("")}
+                </div>
+            </details>
+        `;
+    }
+
+    function bindWilduReaderProgress(ui, progressFill) {
+        try {
+            if (window.__wilduReaderProgressCleanup) {
+                window.__wilduReaderProgressCleanup();
+                window.__wilduReaderProgressCleanup = null;
+            }
+        } catch (e) {}
+
+        if (!ui || !ui.body || !progressFill) return;
+
+        function updateProgress() {
+            try {
+                const max = Math.max(1, ui.body.scrollHeight - ui.body.clientHeight);
+                const pct = Math.max(0, Math.min(100, (ui.body.scrollTop / max) * 100));
+                progressFill.style.width = pct.toFixed(1) + "%";
+            } catch (e) {}
+        }
+
+        ui.body.addEventListener("scroll", updateProgress, { passive: true });
+        window.__wilduReaderProgressCleanup = function () {
+            try {
+                ui.body.removeEventListener("scroll", updateProgress);
+            } catch (e) {}
+        };
+
+        updateProgress();
+    }
+
     function renderWilduReaderArticle(ui, article) {
-        const blocks = Array.isArray(article?.blocks) ? article.blocks : [];
+        const rawBlocks = Array.isArray(article && article.blocks) ? article.blocks : [];
+        const heroBlock = findWilduReaderHeroImage(rawBlocks);
+        const bodyBlocks = getWilduReaderBodyBlocks(rawBlocks, heroBlock);
+        const sourceBlocks = getWilduReaderSourceBlocks(rawBlocks);
+        const tocEntries = getWilduReaderTocBlocks(bodyBlocks);
+
+        const headingAnchorMap = {};
+        tocEntries.forEach(function (entry) {
+            headingAnchorMap[entry.index] = "wildu-reader-heading-" + entry.index;
+        });
+
+        const leadIndex = findWilduReaderLeadIndex(bodyBlocks);
 
         ui.status.style.display = "none";
         ui.canvasWrap.innerHTML = "";
@@ -2079,79 +2479,61 @@ const WilduMediaClient = (() => {
             if (controlsRow) controlsRow.style.display = "none";
         } catch (e) {}
 
-        ui.pageLabel.textContent = article?.sourceLabel || "Reader";
-        ui.title.textContent = article?.title || "Documento Wildu";
-
-        const sourceLabel = article?.sourceLabel || "Reader mode";
-        const isEditorial = /editoriale|admin/i.test(sourceLabel);
+        ui.pageLabel.textContent = article && article.sourceLabel ? article.sourceLabel : "Reader";
+        ui.title.textContent = article && article.title ? article.title : "Documento Wildu";
 
         const articleEl = document.createElement("article");
         articleEl.style.cssText = [
-            "width:min(820px,100%)",
+            "width:min(780px,100%)",
             "margin:0 auto",
-            "padding:8px 6px 36px 6px",
+            "padding:8px 5px 34px 5px",
             "box-sizing:border-box",
             "text-align:left"
         ].join(";");
 
         articleEl.innerHTML = `
-            <section style="
-                position:relative;
+            <div style="
+                position:sticky;
+                top:0;
+                z-index:3;
+                height:3px;
+                width:100%;
+                margin:0 0 12px 0;
+                background:rgba(255,255,255,.06);
+                border-radius:999px;
                 overflow:hidden;
-                margin:0 0 22px 0;
-                padding:22px 18px 20px 18px;
-                border-radius:28px;
-                border:1px solid rgba(212,175,55,.32);
-                background:
-                    radial-gradient(circle at top left, rgba(212,175,55,.25), transparent 42%),
-                    radial-gradient(circle at bottom right, rgba(124,199,255,.15), transparent 38%),
-                    linear-gradient(135deg, rgba(34,38,30,.98), rgba(10,13,15,.98));
-                box-shadow:0 16px 46px rgba(0,0,0,.55);
             ">
-                <div style="
-                    position:absolute;
-                    right:-18px;
-                    top:-18px;
-                    font-size:110px;
-                    opacity:.055;
-                    transform:rotate(-9deg);
-                    pointer-events:none;
-                ">📖</div>
-
-                <div style="
-                    display:inline-flex;
-                    align-items:center;
-                    gap:7px;
-                    padding:6px 10px;
+                <div id="wildu-reader-progress-fill" style="
+                    height:100%;
+                    width:0%;
+                    background:linear-gradient(90deg, var(--w-gold), #7cc7ff);
                     border-radius:999px;
-                    background:${isEditorial ? "rgba(212,175,55,.16)" : "rgba(124,199,255,.13)"};
-                    border:1px solid ${isEditorial ? "rgba(212,175,55,.36)" : "rgba(124,199,255,.30)"};
-                    color:${isEditorial ? "var(--w-gold)" : "#9edcff"};
-                    font-size:10px;
-                    font-weight:950;
-                    text-transform:uppercase;
-                    letter-spacing:.85px;
-                    margin-bottom:13px;
-                ">
-                    <span>${isEditorial ? "✨" : "📄"}</span>
-                    <span>${escapeHtml(sourceLabel)}</span>
-                </div>
+                    transition:width .08s linear;
+                "></div>
+            </div>
 
-                <h1 style="
-                    color:#fff;
-                    font-size:31px;
-                    line-height:1.06;
-                    margin:0;
-                    letter-spacing:.1px;
-                ">${escapeHtml(article?.title || "Documento Wildu")}</h1>
+            ${buildWilduReaderHeroHtml(article, heroBlock, bodyBlocks)}
 
-                ${article?.note ? `<div style="color:#d6d6d6; margin-top:13px; font-size:13px; line-height:1.45;">${escapeHtml(article.note)}</div>` : ""}
+            ${buildWilduReaderTocHtml(tocEntries)}
+
+            <section style="
+                width:min(680px,100%);
+                margin:0 auto;
+            ">
+                ${bodyBlocks.map(function (block, index) {
+                    return buildWilduReaderBlockHtml(block, index, {
+                        leadIndex: leadIndex,
+                        headingAnchorMap: headingAnchorMap
+                    });
+                }).join("")}
+
+                ${buildWilduReaderSourcesHtml(sourceBlocks)}
             </section>
-
-            ${blocks.map((block, index) => buildWilduReaderBlockHtml(block, index)).join("")}
         `;
 
         ui.canvasWrap.appendChild(articleEl);
+
+        bindWilduReaderProgress(ui, articleEl.querySelector("#wildu-reader-progress-fill"));
 
         try {
             ui.body.scrollTop = 0;
