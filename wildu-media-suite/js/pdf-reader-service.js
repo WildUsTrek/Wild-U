@@ -16,14 +16,15 @@
   var MAX_TEXT_CHARS = 90000;
   var MAX_PATCH_JSON_BYTES = 850000;
 
-  var IMAGE_RENDER_TARGET_WIDTH = 1080;
+  var IMAGE_RENDER_TARGET_WIDTH = 1180;
   var IMAGE_OUTPUT_MAX_WIDTH = 980;
-  var IMAGE_WEBP_QUALITY = 0.76;
-  var MAX_READER_IMAGES = 6;
-  var MAX_IMAGES_PER_PAGE = 2;
-  var MIN_IMAGE_CROP_WIDTH = 220;
-  var MIN_IMAGE_CROP_HEIGHT = 110;
-  var MIN_VISUAL_RATIO = 0.018;
+  var IMAGE_WEBP_QUALITY = 0.74;
+  var MAX_READER_IMAGES = 8;
+  var MAX_IMAGES_PER_PAGE = 3;
+  var MIN_IMAGE_CROP_WIDTH = 170;
+  var MIN_IMAGE_CROP_HEIGHT = 92;
+  var MIN_VISUAL_RATIO = 0.010;
+  var VISUAL_SAMPLE_STEP = 6;
 
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
@@ -240,9 +241,40 @@
     return /^(fonte|fonti|bibliografia|riferimenti|riferimento|sitografia|fonti consultate|fonti e riferimenti)(?:\b|\s|:|-|–|—)/i.test(clean);
   }
 
+  function isSourcesHeadingOnly(text) {
+    var clean = normalizeForEditorialMatch(text).replace(/[:\-–—]+$/g, '').trim();
+    return /^(fonte|fonti|bibliografia|riferimenti|riferimento|sitografia|fonti consultate|fonti e riferimenti)$/.test(clean);
+  }
+
   function stripSourcesHeadingPrefix(text) {
     var raw = safeString(text);
     return raw.replace(/^\s*(fonte|fonti|bibliografia|riferimenti|riferimento|sitografia|fonti consultate|fonti e riferimenti)\s*[:\-–—]?\s*/i, '').trim();
+  }
+
+  function looksLikeSourceCitation(text) {
+    var raw = safeString(text);
+    var clean = normalizeForEditorialMatch(raw);
+    if (!clean) return false;
+
+    if (isSourcesParagraph(raw)) return true;
+    if (/https?:\/\//i.test(raw) || /\bwww\./i.test(raw)) return true;
+    if (/\bdoi\s*:/i.test(raw) || /\bisbn\s*:/i.test(raw)) return true;
+    if (/\b(consultato|accesso|fonte dati|elaborazione|archivio|biblioteca|ministero|istat|wikipedia|treccani|universita|università)\b/i.test(raw)) return true;
+    if (/^\s*(\[[0-9]+\]|[0-9]+[.)])\s+/.test(raw) && raw.length < 360) return true;
+    if (/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/.test(raw)) return true;
+    if (/\b[a-z0-9-]+\.(it|com|org|net|edu|gov|eu)(\/|\b)/i.test(raw)) return true;
+
+    return false;
+  }
+
+  function looksLikeArticleContinuation(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    if (looksLikeSourceCitation(raw)) return false;
+    if (looksLikeHeadingParagraph(raw)) return true;
+    if (raw.length > 180) return true;
+    if (/^[A-ZÀ-Ý][a-zà-ÿ].*[.!?]$/.test(raw) && raw.split(/\s+/).length >= 8) return true;
+    return false;
   }
 
   function looksLikeNoteParagraph(text) {
@@ -265,33 +297,60 @@
     return false;
   }
 
+  function pushSourceBlock(sources, block, text) {
+    var cleanText = stripSourcesHeadingPrefix(text) || safeString(text);
+    if (!cleanText) return;
+    if (isSourcesHeadingOnly(cleanText)) return;
+
+    sources.push(Object.assign({}, block, {
+      type: 'note',
+      role: 'sources',
+      text: cleanText
+    }));
+  }
+
   function moveSourcesBlocksToEnd(blocks) {
     var body = [];
     var sources = [];
-    var inSources = false;
+    var pendingSourcesHeading = false;
 
     (Array.isArray(blocks) ? blocks : []).forEach(function (block) {
       if (!block) return;
 
       var text = safeString(block.text);
-      var startsSources = isSourcesParagraph(text) || safeString(block.role).toLowerCase() === 'sources';
+      var role = safeString(block.role).toLowerCase();
       var isTextLike = block.type !== 'image' && block.type !== 'heroImage' && block.type !== 'html' && text;
 
-      if (startsSources) inSources = true;
-
-      if (inSources && isTextLike) {
-        var cleanText = startsSources ? (stripSourcesHeadingPrefix(text) || text) : text;
-
-        // Se il blocco era solo “Fonte” / “Fonti”, non lo duplichiamo:
-        // useremo il titolo standard “Fonti e riferimenti”.
-        if (cleanText && !/^(fonte|fonti|bibliografia|riferimenti|riferimento|sitografia)$/i.test(normalizeForEditorialMatch(cleanText))) {
-          sources.push(Object.assign({}, block, {
-            type: 'note',
-            role: 'sources',
-            text: cleanText
-          }));
-        }
+      if (!isTextLike) {
+        body.push(block);
         return;
+      }
+
+      var explicitSource = role === 'sources' || isSourcesParagraph(text);
+      var headingOnly = explicitSource && isSourcesHeadingOnly(text);
+
+      // Caso “Fonti” / “Bibliografia” come intestazione: non sposta tutto il seguito.
+      // Attiva solo una finestra breve; appena trova un paragrafo articolo vero, si ferma.
+      if (headingOnly) {
+        pendingSourcesHeading = true;
+        return;
+      }
+
+      // Caso “Fonte: ...” nello stesso blocco: sposta solo quel blocco.
+      if (explicitSource) {
+        pushSourceBlock(sources, block, text);
+        pendingSourcesHeading = false;
+        return;
+      }
+
+      // Caso blocchi immediatamente dopo una intestazione Fonti/Bibliografia.
+      if (pendingSourcesHeading) {
+        if (looksLikeSourceCitation(text) && !looksLikeArticleContinuation(text)) {
+          pushSourceBlock(sources, block, text);
+          return;
+        }
+
+        pendingSourcesHeading = false;
       }
 
       body.push(block);
@@ -406,6 +465,86 @@
   }
 
 
+  function lineLooksLikeListItem(text) {
+    return /^\s*([•\-*–—]|[0-9]{1,3}[.)]|[A-Za-z][.)])\s+/.test(safeString(text));
+  }
+
+  function lineLooksLikeStandalone(text) {
+    var raw = safeString(text);
+    if (!raw) return false;
+    if (lineLooksLikeListItem(raw)) return true;
+    if (isSourcesParagraph(raw) || looksLikeNoteParagraph(raw)) return true;
+    if (looksLikeHeadingParagraph(raw) && raw.length <= 110) return true;
+    return false;
+  }
+
+  function shouldSplitParagraph(prevLine, line, verticalGap, normalLineHeight) {
+    if (!prevLine) return false;
+
+    var prevText = safeString(prevLine.text);
+    var text = safeString(line.text);
+    var bigGap = verticalGap > normalLineHeight * 1.45;
+    var veryBigGap = verticalGap > normalLineHeight * 2.15;
+    var indentShift = Math.abs((line.xPdfMin || 0) - (prevLine.xPdfMin || 0));
+
+    if (veryBigGap) return true;
+    if (bigGap && (/[.!?:;…»")\]]$/.test(prevText) || prevText.length < 70 || text.length < 70)) return true;
+    if (lineLooksLikeListItem(text)) return true;
+    if (isSourcesParagraph(text) || isSourcesParagraph(prevText)) return true;
+    if (looksLikeNoteParagraph(text)) return true;
+    if (looksLikeHeadingParagraph(text) && (bigGap || text.length <= 80)) return true;
+    if (indentShift > 34 && (bigGap || lineLooksLikeStandalone(text) || lineLooksLikeStandalone(prevText))) return true;
+
+    return false;
+  }
+
+  function shouldKeepLineBreakInsideParagraph(prevLine, line, verticalGap, normalLineHeight) {
+    if (!prevLine) return false;
+
+    var prevText = safeString(prevLine.text);
+    var text = safeString(line.text);
+    var bigGap = verticalGap > normalLineHeight * 1.25;
+    var indentShift = Math.abs((line.xPdfMin || 0) - (prevLine.xPdfMin || 0));
+
+    if (lineLooksLikeListItem(text)) return true;
+    if (lineLooksLikeStandalone(text) || lineLooksLikeStandalone(prevText)) return true;
+    if (bigGap && (prevText.length < 95 || text.length < 95)) return true;
+    if (indentShift > 26 && (prevText.length < 120 || text.length < 120)) return true;
+
+    // Se la riga precedente finisce con punteggiatura forte e la riga dopo parte maiuscola,
+    // spesso nel PDF era un a capo intenzionale, non solo wrap tipografico.
+    if (/[.!?…]$/.test(prevText) && /^[A-ZÀ-Ý0-9]/.test(text) && prevText.length < 150) return true;
+
+    return false;
+  }
+
+  function joinLinesPreservingSemanticBreaks(lines) {
+    var out = '';
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var text = safeString(line.text);
+      if (!text) continue;
+
+      if (!out) {
+        out = text;
+        continue;
+      }
+
+      var prev = lines[i - 1];
+      var verticalGap = Math.abs((prev && prev.yPdf) - line.yPdf);
+      var normalLineHeight = Math.max((prev && prev.hPdf) || 10, line.hPdf || 10, 10);
+
+      if (shouldKeepLineBreakInsideParagraph(prev, line, verticalGap, normalLineHeight)) {
+        out += '\n' + text;
+      } else {
+        out += ' ' + text;
+      }
+    }
+
+    return out.replace(/[ \t]+/g, ' ').replace(/\n[ \t]+/g, '\n').trim();
+  }
+
   function buildReadableParagraphObjectsFromPdfItems(items) {
     var cleanItems = (items || [])
       .map(function (it) {
@@ -490,7 +629,7 @@
 
     function flushCurrent() {
       if (!current.length) return;
-      var text = current.map(function (line) { return line.text; }).join(' ').replace(/[ \t]+/g, ' ').trim();
+      var text = joinLinesPreservingSemanticBreaks(current);
       if (!text) {
         current = [];
         return;
@@ -517,10 +656,8 @@
 
       var verticalGap = Math.abs(prevLine.yPdf - line.yPdf);
       var normalLineHeight = Math.max(prevLine.hPdf, line.hPdf, 10);
-      var previousLooksEnded = /[.!?:;…»")\]]$/.test(prevLine.text) || prevLine.text.length < 55;
-      var bigGap = verticalGap > normalLineHeight * 1.55;
 
-      if (bigGap && previousLooksEnded) {
+      if (shouldSplitParagraph(prevLine, line, verticalGap, normalLineHeight)) {
         flushCurrent();
         current.push(line);
       } else {
@@ -591,6 +728,43 @@
     });
 
     return mergeRanges(ranges, 10);
+  }
+
+  function getTextRects(textContent, pageHeight, scale, canvasWidth, canvasHeight) {
+    var rects = [];
+
+    (textContent.items || []).forEach(function (it) {
+      var str = safeString(it.str);
+      if (!str) return;
+
+      var tr = Array.isArray(it.transform) ? it.transform : [];
+      var xPdf = Number(tr[4] || 0);
+      var yPdf = Number(tr[5] || 0);
+      var wPdf = Number(it.width || 0);
+      var hPdf = Math.abs(Number(tr[3] || 0)) || 10;
+
+      var x = xPdf * scale;
+      var y = (pageHeight - yPdf) * scale;
+      var w = Math.max(8, wPdf * scale);
+      var h = Math.max(10, hPdf * scale);
+
+      rects.push({
+        x1: Math.max(0, x - 5),
+        y1: Math.max(0, y - h * 1.60),
+        x2: Math.min(canvasWidth, x + w + 5),
+        y2: Math.min(canvasHeight, y + h * 0.90)
+      });
+    });
+
+    return rects;
+  }
+
+  function pointInTextRect(x, y, rects) {
+    for (var i = 0; i < rects.length; i++) {
+      var r = rects[i];
+      if (x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2) return true;
+    }
+    return false;
   }
 
   function findVerticalVisualGaps(textRanges, canvasHeight) {
@@ -698,6 +872,165 @@
     };
   }
 
+
+  function normalizeCandidateBounds(bounds, canvas) {
+    if (!bounds) return null;
+    var width = canvas.width;
+    var height = canvas.height;
+    var x = Math.max(0, Math.floor(bounds.x));
+    var y = Math.max(0, Math.floor(bounds.y));
+    var w = Math.min(width - x, Math.ceil(bounds.w));
+    var h = Math.min(height - y, Math.ceil(bounds.h));
+
+    if (w < MIN_IMAGE_CROP_WIDTH || h < MIN_IMAGE_CROP_HEIGHT) return null;
+    if (w > width * 0.96 && h > height * 0.78) return null;
+    if (h < 70 && w < width * 0.70) return null;
+
+    return Object.assign({}, bounds, {
+      x: x,
+      y: y,
+      w: w,
+      h: h,
+      yCanvasTop: y,
+      yCanvasBottom: y + h
+    });
+  }
+
+  function overlapRatio(a, b) {
+    var x1 = Math.max(a.x, b.x);
+    var y1 = Math.max(a.y, b.y);
+    var x2 = Math.min(a.x + a.w, b.x + b.w);
+    var y2 = Math.min(a.y + a.h, b.y + b.h);
+    var inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    if (!inter) return 0;
+    var minArea = Math.min(a.w * a.h, b.w * b.h) || 1;
+    return inter / minArea;
+  }
+
+  function dedupeCandidates(candidates, canvas) {
+    var out = [];
+    (candidates || [])
+      .map(function (c) { return normalizeCandidateBounds(c, canvas); })
+      .filter(Boolean)
+      .sort(function (a, b) { return (b.score || 0) - (a.score || 0); })
+      .forEach(function (c) {
+        var duplicate = out.some(function (existing) {
+          return overlapRatio(c, existing) > 0.55;
+        });
+        if (!duplicate) out.push(c);
+      });
+
+    return out;
+  }
+
+  function findVisualComponentCandidates(canvas, textRects) {
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    var width = canvas.width;
+    var height = canvas.height;
+    var step = VISUAL_SAMPLE_STEP;
+    var cols = Math.ceil(width / step);
+    var rows = Math.ceil(height / step);
+    var data;
+
+    try {
+      data = ctx.getImageData(0, 0, width, height).data;
+    } catch (e) {
+      return [];
+    }
+
+    var mask = new Uint8Array(cols * rows);
+
+    function idx(col, row) { return row * cols + col; }
+
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        var x = Math.min(width - 1, Math.floor(col * step + step / 2));
+        var y = Math.min(height - 1, Math.floor(row * step + step / 2));
+
+        if (pointInTextRect(x, y, textRects)) continue;
+
+        var p = ((y * width) + x) * 4;
+        if (isPixelVisual(data[p], data[p + 1], data[p + 2], data[p + 3])) {
+          mask[idx(col, row)] = 1;
+        }
+      }
+    }
+
+    var visited = new Uint8Array(cols * rows);
+    var candidates = [];
+    var queue = [];
+
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var start = idx(c, r);
+        if (!mask[start] || visited[start]) continue;
+
+        var minC = c;
+        var maxC = c;
+        var minR = r;
+        var maxR = r;
+        var count = 0;
+
+        queue.length = 0;
+        queue.push(start);
+        visited[start] = 1;
+
+        while (queue.length) {
+          var cur = queue.pop();
+          var cr = Math.floor(cur / cols);
+          var cc = cur - cr * cols;
+          count++;
+
+          if (cc < minC) minC = cc;
+          if (cc > maxC) maxC = cc;
+          if (cr < minR) minR = cr;
+          if (cr > maxR) maxR = cr;
+
+          var neighbors = [
+            [cc + 1, cr], [cc - 1, cr], [cc, cr + 1], [cc, cr - 1],
+            [cc + 1, cr + 1], [cc - 1, cr - 1], [cc + 1, cr - 1], [cc - 1, cr + 1]
+          ];
+
+          for (var n = 0; n < neighbors.length; n++) {
+            var nc = neighbors[n][0];
+            var nr = neighbors[n][1];
+            if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+            var ni = idx(nc, nr);
+            if (!mask[ni] || visited[ni]) continue;
+            visited[ni] = 1;
+            queue.push(ni);
+          }
+        }
+
+        var x1 = Math.max(0, minC * step - 20);
+        var y1 = Math.max(0, minR * step - 20);
+        var x2 = Math.min(width, (maxC + 1) * step + 20);
+        var y2 = Math.min(height, (maxR + 1) * step + 20);
+        var w = x2 - x1;
+        var h = y2 - y1;
+        var sampledArea = Math.max(1, (maxC - minC + 1) * (maxR - minR + 1));
+        var density = count / sampledArea;
+
+        if (count < 18) continue;
+        if (w < MIN_IMAGE_CROP_WIDTH || h < MIN_IMAGE_CROP_HEIGHT) continue;
+        if (density < 0.025 && w * h < width * height * 0.06) continue;
+
+        candidates.push({
+          x: x1,
+          y: y1,
+          w: w,
+          h: h,
+          yCanvasTop: y1,
+          yCanvasBottom: y2,
+          visualRatio: Number(density.toFixed(4)),
+          score: (w * h) * Math.min(0.42, density)
+        });
+      }
+    }
+
+    return candidates;
+  }
+
   function canvasToBlob(canvas, type, quality) {
     return new Promise(function (resolve, reject) {
       try {
@@ -752,7 +1085,7 @@
 
     var uploadInfo = await root.R2WorkerService.requestUploadUrl({
       kind: 'image',
-      tagSlug: 'reader',
+      tagSlug: 'immagini',
       subcategory: 'pdf-reader',
       fileName: fileName,
       contentType: 'image/webp',
@@ -798,6 +1131,7 @@
     var rendered = await renderPageCanvas(page);
     var canvas = rendered.canvas;
     var textRanges = getTextCoverageRanges(textContent, rendered.pageHeight, rendered.scale, canvas.height);
+    var textRects = getTextRects(textContent, rendered.pageHeight, rendered.scale, canvas.width, canvas.height);
     var gaps = findVerticalVisualGaps(textRanges, canvas.height);
 
     // Se non c'è testo, consideriamo una tavola unica ma ottimizzata: serve per PDF scansionati/illustrati.
@@ -806,12 +1140,17 @@
     }
 
     var candidates = [];
+
+    // V4: componenti visuali reali, anche affiancate o vicine al testo.
+    candidates = candidates.concat(findVisualComponentCandidates(canvas, textRects));
+
+    // Fallback V3: fasce verticali libere, utile per hero/header e immagini a tutta larghezza.
     gaps.forEach(function (gap) {
       var bounds = analyzeVisualBounds(canvas, gap.y1, gap.y2);
       if (bounds) candidates.push(bounds);
     });
 
-    candidates = candidates
+    candidates = dedupeCandidates(candidates, canvas)
       .sort(function (a, b) { return b.score - a.score; })
       .slice(0, MAX_IMAGES_PER_PAGE)
       .sort(function (a, b) { return a.yCanvasTop - b.yCanvasTop; });
@@ -825,13 +1164,13 @@
         var blob = await cropCanvasToOptimizedBlob(canvas, c);
 
         // Se è minuscola, è probabilmente un fregio, una linea o rumore visivo.
-        if (!blob || blob.size < 4500) continue;
+        if (!blob || blob.size < 3200) continue;
 
         imageState.total += 1;
         onProgress('Carico immagine reader ' + imageState.total + ' su R2...');
         var uploaded = await uploadReaderImage(media, blob, imageState.total, pageNum, nextReaderVersion);
 
-        var isHero = imageState.total === 1 && (pageNum === 1 || c.yCanvasTop < canvas.height * 0.28) && c.w >= canvas.width * 0.45;
+        var isHero = imageState.total === 1 && (pageNum === 1 || c.yCanvasTop < canvas.height * 0.28) && c.w >= canvas.width * 0.42;
 
         blocks.push({
           type: 'image',
@@ -846,7 +1185,8 @@
           width: c.w,
           height: c.h,
           sizeBytes: uploaded.sizeBytes,
-          visualRatio: Number(c.visualRatio.toFixed(4))
+          visualRatio: Number((c.visualRatio || 0).toFixed ? c.visualRatio.toFixed(4) : c.visualRatio || 0),
+          detector: c.detector || 'visual-component-v4'
         });
       } catch (e) {
         imageState.errors.push('Pagina ' + pageNum + ': ' + (e && e.message ? e.message : String(e)));
@@ -904,10 +1244,10 @@
 
     var patch = {
       readerStatus: 'READY',
-      readerBuildMode: 'admin-browser-pdfjs-editorial-v3-images',
-      readerEditorialVersion: 3,
+      readerBuildMode: 'admin-browser-pdfjs-editorial-v4-images-lines-sources',
+      readerEditorialVersion: 4,
       readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
-      readerImageStrategy: 'pdf-page-crop-r2-webp-coordinate-merge',
+      readerImageStrategy: 'pdf-visual-components-plus-gaps-r2-webp-coordinate-merge-v4',
       readerImageCount: imageCount,
       readerImageErrors: Array.isArray(meta.imageErrors) ? meta.imageErrors.slice(0, 12) : [],
       readerVersion: nextReaderVersion,
@@ -1028,7 +1368,7 @@
       throw new Error('Nessun contenuto estraibile dal PDF. Probabile scansione/immagine: servirà OCR esterno o contenuto manuale.');
     }
 
-    onProgress('Preparazione reader editoriale, immagini e riordino Fonti/Fonte...');
+    onProgress('Preparazione reader editoriale V4: immagini, a capo reali e Fonti a cluster...');
     return buildPatchFromBlocks(media, blocks, {
       originalPageCount: pageCount,
       pagesProcessed: pagesToProcess,
