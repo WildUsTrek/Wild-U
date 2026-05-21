@@ -88,6 +88,7 @@ function swDebug(type, details) {
 
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL('index.html', self.registration.scope).toString();
+const INDEX_PATHNAME = new URL(INDEX_URL).pathname.toLowerCase();
 const VERSION_URL = new URL('version.json', self.registration.scope).toString();
 const VERSION_PATHNAME = new URL(VERSION_URL).pathname.toLowerCase();
 
@@ -223,21 +224,46 @@ if (url.pathname.toLowerCase() === VERSION_PATHNAME) {
     );
 });
 
+function getScopeRelativePath(url) {
+    const scopePath = SCOPE_URL.pathname.toLowerCase().replace(/\/+$/, '') + '/';
+    let path = String(url.pathname || '').toLowerCase().replace(/\/{2,}/g, '/');
+
+    if (path.indexOf(scopePath) === 0) {
+        path = path.slice(scopePath.length);
+    }
+
+    return path.replace(/^\/+/, '');
+}
+
+function isStandaloneRuntimePath(url) {
+    const rel = getScopeRelativePath(url);
+
+    return (
+        rel.indexOf('wildu-map-suite/') === 0 ||
+        rel.indexOf('giochi/') === 0 ||
+        rel.indexOf('wildu-media-suite/') === 0
+    );
+}
+
 function isShellRequest(req, url) {
     const path = url.pathname.toLowerCase();
     const scopePath = SCOPE_URL.pathname.toLowerCase();
 
     const isExactShellEntry =
-        url.href === INDEX_URL ||
+        path === INDEX_PATHNAME ||
         path === scopePath ||
-        path === scopePath.replace(/\/$/, '') ||
-        path.endsWith('/index.html');
+        path === scopePath.replace(/\/$/, '');
 
     if (isExactShellEntry) return true;
 
     // Shell solo per navigazioni "pulite" senza estensione file.
-    // Così PDF/MP3/immagini/documenti non vengono scambiati per index.
+    // Correzione conservativa:
+    // - l'index principale /Wild-U/index.html resta shell madre;
+    // - i nested index.html di giochi / MapViewer / Media Suite NON vengono scambiati per shell madre;
+    // - le route pulite standalone possono usare ancora network-first + cache esatta, ma senza fallback a INDEX_URL.
     const hasFileExtension = /\.[a-z0-9]+$/i.test(path);
+
+    if (isStandaloneRuntimePath(url) && hasFileExtension) return false;
 
     return req.mode === 'navigate' && !hasFileExtension;
 }
@@ -272,9 +298,20 @@ async function fetchShellVersion() {
         const res = await fetch(VERSION_URL + '?bust=' + Date.now(), { cache: 'no-store' });
         if (!res.ok) throw new Error('version fetch failed');
         const data = await res.json();
-        return String(data.version || FALLBACK_VERSION).trim() || FALLBACK_VERSION;
+        const version = String(data.version || '').trim();
+        return version || await getActiveShellVersion();
     } catch (e) {
-        return FALLBACK_VERSION;
+        // Se version.json non risponde durante activate, non degradare subito a bootstrap:
+        // conserva la shell attiva precedente e usa bootstrap solo se non esiste nulla.
+        const previousVersion = await getActiveShellVersion();
+
+        swDebug('VERSION_FETCH_FAILED_KEEP_PREVIOUS', {
+            previousVersion: previousVersion,
+            fallbackVersion: FALLBACK_VERSION,
+            error: e && e.message ? e.message : 'unknown'
+        });
+
+        return previousVersion || FALLBACK_VERSION;
     }
 }
 
@@ -409,13 +446,17 @@ async function handleShellRequest(req, url) {
 
         return fresh;
     } catch (e) {
-        const cached = await shellCache.match(req) || await shellCache.match(INDEX_URL);
+        const exactCached = await shellCache.match(req);
+        const allowIndexFallback = !isStandaloneRuntimePath(url);
+        const cached = exactCached || (allowIndexFallback ? await shellCache.match(INDEX_URL) : null);
 
         if (cached) {
             swDebug('SHELL_CACHE_FALLBACK', {
                 request: req.url,
                 cacheName: getShellCacheName(version),
-                version: version
+                version: version,
+                exactMatch: !!exactCached,
+                indexFallbackAllowed: allowIndexFallback
             });
             return cached;
         }
