@@ -52,6 +52,17 @@
   var IMAGE_CROP_HERO_DOMINANT_MIN_RATIO = 0.18;
   var IMAGE_CROP_HERO_DOMINANT_SECONDARY_RATIO = 1.65;
 
+  // V6.3.4: alcuni header hanno aloni/sfumature o badge/logo integrati
+  // nella stessa fascia della foto. Il componente dominante non basta:
+  // imponiamo un crop orizzontale hero guidato da densità/centro visivo,
+  // così non teniamo grandi code laterali quasi bianche o badge isolati.
+  var IMAGE_CROP_HERO_HORIZONTAL_SMART_TRIM = true;
+  var IMAGE_CROP_HERO_MAX_ASPECT_RATIO = 2.06;
+  var IMAGE_CROP_HERO_CENTER_SAMPLE_STEP = 5;
+  var IMAGE_CROP_HERO_CENTER_TOP_SKIP_RATIO = 0.18;
+  var IMAGE_CROP_HERO_CENTER_BOTTOM_SKIP_RATIO = 0.05;
+  var IMAGE_CROP_HERO_MIN_ASPECT_TRIM_RATIO = 0.08;
+
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
   }
@@ -1413,6 +1424,117 @@
     };
   }
 
+  function isHeroInformativePixel(r, g, b, a) {
+    if (a < 20) return false;
+
+    var max = Math.max(r, g, b);
+    var min = Math.min(r, g, b);
+    var chroma = max - min;
+    var lum = (r * 0.2126) + (g * 0.7152) + (b * 0.0722);
+
+    // Più severo di isPixelVisual: ignora sfondi quasi bianchi, aloni e ombre morbide.
+    // Mantiene però cielo/verde/rocce/foto reali quando hanno colore o contrasto sufficiente.
+    if (lum > 247 && chroma < 18) return false;
+    if (lum > 238 && chroma < 10) return false;
+    if (chroma >= 18 && lum < 252) return true;
+    if (lum < 218) return true;
+    return false;
+  }
+
+  function estimateHeroInformativeCenterX(data, w0, h0) {
+    if (!data || w0 <= 0 || h0 <= 0) return null;
+
+    var step = IMAGE_CROP_HERO_CENTER_SAMPLE_STEP;
+    var yStart = Math.max(0, Math.floor(h0 * IMAGE_CROP_HERO_CENTER_TOP_SKIP_RATIO));
+    var yEnd = Math.min(h0, Math.ceil(h0 * (1 - IMAGE_CROP_HERO_CENTER_BOTTOM_SKIP_RATIO)));
+
+    if (yEnd - yStart < Math.max(40, h0 * 0.30)) {
+      yStart = 0;
+      yEnd = h0;
+    }
+
+    var total = 0;
+    var weighted = 0;
+    var minX = w0;
+    var maxX = -1;
+
+    for (var y = yStart; y < yEnd; y += step) {
+      for (var x = 0; x < w0; x += step) {
+        var idx = ((y * w0) + x) * 4;
+        var r = data[idx];
+        var g = data[idx + 1];
+        var b = data[idx + 2];
+        var a = data[idx + 3];
+
+        if (!isHeroInformativePixel(r, g, b, a)) continue;
+
+        var max = Math.max(r, g, b);
+        var min = Math.min(r, g, b);
+        var chroma = max - min;
+        var lum = (r * 0.2126) + (g * 0.7152) + (b * 0.0722);
+        var weight = 1 + Math.min(4, chroma / 34) + Math.max(0, (225 - lum) / 85);
+
+        total += weight;
+        weighted += x * weight;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+    }
+
+    if (total <= 0 || maxX < minX) return null;
+
+    return {
+      centerX: weighted / total,
+      minX: minX,
+      maxX: maxX,
+      informativeWidth: maxX - minX + 1,
+      sampleWeight: total
+    };
+  }
+
+  function applyHeroHorizontalSmartTrim(nx1, nx2, ny1, ny2, x0, y0, w0, h0, data) {
+    if (!IMAGE_CROP_HERO_HORIZONTAL_SMART_TRIM) return null;
+
+    var currentW = nx2 - nx1;
+    var currentH = ny2 - ny1;
+    if (currentW < MIN_IMAGE_CROP_WIDTH || currentH < MIN_IMAGE_CROP_HEIGHT) return null;
+
+    var currentAspect = currentW / Math.max(1, currentH);
+    if (currentAspect <= IMAGE_CROP_HERO_MAX_ASPECT_RATIO) return null;
+
+    var targetW = Math.round(currentH * IMAGE_CROP_HERO_MAX_ASPECT_RATIO);
+    targetW = Math.max(MIN_IMAGE_CROP_WIDTH, Math.min(currentW, targetW));
+
+    // Evita micro-crop inutili: se taglia meno dell'8% della larghezza non vale il rischio.
+    if ((currentW - targetW) / Math.max(1, currentW) < IMAGE_CROP_HERO_MIN_ASPECT_TRIM_RATIO) return null;
+
+    var info = estimateHeroInformativeCenterX(data, w0, h0);
+    var localCenter = info && Number.isFinite(info.centerX) ? info.centerX : ((nx1 + nx2) / 2 - x0);
+    var centerAbs = x0 + localCenter;
+
+    var tx1 = Math.round(centerAbs - targetW / 2);
+    var tx2 = Math.round(centerAbs + targetW / 2);
+
+    if (tx1 < x0) { tx2 += (x0 - tx1); tx1 = x0; }
+    if (tx2 > x0 + w0) { tx1 -= (tx2 - (x0 + w0)); tx2 = x0 + w0; }
+
+    tx1 = Math.max(x0, tx1);
+    tx2 = Math.min(x0 + w0, tx2);
+
+    if (tx2 - tx1 < MIN_IMAGE_CROP_WIDTH) return null;
+    if (tx1 <= nx1 && tx2 >= nx2) return null;
+
+    return {
+      nx1: tx1,
+      nx2: tx2,
+      centerMode: info ? 'informative-density-center' : 'geometric-center',
+      informativeCenterX: info ? Number(info.centerX.toFixed ? info.centerX.toFixed(2) : info.centerX) : null,
+      informativeMinX: info ? info.minX : null,
+      informativeMaxX: info ? info.maxX : null,
+      reason: 'hero-horizontal-smart-aspect-trim-v6-3-4'
+    };
+  }
+
   function tightenReaderImageBounds(sourceCanvas, bounds) {
     if (!IMAGE_CROP_AUTO_TIGHTEN || !sourceCanvas || !bounds) return bounds;
 
@@ -1520,6 +1642,15 @@
     nx2 = Math.max(nx2, x0 + w0 - maxInsetX);
     ny2 = Math.max(ny2, y0 + h0 - maxInsetY);
 
+    var heroHorizontalTrim = null;
+    if (isHero) {
+      heroHorizontalTrim = applyHeroHorizontalSmartTrim(nx1, nx2, ny1, ny2, x0, y0, w0, h0, data);
+      if (heroHorizontalTrim) {
+        nx1 = heroHorizontalTrim.nx1;
+        nx2 = heroHorizontalTrim.nx2;
+      }
+    }
+
     var nw = Math.round(nx2 - nx1);
     var nh = Math.round(ny2 - ny1);
 
@@ -1539,7 +1670,13 @@
       tightened: true,
       dominantHeroComponent: !!dominantHeroLocal,
       removedSecondaryComponents: dominantHeroLocal ? dominantHeroLocal.removedSecondaryComponents : 0,
-      tightenMode: isHero ? 'center-preserving-hero-dominant-component-v6-3-3' : 'center-preserving-inline-bleed-v6-3-3'
+      heroHorizontalSmartTrim: !!heroHorizontalTrim,
+      heroHorizontalTrimReason: heroHorizontalTrim ? heroHorizontalTrim.reason : null,
+      heroHorizontalCenterMode: heroHorizontalTrim ? heroHorizontalTrim.centerMode : null,
+      heroInformativeCenterX: heroHorizontalTrim ? heroHorizontalTrim.informativeCenterX : null,
+      heroInformativeMinX: heroHorizontalTrim ? heroHorizontalTrim.informativeMinX : null,
+      heroInformativeMaxX: heroHorizontalTrim ? heroHorizontalTrim.informativeMaxX : null,
+      tightenMode: isHero ? 'center-preserving-hero-horizontal-smart-trim-v6-3-4' : 'center-preserving-inline-bleed-v6-3-4'
     });
   }
 
@@ -1556,12 +1693,12 @@
     });
   }
 
-  async function cropCanvasToOptimizedBlob(sourceCanvas, bounds) {
-    bounds = tightenReaderImageBounds(sourceCanvas, bounds);
+  async function cropCanvasToOptimizedImage(sourceCanvas, bounds) {
+    var tightenedBounds = tightenReaderImageBounds(sourceCanvas, bounds);
 
-    var scaleDown = bounds.w > IMAGE_OUTPUT_MAX_WIDTH ? IMAGE_OUTPUT_MAX_WIDTH / bounds.w : 1;
-    var outW = Math.max(1, Math.round(bounds.w * scaleDown));
-    var outH = Math.max(1, Math.round(bounds.h * scaleDown));
+    var scaleDown = tightenedBounds.w > IMAGE_OUTPUT_MAX_WIDTH ? IMAGE_OUTPUT_MAX_WIDTH / tightenedBounds.w : 1;
+    var outW = Math.max(1, Math.round(tightenedBounds.w * scaleDown));
+    var outH = Math.max(1, Math.round(tightenedBounds.h * scaleDown));
 
     var out = document.createElement('canvas');
     out.width = outW;
@@ -1570,9 +1707,19 @@
     var ctx = out.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(sourceCanvas, bounds.x, bounds.y, bounds.w, bounds.h, 0, 0, outW, outH);
+    ctx.drawImage(sourceCanvas, tightenedBounds.x, tightenedBounds.y, tightenedBounds.w, tightenedBounds.h, 0, 0, outW, outH);
 
-    return canvasToBlob(out, 'image/webp', IMAGE_WEBP_QUALITY);
+    return {
+      blob: await canvasToBlob(out, 'image/webp', IMAGE_WEBP_QUALITY),
+      bounds: tightenedBounds,
+      outputWidth: outW,
+      outputHeight: outH
+    };
+  }
+
+  async function cropCanvasToOptimizedBlob(sourceCanvas, bounds) {
+    var optimized = await cropCanvasToOptimizedImage(sourceCanvas, bounds);
+    return optimized.blob;
   }
 
   function cleanObjectKeyPart(value) {
@@ -1774,7 +1921,9 @@
         c.roleHint = willBeHero ? 'hero' : 'inline';
 
         onProgress('Ottimizzo immagine pagina ' + pageNum + '...');
-        var blob = await cropCanvasToOptimizedBlob(canvas, c);
+        var optimizedImage = await cropCanvasToOptimizedImage(canvas, c);
+        var blob = optimizedImage.blob;
+        var finalBounds = optimizedImage.bounds || c;
 
         // Se è minuscola, è probabilmente un fregio, una linea o rumore visivo.
         if (!blob || blob.size < 3200) continue;
@@ -1793,13 +1942,25 @@
           alt: 'Immagine dal PDF originale, pagina ' + pageNum,
           caption: 'Dal PDF originale · pagina ' + pageNum,
           page: pageNum,
-          yCanvasTop: c.yCanvasTop,
-          yCanvasBottom: c.yCanvasBottom,
-          width: c.w,
-          height: c.h,
+          yCanvasTop: finalBounds.yCanvasTop,
+          yCanvasBottom: finalBounds.yCanvasBottom,
+          xCanvasLeft: finalBounds.x,
+          xCanvasRight: finalBounds.x + finalBounds.w,
+          width: finalBounds.w,
+          height: finalBounds.h,
+          outputWidth: optimizedImage.outputWidth,
+          outputHeight: optimizedImage.outputHeight,
           sizeBytes: uploaded.sizeBytes,
           visualRatio: Number((c.visualRatio || 0).toFixed ? c.visualRatio.toFixed(4) : c.visualRatio || 0),
-          detector: c.detector || 'visual-component-v4'
+          detector: c.detector || 'visual-component-v4',
+          tightened: !!finalBounds.tightened,
+          tightenMode: finalBounds.tightenMode || null,
+          heroHorizontalSmartTrim: !!finalBounds.heroHorizontalSmartTrim,
+          heroHorizontalTrimReason: finalBounds.heroHorizontalTrimReason || null,
+          heroHorizontalCenterMode: finalBounds.heroHorizontalCenterMode || null,
+          heroInformativeCenterX: finalBounds.heroInformativeCenterX || null,
+          heroInformativeMinX: finalBounds.heroInformativeMinX || null,
+          heroInformativeMaxX: finalBounds.heroInformativeMaxX || null
         });
       } catch (e) {
         imageState.errors.push('Pagina ' + pageNum + ': ' + (e && e.message ? e.message : String(e)));
@@ -2395,7 +2556,7 @@
       readerBuildMode: 'admin-browser-pdfjs-editorial-v6-diagnostics-preview',
       readerEditorialVersion: 6,
       readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
-      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-3-3-hero-dominant-component',
+      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-3-4-hero-horizontal-smart-trim',
       readerImageCount: imageCount,
       readerImageObjectKeys: collectReaderImageObjectKeys({ readerBlocks: blocks }),
       readerImageUrls: (blocks || []).filter(function (block) { return block && block.type === 'image' && block.url; }).map(function (block) { return block.url; }),
