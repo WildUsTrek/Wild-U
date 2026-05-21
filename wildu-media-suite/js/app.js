@@ -3034,7 +3034,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
           '<div style="padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.12); display:flex; gap:12px; align-items:flex-start; justify-content:space-between;">' +
             '<div style="min-width:0;">' +
               '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">' +
-                badge('Anteprima Reader V6', 'good') +
+                badge('Anteprima Reader V6.2', 'good') +
                 badge('Confidenza ' + (Number.isFinite(conf) ? conf + '%' : '—'), confTone) +
                 badge('Blocchi ' + root.escapeHtml((patch && patch.readerBlockCount) || (report && report.blockCount) || 0), 'neutral') +
                 badge('Immagini ' + root.escapeHtml((patch && patch.readerImageCount) || (report && report.imageCount) || 0), 'neutral') +
@@ -3099,6 +3099,26 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     });
   }
 
+
+  async function cleanupPdfReaderImagesQuietly(source, reason) {
+    if (!root.PdfReaderService || typeof root.PdfReaderService.cleanupReaderImages !== 'function') {
+      return { ok: false, skipped: true, deleted: [], failed: [] };
+    }
+
+    var result = await root.PdfReaderService.cleanupReaderImages(source, { reason: reason || 'READER_REPLACE' });
+
+    if (result && Array.isArray(result.failed) && result.failed.length) {
+      console.warn('[WILDU READER] Immagini reader non cancellate:', result.failed);
+      root.toast('Reader ok, ma alcune vecchie immagini R2 non sono state cancellate. Vedi console.', 'info');
+    }
+
+    if (result && Array.isArray(result.deleted) && result.deleted.length) {
+      console.log('[WILDU READER] Immagini reader cancellate:', result.deleted);
+    }
+
+    return result || { ok: true, deleted: [], failed: [] };
+  }
+
   async function previewPdfReaderForMedia(id) {
     var item = findMediaById(id);
     if (!item) throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
@@ -3142,15 +3162,21 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var approved = await showPdfReaderPreviewModal(item, patch, { readOnly: false });
 
     if (!approved) {
-      root.toast('Reader generato in anteprima ma non salvato.', 'info');
+      // Le immagini della preview vengono caricate su R2 prima del salvataggio: se annulli, le ripuliamo subito.
+      await cleanupPdfReaderImagesQuietly(patch, 'READER_PREVIEW_CANCELLED');
+      root.toast('Reader generato in anteprima ma non salvato. Immagini provvisorie cancellate se note.', 'info');
       return;
     }
+
+    // Prima di sostituire il reader salvato, elimina le vecchie immagini reader già note.
+    // Non tocca mai il PDF originale: cancella solo objectKey generati dal reader.
+    await cleanupPdfReaderImagesQuietly(item, 'READER_REPLACE_OLD_IMAGES');
 
     var patchToSave = sanitizeReaderPatchForSave(patch);
     await root.MediaService.updateMedia(item.id, patchToSave);
 
     root.toast(
-      'Reader editoriale V6 salvato: ' +
+      'Reader editoriale V6.2 salvato: ' +
       Number(patch.readerBlockCount || 0) +
       ' blocchi, ' +
       Number(patch.readerPagesProcessed || 0) +
@@ -3185,11 +3211,12 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       return;
     }
 
-    if (!confirm('Pulire i campi reader generati per questo PDF? Il file R2 non verrà toccato.')) return;
+    if (!confirm('Pulire i campi reader generati per questo PDF? Il PDF originale R2 non verrà toccato. Le immagini reader note verranno cancellate da R2.')) return;
 
+    await cleanupPdfReaderImagesQuietly(item, 'READER_CLEAR');
     await root.MediaService.updateMedia(item.id, root.PdfReaderService.buildClearReaderPatch(item));
 
-    root.toast('Reader pulito e manifesto Biblioteca riallineato.', 'success');
+    root.toast('Reader pulito, immagini reader note cancellate e manifesto Biblioteca riallineato.', 'success');
 
     await refreshTags();
     await refreshMedia();
