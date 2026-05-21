@@ -26,13 +26,16 @@
   var MIN_VISUAL_RATIO = 0.010;
   var VISUAL_SAMPLE_STEP = 6;
 
-  // V6.1: ritaglio automatico dei margini bianchi nei crop immagine.
+  // V6.2: crop più deciso: elimina il bianco e rosicchia leggermente il bordo reale.
   // Non cambia il PDF originale e non tocca il client: agisce solo sulle nuove immagini reader generate.
   var IMAGE_CROP_AUTO_TIGHTEN = true;
-  var IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO = 0.30;
-  var IMAGE_CROP_TIGHTEN_PADDING_RATIO = 0.08;
-  var IMAGE_CROP_TIGHTEN_MIN_PADDING = 14;
+  var IMAGE_CROP_TIGHTEN_MAX_SIDE_RATIO = 0.36;
+  var IMAGE_CROP_TIGHTEN_PADDING_RATIO = 0;
+  var IMAGE_CROP_TIGHTEN_MIN_PADDING = 0;
   var IMAGE_CROP_TIGHTEN_SAMPLE_STEP = 4;
+  var IMAGE_CROP_INNER_BLEED_RATIO = 0.035;
+  var IMAGE_CROP_INNER_BLEED_MAX_PX = 30;
+  var IMAGE_CROP_INNER_BLEED_MIN_PX = 3;
 
   function safeString(value) {
     return String(value === undefined || value === null ? '' : value).trim();
@@ -1185,7 +1188,22 @@
     var nx2 = Math.min(x0 + w0, x0 + maxX + padX);
     var ny2 = Math.min(y0 + h0, y0 + maxY + padY);
 
-    // Limite anti-taglio: non stringe mai oltre circa il 30% per lato.
+    // Bleed editoriale: dopo aver trovato il bordo visivo, rosicchia leggermente dentro.
+    // Serve a togliere micro-bordi bianchi/impaginazione senza trasformare il crop in una pagina A4.
+    var bleedX = Math.max(IMAGE_CROP_INNER_BLEED_MIN_PX, Math.min(IMAGE_CROP_INNER_BLEED_MAX_PX, Math.round(visualW * IMAGE_CROP_INNER_BLEED_RATIO)));
+    var bleedY = Math.max(IMAGE_CROP_INNER_BLEED_MIN_PX, Math.min(IMAGE_CROP_INNER_BLEED_MAX_PX, Math.round(visualH * IMAGE_CROP_INNER_BLEED_RATIO)));
+
+    if ((nx2 - nx1) - (bleedX * 2) >= MIN_IMAGE_CROP_WIDTH) {
+      nx1 += bleedX;
+      nx2 -= bleedX;
+    }
+
+    if ((ny2 - ny1) - (bleedY * 2) >= MIN_IMAGE_CROP_HEIGHT) {
+      ny1 += bleedY;
+      ny2 -= bleedY;
+    }
+
+    // Limite anti-taglio: non stringe mai oltre circa il 36% per lato.
     nx1 = Math.min(nx1, x0 + maxInsetX);
     ny1 = Math.min(ny1, y0 + maxInsetY);
     nx2 = Math.max(nx2, x0 + w0 - maxInsetX);
@@ -1209,7 +1227,7 @@
       yCanvasTop: Math.round(ny1),
       yCanvasBottom: Math.round(ny1 + nh),
       tightened: true,
-      tightenMode: 'auto-white-margin-v6-1'
+      tightenMode: 'auto-white-margin-inner-bleed-v6-2'
     });
   }
 
@@ -1282,6 +1300,97 @@
       publicUrl: uploadInfo.publicUrl,
       objectKey: uploadInfo.objectKey || fileName,
       sizeBytes: blob.size
+    };
+  }
+
+
+  function objectKeyFromReaderImageUrl(url) {
+    var raw = safeString(url);
+    if (!raw) return '';
+
+    try {
+      var parsed = new URL(raw, window.location.href);
+      var path = safeString(parsed.pathname).replace(/^\/+/, '');
+      return path;
+    } catch (e) {
+      return raw.replace(/^https?:\/\/[^/]+\//i, '').replace(/^\/+/, '');
+    }
+  }
+
+  function collectReaderImageObjectKeys(source) {
+    var keys = [];
+
+    function add(value) {
+      var key = safeString(value);
+      if (!key) return;
+      key = key.replace(/^\/+/, '');
+      if (!key) return;
+      if (keys.indexOf(key) === -1) keys.push(key);
+    }
+
+    if (!source || typeof source !== 'object') return keys;
+
+    if (Array.isArray(source.readerImageObjectKeys)) {
+      source.readerImageObjectKeys.forEach(add);
+    }
+
+    if (Array.isArray(source.readerBlocks)) {
+      source.readerBlocks.forEach(function (block) {
+        if (!block || block.type !== 'image') return;
+        add(block.objectKey);
+        if (!block.objectKey && block.url) add(objectKeyFromReaderImageUrl(block.url));
+      });
+    }
+
+    if (Array.isArray(source.readerImageUrls)) {
+      source.readerImageUrls.forEach(function (url) {
+        add(objectKeyFromReaderImageUrl(url));
+      });
+    }
+
+    return keys.filter(function (key) {
+      // Cancelliamo solo asset reader generati dalla suite, mai PDF originali o immagini generiche.
+      return /^wildu-reader\/pdf\//i.test(key) || /^image\/[^/]*wildu-reader-pdf-/i.test(key);
+    });
+  }
+
+  async function cleanupReaderImages(source, options) {
+    options = options || {};
+
+    if (!root.R2WorkerService || typeof root.R2WorkerService.deleteObject !== 'function') {
+      return {
+        ok: false,
+        skipped: true,
+        deleted: [],
+        failed: [],
+        message: 'R2WorkerService.deleteObject non disponibile.'
+      };
+    }
+
+    var exclude = Array.isArray(options.excludeKeys) ? options.excludeKeys : [];
+    var keys = collectReaderImageObjectKeys(source).filter(function (key) {
+      return exclude.indexOf(key) === -1;
+    });
+
+    var deleted = [];
+    var failed = [];
+
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      try {
+        await root.R2WorkerService.deleteObject(key);
+        deleted.push(key);
+      } catch (e) {
+        failed.push({ objectKey: key, error: e && e.message ? e.message : String(e) });
+      }
+    }
+
+    return {
+      ok: failed.length === 0,
+      skipped: false,
+      deleted: deleted,
+      failed: failed,
+      count: keys.length
     };
   }
 
@@ -1790,8 +1899,11 @@
       readerBuildMode: 'admin-browser-pdfjs-editorial-v6-diagnostics-preview',
       readerEditorialVersion: 6,
       readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
-      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6',
+      readerImageStrategy: 'pdf-visual-components-plus-native-layout-captions-v6-2-tight-bleed-cleanup',
       readerImageCount: imageCount,
+      readerImageObjectKeys: collectReaderImageObjectKeys({ readerBlocks: blocks }),
+      readerImageUrls: (blocks || []).filter(function (block) { return block && block.type === 'image' && block.url; }).map(function (block) { return block.url; }),
+      readerImageCleanupPolicy: 'delete-known-reader-images-before-replace-or-clear-v6-2',
       readerImageErrors: Array.isArray(meta.imageErrors) ? meta.imageErrors.slice(0, 12) : [],
       readerQualityScore: report.confidence,
       readerQualityStatus: report.status,
@@ -1917,7 +2029,7 @@
       throw new Error('Nessun contenuto estraibile dal PDF. Probabile scansione/immagine: servirà OCR esterno o contenuto manuale.');
     }
 
-    onProgress('Preparazione reader editoriale V6: diagnostica, fonti, titoli e preview...');
+    onProgress('Preparazione reader editoriale V6.2: diagnostica, fonti, titoli, preview e immagini pulibili...');
     return buildPatchFromBlocks(media, blocks, {
       originalPageCount: pageCount,
       pagesProcessed: pagesToProcess,
@@ -1935,6 +2047,9 @@
       readerEditorialVersion: null,
       readerImageStrategy: null,
       readerImageCount: 0,
+      readerImageObjectKeys: null,
+      readerImageUrls: null,
+      readerImageCleanupPolicy: null,
       readerImageErrors: null,
       readerQualityScore: null,
       readerQualityStatus: null,
@@ -1967,6 +2082,8 @@
     buildReaderPatchFromMedia: buildReaderPatchFromMedia,
     buildClearReaderPatch: buildClearReaderPatch,
     buildAdminPreviewHtmlFromBlocks: buildAdminPreviewHtmlFromBlocks,
-    analyzeReaderBlocks: analyzeReaderBlocks
+    analyzeReaderBlocks: analyzeReaderBlocks,
+    collectReaderImageObjectKeys: collectReaderImageObjectKeys,
+    cleanupReaderImages: cleanupReaderImages
   };
 })();
