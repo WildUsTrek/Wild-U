@@ -3081,31 +3081,78 @@ const WilduMediaClient = (() => {
         const items = Array.isArray(result.items) ? result.items : [];
 
         function isBookItem(item) {
-            return safeString(item && item.subcategory) === "libri";
+            const sub = safeString(item && (
+                item.subcategory ||
+                item.Subcategory ||
+                item.sottocategoria ||
+                item.Sottocategoria ||
+                ""
+            )).toLowerCase();
+
+            return sub === "libri" || sub === "libro" || sub === "books" || sub === "book";
+        }
+
+        function firstCleanBookGradeValue(values) {
+            for (let i = 0; i < values.length; i++) {
+                const clean = safeString(values[i]);
+                if (clean) return clean;
+            }
+
+            return "";
         }
 
         function getDefaultBookRequiredGrade() {
-            const fromConfig = typeof config !== "undefined" && config
-                ? safeString(config.biblioteca_libri_grado)
-                : "";
+            const cfg = (typeof config !== "undefined" && config) ? config : {};
+            const assets = (typeof WILD_ASSETS !== "undefined" && WILD_ASSETS) ? WILD_ASSETS : {};
 
-            const fromAssets = typeof WILD_ASSETS !== "undefined" && WILD_ASSETS
-                ? safeString(WILD_ASSETS.biblioteca_libri_grado)
-                : "";
+            const fromConfig = firstCleanBookGradeValue([
+                cfg.library_books_required_grade,
+                cfg.libraryBooksRequiredGrade,
+                cfg.biblioteca_libri_grado,
+                cfg.grado_libri,
+                cfg.Grado_Libri,
+                cfg.gradoLibri,
+                cfg.bookRequiredGrade,
+                cfg.booksRequiredGrade,
+                cfg.libraryBookRequiredGrade,
+                cfg.bibliotecaBookRequiredGrade,
+                cfg.Grado_Minimo_Libri
+            ]);
+
+            const fromAssets = firstCleanBookGradeValue([
+                assets.library_books_required_grade,
+                assets.libraryBooksRequiredGrade,
+                assets.biblioteca_libri_grado,
+                assets.grado_libri,
+                assets.Grado_Libri,
+                assets.gradoLibri,
+                assets.bookRequiredGrade,
+                assets.booksRequiredGrade,
+                assets.libraryBookRequiredGrade,
+                assets.bibliotecaBookRequiredGrade,
+                assets.Grado_Minimo_Libri
+            ]);
 
             return fromConfig || fromAssets || "Sentinella";
         }
 
         function getRequiredGradeForBook(item) {
-            return safeString(
-                item.requiredGrade ||
-                item.gradoMinimo ||
-                item.Grado_Minimo ||
-                item.gradeRequired ||
-                item.accessGrade ||
-                item.requiredRank ||
+            item = item || {};
+
+            return firstCleanBookGradeValue([
+                item.requiredGrade,
+                item.gradoMinimo,
+                item.Grado_Minimo,
+                item.gradeRequired,
+                item.accessGrade,
+                item.requiredRank,
+                item.library_books_required_grade,
+                item.libraryBooksRequiredGrade,
+                item.bookRequiredGrade,
+                item.booksRequiredGrade,
+                item.Grado_Minimo_Libri,
                 getDefaultBookRequiredGrade()
-            );
+            ]);
         }
 
         function canUserAccessGrade(grade) {
@@ -3123,6 +3170,24 @@ const WilduMediaClient = (() => {
             } catch (e) {}
 
             return false;
+        }
+
+        function canOpenLibraryBooksTab() {
+            const requiredGrade = getDefaultBookRequiredGrade();
+            return canUserAccessGrade(requiredGrade);
+        }
+
+        function showLibraryBooksLocked(requiredGrade) {
+            const clean = safeString(requiredGrade) || "grado superiore";
+
+            try {
+                if (typeof showToast === "function") {
+                    showToast("🔒 Libri riservati: richiede " + clean);
+                    return;
+                }
+            } catch (e) {}
+
+            alert("Libri riservati: richiede " + clean);
         }
 
         function getDailyNewsItem(list) {
@@ -3379,8 +3444,36 @@ const WilduMediaClient = (() => {
             `;
 
         const tabButtons = Array.from(mountEl.querySelectorAll("[data-wildu-media-tab]"));
+        const booksTabRequiredGrade = getDefaultBookRequiredGrade();
+        const booksTabLocked = libri.length > 0 && !canOpenLibraryBooksTab();
 
-        function setTab(tab) {
+        tabButtons.forEach(btn => {
+            if (btn.getAttribute("data-wildu-media-tab") !== "libri") return;
+
+            if (booksTabLocked) {
+                btn.setAttribute("aria-disabled", "true");
+                btn.title = "Richiede grado " + booksTabRequiredGrade;
+                btn.style.opacity = "0.72";
+            } else {
+                btn.removeAttribute("aria-disabled");
+                btn.title = "";
+                btn.style.opacity = "1";
+            }
+        });
+
+        function setTab(tab, options = {}) {
+            const requestedTab = safeString(tab) || "manuali_guide";
+
+            if (requestedTab === "libri" && booksTabLocked) {
+                if (!options.silent) {
+                    showLibraryBooksLocked(booksTabRequiredGrade);
+                }
+
+                tab = "manuali_guide";
+            } else {
+                tab = requestedTab;
+            }
+
             tabButtons.forEach(btn => {
                 const key = btn.getAttribute("data-wildu-media-tab");
                 const active = key === tab;
@@ -3411,7 +3504,7 @@ const WilduMediaClient = (() => {
         });
 
         // Default richiesto: Manuali e Guide.
-        setTab("manuali_guide");
+        setTab("manuali_guide", { silent: true });
 
         bindBibliotecaPdfActions(mountEl);
     }
@@ -9396,7 +9489,78 @@ if (profKeyEl) {
         }
     }
     
-    function checkRankMet(reqRank) { if (!reqRank || reqRank.trim() === "") return true; const RANKS = ["socio novizio", "esploratore", "sentinella", "veterano", "leggenda", "divinità"]; const uRank = (localStorage.getItem('lastG_' + wildUserKey) || "socio novizio").toLowerCase(); let uIdx = RANKS.indexOf(uRank); let rIdx = RANKS.indexOf(reqRank.toLowerCase().trim()); return (uIdx === -1 ? 0 : uIdx) >= rIdx; }
+    function normalizeWilduRankName(value) {
+        let clean = String(value === undefined || value === null ? "" : value)
+            .trim()
+            .toLowerCase();
+
+        if (!clean) return "";
+
+        try {
+            clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        } catch (e) {}
+
+        clean = clean
+            .replace(/[_-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        const aliases = {
+            "pubblico": "",
+            "public": "",
+            "guest": "",
+            "ospite": "",
+            "free": "",
+            "libero": "",
+            "nessuno": "",
+            "socio": "socio novizio",
+            "novizio": "socio novizio",
+            "socio novizio": "socio novizio",
+            "esploratori": "esploratore",
+            "esploratore": "esploratore",
+            "sentinelle": "sentinella",
+            "sentinella": "sentinella",
+            "veterani": "veterano",
+            "veterano": "veterano",
+            "leggende": "leggenda",
+            "leggenda": "leggenda",
+            "divinita": "divinita"
+        };
+
+        return aliases.hasOwnProperty(clean) ? aliases[clean] : clean;
+    }
+
+    function checkRankMet(reqRank) {
+        const required = normalizeWilduRankName(reqRank);
+        if (!required) return true;
+
+        const RANKS = [
+            "socio novizio",
+            "esploratore",
+            "sentinella",
+            "veterano",
+            "leggenda",
+            "divinita"
+        ];
+
+        const rawUserRank = localStorage.getItem("lastG_" + wildUserKey) || "socio novizio";
+        const userRank = normalizeWilduRankName(rawUserRank);
+
+        let uIdx = RANKS.indexOf(userRank);
+        let rIdx = RANKS.indexOf(required);
+
+        if (uIdx < 0) uIdx = 0;
+
+        // Prima il vecchio codice trasformava un grado richiesto sconosciuto in accesso libero
+        // perché rIdx diventava -1. Ora falliamo chiusi: se il requisito è scritto male,
+        // non apriamo contenuti riservati.
+        if (rIdx < 0) {
+            console.warn("[WILDU RANK] Grado richiesto non riconosciuto:", reqRank);
+            return false;
+        }
+
+        return uIdx >= rIdx;
+    }
     
     // 🟢 MOTORE DI RENDERING PREMI (ANTI-PARADOSSO AUDIO)
 const MODULE_CACHE_META_KEY = 'wildModuleMeta';
