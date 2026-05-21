@@ -217,6 +217,66 @@
       .join('\n\n');
   }
 
+  function normalizeForEditorialMatch(value) {
+    return safeString(value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/^[\s\-–—•*]+/, '')
+      .trim();
+  }
+
+  function isSourcesParagraph(text) {
+    var clean = normalizeForEditorialMatch(text);
+    return /^fonti(?:\b|\s|:|-|–|—)/i.test(clean);
+  }
+
+  function looksLikeNoteParagraph(text) {
+    var clean = normalizeForEditorialMatch(text);
+    return /^(nota|attenzione|curiosita|curiosità|consiglio|importante)(?:\b|\s|:|-|–|—)/i.test(clean);
+  }
+
+  function looksLikeHeadingParagraph(text) {
+    var clean = safeString(text);
+    if (!clean) return false;
+
+    if (clean.length <= 78 && !/[.!?]$/.test(clean)) return true;
+
+    var letters = clean.replace(/[^A-Za-zÀ-ÿ]/g, '');
+    if (letters.length >= 5) {
+      var upper = clean.toUpperCase();
+      if (clean === upper && clean.length <= 110) return true;
+    }
+
+    return false;
+  }
+
+  function moveSourcesBlocksToEnd(blocks) {
+    var body = [];
+    var sources = [];
+
+    (Array.isArray(blocks) ? blocks : []).forEach(function (block) {
+      var text = safeString(block && block.text);
+
+      if (isSourcesParagraph(text)) {
+        sources.push(Object.assign({}, block, {
+          type: 'note',
+          role: 'sources',
+          text: text
+        }));
+      } else {
+        body.push(block);
+      }
+    });
+
+    if (!sources.length) return body;
+
+    return body.concat([
+      { type: 'divider', role: 'sources-divider' },
+      { type: 'heading', role: 'sources-heading', text: 'Fonti e riferimenti' }
+    ]).concat(sources);
+  }
+
   function splitTextToBlocks(rawText) {
     var text = normalizeText(rawText);
     if (!text) return [];
@@ -236,6 +296,7 @@
 
     var blocks = [];
     var totalChars = 0;
+    var firstTextBlockDone = false;
 
     paragraphs.forEach(function (p) {
       if (!p || blocks.length >= MAX_BLOCKS || totalChars >= MAX_TEXT_CHARS) return;
@@ -246,17 +307,30 @@
 
       if (!p) return;
 
-      var type = (p.length < 92 && !/[.!?]$/.test(p)) ? 'heading' : 'paragraph';
+      var type = 'paragraph';
+      var role = '';
 
-      blocks.push({
-        type: type,
-        text: p
-      });
+      if (isSourcesParagraph(p)) {
+        type = 'note';
+        role = 'sources';
+      } else if (looksLikeNoteParagraph(p)) {
+        type = 'note';
+      } else if (looksLikeHeadingParagraph(p)) {
+        type = 'heading';
+      } else if (!firstTextBlockDone && p.length <= 520) {
+        type = 'lead';
+      }
+
+      var block = { type: type, text: p };
+      if (role) block.role = role;
+
+      blocks.push(block);
+      if (type !== 'divider') firstTextBlockDone = true;
 
       totalChars += p.length;
     });
 
-    return blocks;
+    return moveSourcesBlocksToEnd(blocks);
   }
 
   function buildPreview(blocks, maxChars) {
@@ -309,7 +383,9 @@
 
     var patch = {
       readerStatus: 'READY',
-      readerBuildMode: 'admin-browser-pdfjs',
+      readerBuildMode: 'admin-browser-pdfjs-editorial-v2',
+      readerEditorialVersion: 2,
+      readerSourcesMovedToEnd: (blocks || []).some(function (block) { return block && block.role === 'sources'; }),
       readerVersion: nextReaderVersion,
       readerSourceMediaVersion: sourceVersion,
       readerGeneratedAt: root.FieldValue.serverTimestamp(),
@@ -392,7 +468,7 @@
       throw new Error('Nessun testo estraibile dal PDF. Probabile scansione/immagine: servirà OCR esterno o contenuto manuale.');
     }
 
-    onProgress('Preparazione readerBlocks...');
+    onProgress('Preparazione reader editoriale e riordino Fonti...');
     return buildPatchFromBlocks(media, blocks, {
       originalPageCount: pageCount,
       pagesProcessed: pagesToProcess
