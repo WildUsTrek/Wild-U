@@ -1895,34 +1895,42 @@ const WilduMediaClient = (() => {
         `;
     }
 
-    function formatWilduReaderTextBeauty(rawText) {
+    function formatWilduReaderTextBeauty(rawText, blockType, blockRole) {
         const clean = normalizeWilduReaderText(rawText);
         if (!clean) return "";
 
-        // 1) Protezione minima: non spezziamo numeri decimali tipo 3.14
-        // perché la regola agisce solo su "." seguito da spazio/fine frase.
+        const type = safeString(blockType || "paragraph").toLowerCase();
+        const role = safeString(blockRole || "").toLowerCase();
+
+        // In titoli/header/lead i due punti fanno spesso parte naturale del titolo:
+        // "Titolo: sottotitolo" deve restare sulla stessa riga.
+        const suppressColonBreak =
+            type === "heading" ||
+            type === "title" ||
+            type === "header" ||
+            type === "herotitle" ||
+            type === "lead" ||
+            role === "sources-heading";
+
         let html = escapeHtml(clean);
 
-        // 2) Paragrafi veri già presenti nel testo:
-        // due spazi/righe + riga divisiva elegante.
+        // Paragrafi veri già presenti dal builder Admin: li rispettiamo.
         html = html.replace(/\n{2,}/g, function () {
             return '<br><br>' + buildWilduReaderParagraphDividerHtml();
         });
 
-        // 3) Singolo a capo residuo: lo rendiamo leggibile ma leggero.
+        // Singolo a capo semantico preservato dal PDF builder.
         html = html.replace(/\n/g, buildWilduReaderSoftBreakHtml());
 
-        // 4) Punto seguito da spazio: forza a capo morbido.
-        // Esempio: "Fine frase. Nuova frase" diventa:
-        // Fine frase.
-        // Nuova frase
-        html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
+        // Punto seguito da spazio: respiro su smartphone, ma non nei titoli/lead.
+        if (!suppressColonBreak) {
+            html = html.replace(/\.([\s]+)(?=\S)/g, "." + buildWilduReaderSoftBreakHtml());
+        }
 
-        // 5) Due punti seguiti da spazio: forza a capo morbido.
-        // Esempio: "Attenzione: testo" diventa:
-        // Attenzione:
-        // testo
-        html = html.replace(/:([\s]+)(?=\S)/g, ":" + buildWilduReaderSoftBreakHtml());
+        // Due punti: SOLO testo normale / note / quote / fonti, mai heading/lead/header.
+        if (!suppressColonBreak) {
+            html = html.replace(/:([\s]+)(?=\S)/g, ":" + buildWilduReaderSoftBreakHtml());
+        }
 
         return html;
     }
@@ -2012,7 +2020,7 @@ const WilduMediaClient = (() => {
                     line-height:1.65;
                     font-weight:650;
                     box-shadow:0 10px 30px rgba(0,0,0,.34);
-                ">${formatWilduReaderTextBeauty(block.text)}</div>
+                ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</div>
             `;
         }
 
@@ -2029,7 +2037,7 @@ const WilduMediaClient = (() => {
                     font-size:17px;
                     line-height:1.65;
                     font-style:italic;
-                ">${formatWilduReaderTextBeauty(block.text)}</blockquote>
+                ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</blockquote>
             `;
         }
 
@@ -2046,7 +2054,7 @@ const WilduMediaClient = (() => {
                     color:${isSources ? "#f4e6ba" : "#dff3ff"};
                     font-size:${isSources ? "14px" : "15px"};
                     line-height:1.58;
-                ">${formatWilduReaderTextBeauty(block.text)}</div>
+                ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</div>
             `;
         }
 
@@ -2058,7 +2066,7 @@ const WilduMediaClient = (() => {
                 line-height:1.78;
                 margin:0 0 21px 0;
                 letter-spacing:.05px;
-            ">${formatWilduReaderTextBeauty(block.text)}</p>
+            ">${formatWilduReaderTextBeauty(block.text, block.type, role)}</p>
         `;
     }
 
