@@ -1758,10 +1758,15 @@ const WilduMediaClient = (() => {
         if (!block || typeof block !== "object") return null;
 
         const type = safeString(block.type || block.kind || "paragraph").toLowerCase();
+        const role = safeString(block.role || "").toLowerCase();
+
+        if (type === "divider" || type === "hr") {
+            return { type: "divider", role };
+        }
 
         if (type === "html") {
             const html = safeString(block.html || block.content || "");
-            return html ? { type: "html", html } : null;
+            return html ? { type: "html", html, role } : null;
         }
 
         if (type === "image" || type === "img") {
@@ -1770,6 +1775,7 @@ const WilduMediaClient = (() => {
 
             return {
                 type: "image",
+                role,
                 url,
                 alt: safeString(block.alt || block.title || ""),
                 caption: safeString(block.caption || block.didascalia || "")
@@ -1780,18 +1786,22 @@ const WilduMediaClient = (() => {
         if (!text) return null;
 
         if (type === "heading" || type === "h1" || type === "h2" || type === "title") {
-            return { type: "heading", text };
+            return { type: "heading", role, text };
+        }
+
+        if (type === "lead" || type === "intro" || type === "summary") {
+            return { type: "lead", role, text };
         }
 
         if (type === "quote" || type === "blockquote") {
-            return { type: "quote", text };
+            return { type: "quote", role, text };
         }
 
         if (type === "note" || type === "callout") {
-            return { type: "note", text };
+            return { type: "note", role, text };
         }
 
-        return { type: "paragraph", text };
+        return { type: "paragraph", role, text };
     }
 
     function getWilduReaderBlocksFromItem(item) {
@@ -1922,10 +1932,25 @@ const WilduMediaClient = (() => {
         if (!block) return "";
 
         const blockIndex = Number(index || 0);
+        const role = safeString(block.role || "").toLowerCase();
+
+        if (block.type === "divider") {
+            return `
+                <div style="
+                    width:100%;
+                    margin:32px 0 28px 0;
+                    display:flex;
+                    align-items:center;
+                    gap:12px;
+                ">
+                    <span style="height:1px; flex:1; background:linear-gradient(90deg, transparent, rgba(212,175,55,.45));"></span>
+                    <span style="font-size:18px; color:var(--w-gold); opacity:.9;">✦</span>
+                    <span style="height:1px; flex:1; background:linear-gradient(90deg, rgba(212,175,55,.45), transparent);"></span>
+                </div>
+            `;
+        }
 
         if (block.type === "html") {
-            // Nota: qui assumiamo che in futuro Admin Suite salvi HTML già sanitizzato.
-            // Se non siamo certi, lato Admin andrà sanitizzato prima del salvataggio.
             return `
                 <div style="font-size:17px; line-height:1.72; color:#eee;">
                     ${block.html || ""}
@@ -1935,30 +1960,51 @@ const WilduMediaClient = (() => {
 
         if (block.type === "image") {
             return `
-                <figure style="margin:24px 0; padding:0;">
+                <figure style="margin:26px 0; padding:0;">
                     <img src="${escapeHtml(formatAssetLink(block.url))}" alt="${escapeHtml(block.alt || "")}" style="
                         width:100%;
-                        max-height:420px;
+                        max-height:430px;
                         object-fit:contain;
-                        border-radius:16px;
+                        border-radius:22px;
                         background:#111;
-                        border:1px solid rgba(255,255,255,.10);
-                        box-shadow:0 8px 28px rgba(0,0,0,.45);
+                        border:1px solid rgba(255,255,255,.12);
+                        box-shadow:0 14px 38px rgba(0,0,0,.55);
                     ">
-                    ${block.caption ? `<figcaption style="color:#aaa; font-size:12px; line-height:1.4; margin-top:8px; text-align:center;">${escapeHtml(block.caption)}</figcaption>` : ""}
+                    ${block.caption ? `<figcaption style="color:#aaa; font-size:12px; line-height:1.4; margin-top:9px; text-align:center;">${escapeHtml(block.caption)}</figcaption>` : ""}
                 </figure>
             `;
         }
 
         if (block.type === "heading") {
+            const isSources = role === "sources-heading";
             return `
                 <h2 style="
-                    color:#fff;
-                    font-size:23px;
-                    line-height:1.18;
-                    margin:${blockIndex > 0 ? "32px" : "8px"} 0 12px 0;
+                    color:${isSources ? "var(--w-gold)" : "#fff"};
+                    font-size:${isSources ? "21px" : "24px"};
+                    line-height:1.16;
+                    margin:${blockIndex > 0 ? "34px" : "8px"} 0 13px 0;
                     letter-spacing:.1px;
+                    text-transform:${isSources ? "uppercase" : "none"};
                 ">${escapeHtml(block.text)}</h2>
+            `;
+        }
+
+        if (block.type === "lead") {
+            return `
+                <div style="
+                    margin:12px 0 26px 0;
+                    padding:18px 17px;
+                    border-radius:24px;
+                    border:1px solid rgba(212,175,55,.30);
+                    background:
+                        radial-gradient(circle at top left, rgba(212,175,55,.18), transparent 42%),
+                        linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.025));
+                    color:#f5f1e5;
+                    font-size:19px;
+                    line-height:1.65;
+                    font-weight:650;
+                    box-shadow:0 10px 30px rgba(0,0,0,.34);
+                ">${formatWilduReaderTextBeauty(block.text)}</div>
             `;
         }
 
@@ -1966,31 +2012,32 @@ const WilduMediaClient = (() => {
             return `
                 ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
                 <blockquote style="
-                    margin:22px 0;
-                    padding:15px 16px;
+                    margin:24px 0;
+                    padding:17px 17px;
                     border-left:4px solid var(--w-gold);
-                    background:rgba(212,175,55,.08);
+                    background:rgba(212,175,55,.09);
                     color:#f0e5c2;
-                    border-radius:14px;
+                    border-radius:18px;
                     font-size:17px;
-                    line-height:1.6;
+                    line-height:1.65;
                     font-style:italic;
                 ">${formatWilduReaderTextBeauty(block.text)}</blockquote>
             `;
         }
 
         if (block.type === "note") {
+            const isSources = role === "sources";
             return `
                 ${blockIndex > 0 ? buildWilduReaderParagraphDividerHtml() : ""}
                 <div style="
-                    margin:20px 0;
-                    padding:14px 15px;
-                    border-radius:16px;
-                    border:1px solid rgba(124,199,255,.35);
-                    background:rgba(124,199,255,.08);
-                    color:#dff3ff;
-                    font-size:15px;
-                    line-height:1.55;
+                    margin:21px 0;
+                    padding:15px 16px;
+                    border-radius:18px;
+                    border:1px solid ${isSources ? "rgba(212,175,55,.40)" : "rgba(124,199,255,.35)"};
+                    background:${isSources ? "rgba(212,175,55,.075)" : "rgba(124,199,255,.08)"};
+                    color:${isSources ? "#f4e6ba" : "#dff3ff"};
+                    font-size:${isSources ? "14px" : "15px"};
+                    line-height:1.58;
                 ">${formatWilduReaderTextBeauty(block.text)}</div>
             `;
         }
@@ -2000,8 +2047,8 @@ const WilduMediaClient = (() => {
             <p style="
                 color:#ededed;
                 font-size:18px;
-                line-height:1.72;
-                margin:0 0 20px 0;
+                line-height:1.78;
+                margin:0 0 21px 0;
                 letter-spacing:.05px;
             ">${formatWilduReaderTextBeauty(block.text)}</p>
         `;
@@ -2013,7 +2060,6 @@ const WilduMediaClient = (() => {
         ui.status.style.display = "none";
         ui.canvasWrap.innerHTML = "";
 
-        // Nascondiamo i controlli pagina/zoom: in reader mode non hanno senso.
         try {
             const controlsRow = ui.btnPrev && ui.btnPrev.parentElement;
             if (controlsRow) controlsRow.style.display = "none";
@@ -2022,44 +2068,71 @@ const WilduMediaClient = (() => {
         ui.pageLabel.textContent = article?.sourceLabel || "Reader";
         ui.title.textContent = article?.title || "Documento Wildu";
 
-        const metaHtml = `
-            <div style="
-                margin-bottom:18px;
-                padding:12px 14px;
-                border-radius:16px;
-                background:rgba(124,199,255,.08);
-                border:1px solid rgba(124,199,255,.20);
-                color:#9edcff;
-                font-size:11px;
-                line-height:1.45;
-                font-weight:800;
-                text-transform:uppercase;
-                letter-spacing:.65px;
-            ">
-                ${escapeHtml(article?.sourceLabel || "Reader mode")}
-                ${article?.note ? `<div style="color:#cfd8dc; margin-top:4px; text-transform:none; letter-spacing:0; font-weight:600;">${escapeHtml(article.note)}</div>` : ""}
-            </div>
-        `;
+        const sourceLabel = article?.sourceLabel || "Reader mode";
+        const isEditorial = /editoriale|admin/i.test(sourceLabel);
 
         const articleEl = document.createElement("article");
         articleEl.style.cssText = [
-            "width:min(760px,100%)",
+            "width:min(820px,100%)",
             "margin:0 auto",
-            "padding:8px 6px 32px 6px",
+            "padding:8px 6px 36px 6px",
             "box-sizing:border-box",
             "text-align:left"
         ].join(";");
 
         articleEl.innerHTML = `
-            <h1 style="
-                color:#fff;
-                font-size:28px;
-                line-height:1.12;
-                margin:0 0 14px 0;
-                letter-spacing:.1px;
-            ">${escapeHtml(article?.title || "Documento Wildu")}</h1>
+            <section style="
+                position:relative;
+                overflow:hidden;
+                margin:0 0 22px 0;
+                padding:22px 18px 20px 18px;
+                border-radius:28px;
+                border:1px solid rgba(212,175,55,.32);
+                background:
+                    radial-gradient(circle at top left, rgba(212,175,55,.25), transparent 42%),
+                    radial-gradient(circle at bottom right, rgba(124,199,255,.15), transparent 38%),
+                    linear-gradient(135deg, rgba(34,38,30,.98), rgba(10,13,15,.98));
+                box-shadow:0 16px 46px rgba(0,0,0,.55);
+            ">
+                <div style="
+                    position:absolute;
+                    right:-18px;
+                    top:-18px;
+                    font-size:110px;
+                    opacity:.055;
+                    transform:rotate(-9deg);
+                    pointer-events:none;
+                ">📖</div>
 
-            ${metaHtml}
+                <div style="
+                    display:inline-flex;
+                    align-items:center;
+                    gap:7px;
+                    padding:6px 10px;
+                    border-radius:999px;
+                    background:${isEditorial ? "rgba(212,175,55,.16)" : "rgba(124,199,255,.13)"};
+                    border:1px solid ${isEditorial ? "rgba(212,175,55,.36)" : "rgba(124,199,255,.30)"};
+                    color:${isEditorial ? "var(--w-gold)" : "#9edcff"};
+                    font-size:10px;
+                    font-weight:950;
+                    text-transform:uppercase;
+                    letter-spacing:.85px;
+                    margin-bottom:13px;
+                ">
+                    <span>${isEditorial ? "✨" : "📄"}</span>
+                    <span>${escapeHtml(sourceLabel)}</span>
+                </div>
+
+                <h1 style="
+                    color:#fff;
+                    font-size:31px;
+                    line-height:1.06;
+                    margin:0;
+                    letter-spacing:.1px;
+                ">${escapeHtml(article?.title || "Documento Wildu")}</h1>
+
+                ${article?.note ? `<div style="color:#d6d6d6; margin-top:13px; font-size:13px; line-height:1.45;">${escapeHtml(article.note)}</div>` : ""}
+            </section>
 
             ${blocks.map((block, index) => buildWilduReaderBlockHtml(block, index)).join("")}
         `;
@@ -2723,7 +2796,7 @@ const WilduMediaClient = (() => {
         const rawTitle = safeString(item.title || item.Titolo || "Documento Wild-U");
         const descriptionRaw = safeString(item.description || item.Descrizione || "");
         const readerPreviewRaw = getWilduReaderPreviewFromItem(item, 280);
-        const finalDescription = descriptionRaw || readerPreviewRaw;
+        const finalDescription = readerPreviewRaw || descriptionRaw;
 
         const description = escapeHtml(finalDescription);
         const fileUrl = safeString(item.fileUrl);
@@ -2831,6 +2904,22 @@ const WilduMediaClient = (() => {
                     letter-spacing:.75px;
                     margin-bottom:7px;
                 ">${escapeHtml(sectionLabel)}</div>
+
+                ${getWilduReaderBlocksFromItem(item).length ? `<div style="
+                    display:inline-flex;
+                    align-items:center;
+                    gap:6px;
+                    margin:0 0 8px 0;
+                    padding:5px 8px;
+                    border-radius:999px;
+                    background:rgba(212,175,55,.12);
+                    border:1px solid rgba(212,175,55,.28);
+                    color:var(--w-gold);
+                    font-size:10px;
+                    font-weight:950;
+                    text-transform:uppercase;
+                    letter-spacing:.55px;
+                ">✨ Lettura ottimizzata</div>` : ""}
 
                 <h3 style="
                     margin:0 0 8px 0;
