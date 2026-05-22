@@ -14420,6 +14420,15 @@ function writeAmazonProductsCache(products) {
 // ==========================================
 const WILDU_SHOP_BOOK_WORDS_RE = /(^|[\s,.;:!?()[\]{}"'«»_\-])(libro|libri|manuale|manuali|guida|guide|romanzo|romanzi|volume|volumi|raccolta|raccolte|approfondimento|approfondimenti|saggio|saggi|atlante|atlanti|ebook|e-book|kindle|tascabile|racconto|racconti|diario|diari|enciclopedia|enciclopedie)(?=$|[\s,.;:!?()[\]{}"'«»_\-])/i;
 
+function escapeWilduShopHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 let wilduShopFilter = 'all';
 let wilduShopQuery = '';
 let wilduShopPreviewItems = [];
@@ -14523,10 +14532,10 @@ function renderWilduShopCard(product) {
     const badge = isBook ? '📚 LIBRO' : '🥾 GEAR';
     const fallbackIcon = isBook ? '📚' : '🎒';
 
-    const safeTitle = escapeHtml(product.title);
-    const safeDesc = escapeHtml(product.description || 'Prodotto selezionato per le avventure Wild-U.');
-    const safeImg = escapeHtml(product.img);
-    const safePrice = escapeHtml(product.price || 'Amazon');
+    const safeTitle = escapeWilduShopHtml(product.title);
+    const safeDesc = escapeWilduShopHtml(product.description || 'Prodotto selezionato per le avventure Wild-U.');
+    const safeImg = escapeWilduShopHtml(product.img);
+    const safePrice = escapeWilduShopHtml(product.price || 'Amazon');
     const previewIndex = String(Number.isFinite(Number(product.__previewIndex)) ? Number(product.__previewIndex) : -1);
 
     const imgHtml = product.img
