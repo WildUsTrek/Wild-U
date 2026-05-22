@@ -5489,6 +5489,12 @@ function requireLoggedAccess(reason, options = {}) {
     let wildBufferAudioCache = new Map();
     let wildBufferAudioLoops = new Map();
 
+    // WILDU SYSTEM SOUND WEBAUDIO — one-shot brevi (ruota/XP/reward/levelup).
+    // Cache per URL: il file viene fetch/decode al primo uso, poi riusato in RAM.
+    // Il volume NON viene cotto nel buffer: viene letto a ogni play dalla config viva.
+    let wildSystemSoundBufferPromises = new Map();
+    let wildActiveSystemSoundSources = new WeakMap();
+
     // Lock anti re-entry:
     // evita triplo start/restart quando dopo cache nucleare arrivano touchstart,
     // click e bootstrap mentre il primo decode/start è ancora in corso.
@@ -10010,25 +10016,46 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
 
     function prepareWilduDatePickerInput(input) {
         if (!input) return;
+
         try { input.type = 'date'; } catch (e) {}
+
         try {
             if (typeof input.showPicker === 'function') {
-                setTimeout(function () { input.showPicker(); }, 0);
+                setTimeout(function () {
+                    try { input.showPicker(); } catch (e) {}
+                }, 80);
             }
         } catch (e) {}
     }
 
     function blurWilduDatePickerInput(input) {
+        /*
+          Non riconvertiamo subito date -> text al blur.
+
+          Su mobile il date picker nativo può generare un blur temporaneo
+          mentre si apre. Se rimettiamo type="text" in quel momento,
+          il picker viene chiuso prima che l’utente scelga la data.
+        */
         if (!input) return;
-        if (!String(input.value || '').trim()) {
-            try { input.type = 'text'; } catch (e) {}
-        }
     }
 
     function syncWilduDateInputPlaceholder(input, value) {
         if (!input) return;
+
         const clean = String(value || '').trim();
-        try { input.type = clean ? 'date' : 'text'; } catch (e) {}
+
+        /*
+          Quando c'è un valore reale, il campo deve essere date.
+          Quando non c'è valore e il campo NON è attivo, torna text
+          così può mostrare il placeholder "scegli giorno partenza".
+          Se è attivo, lo lasciamo date per non uccidere il picker mobile.
+        */
+        if (clean) {
+            try { input.type = 'date'; } catch (e) {}
+        } else if (document.activeElement !== input) {
+            try { input.type = 'text'; } catch (e) {}
+        }
+
         if (input.value !== clean) input.value = clean;
     }
 
@@ -11651,7 +11678,203 @@ if (profKeyEl) {
         return target;
     }
 
+    function isWilduIOSAudioDevice() {
+        try {
+            const ua = navigator.userAgent || "";
+            const platform = navigator.platform || "";
+
+            return /iPad|iPhone|iPod/i.test(ua) ||
+                (platform === "MacIntel" && Number(navigator.maxTouchPoints || 0) > 1);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getWilduSystemSoundCanonicalUrl(audio) {
+        try {
+            return stripWilduAudioRuntimeQuery(String(audio && audio.src ? audio.src : "").trim());
+        } catch (e) {
+            return String(audio && audio.src ? audio.src : "").trim();
+        }
+    }
+
+    function stopWilduSystemBufferSound(audio, reason) {
+        if (!audio) return false;
+
+        try {
+            const active = wildActiveSystemSoundSources.get(audio);
+            if (!active) return false;
+
+            try { active.source.stop(0); } catch (e) {}
+            try { active.source.disconnect(); } catch (e) {}
+            try { active.gain.disconnect(); } catch (e) {}
+
+            wildActiveSystemSoundSources.delete(audio);
+
+            wilduAudioDebugLog("SYSTEM_BUFFER_SOUND_STOP", {
+                label: active.label || "",
+                url: active.url || "",
+                reason: reason || ""
+            });
+
+            return true;
+        } catch (e) {
+            try { wildActiveSystemSoundSources.delete(audio); } catch (_) {}
+            return false;
+        }
+    }
+
+    async function getWilduSystemSoundDecodedBuffer(url) {
+        const cleanUrl = String(url || "").trim();
+        if (!cleanUrl) throw new Error("System sound URL mancante");
+
+        const canonicalUrl = stripWilduAudioRuntimeQuery(cleanUrl);
+        const cached =
+            wildBufferAudioCache.get(canonicalUrl) ||
+            wildBufferAudioCache.get(cleanUrl);
+
+        if (cached) return cached;
+
+        if (wildSystemSoundBufferPromises.has(canonicalUrl)) {
+            return wildSystemSoundBufferPromises.get(canonicalUrl);
+        }
+
+        const promise = loadWilduAudioBuffer(cleanUrl)
+            .finally(function () {
+                wildSystemSoundBufferPromises.delete(canonicalUrl);
+            });
+
+        wildSystemSoundBufferPromises.set(canonicalUrl, promise);
+        return promise;
+    }
+
+    async function playWilduSystemBufferSound(audio, label, options = {}) {
+        if (!audio || !audio.src) return false;
+
+        const originalUrl = getWilduSystemSoundCanonicalUrl(audio);
+        if (!originalUrl || !isWilduSystemAudioUrl(originalUrl)) return false;
+
+        let targetVolume = clampWildVolume(getWilduSystemSoundTargetVolume(label));
+        if (targetVolume <= 0) {
+            stopWilduSystemBufferSound(audio, "muted-before-play");
+            try { audio.pause(); } catch (e) {}
+            return false;
+        }
+
+        const ctx = getWildAudioContext();
+        if (!ctx) throw new Error("AudioContext non disponibile per system buffer");
+
+        if (options.reset === true) {
+            stopWilduSystemBufferSound(audio, "reset-before-play");
+        }
+
+        primeWilduAudioContextNow("system-buffer-" + String(label || "sound"));
+        await resumeWildAudioContextWithTimeout("system-buffer-" + String(label || "sound"), 1800);
+
+        const buffer = await getWilduSystemSoundDecodedBuffer(originalUrl);
+
+        // Cache-first / refresh config guard:
+        // se durante resume/fetch/decode la config ha cambiato URL, non suonare il vecchio file.
+        const currentUrl = getWilduSystemSoundCanonicalUrl(audio);
+        if (currentUrl !== originalUrl) {
+            wilduAudioDebugLog("SYSTEM_BUFFER_SOUND_CANCELLED_STALE_URL", {
+                label: label || "",
+                originalUrl: originalUrl,
+                currentUrl: currentUrl
+            });
+            return false;
+        }
+
+        // Il volume si legge ORA, non quando il buffer è stato decodificato.
+        targetVolume = clampWildVolume(getWilduSystemSoundTargetVolume(label));
+        if (targetVolume <= 0) {
+            stopWilduSystemBufferSound(audio, "muted-after-await");
+            return false;
+        }
+
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
+
+        source.buffer = buffer;
+        gain.gain.value = targetVolume;
+
+        source.connect(gain);
+        gain.connect(ctx.destination);
+
+        const active = {
+            label: String(label || ""),
+            url: originalUrl,
+            source: source,
+            gain: gain,
+            startedAt: ctx.currentTime,
+            targetVolume: targetVolume
+        };
+
+        wildActiveSystemSoundSources.set(audio, active);
+
+        source.onended = function () {
+            try {
+                const current = wildActiveSystemSoundSources.get(audio);
+                if (current && current.source === source) {
+                    wildActiveSystemSoundSources.delete(audio);
+                }
+            } catch (e) {}
+        };
+
+        source.start(0);
+
+        wilduAudioDebugLog("SYSTEM_BUFFER_SOUND_PLAY_OK", {
+            label: label || "",
+            url: originalUrl,
+            volume: targetVolume,
+            duration: buffer && buffer.duration ? buffer.duration : 0
+        });
+
+        return true;
+    }
+
     function playWilduSystemSound(audio, label, options = {}) {
+        if (!audio || !audio.src) return Promise.resolve(false);
+
+        const targetVolume = applyWilduSystemSoundVolume(audio, label);
+        const isSystemR2Sound = isWilduSystemAudioUrl(getWilduSystemSoundCanonicalUrl(audio));
+        const isIOS = isWilduIOSAudioDevice();
+
+        if (targetVolume <= 0) {
+            stopWilduSystemBufferSound(audio, "target-muted");
+            try { audio.pause(); } catch (e) {}
+            return Promise.resolve(false);
+        }
+
+        if (isSystemR2Sound) {
+            return playWilduSystemBufferSound(audio, label, options)
+                .then(function (ok) {
+                    if (ok) return true;
+
+                    // Su iOS non facciamo fallback nativo: audio.volume può essere ignorato e sparare al 100%.
+                    if (isIOS) return false;
+
+                    return playWilduNativeSystemSoundFallback(audio, label, options);
+                })
+                .catch(function (e) {
+                    try {
+                        wilduAudioDebugLog("SYSTEM_BUFFER_SOUND_PLAY_FAILED", {
+                            label: label || "",
+                            error: e && e.message ? e.message : String(e),
+                            targetVolume: getWilduSystemSoundTargetVolume(label),
+                            iosFallbackBlocked: isIOS === true
+                        });
+                    } catch (_) {}
+
+                    if (isIOS) return false;
+                    return playWilduNativeSystemSoundFallback(audio, label, options);
+                });
+        }
+
+        return playWilduNativeSystemSoundFallback(audio, label, options);
+    }
+
+    function playWilduNativeSystemSoundFallback(audio, label, options = {}) {
         if (!audio || !audio.src) return Promise.resolve(false);
 
         try {
@@ -11694,6 +11917,7 @@ if (profKeyEl) {
     function stopWilduSystemSound(audio) {
         if (!audio) return;
 
+        stopWilduSystemBufferSound(audio, "stopWilduSystemSound");
         try { audio.pause(); } catch (e) {}
     }
 
@@ -14148,8 +14372,8 @@ async function loadWilduAudioBuffer(url) {
         const nextSrc = formatAssetLink(rawUrl);
 
         try {
-            // Per gli audio di sistema R2 NON vogliamo CORS/WebAudio.
-            // L'URL diretto su mobile suona: quindi lasciamo il browser usare playback nativo.
+            // Gli audio di sistema R2 vengono riprodotti dal nuovo ramo WebAudio one-shot.
+            // Manteniamo comunque il sorgente nativo come fallback desktop/Android, ma non su iOS.
             if (isWilduSystemAudioUrl(nextSrc)) {
                 audio.removeAttribute("crossorigin");
                 audio.crossOrigin = null;
