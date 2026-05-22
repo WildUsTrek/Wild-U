@@ -2196,6 +2196,81 @@
     modal.style.display = 'flex';
   }
 
+  async function updateMediaMetadataWithForcedVersion(id, patch) {
+    var user = root.requireCurrentUser();
+    var before = await root.MediaService.getMedia(id);
+    if (!before) throw new Error('Media non trovato: ' + id);
+
+    var safePatch = Object.assign({}, patch || {});
+
+    // Non toccare mai identità creazione o file fisico R2.
+    delete safePatch.id;
+    delete safePatch.createdAt;
+    delete safePatch.createdByUid;
+    delete safePatch.createdByEmail;
+    delete safePatch.fileUrl;
+    delete safePatch.objectKey;
+    delete safePatch.storageProvider;
+    delete safePatch.uploadMode;
+    delete safePatch.originalFileName;
+    delete safePatch.contentType;
+    delete safePatch.sizeBytes;
+    delete safePatch.durationSeconds;
+    delete safePatch.width;
+    delete safePatch.height;
+    delete safePatch.pageCount;
+
+    if (safePatch.title !== undefined) safePatch.title = String(safePatch.title || '').trim();
+    if (!safePatch.title) throw new Error('Titolo obbligatorio.');
+    if (safePatch.description !== undefined) safePatch.description = String(safePatch.description || '').trim();
+    if (safePatch.status !== undefined) safePatch.status = String(safePatch.status || 'ACTIVE').trim().toUpperCase();
+    if (safePatch.visibility !== undefined) safePatch.visibility = String(safePatch.visibility || 'PUBLIC').trim().toUpperCase();
+    if (safePatch.sortOrder !== undefined) safePatch.sortOrder = Number(safePatch.sortOrder || 0);
+    if (safePatch.clientRenderable !== undefined) safePatch.clientRenderable = safePatch.clientRenderable === true || String(safePatch.clientRenderable) === 'true';
+    if (safePatch.tags !== undefined) safePatch.tags = root.parseTags(safePatch.tags);
+    if (safePatch.subcategory !== undefined) safePatch.subcategory = root.slugify(safePatch.subcategory || '') || null;
+
+    var afterCandidate = Object.assign({}, before, safePatch);
+
+    if (
+      safePatch.title !== undefined ||
+      safePatch.description !== undefined ||
+      safePatch.tags !== undefined
+    ) {
+      safePatch.searchTokens = root.parseTags([
+        afterCandidate.title || '',
+        afterCandidate.description || '',
+        Array.isArray(afterCandidate.tags) ? afterCandidate.tags.join(',') : ''
+      ].join(','));
+      afterCandidate.searchTokens = safePatch.searchTokens;
+    }
+
+    root.MediaService.validateMediaRouting(afterCandidate);
+
+    var currentVersion = Math.max(1, Number(before.mediaVersion || 1));
+    var nextVersion = currentVersion + 1;
+    var now = root.FieldValue.serverTimestamp();
+    var cleanNote = String(safePatch.mediaVersionNote || '').trim() || 'METADATA_UPDATE';
+
+    safePatch.mediaVersion = nextVersion;
+    safePatch.mediaVersionNote = cleanNote;
+    safePatch.mediaVersionUpdatedAt = now;
+    safePatch.mediaVersionUpdatedByUid = user.uid;
+    safePatch.mediaVersionUpdatedByEmail = user.email || null;
+    safePatch.updatedAt = now;
+    safePatch.updatedByUid = user.uid;
+    safePatch.updatedByEmail = user.email || null;
+
+    await root.db
+      .collection(WILDU_MEDIA_CONFIG.collections.catalog)
+      .doc(id)
+      .set(safePatch, { merge: true });
+
+    var after = Object.assign({}, before, safePatch);
+    await root.TagService.bumpTagVersionsForMediaChange(before, after, 'MEDIA_METADATA_VERSIONED_UPDATE');
+    return root.MediaService.getMedia(id);
+  }
+
   async function saveMediaMetadata(evt) {
     if (evt && evt.preventDefault) evt.preventDefault();
 
@@ -2214,14 +2289,14 @@
       visibility: document.getElementById('media-edit-visibility').value || 'PUBLIC',
       subcategory: document.getElementById('media-edit-subcategory').value || null,
       clientRenderable: document.getElementById('media-edit-client-renderable').value === 'true',
-      mediaVersionNote: String(document.getElementById('media-edit-version-note').value || '').trim() || null
+      mediaVersionNote: String(document.getElementById('media-edit-version-note').value || '').trim() || 'METADATA_UPDATE'
     };
 
-    await root.MediaService.updateMedia(id, patch);
+    var updated = await updateMediaMetadataWithForcedVersion(id, patch);
 
     closeMediaMetadataEditor();
 
-    root.toast('Metadati aggiornati. Versioni e manifesto riallineati se necessario.', 'success');
+    root.toast('Metadati aggiornati e mediaVersion incrementata a v' + Number(updated.mediaVersion || 1) + '.', 'success');
 
     await refreshTags();
     await refreshMedia();
@@ -2888,9 +2963,18 @@ tbody.innerHTML = items.map(function (item) {
     }
 
     tbody.innerHTML = items.map(function (item) {
+      var rawKey = item.id || item.url || '';
+      var canonical = normalizeAdminRuntimeUrl(item.url || rawKey);
+      var suspicious = rawKey && canonical && rawKey !== canonical;
+      var cacheScope = normalizeAdminRuntimeUrl(item.cacheScope || '');
+      var cacheLooksWrong = canonical.indexOf('wildu-map-suite/') === 0 && cacheScope.indexOf('modules/') === 0;
+      var warningHtml = (suspicious || cacheLooksWrong)
+        ? '<br><span class="badge warn">controllo runtime</span> <span class="small-text">canonico: <code>' + root.escapeHtml(canonical) + '</code></span>'
+        : '';
+
       return '<tr>' +
         '<td><strong>' + root.escapeHtml(item.title || item.Titolo || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(cleanAdminDumpText(item.description || item.Descrizione || item.notes || '')) + '</span></td>' +
-        '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Renderer: ' + root.escapeHtml(item.renderer || 'module-html') + '</span></td>' +
+        '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Renderer: ' + root.escapeHtml(item.renderer || 'module-html') + '</span>' + warningHtml + '</td>' +
         '<td>' + (item.Grado_Minimo ? '<span class="badge">' + root.escapeHtml(item.Grado_Minimo) + '</span>' : '<span class="muted">—</span>') + '</td>' +
         '<td><strong>' + Number(item.rev || item.module_rev || 1) + '</strong></td>' +
         '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
@@ -2898,6 +2982,7 @@ tbody.innerHTML = items.map(function (item) {
         '<td class="actions">' +
           '<button class="small" data-edit-module-version="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
           '<button class="small" data-bump-module="' + root.escapeHtml(item.url || '') + '">+1</button>' +
+          '<button class="small danger" data-delete-module-runtime="' + root.escapeHtml(rawKey) + '">Elimina record</button>' +
         '</td>' +
       '</tr>';
     }).join('');
@@ -2916,10 +3001,367 @@ tbody.innerHTML = items.map(function (item) {
     return items.find(function (item) { return item.url === clean; }) || null;
   }
 
+  // =========================================================
+  // WILDU RUNTIME ADMIN GUARD — solo app.js
+  // =========================================================
+  // Obiettivo: impedire cloni tecnici tipo:
+  // - wildu-map-suite/wildu-map-viewer/
+  // - wildu-map-suite/wildu-map-viewer
+  // mantenendo chiavi coerenti con client, Firestore e cache runtime.
+  // Non accorpa URL diversi: modules/wildu-games22.html resta distinto.
+
+  function normalizeAdminRuntimeUrl(value) {
+    var raw = String(value == null ? '' : value).trim();
+    if (!raw) return '';
+
+    var path = raw;
+
+    try {
+      if (/^https?:\/\//i.test(raw)) {
+        var parsed = new URL(raw, window.location.href);
+        path = parsed.pathname || raw;
+      }
+    } catch (e) {
+      path = raw;
+    }
+
+    path = String(path || '')
+      .trim()
+      .split('?')[0]
+      .split('#')[0]
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .replace(/^\.\/+/, '')
+      .replace(/^Wild-U\//i, '');
+
+    // La Media Suite è admin shell, non identità runtime client.
+    // La togliamo solo davanti a percorsi runtime reali.
+    path = path.replace(/^wildu-media-suite\/(?=modules\/|giochi\/|wildu-map-suite\/)/i, '');
+
+    // Regola canonica runtime: niente slash finale.
+    return path.replace(/\/+/g, '/').replace(/\/+$/, '');
+  }
+
+  function uniqueAdminRuntimeList(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(normalizeAdminRuntimeUrl)
+        .filter(Boolean)
+        .filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+    }
+
+    return String(value || '')
+      .split(',')
+      .map(normalizeAdminRuntimeUrl)
+      .filter(Boolean)
+      .filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+  }
+
+  function runtimeDocRefForAdmin(kind) {
+    var docId = kind === 'game'
+      ? (WILDU_MEDIA_CONFIG.runtimeGameVersionsDocId || 'game_versions')
+      : (WILDU_MEDIA_CONFIG.runtimeModuleVersionsDocId || 'module_versions');
+
+    return root.db.collection(WILDU_MEDIA_CONFIG.collections.runtime).doc(docId);
+  }
+
+  function runtimeBucketNameForAdmin(kind) {
+    return kind === 'game' ? 'games' : 'modules';
+  }
+
+  function runtimeTimestampMsForAdmin(value) {
+    try {
+      if (!value) return 0;
+      if (typeof value.toMillis === 'function') return value.toMillis();
+      if (Number.isFinite(Number(value.seconds))) return Number(value.seconds) * 1000;
+      if (Number.isFinite(Number(value))) return Number(value);
+    } catch (e) {}
+    return 0;
+  }
+
+  function chooseRuntimeWinnerForAdmin(entries, canonicalKey) {
+    if (!entries || !entries.length) return null;
+
+    // Protezione principale: se esiste già la chiave canonica esatta, resta quella.
+    // Così il clone con slash finale non può vincere solo perché ha rev/updatedAt più alto.
+    var exact = entries.find(function (entry) { return entry.key === canonicalKey; });
+    if (exact) return exact;
+
+    var enabled = entries.filter(function (entry) {
+      var item = entry.item || {};
+      return item.enabled !== false && item.enabled !== 'false';
+    });
+
+    var pool = enabled.length ? enabled : entries;
+    pool.sort(function (a, b) {
+      return runtimeTimestampMsForAdmin((b.item || {}).updatedAt) - runtimeTimestampMsForAdmin((a.item || {}).updatedAt);
+    });
+
+    return pool[0];
+  }
+
+  function cleanupRuntimeBucketForAdmin(bucket) {
+    bucket = bucket && typeof bucket === 'object' ? Object.assign({}, bucket) : {};
+
+    var groups = {};
+
+    Object.keys(bucket).forEach(function (key) {
+      var item = bucket[key] || {};
+      var canonical = normalizeAdminRuntimeUrl(item.url || key);
+      if (!canonical) return;
+      if (!groups[canonical]) groups[canonical] = [];
+      groups[canonical].push({ key: key, item: item });
+    });
+
+    var cleaned = Object.assign({}, bucket);
+    var removed = [];
+    var repaired = [];
+
+    Object.keys(groups).forEach(function (canonical) {
+      var entries = groups[canonical];
+      if (!entries || entries.length <= 1) return;
+
+      var winner = chooseRuntimeWinnerForAdmin(entries, canonical);
+      if (!winner) return;
+
+      entries.forEach(function (entry) {
+        if (entry.key !== winner.key) {
+          delete cleaned[entry.key];
+          removed.push({ from: entry.key, kept: canonical });
+        }
+      });
+
+      var winnerItem = Object.assign({}, winner.item || {}, { url: canonical });
+      delete cleaned[winner.key];
+      cleaned[canonical] = winnerItem;
+      repaired.push({ canonical: canonical, keptFrom: winner.key, count: entries.length });
+    });
+
+    return { bucket: cleaned, removed: removed, repaired: repaired };
+  }
+
+  async function readRuntimeBucketForAdmin(kind) {
+    var ref = runtimeDocRefForAdmin(kind);
+    var bucketName = runtimeBucketNameForAdmin(kind);
+    var snap = await ref.get();
+    var doc = snap.exists ? (snap.data() || {}) : {};
+    var bucket = doc[bucketName] && typeof doc[bucketName] === 'object'
+      ? Object.assign({}, doc[bucketName])
+      : {};
+
+    return { ref: ref, doc: doc, bucketName: bucketName, bucket: bucket };
+  }
+
+  function findRuntimeEntryByCanonicalForAdmin(bucket, canonicalUrl) {
+    canonicalUrl = normalizeAdminRuntimeUrl(canonicalUrl);
+    if (!canonicalUrl) return null;
+
+    var keys = Object.keys(bucket || {});
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      var item = bucket[key] || {};
+      if (normalizeAdminRuntimeUrl(item.url || key) === canonicalUrl) {
+        return { key: key, item: item };
+      }
+    }
+
+    return null;
+  }
+
+  function normalizeAdminGameEntry(input, existing, options) {
+    input = input || {};
+    existing = existing || null;
+    options = options || {};
+
+    var url = normalizeAdminRuntimeUrl(input.url);
+    if (!url) throw new Error('URL gioco obbligatorio.');
+
+    var baseRev = Math.max(1, parseInt(input.rev, 10) || 1);
+    if (existing && !options.preserveRev) {
+      baseRev = Math.max(baseRev, Number(existing.rev || 1) + 1);
+    }
+
+    var cacheScope = normalizeAdminRuntimeUrl(input.cacheScope || (/\/index\.html$/i.test(url) ? url.replace(/\/index\.html$/i, '') : url));
+    var clearNeedles = uniqueAdminRuntimeList(input.clearNeedles || cacheScope || url);
+
+    var mode = String(input.openMode || input.open_mode || 'secure_iframe').trim();
+    if (['secure_iframe', 'secure_redirect', 'iframe', 'redirect'].indexOf(mode) < 0) mode = 'secure_iframe';
+
+    return {
+      title: String(input.title || '').trim() || url,
+      url: url,
+      rev: baseRev,
+      enabled: input.enabled !== false && input.enabled !== 'false',
+      openMode: mode,
+      moduleUrl: normalizeAdminRuntimeUrl(input.moduleUrl || ''),
+      description: String(input.description || input.notes || '').trim(),
+      notes: String(input.notes || input.description || '').trim(),
+      cacheScope: cacheScope,
+      extraUrls: uniqueAdminRuntimeList(input.extraUrls),
+      clearNeedles: clearNeedles
+    };
+  }
+
+  function normalizeAdminModuleEntry(input, existing, options) {
+    input = input || {};
+    existing = existing || null;
+    options = options || {};
+
+    var url = normalizeAdminRuntimeUrl(input.url);
+    if (!url) throw new Error('URL tecnico modulo obbligatorio.');
+
+    var baseRev = Math.max(1, parseInt(input.rev, 10) || 1);
+    if (existing && !options.preserveRev) {
+      baseRev = Math.max(baseRev, Number(existing.rev || existing.module_rev || 1) + 1);
+    }
+
+    var cacheScope = normalizeAdminRuntimeUrl(input.cacheScope || url);
+    var clearNeedles = uniqueAdminRuntimeList(input.clearNeedles || cacheScope || url);
+    var mode = String(input.openMode || input.open_mode || 'module').trim();
+    if (['module', 'redirect', 'new_tab', 'secure_redirect', 'secure_iframe'].indexOf(mode) < 0) mode = 'module';
+
+    var title = String(input.title || input.Titolo || '').trim() || url;
+    var description = String(input.description || input.Descrizione || input.notes || '').trim();
+
+    return {
+      title: title,
+      url: url,
+      rev: baseRev,
+      enabled: input.enabled !== false && input.enabled !== 'false',
+      renderer: String(input.renderer || 'module-html').trim(),
+      openMode: mode,
+      description: description,
+      notes: String(input.notes || description || '').trim(),
+      cacheScope: cacheScope,
+      extraUrls: uniqueAdminRuntimeList(input.extraUrls),
+      clearNeedles: clearNeedles,
+      Titolo: String(input.Titolo || title).trim() || title,
+      Descrizione: String(input.Descrizione || description).trim() || description,
+      Categoria: String(input.Categoria || '').trim(),
+      Grado_Minimo: String(input.Grado_Minimo || input.gradeRequired || '').trim(),
+      // Regola progetto: Link_Risorsa resta il link reale/eseguibile, url è la chiave tecnica.
+      Link_Risorsa: String(input.Link_Risorsa || input.linkRisorsa || url).trim(),
+      Audio: String(input.Audio || '').trim(),
+      Regione: String(input.Regione || '').trim(),
+      link_interni: Array.isArray(input.link_interni) ? input.link_interni : [],
+      module_rev: String(baseRev)
+    };
+  }
+
+  async function saveRuntimeEntryForAdmin(kind, input, options) {
+    options = options || {};
+    var user = root.requireCurrentUser();
+    var read = await readRuntimeBucketForAdmin(kind);
+    var canonicalUrl = normalizeAdminRuntimeUrl(input && input.url);
+    if (!canonicalUrl) throw new Error('URL runtime obbligatorio.');
+
+    var cleaned = cleanupRuntimeBucketForAdmin(read.bucket);
+    var bucket = cleaned.bucket;
+    var existing = findRuntimeEntryByCanonicalForAdmin(bucket, canonicalUrl);
+    var entry = kind === 'game'
+      ? normalizeAdminGameEntry(input, existing && existing.item, options)
+      : normalizeAdminModuleEntry(input, existing && existing.item, options);
+
+    // Distrugge alias equivalenti prima di scrivere il canonico.
+    Object.keys(bucket).forEach(function (key) {
+      var item = bucket[key] || {};
+      if (key !== canonicalUrl && normalizeAdminRuntimeUrl(item.url || key) === canonicalUrl) {
+        delete bucket[key];
+      }
+    });
+
+    bucket[canonicalUrl] = Object.assign({}, entry, {
+      url: canonicalUrl,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null
+    });
+
+    var nextDoc = Object.assign({}, read.doc, {
+      schemaVersion: 1,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      appGuardUpdatedAt: root.FieldValue.serverTimestamp(),
+      appGuardReason: options.reason || (kind === 'game' ? 'GAME_SAVE_APP_GUARD' : 'MODULE_SAVE_APP_GUARD')
+    });
+
+    nextDoc[read.bucketName] = bucket;
+    await read.ref.set(nextDoc);
+    return bucket[canonicalUrl];
+  }
+
+  async function repairRuntimeForAdmin(kind) {
+    var user = root.requireCurrentUser();
+    var read = await readRuntimeBucketForAdmin(kind);
+    var cleaned = cleanupRuntimeBucketForAdmin(read.bucket);
+    var removedCount = cleaned.removed.length;
+
+    if (!removedCount) {
+      return { removedCount: 0, removed: [], repaired: [], bucket: cleaned.bucket };
+    }
+
+    var nextDoc = Object.assign({}, read.doc, {
+      schemaVersion: 1,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      appGuardRepairAt: root.FieldValue.serverTimestamp(),
+      appGuardRepairRemovedCount: removedCount
+    });
+
+    nextDoc[read.bucketName] = cleaned.bucket;
+    await read.ref.set(nextDoc);
+
+    return {
+      removedCount: removedCount,
+      removed: cleaned.removed,
+      repaired: cleaned.repaired,
+      bucket: cleaned.bucket
+    };
+  }
+
+  async function deleteRuntimeRecordForAdmin(kind, rawKey) {
+    rawKey = String(rawKey || '').trim();
+    if (!rawKey) throw new Error('Chiave runtime mancante.');
+
+    var read = await readRuntimeBucketForAdmin(kind);
+    var bucket = Object.assign({}, read.bucket || {});
+
+    if (!Object.prototype.hasOwnProperty.call(bucket, rawKey)) {
+      throw new Error('Record runtime non trovato con chiave esatta: ' + rawKey);
+    }
+
+    delete bucket[rawKey];
+
+    var user = root.requireCurrentUser();
+    var nextDoc = Object.assign({}, read.doc, {
+      schemaVersion: 1,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      appGuardDeletedAt: root.FieldValue.serverTimestamp(),
+      appGuardDeletedKey: rawKey
+    });
+
+    nextDoc[read.bucketName] = bucket;
+    await read.ref.set(nextDoc);
+  }
+
 function readGameForm() {
+    var url = normalizeAdminRuntimeUrl(root.$('#game-url').value);
+    var moduleUrl = normalizeAdminRuntimeUrl(root.$('#game-module-url').value);
+    var cacheScope = normalizeAdminRuntimeUrl(root.$('#game-cache-scope').value || (/\/index\.html$/i.test(url) ? url.replace(/\/index\.html$/i, '') : url));
+    var clearNeedles = uniqueAdminRuntimeList(root.$('#game-clear-needles').value || cacheScope || url);
+
+    root.$('#game-url').value = url;
+    root.$('#game-module-url').value = moduleUrl;
+    root.$('#game-cache-scope').value = cacheScope;
+    root.$('#game-clear-needles').value = clearNeedles.join(', ');
+
     return {
       title: root.$('#game-title').value,
-      url: root.$('#game-url').value,
+      url: url,
       rev: root.$('#game-rev').value,
       enabled: root.$('#game-enabled').value === 'true',
 
@@ -2927,18 +3369,18 @@ function readGameForm() {
       // Default consigliato: secure_iframe.
       openMode: root.$('#game-open-mode') ? root.$('#game-open-mode').value : 'secure_iframe',
 
-      moduleUrl: root.$('#game-module-url').value,
+      moduleUrl: moduleUrl,
       description: root.$('#game-description').value,
-      cacheScope: root.$('#game-cache-scope').value,
-      extraUrls: root.$('#game-extra-urls').value,
-      clearNeedles: root.$('#game-clear-needles').value
+      cacheScope: cacheScope,
+      extraUrls: uniqueAdminRuntimeList(root.$('#game-extra-urls').value).join(', '),
+      clearNeedles: clearNeedles.join(', ')
     };
   }
 
 function fillGameForm(item) {
     item = item || {};
     root.$('#game-title').value = item.title || '';
-    root.$('#game-url').value = item.url || '';
+    root.$('#game-url').value = normalizeAdminRuntimeUrl(item.url || '');
     root.$('#game-rev').value = Number(item.rev || 1);
     root.$('#game-enabled').value = item.enabled === false ? 'false' : 'true';
 
@@ -2946,11 +3388,11 @@ function fillGameForm(item) {
       root.$('#game-open-mode').value = item.openMode || item.open_mode || 'secure_iframe';
     }
 
-    root.$('#game-module-url').value = item.moduleUrl || '';
+    root.$('#game-module-url').value = normalizeAdminRuntimeUrl(item.moduleUrl || '');
     root.$('#game-description').value = item.description || item.notes || '';
-    root.$('#game-cache-scope').value = item.cacheScope || '';
-    root.$('#game-extra-urls').value = Array.isArray(item.extraUrls) ? item.extraUrls.join(', ') : '';
-    root.$('#game-clear-needles').value = Array.isArray(item.clearNeedles) ? item.clearNeedles.join(', ') : '';
+    root.$('#game-cache-scope').value = normalizeAdminRuntimeUrl(item.cacheScope || '');
+    root.$('#game-extra-urls').value = uniqueAdminRuntimeList(item.extraUrls || '').join(', ');
+    root.$('#game-clear-needles').value = uniqueAdminRuntimeList(item.clearNeedles || item.cacheScope || item.url || '').join(', ');
     switchTab('games');
   }
 
@@ -2971,55 +3413,9 @@ function fillGameForm(item) {
 
 
   function normalizeWilduModuleTechnicalUrl(rawLink) {
-    var raw = String(rawLink || '').trim();
-    if (!raw) return '';
-
-    try {
-      var parsed = new URL(raw, window.location.href);
-      var path = String(parsed.pathname || '');
-
-      // Caso principale: link reale GitHub Pages dentro /Wild-U/
-      // https://wildustrek.github.io/Wild-U/wildu-map-suite/wildu-map-viewer/
-      // -> wildu-map-suite/wildu-map-viewer/
-      if (
-        parsed.hostname === 'wildustrek.github.io' &&
-        /^\/Wild-U\//i.test(path)
-      ) {
-        return path
-          .replace(/^\/+/, '')
-          .replace(/^Wild-U\//i, '')
-          .split('?')[0]
-          .split('#')[0];
-      }
-
-      // Caso same-origin GitHub Pages o path assoluto già interno.
-      if (
-        parsed.origin === window.location.origin &&
-        /^\/Wild-U\//i.test(path)
-      ) {
-        return path
-          .replace(/^\/+/, '')
-          .replace(/^Wild-U\//i, '')
-          .split('?')[0]
-          .split('#')[0];
-      }
-
-      // Per URL assoluti esterni, manteniamo il link intero come chiave tecnica.
-      // Non è il caso normale, ma non lo distruggiamo.
-      if (/^https?:\/\//i.test(raw)) {
-        return raw.split('#')[0];
-      }
-    } catch (e) {}
-
-    // Path relativo interno:
-    // ./modules/x.html -> modules/x.html
-    // /Wild-U/modules/x.html -> modules/x.html
-    return raw
-      .split('?')[0]
-      .split('#')[0]
-      .replace(/^\/+/, '')
-      .replace(/^Wild-U\//i, '')
-      .replace(/^\.\//, '');
+    // Unica fonte canonica per l'URL tecnico moduli lato Admin.
+    // Coerente con client/cache/Firestore: niente dominio, niente /Wild-U, niente query/hash, niente slash finale.
+    return normalizeAdminRuntimeUrl(rawLink);
   }
 
   function syncModuleTechnicalUrlFromExecutableLink() {
@@ -3059,7 +3455,14 @@ function fillGameForm(item) {
       throw new Error('Non riesco a generare l’URL tecnico dal link eseguibile.');
     }
 
+    var cacheScope = normalizeAdminRuntimeUrl(root.$('#module-cache-scope').value || technicalUrl);
+    var clearNeedles = uniqueAdminRuntimeList(root.$('#module-clear-needles').value || cacheScope || technicalUrl);
+    var extraUrls = uniqueAdminRuntimeList(root.$('#module-extra-urls').value);
+
     root.$('#module-url').value = technicalUrl;
+    root.$('#module-cache-scope').value = cacheScope;
+    root.$('#module-clear-needles').value = clearNeedles.join(', ');
+    root.$('#module-extra-urls').value = extraUrls.join(', ');
 
     return {
       title: title,
@@ -3070,10 +3473,10 @@ function fillGameForm(item) {
       renderer: root.$('#module-renderer').value,
       openMode: root.$('#module-open-mode') ? root.$('#module-open-mode').value : 'module',
       description: description,
-      cacheScope: root.$('#module-cache-scope').value || technicalUrl,
+      cacheScope: cacheScope,
 
-      extraUrls: root.$('#module-extra-urls').value,
-      clearNeedles: root.$('#module-clear-needles').value || technicalUrl,
+      extraUrls: extraUrls,
+      clearNeedles: clearNeedles,
 
       // Campi compatibili/client-facing.
       Titolo: title,
@@ -3096,8 +3499,9 @@ function fillGameForm(item) {
     root.$('#module-title').value = item.title || item.Titolo || '';
 
     var executableLink = item.Link_Risorsa || item.linkRisorsa || item.url || '';
+    var technicalUrl = normalizeAdminRuntimeUrl(item.url || executableLink);
     root.$('#module-link-resource').value = executableLink;
-    root.$('#module-url').value = normalizeWilduModuleTechnicalUrl(executableLink);
+    root.$('#module-url').value = technicalUrl;
 
     root.$('#module-rev').value = Number(item.rev || item.module_rev || 1);
     
@@ -3109,9 +3513,9 @@ if (root.$('#module-open-mode')) {
 }
 
 root.$('#module-description').value = item.description || item.Descrizione || item.notes || '';
-    root.$('#module-cache-scope').value = item.cacheScope || '';
-    root.$('#module-extra-urls').value = Array.isArray(item.extraUrls) ? item.extraUrls.join(', ') : '';
-    root.$('#module-clear-needles').value = Array.isArray(item.clearNeedles) ? item.clearNeedles.join(', ') : '';
+    root.$('#module-cache-scope').value = normalizeAdminRuntimeUrl(item.cacheScope || technicalUrl || '');
+    root.$('#module-extra-urls').value = uniqueAdminRuntimeList(item.extraUrls || '').join(', ');
+    root.$('#module-clear-needles').value = uniqueAdminRuntimeList(item.clearNeedles || item.cacheScope || technicalUrl || '').join(', ');
 
     root.$('#module-category').value = item.Categoria || '';
     root.$('#module-audio').value = item.Audio || '';
@@ -3145,24 +3549,20 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
   async function saveGameVersion(evt) {
     evt.preventDefault();
-    await root.RuntimeService.saveGame(readGameForm());
-    root.toast('Versione gioco salvata in game_versions.', 'success');
+    var saved = await saveRuntimeEntryForAdmin('game', readGameForm(), { reason: 'GAME_SAVE_VERSION_GUARD' });
+    root.toast('Versione gioco salvata in game_versions. Rev attuale: ' + Number(saved.rev || 1), 'success');
     await refreshGameVersions();
   }
 
   async function saveModuleVersion(evt) {
     evt.preventDefault();
-    await root.RuntimeService.saveModule(readModuleForm());
-    root.toast('Versione modulo salvata in module_versions.', 'success');
+    var saved = await saveRuntimeEntryForAdmin('module', readModuleForm(), { reason: 'MODULE_SAVE_VERSION_GUARD' });
+    root.toast('Versione modulo salvata in module_versions. Rev attuale: ' + Number(saved.rev || saved.module_rev || 1), 'success');
     await refreshModuleVersions();
   }
 
   async function repairModuleDuplicates() {
-    if (!root.RuntimeService || typeof root.RuntimeService.repairModules !== 'function') {
-      throw new Error('RuntimeService.repairModules non disponibile. Aggiorna runtime-service.js.');
-    }
-
-    var result = await root.RuntimeService.repairModules();
+    var result = await repairRuntimeForAdmin('module');
     var removed = result && Number.isFinite(Number(result.removedCount))
       ? Number(result.removedCount)
       : 0;
@@ -3172,16 +3572,22 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   async function bumpSelectedGameVersion() {
-    var url = root.$('#game-url').value;
-    await root.RuntimeService.bumpGame(url, '');
-    root.toast('Versione gioco incrementata: ' + url, 'success');
+    var url = normalizeAdminRuntimeUrl(root.$('#game-url').value);
+    var data = state.gameRuntime && Array.isArray(state.gameRuntime.items) ? state.gameRuntime.items : [];
+    var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
+    current.rev = Math.max(1, Number(current.rev || 0) + 1);
+    var saved = await saveRuntimeEntryForAdmin('game', current, { preserveRev: true, reason: 'GAME_MANUAL_BUMP' });
+    root.toast('Versione gioco incrementata: ' + url + ' → rev ' + Number(saved.rev || 1), 'success');
     await refreshGameVersions();
   }
 
   async function bumpSelectedModuleVersion() {
-    var url = root.$('#module-url').value;
-    await root.RuntimeService.bumpModule(url, '');
-    root.toast('Versione modulo incrementata: ' + url, 'success');
+    var url = normalizeAdminRuntimeUrl(root.$('#module-url').value);
+    var data = state.moduleRuntime && Array.isArray(state.moduleRuntime.items) ? state.moduleRuntime.items : [];
+    var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
+    current.rev = Math.max(1, Number(current.rev || current.module_rev || 0) + 1);
+    var saved = await saveRuntimeEntryForAdmin('module', current, { preserveRev: true, reason: 'MODULE_MANUAL_BUMP' });
+    root.toast('Versione modulo incrementata: ' + url + ' → rev ' + Number(saved.rev || saved.module_rev || 1), 'success');
     await refreshModuleVersions();
   }
 
@@ -3198,14 +3604,29 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   async function bumpGameFromTable(url) {
-    await root.RuntimeService.bumpGame(url, '');
-    root.toast('Versione gioco incrementata: ' + url, 'success');
+    url = normalizeAdminRuntimeUrl(url);
+    var data = state.gameRuntime && Array.isArray(state.gameRuntime.items) ? state.gameRuntime.items : [];
+    var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
+    current.rev = Math.max(1, Number(current.rev || 0) + 1);
+    var saved = await saveRuntimeEntryForAdmin('game', current, { preserveRev: true, reason: 'GAME_TABLE_BUMP' });
+    root.toast('Versione gioco incrementata: ' + url + ' → rev ' + Number(saved.rev || 1), 'success');
     await refreshGameVersions();
   }
 
   async function bumpModuleFromTable(url) {
-    await root.RuntimeService.bumpModule(url, '');
-    root.toast('Versione modulo incrementata: ' + url, 'success');
+    url = normalizeAdminRuntimeUrl(url);
+    var data = state.moduleRuntime && Array.isArray(state.moduleRuntime.items) ? state.moduleRuntime.items : [];
+    var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
+    current.rev = Math.max(1, Number(current.rev || current.module_rev || 0) + 1);
+    var saved = await saveRuntimeEntryForAdmin('module', current, { preserveRev: true, reason: 'MODULE_TABLE_BUMP' });
+    root.toast('Versione modulo incrementata: ' + url + ' → rev ' + Number(saved.rev || saved.module_rev || 1), 'success');
+    await refreshModuleVersions();
+  }
+
+  async function deleteModuleRuntimeRecord(rawKey) {
+    if (!confirm('Eliminare definitivamente il record runtime modulo con chiave esatta:\n\n' + rawKey + '\n\nUsa solo per cloni/fantasmi non modificabili.')) return;
+    await deleteRuntimeRecordForAdmin('module', rawKey);
+    root.toast('Record runtime modulo eliminato: ' + rawKey, 'success');
     await refreshModuleVersions();
   }
 
@@ -3561,11 +3982,28 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     await refreshMedia();
   }
 
+  function installModuleRuntimeGuardButton() {
+    if (document.getElementById('btn-repair-module-duplicates')) return;
+
+    var refreshBtn = document.getElementById('btn-refresh-modules');
+    var parent = refreshBtn ? refreshBtn.parentElement : null;
+    if (!parent) return;
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'btn-repair-module-duplicates';
+    btn.setAttribute('data-requires-auth', '');
+    btn.textContent = 'Ripara duplicati moduli';
+    btn.title = 'Normalizza URL tecnici equivalenti e distrugge cloni slash/no-slash.';
+    parent.appendChild(btn);
+  }
+
   function bindEvents() {
     
     installAdminDumpCleanerButton(); //AGGIUNTA PERICOLOSA
     installClientConsoleSwitchCard();
     installGlobalClientCacheNukeCard();
+    installModuleRuntimeGuardButton();
     
     var instructionsBtn = document.getElementById('btn-open-instructions');
     if (instructionsBtn) {
@@ -3733,6 +4171,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var bumpModuleBtn = evt.target.closest('[data-bump-module]');
       if (bumpModuleBtn) return run(bumpModuleFromTable, bumpModuleBtn.dataset.bumpModule);
+
+      var deleteModuleRuntimeBtn = evt.target.closest('[data-delete-module-runtime]');
+      if (deleteModuleRuntimeBtn) return run(deleteModuleRuntimeRecord, deleteModuleRuntimeBtn.dataset.deleteModuleRuntime);
 
       var editSystemAudioBtn = evt.target.closest('[data-edit-system-audio]');
       if (editSystemAudioBtn) return fillSystemAudioForm(editSystemAudioBtn.dataset.editSystemAudio);
