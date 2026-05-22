@@ -88,9 +88,10 @@ body::before {
     gap: 8px;
 
     /*
-       V20: navbar sticky a geometria stabile, senza safe-area anticipata.
-       La safe-area fisica resta coperta dallo scudo body::before; la nav non
-       cresce quando è sotto l'header e non cambia altezza quando diventa sticky.
+       V21: navbar sticky a geometria stabile, ma rispettosa della safe-area.
+       La nav NON cresce e NON cambia padding quando diventa sticky: si ferma
+       direttamente sotto la safe-area fisica tramite top: env(...).
+       Desktop/Android senza notch restano equivalenti perché env(...) vale 0.
     */
     padding: 12px;
 
@@ -98,7 +99,7 @@ body::before {
 
     position: sticky;
     position: -webkit-sticky;
-    top: 0;
+    top: env(safe-area-inset-top, 0px);
 
     z-index: 1200;
     border-bottom: 1px solid #141414;
@@ -18158,6 +18159,19 @@ function bindWilduStickyNavSafeArea() {
 
     let ticking = false;
     let lastStickyState = null;
+    let stickyTopOffset = 0;
+
+    function refreshStickyTopOffset() {
+        try {
+            const rawTop = window.getComputedStyle(nav).top;
+            const parsedTop = parseFloat(rawTop);
+            stickyTopOffset = Number.isFinite(parsedTop) ? Math.max(0, parsedTop) : 0;
+        } catch (e) {
+            stickyTopOffset = 0;
+        }
+    }
+
+    refreshStickyTopOffset();
 
     function updateStickyState() {
         ticking = false;
@@ -18165,16 +18179,14 @@ function bindWilduStickyNavSafeArea() {
         const rect = sentinel.getBoundingClientRect();
 
         /*
-            Quando il sentinel supera il bordo alto, la nav è realmente sticky.
-            Solo allora aggiungiamo safe-area.
-
-            V16: evitiamo lavoro inutile ad ogni scroll.
-            La classe e il riallineamento dock audio vengono aggiornati solo
-            quando lo stato sticky cambia davvero, riducendo micro-reflow mobile.
+            V21: la nav si ferma a top: env(safe-area-inset-top).
+            La soglia JS usa lo stesso offset computato dal CSS, così lo stato
+            nav-is-stuck resta coerente su iOS, Android e desktop senza cambiare
+            padding/altezza della navbar durante lo scroll.
         */
         const shouldBeStuck = lastStickyState === true
-            ? (window.scrollY > 1 && rect.top <= 6)
-            : (window.scrollY > 1 && rect.top <= -1);
+            ? (window.scrollY > 1 && rect.top <= stickyTopOffset + 6)
+            : (window.scrollY > 1 && rect.top <= stickyTopOffset - 1);
 
         if (lastStickyState === shouldBeStuck) {
             return;
@@ -18196,14 +18208,17 @@ function bindWilduStickyNavSafeArea() {
 
     window.addEventListener('scroll', requestStickyUpdate, { passive: true });
     window.addEventListener('resize', function () {
+        refreshStickyTopOffset();
         lastStickyState = null;
         requestStickyUpdate();
     });
     window.addEventListener('orientationchange', function () {
+        refreshStickyTopOffset();
         lastStickyState = null;
         requestStickyUpdate();
     });
     window.addEventListener('pageshow', function () {
+        refreshStickyTopOffset();
         lastStickyState = null;
         requestStickyUpdate();
     });
