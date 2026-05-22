@@ -827,20 +827,35 @@ body::before {
 
 
 /* ==========================================
-   WILDU PREMI & GIOCHI — RESTYLE V12
+   WILDU PREMI & GIOCHI — RESTYLE V14 PREMIUM CARDS
    ========================================== */
 .wildu-rewards-hero {
+    position: relative;
+    overflow: hidden;
     margin: 0 0 22px 0;
     padding: 18px 17px;
     border-radius: 24px;
     background:
-        radial-gradient(circle at top left, rgba(212,175,55,.22), transparent 44%),
-        linear-gradient(135deg, rgba(45,90,39,.74), rgba(18,18,18,.98));
-    border: 1px solid rgba(212,175,55,.34);
-    box-shadow: 0 10px 28px rgba(0,0,0,.46);
+        radial-gradient(circle at 16% 0%, rgba(212,175,55,.26), transparent 42%),
+        radial-gradient(circle at 100% 18%, rgba(45,90,39,.34), transparent 34%),
+        linear-gradient(135deg, rgba(30,48,28,.92), rgba(18,18,18,.98));
+    border: 1px solid rgba(212,175,55,.36);
+    box-shadow:
+        0 14px 34px rgba(0,0,0,.52),
+        inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.wildu-rewards-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(115deg, rgba(255,255,255,.10), transparent 24%, transparent 72%, rgba(212,175,55,.08));
+    pointer-events: none;
 }
 
 .wildu-rewards-hero-kicker {
+    position: relative;
+    z-index: 1;
     color: var(--w-gold);
     font-size: 10px;
     font-weight: 950;
@@ -850,19 +865,25 @@ body::before {
 }
 
 .wildu-rewards-hero-title {
+    position: relative;
+    z-index: 1;
     color: #fff;
     font-size: clamp(24px, 6vw, 31px);
     line-height: 1.05;
     font-weight: 950;
     margin: 0;
     letter-spacing: .2px;
+    text-shadow: 0 3px 16px rgba(0,0,0,.58);
 }
 
 .wildu-rewards-hero-copy {
-    color: #cfcfcf;
-    font-size: 14px;
-    line-height: 1.48;
-    margin: 9px 0 0 0;
+    position: relative;
+    z-index: 1;
+    color: #d7d7d7;
+    font-size: 13px;
+    line-height: 1.34;
+    margin: 8px 0 0 0;
+    max-width: 520px;
 }
 
 .wildu-rewards-section-label {
@@ -891,48 +912,88 @@ body::before {
 
 .wildu-reward-card {
     position: relative;
+    isolation: isolate;
     display: flex;
     gap: 14px;
-    align-items: stretch;
-    padding: 16px;
+    align-items: flex-start;
+    padding: 16px 15px 15px 15px;
     margin-bottom: 14px;
-    border-radius: 22px;
-    border: 1px solid rgba(255,255,255,.10);
-    border-left: 4px solid rgba(212,175,55,.78);
+    border-radius: 24px;
+    border: 1px solid rgba(212,175,55,.22);
+    border-left: 1px solid rgba(212,175,55,.45);
     background:
-        radial-gradient(circle at top left, rgba(255,255,255,.075), transparent 44%),
-        linear-gradient(180deg, rgba(255,255,255,.052), rgba(255,255,255,.025));
-    box-shadow: 0 8px 24px rgba(0,0,0,.42);
+        radial-gradient(circle at 0% 0%, rgba(212,175,55,.19), transparent 38%),
+        radial-gradient(circle at 92% 18%, rgba(45,90,39,.18), transparent 34%),
+        linear-gradient(145deg, rgba(255,255,255,.070), rgba(255,255,255,.026) 48%, rgba(0,0,0,.14));
+    box-shadow:
+        0 14px 32px rgba(0,0,0,.46),
+        inset 0 1px 0 rgba(255,255,255,.10),
+        inset 0 -1px 0 rgba(0,0,0,.28);
     cursor: pointer;
+    overflow: hidden;
     -webkit-tap-highlight-color: transparent;
-    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease, filter .16s ease;
+}
+
+.wildu-reward-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+        linear-gradient(112deg, rgba(255,255,255,.12), transparent 20%, transparent 68%, rgba(212,175,55,.10)),
+        linear-gradient(90deg, rgba(212,175,55,.22), transparent 5px);
+    opacity: .72;
+    pointer-events: none;
+}
+
+.wildu-reward-card::after {
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(212,175,55,.32), transparent);
+    opacity: .72;
+    pointer-events: none;
 }
 
 .wildu-reward-card:active {
     transform: scale(.985);
+    filter: brightness(1.05);
 }
 
 @media (hover:hover) {
     .wildu-reward-card:hover {
         transform: translateY(-2px);
-        border-color: rgba(212,175,55,.38);
-        box-shadow: 0 12px 30px rgba(0,0,0,.52);
+        border-color: rgba(212,175,55,.44);
+        box-shadow:
+            0 18px 42px rgba(0,0,0,.58),
+            0 0 24px rgba(212,175,55,.10),
+            inset 0 1px 0 rgba(255,255,255,.13),
+            inset 0 -1px 0 rgba(0,0,0,.30);
     }
 }
 
 .wildu-reward-icon {
-    width: 52px;
-    min-width: 52px;
-    height: 52px;
-    border-radius: 17px;
+    width: 54px;
+    min-width: 54px;
+    height: 54px;
+    border-radius: 19px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(212,175,55,.12);
-    border: 1px solid rgba(212,175,55,.28);
+    background:
+        radial-gradient(circle at 35% 20%, rgba(255,255,255,.20), transparent 28%),
+        linear-gradient(145deg, rgba(212,175,55,.24), rgba(212,175,55,.075));
+    border: 1px solid rgba(212,175,55,.40);
     color: var(--w-gold);
-    font-size: 27px;
-    box-shadow: inset 0 0 14px rgba(212,175,55,.09);
+    font-size: 28px;
+    box-shadow:
+        0 8px 20px rgba(0,0,0,.32),
+        inset 0 0 18px rgba(212,175,55,.12),
+        inset 0 1px 0 rgba(255,255,255,.16);
 }
 
 .wildu-reward-body {
@@ -943,24 +1004,29 @@ body::before {
 .wildu-reward-title {
     color: #fff;
     font-size: 17px;
-    line-height: 1.16;
+    line-height: 1.15;
     font-weight: 950;
     margin: 0 0 6px 0;
     text-transform: uppercase;
-    letter-spacing: .2px;
+    letter-spacing: .24px;
+    text-shadow: 0 2px 10px rgba(0,0,0,.48);
 }
 
 .wildu-reward-desc {
-    color: #aaa;
-    font-size: 13px;
-    line-height: 1.42;
-    margin: 0 0 11px 0;
+    color: rgba(232,232,232,.76);
+    font-size: 12.8px;
+    line-height: 1.39;
+    margin: 0 0 10px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .wildu-reward-meta {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 10px;
     flex-wrap: wrap;
 }
@@ -970,34 +1036,50 @@ body::before {
     align-items: center;
     gap: 6px;
     max-width: 100%;
-    padding: 7px 10px;
+    padding: 7px 11px;
     border-radius: 999px;
-    border: 1px solid rgba(212,175,55,.42);
-    background: rgba(212,175,55,.12);
-    color: var(--w-gold);
-    font-size: 10.5px;
+    border: 1px solid rgba(212,175,55,.46);
+    background:
+        linear-gradient(135deg, rgba(212,175,55,.18), rgba(212,175,55,.075));
+    color: #f1d37a;
+    font-size: 10.4px;
     font-weight: 950;
     line-height: 1;
     text-transform: uppercase;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    box-shadow:
+        0 5px 14px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.10);
 }
 
-.wildu-reward-open-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: auto;
-    padding: 8px 11px;
+.wildu-reward-chevron {
+    position: absolute;
+    top: 13px;
+    right: 13px;
+    width: 31px;
+    height: 31px;
     border-radius: 999px;
-    background: var(--w-gold);
-    color: #000;
-    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 35% 20%, rgba(255,255,255,.18), transparent 32%),
+        rgba(212,175,55,.16);
+    border: 1px solid rgba(212,175,55,.42);
+    color: var(--w-gold);
+    font-size: 15px;
     font-weight: 950;
     line-height: 1;
-    text-transform: uppercase;
-    box-shadow: 0 0 14px rgba(212,175,55,.16);
+    pointer-events: none;
+    box-shadow:
+        0 6px 18px rgba(0,0,0,.34),
+        inset 0 1px 0 rgba(255,255,255,.11);
+}
+
+.wildu-reward-card .wildu-reward-body {
+    padding-right: 28px;
 }
 
 .wildu-rewards-bottom {
@@ -1024,7 +1106,7 @@ body::before {
 .wildu-rewards-random-image {
     display: block;
     width: 100%;
-    max-height: 230px;
+    max-height: 260px;
     object-fit: cover;
     border-radius: 24px;
     border: 1px solid rgba(255,255,255,.12);
@@ -1034,28 +1116,35 @@ body::before {
 
 @media (max-width: 420px) {
     .wildu-reward-card {
-        padding: 14px;
+        padding: 15px 14px 14px 14px;
         gap: 12px;
+        border-radius: 22px;
     }
 
     .wildu-reward-icon {
-        width: 46px;
-        min-width: 46px;
-        height: 46px;
-        border-radius: 15px;
+        width: 47px;
+        min-width: 47px;
+        height: 47px;
+        border-radius: 16px;
         font-size: 24px;
     }
 
     .wildu-reward-title {
-        font-size: 15.5px;
+        font-size: 15.6px;
+        letter-spacing: .18px;
     }
 
-    .wildu-reward-open-chip {
-        width: 100%;
-        justify-content: center;
-        margin-left: 0;
+    .wildu-reward-desc {
+        font-size: 12.35px;
+    }
+
+    .wildu-reward-grade-chip {
+        font-size: 9.8px;
+        padding: 7px 9px;
     }
 }
+
+
 
 /* --- WILDU AMAZON FOOTER SLIDER --- */
 
@@ -1818,7 +1907,7 @@ body::before {
             <div class="wildu-rewards-hero-kicker">Ricompense Wild-U</div>
             <h3 class="wildu-rewards-hero-title">🎁 Premi & Giochi</h3>
             <p class="wildu-rewards-hero-copy">
-                Sblocca risorse, mini-app e bonus con il tuo grado Wild-U. Qui trovi ciò che la tua avventura ha conquistato.
+                Sblocca risorse, sfide e bonus Wild-U.
             </p>
         </div>
 
@@ -4038,29 +4127,286 @@ const WilduMediaClient = (() => {
     }
 
 
+    function buildWilduRewardsRealNewsCardHtml() {
+        const realNews = getWilduRealNewsText();
+        const htmlText = realNews
+            ? formatWilduRealNewsHtml(realNews)
+            : '<span style="color:#aaa;">Nessuna comunicazione speciale in questo momento.</span>';
+
+        return `
+            <div style="
+                margin:0 0 16px 0;
+                padding:17px 16px;
+                border-radius:22px;
+                background:
+                    radial-gradient(circle at top left, rgba(212,175,55,.24), transparent 44%),
+                    linear-gradient(135deg, rgba(45,90,39,.72), rgba(18,18,18,.98));
+                border:1px solid rgba(212,175,55,.38);
+                box-shadow:0 8px 28px rgba(0,0,0,.48);
+            ">
+                <div style="
+                    display:flex;
+                    align-items:center;
+                    gap:10px;
+                    margin-bottom:10px;
+                ">
+                    <div style="
+                        width:38px;
+                        height:38px;
+                        border-radius:14px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        background:rgba(212,175,55,.16);
+                        border:1px solid rgba(212,175,55,.36);
+                        font-size:21px;
+                        flex:0 0 auto;
+                    ">📣</div>
+
+                    <div style="min-width:0;">
+                        <div style="
+                            color:var(--w-gold);
+                            font-size:10px;
+                            font-weight:950;
+                            text-transform:uppercase;
+                            letter-spacing:.9px;
+                        ">Comunicazione Wild-U</div>
+
+                        <div style="
+                            color:#fff;
+                            font-size:16px;
+                            font-weight:950;
+                            line-height:1.15;
+                        ">Novità dalla redazione</div>
+                    </div>
+                </div>
+
+                <div style="
+                    color:#f2f2f2;
+                    font-size:15px;
+                    line-height:1.58;
+                ">
+                    ${htmlText}
+                </div>
+            </div>
+        `;
+    }
+
     function renderWilduRewardsRealNews() {
         const box = document.getElementById("wildu-rewards-real-news");
         if (!box) return;
-        box.innerHTML = buildWilduRealNewsCardHtml() || "";
+        box.innerHTML = buildWilduRewardsRealNewsCardHtml();
     }
 
-    async function renderWilduRewardsWildWallRandomImage() {
+    function getWilduRewardsPublicCachePayload() {
+        try {
+            if (typeof readPublicCacheEnvelope === "function") {
+                const env = readPublicCacheEnvelope();
+                return env && env.payload ? env.payload : null;
+            }
+        } catch (e) {}
+
+        try {
+            const raw = localStorage.getItem("wildCachePublic");
+            if (!raw) return null;
+            const envelope = JSON.parse(raw);
+            return envelope && envelope.payload ? envelope.payload : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getWilduRewardsCanonicalImageKey(rawUrl) {
+        let value = "";
+
+        try {
+            value = typeof formatAssetLink === "function"
+                ? formatAssetLink(rawUrl)
+                : String(rawUrl || "").trim();
+        } catch (e) {
+            value = String(rawUrl || "").trim();
+        }
+
+        if (!value) return "";
+
+        try {
+            const u = new URL(value, window.location.href);
+            const host = u.hostname.toLowerCase().replace(/^www\./, "");
+            const driveId = u.searchParams.get("id");
+
+            if (driveId && (host.includes("docs.google.com") || host.includes("drive.google.com"))) {
+                return "gdrive:" + driveId.trim();
+            }
+
+            [
+                "t", "time", "timestamp", "nocache", "cache", "cachebust", "cacheBust",
+                "cb", "rand", "random", "shellv", "mr", "v"
+            ].forEach(function (key) { u.searchParams.delete(key); });
+
+            const query = u.searchParams.toString();
+            return host + (u.pathname || "") + (query ? "?" + query : "");
+        } catch (e) {
+            return String(value || "")
+                .toLowerCase()
+                .replace(/[?&](t|time|timestamp|nocache|cache|cachebust|cb|rand|random|shellv|mr|v)=[^&]+/gi, "")
+                .trim();
+        }
+    }
+
+    function getWilduRewardsCanonicalTitleKey(rawTitle) {
+        return String(rawTitle || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+    }
+
+    function getWilduRewardsFirstNonEmptyFromItem(item, keys, fallback) {
+        if (!item || typeof item !== "object") return fallback || "";
+
+        for (let i = 0; i < keys.length; i++) {
+            const v = item[keys[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== "") {
+                return String(v).trim();
+            }
+        }
+
+        return fallback || "";
+    }
+
+    function collectWilduRewardsForbiddenAssetKeys(cachePayload) {
+        const forbidden = new Set();
+
+        function addValue(raw) {
+            if (!raw) return;
+
+            const value = String(raw || "").trim();
+            if (!value) return;
+            if (typeof wilduLooksLikeImageUrl === "function" && !wilduLooksLikeImageUrl(value)) return;
+
+            const key = getWilduRewardsCanonicalImageKey(value);
+            if (key) forbidden.add(key);
+        }
+
+        try {
+            Object.keys(WILD_ASSETS || {}).forEach(function (key) {
+                addValue(WILD_ASSETS[key]);
+            });
+        } catch (e) {}
+
+        try {
+            const assets = cachePayload && cachePayload.assets && typeof cachePayload.assets === "object"
+                ? cachePayload.assets
+                : null;
+
+            if (assets) {
+                Object.keys(assets).forEach(function (key) {
+                    addValue(assets[key]);
+                });
+            }
+        } catch (e) {}
+
+        return forbidden;
+    }
+
+    function collectWilduRewardsTravelImages(sourceName, list, forbiddenAssetKeys, outputMap) {
+        if (!Array.isArray(list)) return;
+
+        list.forEach(function (item) {
+            if (!item || typeof item !== "object") return;
+
+            const rawImg = getWilduRewardsFirstNonEmptyFromItem(item, [
+                "immagine", "fotoUrl", "img_url", "image", "Image", "Foto", "foto", "cover", "Cover"
+            ], "");
+
+            if (!rawImg) return;
+
+            let finalUrl = "";
+            try {
+                finalUrl = typeof formatAssetLink === "function" ? formatAssetLink(rawImg) : String(rawImg || "").trim();
+            } catch (e) {
+                finalUrl = String(rawImg || "").trim();
+            }
+
+            if (!finalUrl || typeof wilduLooksLikeImageUrl !== "function" || !wilduLooksLikeImageUrl(finalUrl)) return;
+
+            const imageKey = getWilduRewardsCanonicalImageKey(finalUrl);
+            if (!imageKey || forbiddenAssetKeys.has(imageKey)) return;
+
+            const titolo = getWilduRewardsFirstNonEmptyFromItem(item, [
+                "Titolo", "titolo", "title", "Nome", "nome"
+            ], "Avventura Wild-U");
+
+            const titleKey = getWilduRewardsCanonicalTitleKey(titolo);
+            if (!titleKey) return;
+
+            if (!outputMap.has(titleKey)) {
+                outputMap.set(titleKey, {
+                    titleKey: titleKey,
+                    candidates: [],
+                    imageKeys: new Set()
+                });
+            }
+
+            const group = outputMap.get(titleKey);
+            if (group.imageKeys.has(imageKey)) return;
+
+            group.imageKeys.add(imageKey);
+            group.candidates.push({
+                url: finalUrl,
+                key: imageKey,
+                source: sourceName
+            });
+        });
+    }
+
+    function pickWilduRewardsRandomWildWallImage() {
+        const cachePayload = getWilduRewardsPublicCachePayload();
+        const forbiddenAssetKeys = collectWilduRewardsForbiddenAssetKeys(cachePayload);
+        const groups = new Map();
+
+        const runtimeLists = {
+            events: Array.isArray(allTrips) ? allTrips : [],
+            opendays: Array.isArray(allOpenDays) ? allOpenDays : [],
+            paydays: Array.isArray(allPayDays) ? allPayDays : []
+        };
+
+        const cachedLists = {
+            events: Array.isArray(cachePayload && cachePayload.events) ? cachePayload.events : [],
+            opendays: Array.isArray(cachePayload && cachePayload.opendays) ? cachePayload.opendays : [],
+            paydays: Array.isArray(cachePayload && cachePayload.paydays) ? cachePayload.paydays : []
+        };
+
+        collectWilduRewardsTravelImages("events", runtimeLists.events, forbiddenAssetKeys, groups);
+        collectWilduRewardsTravelImages("opendays", runtimeLists.opendays, forbiddenAssetKeys, groups);
+        collectWilduRewardsTravelImages("paydays", runtimeLists.paydays, forbiddenAssetKeys, groups);
+
+        collectWilduRewardsTravelImages("cache-events", cachedLists.events, forbiddenAssetKeys, groups);
+        collectWilduRewardsTravelImages("cache-opendays", cachedLists.opendays, forbiddenAssetKeys, groups);
+        collectWilduRewardsTravelImages("cache-paydays", cachedLists.paydays, forbiddenAssetKeys, groups);
+
+        const picked = [];
+        groups.forEach(function (group) {
+            if (!group || !Array.isArray(group.candidates) || !group.candidates.length) return;
+            picked.push(group.candidates[Math.floor(Math.random() * group.candidates.length)]);
+        });
+
+        if (!picked.length) return null;
+        return picked[Math.floor(Math.random() * picked.length)] || null;
+    }
+
+    function renderWilduRewardsWildWallRandomImage() {
         const box = document.getElementById("wildu-rewards-wildwall-random");
         if (!box) return;
 
         box.innerHTML = "";
 
         try {
-            if (typeof getWilduCachedImageCandidates !== "function") return;
+            const picked = pickWilduRewardsRandomWildWallImage();
+            if (!picked || !picked.url) return;
 
-            const images = await getWilduCachedImageCandidates({ max: 36 });
-            const first = Array.isArray(images) ? images.find(function (item) {
-                return item && item.url && wilduLooksLikeImageUrl(item.url);
-            }) : null;
-
-            if (!first || !first.url) return;
-
-            box.innerHTML = '<img class="wildu-rewards-random-image" src="' + escapeWilduHtml(first.url) + '" alt="" loading="lazy" aria-hidden="true">';
+            box.innerHTML = '<img class="wildu-rewards-random-image" src="' + escapeWilduHtml(picked.url) + '" alt="" loading="lazy" aria-hidden="true">';
         } catch (e) {
             console.warn("[WILDU REWARDS] Immagine WildWall random non disponibile:", e);
             box.innerHTML = "";
@@ -13870,13 +14216,13 @@ async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapsh
 
         return `
             <div class="wildu-reward-card" data-wildu-module-launcher="1" onclick="openWilduRuntimeResource('${safeLinkRisorsa}', ${audioParam}, false, '${safeGrado}', '${safeLinks}', ${moduleRev}, '${escapeWilduJsString(res.openMode || "module")}')">
+                <span class="wildu-reward-chevron" aria-hidden="true">↗</span>
                 <div class="wildu-reward-icon">${safeDisplayCategory}</div>
                 <div class="wildu-reward-body">
                     <div class="wildu-reward-title">${safeDisplayTitle}</div>
                     <div class="wildu-reward-desc">${safeDisplayDesc}</div>
                     <div class="wildu-reward-meta">
                         ${gradeChip}
-                        <span class="wildu-reward-open-chip">Apri ➔</span>
                     </div>
                 </div>
             </div>`;
