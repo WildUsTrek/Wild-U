@@ -1208,6 +1208,108 @@
     return normalizeSystemAudioUrl(value).toUpperCase() === 'STOP';
   }
 
+
+  const SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT = 70;
+
+  function normalizeSystemAudioVolumePercent(rawValue, fallbackValue) {
+    var fallback = Number.isFinite(Number(fallbackValue)) ? Number(fallbackValue) : SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT;
+    var raw = String(rawValue === undefined || rawValue === null ? '' : rawValue)
+      .trim()
+      .replace('%', '')
+      .replace(',', '.');
+
+    if (raw === '') return fallback;
+
+    var n = Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    if (n < 0) return 0;
+    if (n > 100) return 100;
+
+    // Regola Wildu: 70 = 70%, 1 = 1%, 0,7 = 0,7%.
+    // Qui salviamo sempre la percentuale umana; il client converte poi /100.
+    return n;
+  }
+
+  function getSystemAudioVolumeAlias(slotKey) {
+    var key = String(slotKey || '').trim();
+    var aliases = {
+      audio_musica: 'music',
+      audio_ambienza: 'ambience',
+      audio_xp: 'xp',
+      audio_reward: 'reward',
+      audio_levelup: 'levelup',
+      audio_spin: 'spin',
+      audio_end: 'end',
+      audio_radio: 'radio',
+      audio_rifugio: 'rifugio',
+      audio_wildwall: 'wildwall'
+    };
+
+    return aliases[key] || key.replace(/^audio_/, '');
+  }
+
+  function getSystemAudioClientVolumeField(slotKey) {
+    return String(slotKey || '').trim() + '_volume';
+  }
+
+  function getSystemAudioVolumePercent(item) {
+    item = item || {};
+
+    var runtimeItem = item.runtimeItem && typeof item.runtimeItem === 'object'
+      ? item.runtimeItem
+      : {};
+
+    var config = state.partnerClientConfig || {};
+    var runtimeDoc = state.systemAudio || {};
+    var volumes = runtimeDoc.volumes && typeof runtimeDoc.volumes === 'object'
+      ? runtimeDoc.volumes
+      : {};
+
+    var slotKey = String(item.key || runtimeItem.clientField || '').trim();
+    var alias = getSystemAudioVolumeAlias(slotKey);
+    var field = getSystemAudioClientVolumeField(slotKey);
+
+    var candidates = [
+      runtimeItem.volume,
+      runtimeItem.volumePercent,
+      runtimeItem.clientVolume,
+      volumes[slotKey],
+      volumes[alias],
+      config[field]
+    ];
+
+    if (slotKey === 'audio_musica') {
+      candidates.push(config.vol_musica, volumes.music);
+    }
+
+    if (slotKey === 'audio_ambienza') {
+      candidates.push(config.vol_ambienza, volumes.ambience);
+    }
+
+    var systemAudioVolumes = config.system_audio_volumes || config.audio_volumes || config.systemAudioVolumes || config.audioVolumes;
+    if (systemAudioVolumes && typeof systemAudioVolumes === 'object') {
+      candidates.push(systemAudioVolumes[slotKey], systemAudioVolumes[alias]);
+    }
+
+    for (var i = 0; i < candidates.length; i++) {
+      var raw = candidates[i];
+      if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+        return normalizeSystemAudioVolumePercent(raw, SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT);
+      }
+    }
+
+    return SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT;
+  }
+
+  function formatSystemAudioVolumeLabel(item) {
+    var vol = getSystemAudioVolumePercent(item);
+    var text = String(vol).replace('.', ',') + '%';
+
+    return '<span style="display:inline-flex; padding:4px 9px; border-radius:999px; background:rgba(124,199,255,.10); color:#bde4ff; font-size:12px; font-weight:900; white-space:nowrap;">' +
+      root.escapeHtml(text) +
+      '</span>';
+  }
+
   function getSystemAudioOrigin(value) {
     var url = normalizeSystemAudioUrl(value);
 
@@ -1306,12 +1408,12 @@
     var items = state.systemAudioItems || [];
 
     if (!state.currentUser) {
-      body.innerHTML = '<tr><td colspan="6" class="muted">Login richiesto.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="muted">Login richiesto.</td></tr>';
       return;
     }
 
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="6" class="muted">Audio App non ancora caricata. Premi “Ricarica Audio App”.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="muted">Audio App non ancora caricata. Premi “Ricarica Audio App”.</td></tr>';
       return;
     }
 
@@ -1325,6 +1427,7 @@
           '<td><code>' + root.escapeHtml(item.key) + '</code></td>' +
           '<td>' + root.escapeHtml(item.role) + '</td>' +
           '<td>' + getSystemAudioBadgeHtml(url) + '</td>' +
+          '<td>' + formatSystemAudioVolumeLabel(item) + '</td>' +
           '<td style="max-width:420px; word-break:break-all;">' +
             (url && !isStopAudioValue(url)
               ? '<a href="' + root.escapeHtml(url) + '" target="_blank" rel="noopener">' + root.escapeHtml(shortUrl) + '</a>'
@@ -1332,6 +1435,7 @@
           '</td>' +
           '<td>' +
             '<button class="small" type="button" data-edit-system-audio="' + root.escapeHtml(item.key) + '">Modifica</button> ' +
+            '<button class="small" type="button" data-edit-system-audio-volume="' + root.escapeHtml(item.key) + '">Scegli volume</button> ' +
             (url && !isStopAudioValue(url)
               ? '<button class="small" type="button" data-open-url="' + root.escapeHtml(url) + '">Ascolta</button>'
               : '') +
@@ -1471,6 +1575,9 @@
     var user = root.requireCurrentUser();
     var now = root.FieldValue.serverTimestamp();
 
+    var previousAudioItem = (getSystemAudioItem(slot.key) || {}).runtimeItem || {};
+    var previousAudioVolume = getSystemAudioVolumePercent(getSystemAudioItem(slot.key) || { key: slot.key, runtimeItem: previousAudioItem });
+
     var itemPatch = {
       label: slot.label,
       role: slot.role,
@@ -1482,6 +1589,9 @@
       sizeBytes: Number(file.size || 0),
       status: 'ACTIVE',
       cachePolicy: 'SYSTEM_AUDIO',
+      volume: previousAudioVolume,
+      volumePercent: previousAudioVolume,
+      volumeField: getSystemAudioClientVolumeField(slot.key),
       note: note || null,
       uploadedAt: now,
       uploadedByUid: user.uid,
@@ -1510,6 +1620,102 @@
     root.toast('Audio salvato e mirror client_config aggiornato: ' + slot.key, 'success');
 
     clearSystemAudioForm();
+    await refreshSystemAudio();
+  }
+
+  async function saveSystemAudioSlotVolume(slotKey) {
+    var slot = getSystemAudioSlot(slotKey);
+    if (!slot) {
+      throw new Error('Slot audio non trovato: ' + slotKey);
+    }
+
+    var item = getSystemAudioItem(slot.key) || {
+      key: slot.key,
+      label: slot.label,
+      runtimeItem: {}
+    };
+
+    var current = getSystemAudioVolumePercent(item);
+    var raw = window.prompt(
+      'Volume per "' + slot.label + '" (' + slot.key + ')\n\n' +
+      'Inserisci un valore da 0 a 100.\n' +
+      'Regola Wildu: 70 = 70%, 1 = 1%, 0,7 = 0,7%.',
+      String(current).replace('.', ',')
+    );
+
+    if (raw === null) return;
+
+    var volume = normalizeSystemAudioVolumePercent(raw, null);
+    if (!Number.isFinite(volume) || volume < 0 || volume > 100) {
+      throw new Error('Volume non valido. Usa un valore da 0 a 100. Esempi: 70, 1, 0,7, 0.');
+    }
+
+    var user = root.requireCurrentUser();
+    var now = root.FieldValue.serverTimestamp();
+    var alias = getSystemAudioVolumeAlias(slot.key);
+    var fieldName = getSystemAudioClientVolumeField(slot.key);
+
+    var runtimePayload = {
+      schemaVersion: 1,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      items: {},
+      volumes: {
+        legacyFormat: true,
+        updatedAt: now,
+        updatedByUid: user.uid,
+        updatedByEmail: user.email || null
+      }
+    };
+
+    runtimePayload.items[slot.key] = {
+      volume: volume,
+      volumePercent: volume,
+      volumeField: fieldName,
+      updatedAt: now,
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null
+    };
+
+    runtimePayload.volumes[slot.key] = volume;
+    runtimePayload.volumes[alias] = volume;
+
+    var existingVolumeObject = Object.assign(
+      {},
+      (state.partnerClientConfig && state.partnerClientConfig.system_audio_volumes) ||
+      (state.partnerClientConfig && state.partnerClientConfig.audio_volumes) ||
+      {}
+    );
+
+    existingVolumeObject[slot.key] = volume;
+    existingVolumeObject[alias] = volume;
+
+    var clientPatch = {
+      system_audio_fallback_volume: SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT,
+      system_audio_volumes: existingVolumeObject
+    };
+
+    clientPatch[fieldName] = volume;
+
+    if (slot.key === 'audio_musica') {
+      clientPatch.vol_musica = volume;
+      runtimePayload.volumes.music = volume;
+      existingVolumeObject.music = volume;
+    }
+
+    if (slot.key === 'audio_ambienza') {
+      clientPatch.vol_ambienza = volume;
+      runtimePayload.volumes.ambience = volume;
+      existingVolumeObject.ambience = volume;
+    }
+
+    await systemAudioRuntimeRef().set(runtimePayload, { merge: true });
+    await systemAudioClientConfigRef().set(clientPatch, { merge: true });
+
+    state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, clientPatch);
+
+    root.toast('Volume salvato per ' + slot.label + ': ' + String(volume).replace('.', ',') + '%.', 'success');
     await refreshSystemAudio();
   }
 
@@ -1552,13 +1758,45 @@
     var user = root.requireCurrentUser();
     var now = root.FieldValue.serverTimestamp();
 
+    var existingVolumeObject = Object.assign(
+      {},
+      (state.partnerClientConfig && state.partnerClientConfig.system_audio_volumes) ||
+      (state.partnerClientConfig && state.partnerClientConfig.audio_volumes) ||
+      {}
+    );
+
+    existingVolumeObject.audio_musica = volMusica;
+    existingVolumeObject.music = volMusica;
+    existingVolumeObject.audio_ambienza = volAmbienza;
+    existingVolumeObject.ambience = volAmbienza;
+
     await systemAudioRuntimeRef().set({
       schemaVersion: 1,
       updatedAt: now,
       updatedByUid: user.uid,
       updatedByEmail: user.email || null,
+      items: {
+        audio_musica: {
+          volume: volMusica,
+          volumePercent: volMusica,
+          volumeField: 'audio_musica_volume',
+          updatedAt: now,
+          updatedByUid: user.uid,
+          updatedByEmail: user.email || null
+        },
+        audio_ambienza: {
+          volume: volAmbienza,
+          volumePercent: volAmbienza,
+          volumeField: 'audio_ambienza_volume',
+          updatedAt: now,
+          updatedByUid: user.uid,
+          updatedByEmail: user.email || null
+        }
+      },
       volumes: {
+        audio_musica: volMusica,
         music: volMusica,
+        audio_ambienza: volAmbienza,
         ambience: volAmbienza,
         legacyFormat: true,
         updatedAt: now,
@@ -1569,12 +1807,20 @@
 
     await systemAudioClientConfigRef().set({
       vol_musica: volMusica,
-      vol_ambienza: volAmbienza
+      vol_ambienza: volAmbienza,
+      audio_musica_volume: volMusica,
+      audio_ambienza_volume: volAmbienza,
+      system_audio_fallback_volume: SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT,
+      system_audio_volumes: existingVolumeObject
     }, { merge: true });
 
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
       vol_musica: volMusica,
-      vol_ambienza: volAmbienza
+      vol_ambienza: volAmbienza,
+      audio_musica_volume: volMusica,
+      audio_ambienza_volume: volAmbienza,
+      system_audio_fallback_volume: SYSTEM_AUDIO_DEFAULT_VOLUME_PERCENT,
+      system_audio_volumes: existingVolumeObject
     });
 
     root.toast('Volumi Audio App salvati e mirror client_config aggiornato.', 'success');
@@ -2911,6 +3157,20 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     await refreshModuleVersions();
   }
 
+  async function repairModuleDuplicates() {
+    if (!root.RuntimeService || typeof root.RuntimeService.repairModules !== 'function') {
+      throw new Error('RuntimeService.repairModules non disponibile. Aggiorna runtime-service.js.');
+    }
+
+    var result = await root.RuntimeService.repairModules();
+    var removed = result && Number.isFinite(Number(result.removedCount))
+      ? Number(result.removedCount)
+      : 0;
+
+    root.toast('Riparazione duplicati moduli completata. Rimossi: ' + removed + '.', 'success');
+    await refreshModuleVersions();
+  }
+
   async function bumpSelectedGameVersion() {
     var url = root.$('#game-url').value;
     await root.RuntimeService.bumpGame(url, '');
@@ -3354,6 +3614,12 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     root.$('#btn-export-runtime-json').addEventListener('click', exportRuntimeJsonToDebug);
     
     root.$('#btn-sync-all-runtime').addEventListener('click', function () { run(syncAllRuntimeDebug); });
+
+    var repairModuleDuplicatesBtn = root.$('#btn-repair-module-duplicates');
+    if (repairModuleDuplicatesBtn) {
+      repairModuleDuplicatesBtn.addEventListener('click', function () { run(repairModuleDuplicates); });
+    }
+
     root.$('#btn-refresh-module-grades').addEventListener('click', function () { run(loadPartnerModuleContextQuietly); });
         var librarySettingsForm = document.getElementById('library-client-settings-form');
     if (librarySettingsForm) {
@@ -3470,6 +3736,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var editSystemAudioBtn = evt.target.closest('[data-edit-system-audio]');
       if (editSystemAudioBtn) return fillSystemAudioForm(editSystemAudioBtn.dataset.editSystemAudio);
+
+      var editSystemAudioVolumeBtn = evt.target.closest('[data-edit-system-audio-volume]');
+      if (editSystemAudioVolumeBtn) return run(saveSystemAudioSlotVolume, editSystemAudioVolumeBtn.dataset.editSystemAudioVolume);
 
       var buildReaderBtn = evt.target.closest('[data-build-pdf-reader]');
       if (buildReaderBtn) return run(buildPdfReaderForMedia, buildReaderBtn.dataset.buildPdfReader);

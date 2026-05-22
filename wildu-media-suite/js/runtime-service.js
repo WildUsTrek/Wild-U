@@ -55,18 +55,100 @@ function getRuntimeAliasKeys(key) {
   var clean = normalizeRuntimeUrl(key);
   if (!clean) return [];
 
+  var slash = clean.replace(/\/+$/, '') + '/';
+
   var aliases = [
     clean,
+    slash,
+    clean.replace(/\/+$/, ''),
     'wildu-media-suite/' + clean,
+    'wildu-media-suite/' + slash,
     '/Wild-U/' + clean,
-    './' + clean
+    '/Wild-U/' + slash,
+    './' + clean,
+    './' + slash
   ];
 
   return aliases
-    .map(normalizeRuntimeUrl)
-    .concat(['wildu-media-suite/' + clean])
+    .concat(aliases.map(normalizeRuntimeUrl))
     .filter(Boolean)
     .filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+}
+
+function runtimeTimestampMillis(value) {
+  try {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (Number.isFinite(Number(value.seconds))) return Number(value.seconds) * 1000;
+    if (Number.isFinite(Number(value))) return Number(value);
+  } catch (e) {}
+  return 0;
+}
+
+function chooseRuntimeWinner(entries, canonicalKey) {
+  if (!entries || !entries.length) return null;
+
+  var exact = entries.find(function (entry) { return entry.key === canonicalKey; });
+  if (exact) return exact;
+
+  var enabled = entries.filter(function (entry) {
+    var item = entry.item || {};
+    return item.enabled !== false && item.enabled !== 'false';
+  });
+
+  var pool = enabled.length ? enabled : entries;
+
+  pool.sort(function (a, b) {
+    return runtimeTimestampMillis((b.item || {}).updatedAt) - runtimeTimestampMillis((a.item || {}).updatedAt);
+  });
+
+  return pool[0];
+}
+
+function cleanupRuntimeBucket(bucket) {
+  bucket = bucket && typeof bucket === 'object' ? Object.assign({}, bucket) : {};
+
+  var groups = {};
+
+  Object.keys(bucket).forEach(function (key) {
+    var item = bucket[key] || {};
+    var canonical = normalizeRuntimeUrl(item.url || key);
+    if (!canonical) return;
+
+    if (!groups[canonical]) groups[canonical] = [];
+    groups[canonical].push({ key: key, item: item });
+  });
+
+  var cleaned = Object.assign({}, bucket);
+  var removed = [];
+  var repaired = [];
+
+  Object.keys(groups).forEach(function (canonical) {
+    var entries = groups[canonical];
+    if (!entries || entries.length <= 1) return;
+
+    var winner = chooseRuntimeWinner(entries, canonical);
+    if (!winner) return;
+
+    entries.forEach(function (entry) {
+      if (entry.key !== winner.key) {
+        removed.push({ from: entry.key, kept: canonical });
+        delete cleaned[entry.key];
+      }
+    });
+
+    var winnerItem = Object.assign({}, winner.item || {}, { url: canonical });
+    delete cleaned[winner.key];
+    cleaned[canonical] = winnerItem;
+
+    repaired.push({ canonical: canonical, keptFrom: winner.key, count: entries.length });
+  });
+
+  return {
+    bucket: cleaned,
+    removed: removed,
+    repaired: repaired
+  };
 }
 
   function uniqueList(value) {
@@ -174,13 +256,23 @@ async function writeEntry(ref, bucketName, url, entry) {
     ? Object.assign({}, current[bucketName])
     : {};
 
+  var cleanedInfo = cleanupRuntimeBucket(bucket);
+  bucket = cleanedInfo.bucket;
+
   /*
-    Rimuove SOLO i cloni equivalenti dello stesso record.
-    Esempio:
-    cleanUrl = modules/wildu-games.html
-    elimina eventuale bucket["wildu-media-suite/modules/wildu-games.html"]
-    ma NON elimina modules/wildu-games22.html.
+    Rimuove cloni equivalenti dello stesso record.
+    Non si basa più solo su una lista fissa di alias: se due chiavi diverse
+    normalizzano nello stesso URL tecnico, resta solo la chiave canonica.
+    Esempio: wildu-map-suite/wildu-map-viewer/ e wildu-map-suite/wildu-map-viewer
+    diventano un solo record. modules/wildu-games22.html resta distinto.
   */
+  Object.keys(bucket).forEach(function (existingKey) {
+    var existingItem = bucket[existingKey] || {};
+    if (existingKey !== cleanUrl && normalizeRuntimeUrl(existingItem.url || existingKey) === cleanUrl) {
+      delete bucket[existingKey];
+    }
+  });
+
   getRuntimeAliasKeys(cleanUrl).forEach(function (alias) {
     if (alias !== cleanUrl && Object.prototype.hasOwnProperty.call(bucket, alias)) {
       delete bucket[alias];
@@ -212,6 +304,61 @@ async function writeEntry(ref, bucketName, url, entry) {
 
   return bucket[cleanUrl];
 }
+
+  async function repairRuntime(ref, bucketName) {
+    var user = root.requireCurrentUser();
+    var docRef = ref();
+    var snap = await docRef.get();
+    var current = snap.exists ? (snap.data() || {}) : {};
+    var bucket = current[bucketName] && typeof current[bucketName] === 'object'
+      ? Object.assign({}, current[bucketName])
+      : {};
+
+    var cleanedInfo = cleanupRuntimeBucket(bucket);
+    var cleanedBucket = cleanedInfo.bucket;
+    var removedCount = cleanedInfo.removed.length;
+
+    var changed = removedCount > 0 || Object.keys(bucket).some(function (key) {
+      return !Object.prototype.hasOwnProperty.call(cleanedBucket, key);
+    });
+
+    if (!changed) {
+      return {
+        removedCount: 0,
+        removed: [],
+        repaired: [],
+        bucket: cleanedBucket
+      };
+    }
+
+    var nextDoc = Object.assign({}, current, {
+      schemaVersion: 1,
+      updatedAt: root.FieldValue.serverTimestamp(),
+      updatedByUid: user.uid,
+      updatedByEmail: user.email || null,
+      lastRepairAt: root.FieldValue.serverTimestamp(),
+      lastRepairRemovedCount: removedCount
+    });
+
+    nextDoc[bucketName] = cleanedBucket;
+
+    await docRef.set(nextDoc);
+
+    return {
+      removedCount: removedCount,
+      removed: cleanedInfo.removed,
+      repaired: cleanedInfo.repaired,
+      bucket: cleanedBucket
+    };
+  }
+
+  async function repairModules() {
+    return repairRuntime(moduleDocRef, 'modules');
+  }
+
+  async function repairGames() {
+    return repairRuntime(gameDocRef, 'games');
+  }
 
   async function listGames() {
     return readRuntime(gameDocRef, 'games');
@@ -354,6 +501,8 @@ async function writeEntry(ref, bucketName, url, entry) {
     saveModule: saveModule,
     bumpGame: bumpGame,
     bumpModule: bumpModule,
+    repairModules: repairModules,
+    repairGames: repairGames,
     seedDefaultGames: seedDefaultGames,
     seedDefaultModules: seedDefaultModules
   };
