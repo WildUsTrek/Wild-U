@@ -394,6 +394,17 @@ body::before {
     margin-top: 10px;
 }
 
+.wildu-trip-date-row > div {
+    min-width: 0;
+}
+
+.wildu-trip-date-row .wildu-trip-field {
+    min-width: 0;
+    max-width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
 .wildu-trip-date-label {
     color: #aaa;
     font-size: 11px;
@@ -1370,7 +1381,7 @@ body::before {
 
                     <div class="wildu-trip-filter-actions">
                         <button id="wildu-trip-filter-toggle" type="button" class="wildu-trip-action-btn" onclick="toggleTripFiltersPanel()" aria-expanded="false">⚙ Filtri</button>
-                        <button id="wildu-trip-sort-toggle" type="button" class="wildu-trip-action-btn wildu-trip-sort-btn" onclick="cycleTripSortMode()">📅 Data</button>
+                        <button id="wildu-trip-sort-toggle" type="button" class="wildu-trip-action-btn wildu-trip-sort-btn" onclick="cycleTripSortMode()">↕ Ordina: € ↑</button>
                     </div>
                 </div>
 
@@ -1378,7 +1389,7 @@ body::before {
 
                 <div id="wildu-trip-filter-panel" class="wildu-trip-filter-panel" style="display:none;">
                     <div class="wildu-trip-filter-grid">
-                        <input id="filter-title-input" class="wildu-trip-field" type="search" autocomplete="off" placeholder="🔎 Cerca per titolo o luogo" oninput="setTripTitleFilter(this.value)">
+                        <input id="filter-title-input" class="wildu-trip-field" type="search" autocomplete="off" placeholder="🔎 Cerca per titolo o luogo" oninput="setTripTitleFilter(this.value)" onkeydown="if(event.key==='Enter'){ setTripFiltersPanelOpen(false); this.blur(); }" onblur="setTripFiltersPanelOpen(false)">
                     </div>
 
                     <div class="wildu-filter-priority-wrap">
@@ -1394,8 +1405,8 @@ body::before {
 
                     <div class="wildu-trip-date-row">
                         <div>
-                            <div class="wildu-trip-date-label">Partenza vicina, massimo ±5 giorni</div>
-                            <input id="filter-date-near-input" class="wildu-trip-field" type="date" onchange="setTripNearDateFilter(this.value)">
+                            <div class="wildu-trip-date-label">Partenza</div>
+                            <input id="filter-date-near-input" class="wildu-trip-field" type="text" inputmode="none" autocomplete="off" placeholder="scegli giorno partenza" onfocus="prepareWilduDatePickerInput(this)" onblur="blurWilduDatePickerInput(this)" onchange="setTripNearDateFilter(this.value)">
                         </div>
                         <button type="button" class="wildu-trip-reset-wide" onclick="resetFilters()">Reset filtri</button>
                     </div>
@@ -1525,7 +1536,7 @@ body::before {
 
             <div id="wildu-od-filter-panel" class="wildu-trip-filter-panel" style="display:none;">
                 <div class="wildu-trip-filter-grid">
-                    <input id="filter-od-title-input" class="wildu-trip-field" type="search" autocomplete="off" placeholder="🔎 Cerca Open Day per titolo o luogo" oninput="setODTitleFilter(this.value)">
+                    <input id="filter-od-title-input" class="wildu-trip-field" type="search" autocomplete="off" placeholder="🔎 Cerca Open Day per titolo o luogo" oninput="setODTitleFilter(this.value)" onkeydown="if(event.key==='Enter'){ setODFiltersPanelOpen(false); this.blur(); }" onblur="setODFiltersPanelOpen(false)">
                 </div>
 
                 <div class="wildu-filter-priority-wrap">
@@ -1541,8 +1552,8 @@ body::before {
 
                 <div class="wildu-trip-date-row">
                     <div>
-                        <div class="wildu-trip-date-label">Partenza vicina, massimo ±5 giorni</div>
-                        <input id="filter-od-date-near-input" class="wildu-trip-field" type="date" onchange="setODNearDateFilter(this.value)">
+                        <div class="wildu-trip-date-label">Partenza</div>
+                        <input id="filter-od-date-near-input" class="wildu-trip-field" type="text" inputmode="none" autocomplete="off" placeholder="scegli giorno partenza" onfocus="prepareWilduDatePickerInput(this)" onblur="blurWilduDatePickerInput(this)" onchange="setODNearDateFilter(this.value)">
                     </div>
                     <button type="button" class="wildu-trip-reset-wide" onclick="resetODFilters()">Reset filtri</button>
                 </div>
@@ -1775,6 +1786,7 @@ body::before {
         In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
     </div>
     <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
+</div>
 </div>
 
 
@@ -9963,9 +9975,40 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     }
 
     function getTripSortLabel() {
-        if (activeFilters.sortMode === 'priceAsc') return '€ ↑';
-        if (activeFilters.sortMode === 'priceDesc') return '€ ↓';
-        return '📅 Data';
+        // Il bottone mostra l'azione successiva, non lo stato attuale.
+        if (activeFilters.sortMode === 'date') return '↕ Ordina: € ↑';
+        if (activeFilters.sortMode === 'priceAsc') return '↕ Ordina: € ↓';
+        return '↕ Ordina: Data';
+    }
+
+    function getTripSortActionAriaLabel() {
+        if (activeFilters.sortMode === 'date') return 'Ordina per prezzo crescente';
+        if (activeFilters.sortMode === 'priceAsc') return 'Ordina per prezzo decrescente';
+        return 'Ordina per data di partenza';
+    }
+
+    function prepareWilduDatePickerInput(input) {
+        if (!input) return;
+        try { input.type = 'date'; } catch (e) {}
+        try {
+            if (typeof input.showPicker === 'function') {
+                setTimeout(function () { input.showPicker(); }, 0);
+            }
+        } catch (e) {}
+    }
+
+    function blurWilduDatePickerInput(input) {
+        if (!input) return;
+        if (!String(input.value || '').trim()) {
+            try { input.type = 'text'; } catch (e) {}
+        }
+    }
+
+    function syncWilduDateInputPlaceholder(input, value) {
+        if (!input) return;
+        const clean = String(value || '').trim();
+        try { input.type = clean ? 'date' : 'text'; } catch (e) {}
+        if (input.value !== clean) input.value = clean;
     }
 
     function setTripFiltersPanelOpen(open) {
@@ -9986,6 +10029,7 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     function setFilter(type, val) {
         activeFilters[type] = val;
         filterTrips();
+        setTripFiltersPanelOpen(false);
     }
 
     function setTripTitleFilter(value) {
@@ -9996,6 +10040,7 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     function setTripNearDateFilter(value) {
         activeFilters.nearDate = String(value || '').trim();
         filterTrips();
+        if (activeFilters.nearDate) setTripFiltersPanelOpen(false);
     }
 
     function cycleTripSortMode() {
@@ -10025,13 +10070,13 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         if (titleInput && titleInput.value !== (activeFilters.title || '')) titleInput.value = activeFilters.title || '';
 
         const dateInput = document.getElementById('filter-date-near-input');
-        if (dateInput && dateInput.value !== (activeFilters.nearDate || '')) dateInput.value = activeFilters.nearDate || '';
+        syncWilduDateInputPlaceholder(dateInput, activeFilters.nearDate || '');
 
         const sortBtn = document.getElementById('wildu-trip-sort-toggle');
         if (sortBtn) {
             sortBtn.textContent = getTripSortLabel();
             sortBtn.classList.toggle('active', activeFilters.sortMode !== 'date');
-            sortBtn.setAttribute('aria-label', activeFilters.sortMode === 'date' ? 'Ordina per data' : 'Ordina per prezzo');
+            sortBtn.setAttribute('aria-label', getTripSortActionAriaLabel());
         }
 
         const toggle = document.getElementById('wildu-trip-filter-toggle');
@@ -10277,9 +10322,7 @@ function filterTrips() {
         const badge = document.getElementById('trip-count-badge');
         const activeCount = countTripActiveFilters();
         if (badge) {
-            badge.innerText = activeCount
-                ? filtered.length + " Avventure filtrate"
-                : filtered.length + " Avventure disponibili";
+            badge.innerText = filtered.length + " avventure";
         }
 
         renderTripFilterSummary(filtered.length);
@@ -10690,6 +10733,7 @@ renderUnifiedDetailMapFromItem(ev);
     function setODFilter(type, val) {
         activeODFilters[type] = val;
         renderOpenDays();
+        setODFiltersPanelOpen(false);
     }
 
     function setODTitleFilter(value) {
@@ -10700,6 +10744,7 @@ renderUnifiedDetailMapFromItem(ev);
     function setODNearDateFilter(value) {
         activeODFilters.nearDate = String(value || '').trim();
         renderOpenDays();
+        if (activeODFilters.nearDate) setODFiltersPanelOpen(false);
     }
 
     function countODActiveFilters() {
@@ -10722,7 +10767,7 @@ renderUnifiedDetailMapFromItem(ev);
         if (titleInput && titleInput.value !== (activeODFilters.title || '')) titleInput.value = activeODFilters.title || '';
 
         const dateInput = document.getElementById('filter-od-date-near-input');
-        if (dateInput && dateInput.value !== (activeODFilters.nearDate || '')) dateInput.value = activeODFilters.nearDate || '';
+        syncWilduDateInputPlaceholder(dateInput, activeODFilters.nearDate || '');
 
         const toggle = document.getElementById('wildu-od-filter-toggle');
         if (toggle) {
@@ -10835,9 +10880,7 @@ renderUnifiedDetailMapFromItem(ev);
 
         const activeCount = countODActiveFilters();
         if(badge) {
-            badge.innerText = activeCount
-                ? processedList.length + " Open Day filtrati"
-                : processedList.length + " Open Day disponibili";
+            badge.innerText = processedList.length + " Open Day";
         }
 
         renderODFilterSummary(processedList.length);
