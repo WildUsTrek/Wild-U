@@ -188,34 +188,47 @@ body::before {
 
 .wildu-trip-filter-top {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(72px, 1fr) auto;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+}
+
+.wildu-trip-filter-top > div:first-child {
+    min-width: 0;
+    overflow: hidden;
 }
 
 #wildu-trip-filter-shell .trip-counter,
 .wildu-trip-filter-count {
     color: #fff;
-    font-size: 15px;
+    font-size: clamp(12px, 3.3vw, 15px);
     font-weight: 950;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
     line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .wildu-trip-filter-status {
     color: #aaa;
-    font-size: 11px;
+    font-size: clamp(9px, 2.55vw, 11px);
     font-weight: 800;
     margin-top: 4px;
     line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .wildu-trip-filter-actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 7px;
+    gap: 6px;
+    min-width: 0;
+    flex-wrap: nowrap;
 }
 
 .wildu-trip-action-btn {
@@ -224,13 +237,15 @@ body::before {
     border: 1px solid rgba(212,175,55,0.42);
     background: rgba(212,175,55,0.10);
     color: var(--w-gold);
-    padding: 8px 11px;
-    font-size: 11px;
+    padding: 8px clamp(7px, 2.2vw, 11px);
+    font-size: clamp(9px, 2.55vw, 11px);
     font-weight: 950;
     text-transform: uppercase;
     white-space: nowrap;
     cursor: pointer;
     box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .wildu-trip-action-btn.active {
@@ -244,6 +259,7 @@ body::before {
     border-color: rgba(120,190,255,0.44);
     background: rgba(120,190,255,0.10);
     color: #9ed6ff;
+    max-width: clamp(112px, 34vw, 148px);
 }
 
 .wildu-trip-sort-btn.active {
@@ -388,8 +404,8 @@ body::before {
 
 .wildu-trip-date-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
     align-items: center;
     margin-top: 10px;
 }
@@ -415,13 +431,16 @@ body::before {
 }
 
 .wildu-trip-reset-wide {
-    min-height: 42px;
-    padding: 10px 12px;
-    border-radius: 14px;
+    min-height: 38px;
+    width: fit-content;
+    max-width: 100%;
+    justify-self: start;
+    padding: 9px 12px;
+    border-radius: 999px;
     background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.14);
     color: #eee;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 950;
     text-transform: uppercase;
     cursor: pointer;
@@ -445,10 +464,6 @@ body::before {
 
     .wildu-trip-filter-grid.two,
     .wildu-filter-priority-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .wildu-trip-date-row {
         grid-template-columns: 1fr;
     }
 }
@@ -1376,7 +1391,7 @@ body::before {
                 <div class="wildu-trip-filter-top">
                     <div style="min-width:0;">
                         <div id="trip-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento...</div>
-                        <div id="wildu-trip-filter-status" class="wildu-trip-filter-status">Nessun filtro attivo</div>
+                        <div id="wildu-trip-filter-status" class="wildu-trip-filter-status">ordinati: data</div>
                     </div>
 
                     <div class="wildu-trip-filter-actions">
@@ -1524,7 +1539,7 @@ body::before {
             <div class="wildu-trip-filter-top">
                 <div style="min-width:0;">
                     <div id="openday-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento Open Day...</div>
-                    <div id="wildu-od-filter-status" class="wildu-trip-filter-status">Nessun filtro attivo</div>
+                    <div id="wildu-od-filter-status" class="wildu-trip-filter-status">mese e regione consigliati</div>
                 </div>
 
                 <div class="wildu-trip-filter-actions">
@@ -9981,6 +9996,12 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         return '↕ Ordina: Data';
     }
 
+    function getTripSortStatusLabel() {
+        if (activeFilters.sortMode === 'priceAsc') return 'ordinati: prezzo crescente';
+        if (activeFilters.sortMode === 'priceDesc') return 'ordinati: prezzo decrescente';
+        return 'ordinati: data';
+    }
+
     function getTripSortActionAriaLabel() {
         if (activeFilters.sortMode === 'date') return 'Ordina per prezzo crescente';
         if (activeFilters.sortMode === 'priceAsc') return 'Ordina per prezzo decrescente';
@@ -10077,12 +10098,13 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
             sortBtn.textContent = getTripSortLabel();
             sortBtn.classList.toggle('active', activeFilters.sortMode !== 'date');
             sortBtn.setAttribute('aria-label', getTripSortActionAriaLabel());
+            sortBtn.setAttribute('title', getTripSortActionAriaLabel());
         }
 
         const toggle = document.getElementById('wildu-trip-filter-toggle');
         if (toggle) {
             const count = countTripActiveFilters();
-            toggle.textContent = count ? `⚙ Filtri · ${count}` : '⚙ Filtri';
+            toggle.textContent = '⚙ Filtri';
             toggle.classList.toggle('active', tripFiltersPanelOpen || count > 0);
         }
     }
@@ -10101,12 +10123,7 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         const chips = document.getElementById('wildu-trip-active-chips');
 
         if (status) {
-            const sortText = activeFilters.sortMode === 'priceAsc'
-                ? 'ordinati per prezzo crescente'
-                : activeFilters.sortMode === 'priceDesc'
-                    ? 'ordinati per prezzo decrescente'
-                    : 'ordinati per partenza vicina';
-            status.textContent = activeCount ? `${activeCount} filtri attivi · ${sortText}` : `Nessun filtro attivo · ${sortText}`;
+            status.textContent = getTripSortStatusLabel();
         }
 
         if (!chips) {
@@ -10322,7 +10339,7 @@ function filterTrips() {
         const badge = document.getElementById('trip-count-badge');
         const activeCount = countTripActiveFilters();
         if (badge) {
-            badge.innerText = filtered.length + " avventure";
+            badge.innerText = filtered.length + " trips";
         }
 
         renderTripFilterSummary(filtered.length);
@@ -10772,7 +10789,7 @@ renderUnifiedDetailMapFromItem(ev);
         const toggle = document.getElementById('wildu-od-filter-toggle');
         if (toggle) {
             const count = countODActiveFilters();
-            toggle.textContent = count ? `⚙ Filtri · ${count}` : '⚙ Filtri';
+            toggle.textContent = '⚙ Filtri';
             toggle.classList.toggle('active', odFiltersPanelOpen || count > 0);
         }
     }
@@ -10791,9 +10808,7 @@ renderUnifiedDetailMapFromItem(ev);
         const chips = document.getElementById('wildu-od-active-chips');
 
         if (status) {
-            status.textContent = activeCount
-                ? `${activeCount} filtri attivi · mese e regione consigliati`
-                : 'Nessun filtro attivo · usa mese e regione per trovare subito l’Open Day giusto';
+            status.textContent = 'mese e regione consigliati';
         }
 
         if (!chips) {
