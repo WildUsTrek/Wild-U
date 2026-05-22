@@ -3096,6 +3096,9 @@ const WilduMediaClient = (() => {
         const description = escapeHtml(item.description || item.Descrizione || "");
         const fileUrl = safeString(item.fileUrl);
         const duration = item.durationSeconds ? `${Math.round(Number(item.durationSeconds) / 60)} min` : "";
+        const radioVolume = typeof getWilduRadioAudioVolume === "function"
+            ? getWilduRadioAudioVolume(item)
+            : 0.70;
 
         if (!fileUrl) return "";
 
@@ -3142,6 +3145,7 @@ const WilduMediaClient = (() => {
 
                     <audio
                         data-wildu-radio-audio="1"
+                        data-wildu-radio-volume="${escapeHtml(String(radioVolume))}"
                         controls
                         preload="none"
                         controlsList="nodownload noplaybackrate"
@@ -3170,7 +3174,24 @@ const WilduMediaClient = (() => {
 
             audio.dataset.wilduExclusiveBound = "1";
 
+            function applyRadioVolumeGuard() {
+                try {
+                    const raw = audio.dataset.wilduRadioVolume || String(
+                        typeof getWilduRadioAudioVolume === "function" ? getWilduRadioAudioVolume() : 0.70
+                    );
+
+                    const n = Number(raw);
+                    const target = Number.isFinite(n) ? clampWildVolume(n) : 0.70;
+                    audio.volume = target;
+                    audio.muted = target <= 0;
+                } catch (e) {}
+            }
+
+            applyRadioVolumeGuard();
+
             audio.addEventListener("play", function () {
+                applyRadioVolumeGuard();
+
                 audios.forEach(other => {
                     if (!other || other === audio) return;
 
@@ -4453,6 +4474,19 @@ function requireLoggedAccess(reason, options = {}) {
     let audioInited = false;
     let FIXED_VOL_AMB = 0;
     let FIXED_VOL_MUS = 0;
+
+    // WILDU AUDIO VOLUME GUARD — micro-patch conservativa.
+    // Tutti i suoni di sistema riconosciuti hanno ora un volume target.
+    // I valori metadata sono percentuali umane: 70 = 70%, 1 = 1%, 0 = muto.
+    // Se manca un metadata volume specifico, il fallback globale è 70%.
+    const WILDU_SYSTEM_AUDIO_FALLBACK_PERCENT = 70;
+    let FIXED_VOL_XP = 0;
+    let FIXED_VOL_REWARD = 0;
+    let FIXED_VOL_LEVELUP = 0;
+    let FIXED_VOL_SPIN = 0;
+    let FIXED_VOL_END = 0;
+    let FIXED_VOL_RADIO = 0;
+
     let fadeIntervals = new Map();
     let currentModuleAudio = null;
 
@@ -4570,12 +4604,71 @@ function requireLoggedAccess(reason, options = {}) {
         return wildAudioUserMutedForSession === true || wildModuleAudioMode !== "default";
     }
 
-    function hasWildDefaultBackgroundActive() {
+    function isWilduDefaultAudioTrackRequired(key) {
         try {
-            if (wildBufferAudioLoops && wildBufferAudioLoops.has("music")) return true;
-            if (wildBufferAudioLoops && wildBufferAudioLoops.has("ambience")) return true;
-            if (aMus && !aMus.paused) return true;
-            if (aAmb && !aAmb.paused) return true;
+            if (key === "music") return !!(aMus && aMus.src && FIXED_VOL_MUS > 0);
+            if (key === "ambience") return !!(aAmb && aAmb.src && FIXED_VOL_AMB > 0);
+        } catch (e) {}
+
+        return false;
+    }
+
+    function isWilduDefaultAudioTrackActive(key) {
+        try {
+            if (wildBufferAudioLoops && wildBufferAudioLoops.has(key)) return true;
+
+            if (key === "music") {
+                return !!(aMus && !aMus.paused && !aMus.ended);
+            }
+
+            if (key === "ambience") {
+                return !!(aAmb && !aAmb.paused && !aAmb.ended);
+            }
+        } catch (e) {}
+
+        return false;
+    }
+
+    function getWilduDefaultAudioCompletenessSnapshot() {
+        const musicRequired = isWilduDefaultAudioTrackRequired("music");
+        const ambienceRequired = isWilduDefaultAudioTrackRequired("ambience");
+        const musicActive = isWilduDefaultAudioTrackActive("music");
+        const ambienceActive = isWilduDefaultAudioTrackActive("ambience");
+        const somethingRequired = musicRequired || ambienceRequired;
+        const somethingActive = musicActive || ambienceActive;
+
+        return {
+            musicRequired,
+            ambienceRequired,
+            musicActive,
+            ambienceActive,
+            somethingRequired,
+            somethingActive,
+            fullyActive: !!(
+                somethingRequired &&
+                (!musicRequired || musicActive) &&
+                (!ambienceRequired || ambienceActive)
+            ),
+            partiallyActive: !!(somethingRequired && somethingActive && !(
+                (!musicRequired || musicActive) &&
+                (!ambienceRequired || ambienceActive)
+            ))
+        };
+    }
+
+    function isWilduDefaultAudioFullyActive() {
+        try {
+            return getWilduDefaultAudioCompletenessSnapshot().fullyActive === true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function hasWildDefaultBackgroundActive() {
+        // Funzione storica: resta volutamente "almeno un ramo attivo" per compatibilità.
+        // Per decidere se l'audio default è davvero completo usare isWilduDefaultAudioFullyActive().
+        try {
+            return getWilduDefaultAudioCompletenessSnapshot().somethingActive === true;
         } catch (e) {}
 
         return false;
@@ -4715,8 +4808,17 @@ function requireLoggedAccess(reason, options = {}) {
         // la musica/ambienza naturale della app.
         if (wildModuleAudioMode !== "default") return;
 
-        // Se musica/ambienza sono già attive, non richiamare startAudioMixer a ogni click.
-        if (audioInited === true && hasWildDefaultBackgroundActive()) return;
+        // Se TUTTI i rami default richiesti sono già attivi, non richiamare startAudioMixer a ogni click.
+        // Se invece è attiva solo musica o solo ambienza, lasciamo passare il retry conservativo.
+        if (audioInited === true && isWilduDefaultAudioFullyActive()) return;
+
+        if (audioInited === true && hasWildDefaultBackgroundActive()) {
+            try {
+                wilduAudioDebugLog("GLOBAL_GESTURE_RETRY_INCOMPLETE_DEFAULT_AUDIO", {
+                    completeness: getWilduDefaultAudioCompletenessSnapshot()
+                });
+            } catch (e) {}
+        }
 
         startAudioMixer({ reason: "global-user-gesture" });
     }
@@ -5769,6 +5871,12 @@ function collectWilduAudioDebugSnapshot() {
             hasPlayableSystemAudio: typeof hasWilduPlayableSystemAudio === "function"
                 ? hasWilduPlayableSystemAudio()
                 : false,
+            defaultAudioCompleteness: typeof getWilduDefaultAudioCompletenessSnapshot === "function"
+                ? getWilduDefaultAudioCompletenessSnapshot()
+                : null,
+            systemVolumeTargets: typeof getWilduSystemAudioVolumeSnapshot === "function"
+                ? getWilduSystemAudioVolumeSnapshot()
+                : null,
             lastAction: wildAudioLastAction || "",
             lastError: wildAudioLastError || ""
         },
@@ -5777,11 +5885,11 @@ function collectWilduAudioDebugSnapshot() {
             music: inspectWilduAudioElement(aMus, "music", FIXED_VOL_MUS),
             ambience: inspectWilduAudioElement(aAmb, "ambience", FIXED_VOL_AMB),
             module: inspectWilduAudioElement(currentModuleAudio, "module", null),
-            xp: inspectWilduAudioElement(sXP, "xp", null),
-            reward: inspectWilduAudioElement(sRew, "reward", null),
-            levelup: inspectWilduAudioElement(sLvl, "levelup", null),
-            spin: inspectWilduAudioElement(sSpin, "spin", null),
-            end: inspectWilduAudioElement(sEnd, "end", null)
+            xp: inspectWilduAudioElement(sXP, "xp", FIXED_VOL_XP),
+            reward: inspectWilduAudioElement(sRew, "reward", FIXED_VOL_REWARD),
+            levelup: inspectWilduAudioElement(sLvl, "levelup", FIXED_VOL_LEVELUP),
+            spin: inspectWilduAudioElement(sSpin, "spin", FIXED_VOL_SPIN),
+            end: inspectWilduAudioElement(sEnd, "end", FIXED_VOL_END)
         },
 
         recentEvents: wildAudioDebugEvents.slice(-50)
@@ -9667,7 +9775,7 @@ if (profKeyEl) {
                 
                 xpFill.style.transition = 'none'; xpFill.style.width = startP + "%"; await new Promise(r => setTimeout(r, 50));
                 xpFill.style.transition = 'width 2.5s cubic-bezier(0.1, 0, 0.3, 1)'; xpFill.style.width = endP + "%"; xpPercentText.innerText = Math.floor(endP) + "%";
-                sXP.currentTime = 0; sXP.play().catch(() => {}); await new Promise(r => setTimeout(r, 2600)); sXP.pause();
+                await playWilduSystemSound(sXP, 'xp', { reset: true }); await new Promise(r => setTimeout(r, 2600)); stopWilduSystemSound(sXP);
                 if (isLevelUpStep) {
                     profGrado.innerText = nextLevel.nome; profIcon.innerText = GRADI_MAP[nextLevel.nome] ? GRADI_MAP[nextLevel.nome].ico : "🌿";
                     showLevelUpCelebration(nextLevel.nome); localStorage.setItem('lastG_' + wildUserKey, nextLevel.nome);
@@ -9697,7 +9805,7 @@ if (profKeyEl) {
 
         const btn = document.getElementById('wheel-button'); const msg = document.getElementById('spirit-msg');
         btn.disabled = true; document.getElementById('wheel-result-container').innerHTML = "";
-        msg.innerText = "Gli spiriti del bosco stanno decidendo..."; sSpin.currentTime = 0; sSpin.play();
+        msg.innerText = "Gli spiriti del bosco stanno decidendo..."; playWilduSystemSound(sSpin, 'spin', { reset: true });
         
         let currentWheelRotation = parseInt(document.getElementById('wheel-graphics').style.transform.replace(/[^0-9]/g, '') || 0);
         document.getElementById('wheel-graphics').style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
@@ -9721,7 +9829,7 @@ if (profKeyEl) {
             document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
             
             setTimeout(() => {
-                sSpin.pause(); sEnd.play(); msg.innerText = "Verdetto spiriti del bosco:";
+                stopWilduSystemSound(sSpin); playWilduSystemSound(sEnd, 'end', { reset: true }); msg.innerText = "Verdetto spiriti del bosco:";
                 localStorage.setItem('ruota_count_' + oggi, giocateOggi + 1);
                 
                 if (winAmount > 0) {
@@ -9759,6 +9867,223 @@ if (profKeyEl) {
         if (n > 100) n = 100;
 
         return n / 100;
+    }
+
+    function firstWilduVolumeValue(values) {
+        const list = Array.isArray(values) ? values : [];
+
+        for (const value of list) {
+            if (value === undefined || value === null) continue;
+
+            if (typeof value === "object") {
+                try {
+                    const nested = firstWilduVolumeValue(Object.values(value));
+                    if (nested !== undefined && nested !== null && String(nested).trim() !== "") return nested;
+                } catch (e) {}
+                continue;
+            }
+
+            if (String(value).trim() !== "") return value;
+        }
+
+        return undefined;
+    }
+
+    function readWilduAudioVolumeObject(raw) {
+        if (!raw) return null;
+
+        if (typeof raw === "object") return raw;
+
+        try {
+            const parsed = JSON.parse(String(raw));
+            return parsed && typeof parsed === "object" ? parsed : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getWilduAudioVolumeBucket() {
+        try {
+            const assets = (typeof WILD_ASSETS !== "undefined" && WILD_ASSETS) ? WILD_ASSETS : {};
+
+            return readWilduAudioVolumeObject(
+                assets.system_audio_volumes ||
+                assets.systemAudioVolumes ||
+                assets.audio_volumes ||
+                assets.audioVolumes ||
+                assets.volume_audio ||
+                assets.Volume_Audio ||
+                null
+            ) || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function getWilduGlobalAudioFallbackVolumeRaw() {
+        try {
+            const assets = (typeof WILD_ASSETS !== "undefined" && WILD_ASSETS) ? WILD_ASSETS : {};
+
+            return firstWilduVolumeValue([
+                assets.system_audio_fallback_volume,
+                assets.systemAudioFallbackVolume,
+                assets.audio_fallback_volume,
+                assets.audioFallbackVolume,
+                assets.fallback_audio_volume,
+                assets.fallbackAudioVolume,
+                assets.default_audio_volume,
+                assets.defaultAudioVolume,
+                WILDU_SYSTEM_AUDIO_FALLBACK_PERCENT
+            ]);
+        } catch (e) {
+            return WILDU_SYSTEM_AUDIO_FALLBACK_PERCENT;
+        }
+    }
+
+    function getWilduSystemAudioVolumeRaw(kind, flatKeys, legacyFallbacks) {
+        const cleanKind = String(kind || "").trim();
+        const assets = (typeof WILD_ASSETS !== "undefined" && WILD_ASSETS) ? WILD_ASSETS : {};
+        const bucket = getWilduAudioVolumeBucket();
+        const keys = Array.isArray(flatKeys) ? flatKeys : [];
+        const fallbacks = Array.isArray(legacyFallbacks) ? legacyFallbacks : [];
+
+        const bucketValues = [];
+        if (bucket && cleanKind) {
+            bucketValues.push(bucket[cleanKind]);
+            bucketValues.push(bucket["audio_" + cleanKind]);
+            bucketValues.push(bucket[cleanKind + "_volume"]);
+            bucketValues.push(bucket[cleanKind + "Volume"]);
+            bucketValues.push(bucket["vol_" + cleanKind]);
+        }
+
+        return firstWilduVolumeValue([
+            ...bucketValues,
+            ...keys.map(key => assets[key]),
+            ...fallbacks,
+            getWilduGlobalAudioFallbackVolumeRaw()
+        ]);
+    }
+
+    function getWilduSystemAudioVolume(kind, flatKeys, legacyFallbacks) {
+        return sanitizeVolume(getWilduSystemAudioVolumeRaw(kind, flatKeys, legacyFallbacks));
+    }
+
+    function getWilduSystemSoundTargetVolume(label) {
+        const clean = String(label || "").toLowerCase();
+
+        if (clean === "xp") return FIXED_VOL_XP;
+        if (clean === "reward" || clean === "rew") return FIXED_VOL_REWARD;
+        if (clean === "levelup" || clean === "level") return FIXED_VOL_LEVELUP;
+        if (clean === "spin") return FIXED_VOL_SPIN;
+        if (clean === "end") return FIXED_VOL_END;
+        if (clean === "radio") return FIXED_VOL_RADIO;
+        if (clean === "music" || clean === "musica") return FIXED_VOL_MUS;
+        if (clean === "ambience" || clean === "ambienza") return FIXED_VOL_AMB;
+
+        return sanitizeVolume(getWilduGlobalAudioFallbackVolumeRaw());
+    }
+
+    function getWilduSystemAudioVolumeSnapshot() {
+        return {
+            fallbackPercent: WILDU_SYSTEM_AUDIO_FALLBACK_PERCENT,
+            globalFallbackVolume: sanitizeVolume(getWilduGlobalAudioFallbackVolumeRaw()),
+            music: FIXED_VOL_MUS,
+            ambience: FIXED_VOL_AMB,
+            xp: FIXED_VOL_XP,
+            reward: FIXED_VOL_REWARD,
+            levelup: FIXED_VOL_LEVELUP,
+            spin: FIXED_VOL_SPIN,
+            end: FIXED_VOL_END,
+            radio: FIXED_VOL_RADIO
+        };
+    }
+
+    function applyWilduSystemSoundVolume(audio, label) {
+        if (!audio) return 0;
+
+        const target = clampWildVolume(getWilduSystemSoundTargetVolume(label));
+
+        try {
+            audio.muted = target <= 0;
+            audio.volume = target;
+        } catch (e) {}
+
+        return target;
+    }
+
+    function playWilduSystemSound(audio, label, options = {}) {
+        if (!audio || !audio.src) return Promise.resolve(false);
+
+        try {
+            applyWilduSystemSoundVolume(audio, label);
+
+            if (options.reset === true) {
+                try { audio.currentTime = 0; } catch (e) {}
+            }
+
+            const p = audio.play();
+            if (p && typeof p.catch === "function") {
+                return p
+                    .then(() => true)
+                    .catch((e) => {
+                        try {
+                            wilduAudioDebugLog("SYSTEM_SOUND_PLAY_BLOCKED", {
+                                label: label || "",
+                                error: e && e.message ? e.message : String(e),
+                                targetVolume: getWilduSystemSoundTargetVolume(label)
+                            });
+                        } catch (_) {}
+                        return false;
+                    });
+            }
+
+            return Promise.resolve(true);
+        } catch (e) {
+            try {
+                wilduAudioDebugLog("SYSTEM_SOUND_PLAY_FAILED", {
+                    label: label || "",
+                    error: e && e.message ? e.message : String(e),
+                    targetVolume: getWilduSystemSoundTargetVolume(label)
+                });
+            } catch (_) {}
+
+            return Promise.resolve(false);
+        }
+    }
+
+    function stopWilduSystemSound(audio) {
+        if (!audio) return;
+
+        try { audio.pause(); } catch (e) {}
+    }
+
+    function getWilduAudioItemVolume(item, fallbackVolume) {
+        const fallback = Number.isFinite(Number(fallbackVolume)) ? Number(fallbackVolume) : getWilduSystemSoundTargetVolume("radio");
+
+        try {
+            const data = item && typeof item === "object" ? item : {};
+            const raw = firstWilduVolumeValue([
+                data.audioVolume,
+                data.audio_volume,
+                data.volumeAudio,
+                data.volume_audio,
+                data.mediaVolume,
+                data.media_volume,
+                data.volume,
+                data.Volume,
+                data.vol,
+                data.Vol,
+                fallback * 100
+            ]);
+
+            return sanitizeVolume(raw);
+        } catch (e) {
+            return clampWildVolume(fallback);
+        }
+    }
+
+    function getWilduRadioAudioVolume(item) {
+        return getWilduAudioItemVolume(item || {}, FIXED_VOL_RADIO || sanitizeVolume(getWilduGlobalAudioFallbackVolumeRaw()));
     }
 
     function addWilduSystemAudioCorsVersion(url) {
@@ -9818,35 +10143,74 @@ if (profKeyEl) {
 
     function configureWilduSystemAudioFromAssets(sourceLabel) {
         try {
-            FIXED_VOL_MUS = sanitizeVolume(
-                pickWilduVolumeValue(WILD_ASSETS.vol_musica, WILD_ASSETS.val_c13)
+            // Micro-patch volume guard:
+            // ogni audio di sistema riconosciuto usa metadata volume dedicato,
+            // con fallback globale 70% se il campo non esiste.
+            FIXED_VOL_MUS = getWilduSystemAudioVolume(
+                "music",
+                ["audio_musica_volume", "audioMusicaVolume", "vol_audio_musica", "volume_audio_musica", "music_volume", "volume_music", "vol_musica"],
+                [WILD_ASSETS.vol_musica, WILD_ASSETS.val_c13]
             );
 
-            FIXED_VOL_AMB = sanitizeVolume(
-                pickWilduVolumeValue(WILD_ASSETS.vol_ambienza, WILD_ASSETS.val_c14)
+            FIXED_VOL_AMB = getWilduSystemAudioVolume(
+                "ambience",
+                ["audio_ambienza_volume", "audioAmbienzaVolume", "vol_audio_ambienza", "volume_audio_ambienza", "ambience_volume", "volume_ambience", "vol_ambienza"],
+                [WILD_ASSETS.vol_ambienza, WILD_ASSETS.val_c14]
+            );
+
+            FIXED_VOL_XP = getWilduSystemAudioVolume(
+                "xp",
+                ["audio_xp_volume", "audioXpVolume", "vol_audio_xp", "volume_audio_xp", "xp_volume", "volume_xp", "vol_xp"]
+            );
+
+            FIXED_VOL_REWARD = getWilduSystemAudioVolume(
+                "reward",
+                ["audio_reward_volume", "audioRewardVolume", "audio_rew_volume", "vol_audio_reward", "volume_audio_reward", "reward_volume", "volume_reward", "vol_reward"]
+            );
+
+            FIXED_VOL_LEVELUP = getWilduSystemAudioVolume(
+                "levelup",
+                ["audio_levelup_volume", "audioLevelupVolume", "vol_audio_levelup", "volume_audio_levelup", "levelup_volume", "volume_levelup", "vol_levelup"]
+            );
+
+            FIXED_VOL_SPIN = getWilduSystemAudioVolume(
+                "spin",
+                ["audio_spin_volume", "audioSpinVolume", "vol_audio_spin", "volume_audio_spin", "spin_volume", "volume_spin", "vol_spin"]
+            );
+
+            FIXED_VOL_END = getWilduSystemAudioVolume(
+                "end",
+                ["audio_end_volume", "audioEndVolume", "vol_audio_end", "volume_audio_end", "end_volume", "volume_end", "vol_end"]
+            );
+
+            FIXED_VOL_RADIO = getWilduSystemAudioVolume(
+                "radio",
+                ["audio_radio_volume", "audioRadioVolume", "vol_audio_radio", "volume_audio_radio", "radio_volume", "volume_radio", "vol_radio"]
             );
 
             if (WILD_ASSETS.audio_xp) {
                 prepareWilduNativeAudioSource(sXP, WILD_ASSETS.audio_xp);
-                sXP.volume = 0.5;
+                applyWilduSystemSoundVolume(sXP, "xp");
             }
 
             if (WILD_ASSETS.audio_reward) {
                 prepareWilduNativeAudioSource(sRew, WILD_ASSETS.audio_reward);
+                applyWilduSystemSoundVolume(sRew, "reward");
             }
 
             if (WILD_ASSETS.audio_levelup) {
                 prepareWilduNativeAudioSource(sLvl, WILD_ASSETS.audio_levelup);
+                applyWilduSystemSoundVolume(sLvl, "levelup");
             }
 
             if (WILD_ASSETS.audio_spin) {
                 prepareWilduNativeAudioSource(sSpin, WILD_ASSETS.audio_spin);
-                sSpin.volume = 0.2;
+                applyWilduSystemSoundVolume(sSpin, "spin");
             }
 
             if (WILD_ASSETS.audio_end) {
                 prepareWilduNativeAudioSource(sEnd, WILD_ASSETS.audio_end);
-                sEnd.volume = 0.4;
+                applyWilduSystemSoundVolume(sEnd, "end");
             }
 
             let linkMusica = WILD_ASSETS.musica || WILD_ASSETS.audio_musica;
@@ -9869,7 +10233,8 @@ if (profKeyEl) {
                 musicCrossOrigin: aMus ? aMus.crossOrigin : '',
                 ambienceCrossOrigin: aAmb ? aAmb.crossOrigin : '',
                 FIXED_VOL_MUS,
-                FIXED_VOL_AMB
+                FIXED_VOL_AMB,
+                systemVolumes: getWilduSystemAudioVolumeSnapshot()
             });
 
             try {
@@ -9891,8 +10256,8 @@ if (profKeyEl) {
 
     function showToast(msg) { var t = document.getElementById('toast-msg'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3500); }
     function processXPBuffer() { if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); } }
-    function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; sRew.play(); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
-    function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; sLvl.play(); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
+    function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; playWilduSystemSound(sRew, 'reward', { reset: true }); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
+    function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; playWilduSystemSound(sLvl, 'levelup', { reset: true }); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
 
 
     
@@ -12882,21 +13247,38 @@ function syncWilduAudioNavDockPosition() {
         return false;
     }
 
-    // Fuori modulo: se musica/ambienza sono già attive, non rifare fetch/decode/start.
+    // Fuori modulo: salta il lavoro solo se TUTTI i rami richiesti sono già attivi.
+    // Caso corretto dal microfix: se ambienza è attiva ma musica no, NON dichiarare already-active.
     if (
         wildModuleAudioMode === "default" &&
         audioInited === true &&
-        hasWildDefaultBackgroundActive() &&
+        isWilduDefaultAudioFullyActive() &&
         options.forceUserToggle !== true
     ) {
         wilduAudioDebugLog('START_MIXER_SKIPPED_ALREADY_ACTIVE', {
             reason: options.reason || '',
+            completeness: getWilduDefaultAudioCompletenessSnapshot(),
             bufferMusic: getWilduBufferLoopInfo("music"),
             bufferAmbience: getWilduBufferLoopInfo("ambience")
         });
 
         updateWilduAudioToggleButton();
         return true;
+    }
+
+    if (
+        wildModuleAudioMode === "default" &&
+        audioInited === true &&
+        hasWildDefaultBackgroundActive() &&
+        !isWilduDefaultAudioFullyActive() &&
+        options.forceUserToggle !== true
+    ) {
+        wilduAudioDebugLog('START_MIXER_RETRY_INCOMPLETE_DEFAULT_AUDIO', {
+            reason: options.reason || '',
+            completeness: getWilduDefaultAudioCompletenessSnapshot(),
+            bufferMusic: getWilduBufferLoopInfo("music"),
+            bufferAmbience: getWilduBufferLoopInfo("ambience")
+        });
     }
 
     // Prima cosa assoluta nel gesto utente:
@@ -12992,19 +13374,38 @@ function syncWilduAudioNavDockPosition() {
             }
         }
 
-        if (playedSomething) {
+        const defaultAudioCompleteness = getWilduDefaultAudioCompletenessSnapshot();
+        const mixerComplete = currentModuleAudio && currentModuleAudio.src
+            ? playedSomething
+            : defaultAudioCompleteness.fullyActive === true;
+
+        if (mixerComplete) {
             hideWilduAudioUnlockButton();
             wildAudioNeedsUserResume = false;
             wildAudioNeedsUserStart = false;
 
             wilduAudioDebugLog('START_MIXER_OK', {
                 snapshot: collectWilduAudioDebugSnapshot(),
+                completeness: defaultAudioCompleteness,
                 bufferMusic: getWilduBufferLoopInfo("music"),
                 bufferAmbience: getWilduBufferLoopInfo("ambience")
             });
+        } else if (playedSomething) {
+            wildAudioNeedsUserResume = true;
+
+            wilduAudioDebugLog('START_MIXER_PARTIAL_DEFAULT_AUDIO', {
+                snapshot: collectWilduAudioDebugSnapshot(),
+                completeness: defaultAudioCompleteness,
+                bufferMusic: getWilduBufferLoopInfo("music"),
+                bufferAmbience: getWilduBufferLoopInfo("ambience")
+            });
+
+            // Non dichiariamo OK se manca un ramo richiesto: il prossimo gesto/restore ritenterà.
+            markWilduAudioNeedsUserStart('partial-default-audio-after-start');
         } else {
             wilduAudioDebugLog('START_MIXER_NOTHING_PLAYED', {
-                snapshot: collectWilduAudioDebugSnapshot()
+                snapshot: collectWilduAudioDebugSnapshot(),
+                completeness: defaultAudioCompleteness
             });
 
             markWilduAudioNeedsUserStart('nothing-played-after-start');
@@ -13231,8 +13632,9 @@ function syncWilduAudioNavDockPosition() {
                     !!(aAmb && aAmb.src && FIXED_VOL_AMB > 0);
 
                 // Per iPhone/WebAudio, musica e ambienza possono essere buffer loop,
-                // non HTMLAudioElement in play. Quindi controlliamo anche i buffer.
-                somethingActuallyPlaying = hasWildDefaultBackgroundActive();
+                // non HTMLAudioElement in play. Qui però serve completezza: se manca
+                // uno dei rami richiesti, il retry deve riprovare.
+                somethingActuallyPlaying = isWilduDefaultAudioFullyActive();
             }
 
             if (somethingShouldPlay && !somethingActuallyPlaying) {
