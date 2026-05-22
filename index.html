@@ -14543,7 +14543,7 @@ function writeAmazonProductsCache(products) {
 // ==========================================
 // 🎒 WILDU NEGOZIO — TAB AMAZON CACHE-FIRST
 // ==========================================
-const WILDU_SHOP_BOOK_WORDS_RE = /(^|[	\s,.;:!?()[\]{}"'«»_\-])(libro|libri|manuale|manuali|guida|guide|romanzo|romanzi|volume|volumi|raccolta|raccolte|approfondimento|approfondimenti|saggio|saggi|atlante|atlanti|ebook|e-book|kindle|tascabile|racconto|racconti|diario|diari|enciclopedia|enciclopedie)(?=$|[	\s,.;:!?()[\]{}"'«»_\-])/i;
+const WILDU_SHOP_BOOK_WORDS_RE = /(^|[\s,.;:!?()[\]{}"'«»_\-])(libro|libri|manuale|manuali|guida|guide|romanzo|romanzi|volume|volumi|raccolta|raccolte|approfondimento|approfondimenti|saggio|saggi|atlante|atlanti|ebook|e-book|kindle|tascabile|racconto|racconti|diario|diari|enciclopedia|enciclopedie)(?=$|[\s,.;:!?()[\]{}"'«»_\-])/i;
 
 function escapeWilduShopHtml(value) {
     return String(value == null ? '' : value)
@@ -14632,7 +14632,7 @@ function normalizeWilduShopSearchText(value) {
     return String(value || '')
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
+        .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, ' ')
         .trim();
 }
