@@ -171,6 +171,297 @@ body::before {
         .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px; border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative; } .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
         .filter-section-dropdowns { display: flex; gap: 10px; margin-bottom: 20px; } .pill-select { flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px; font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat: no-repeat; background-position: right 15px center; background-size: 12px; } .pill-select:focus { border-color: var(--w-green); box-shadow: 0 0 10px var(--w-green); }
         .btn-reset { background: #333; color: var(--w-sub); border: none; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
+
+
+/* --- WILDU VIAGGI FILTER BAR V6: compatta, dichiarativa, mobile-safe --- */
+.wildu-trip-filter-shell {
+    margin: 0 0 18px 0;
+    padding: 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background:
+        radial-gradient(circle at top left, rgba(45,90,39,0.22), transparent 46%),
+        linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.022));
+    box-shadow: 0 8px 22px rgba(0,0,0,0.34);
+    box-sizing: border-box;
+}
+
+.wildu-trip-filter-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+}
+
+#wildu-trip-filter-shell .trip-counter,
+.wildu-trip-filter-count {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    line-height: 1.15;
+}
+
+.wildu-trip-filter-status {
+    color: #aaa;
+    font-size: 11px;
+    font-weight: 800;
+    margin-top: 4px;
+    line-height: 1.25;
+}
+
+.wildu-trip-filter-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.wildu-trip-action-btn {
+    min-height: 36px;
+    border-radius: 999px;
+    border: 1px solid rgba(212,175,55,0.42);
+    background: rgba(212,175,55,0.10);
+    color: var(--w-gold);
+    padding: 8px 11px;
+    font-size: 11px;
+    font-weight: 950;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.wildu-trip-action-btn.active {
+    background: var(--w-gold);
+    color: #000;
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 0 14px rgba(212,175,55,0.24);
+}
+
+.wildu-trip-sort-btn {
+    border-color: rgba(120,190,255,0.44);
+    background: rgba(120,190,255,0.10);
+    color: #9ed6ff;
+}
+
+.wildu-trip-sort-btn.active {
+    background: #9ed6ff;
+    color: #04101a;
+}
+
+.wildu-trip-active-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 7px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 11px 1px 2px 1px;
+    margin-top: 7px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.wildu-trip-active-chips::-webkit-scrollbar {
+    display: none;
+}
+
+.wildu-trip-chip {
+    flex: 0 0 auto;
+    border: 1px solid rgba(212,175,55,0.34);
+    background: rgba(0,0,0,0.25);
+    color: #f0f0f0;
+    border-radius: 999px;
+    padding: 7px 10px;
+    font-size: 11px;
+    font-weight: 900;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.wildu-trip-chip.reset {
+    color: #000;
+    background: var(--w-gold);
+    border-color: var(--w-gold);
+}
+
+.wildu-trip-filter-panel {
+    margin-top: 13px;
+    padding-top: 13px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.wildu-trip-filter-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.wildu-trip-filter-grid.two {
+    grid-template-columns: 1fr 1fr;
+}
+
+.wildu-filter-priority-wrap {
+    margin-top: 10px;
+    padding: 11px;
+    border-radius: 17px;
+    border: 1px solid rgba(212,175,55,0.18);
+    background:
+        radial-gradient(circle at top left, rgba(212,175,55,0.12), transparent 45%),
+        rgba(0,0,0,0.16);
+}
+
+.wildu-filter-priority-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 1px 8px 1px;
+    color: var(--w-gold);
+    font-size: 10px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+}
+
+.wildu-filter-priority-label span:last-child {
+    color: #9dcf9d;
+    font-size: 9px;
+    opacity: 0.95;
+}
+
+.wildu-filter-priority-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.wildu-od-filter-shell {
+    border-color: rgba(0,170,255,0.18);
+    background:
+        radial-gradient(circle at top left, rgba(0,170,255,0.18), transparent 46%),
+        linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.022));
+}
+
+.wildu-od-filter-shell .wildu-trip-action-btn {
+    border-color: rgba(120,190,255,0.42);
+    background: rgba(120,190,255,0.10);
+    color: #9ed6ff;
+}
+
+.wildu-od-filter-shell .wildu-trip-action-btn.active {
+    background: #9ed6ff;
+    color: #04101a;
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 0 14px rgba(120,190,255,0.20);
+}
+
+.wildu-od-filter-shell .wildu-filter-priority-label {
+    color: #9ed6ff;
+}
+
+.wildu-od-filter-shell .wildu-trip-chip.reset {
+    background: #9ed6ff;
+    border-color: #9ed6ff;
+    color: #04101a;
+}
+
+.wildu-trip-field {
+    width: 100%;
+    min-height: 42px;
+    background: #202020;
+    border: 1px solid rgba(255,255,255,0.13);
+    color: #fff;
+    padding: 11px 13px;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 800;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.wildu-trip-field:focus {
+    border-color: rgba(212,175,55,0.70);
+    box-shadow: 0 0 12px rgba(212,175,55,0.16);
+}
+
+.wildu-trip-date-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.wildu-trip-date-label {
+    color: #aaa;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin: 2px 0 6px 2px;
+}
+
+.wildu-trip-reset-wide {
+    min-height: 42px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: #eee;
+    font-size: 11px;
+    font-weight: 950;
+    text-transform: uppercase;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+@media (max-width: 430px) {
+    .wildu-trip-filter-shell {
+        padding: 12px;
+        border-radius: 18px;
+    }
+
+    .wildu-trip-filter-actions {
+        gap: 5px;
+    }
+
+    .wildu-trip-action-btn {
+        padding: 8px 9px;
+        font-size: 10px;
+    }
+
+    .wildu-trip-filter-grid.two,
+    .wildu-filter-priority-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .wildu-trip-date-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.wildu-profile-community-divider {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin: 28px 0 16px 0;
+    color: #8fcfff;
+    font-size: 10px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.95;
+}
+
+.wildu-profile-community-divider::before,
+.wildu-profile-community-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1 1 auto;
+    background: linear-gradient(90deg, transparent, rgba(120,190,255,0.32), transparent);
+}
         .price-box { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; padding-top: 12px; border-top: 1px solid #333; } .price-prime-wrapper { text-align: right; } .xp-reward-label { font-size: 12px; font-weight: 800; color: var(--w-gold); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; } .price-prime { background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(212, 175, 55, 0.1)); padding: 10px 16px; border-radius: 12px; border: 1px solid var(--w-gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); } .prime-val { font-size: 26px; font-weight: 900; color: var(--w-gold); } .price-standard { font-size: 16px; opacity: 0.6; font-weight: 600; }
         .btn-group { display: flex; gap: 10px; margin-top: 20px; } .btn-book { flex: 2; background: var(--w-green); color: white; border: none; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; cursor: pointer; } .btn-link { flex: 1; background: #333; color: #fff; border: 1px solid #444; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 900; text-transform: uppercase; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; }
         .btn-prenota { background: linear-gradient(135deg, #d4af37 0%, #e5c158 50%, #d4af37 100%) !important; color: #000 !important; box-shadow: 0 0 12px rgba(212, 175, 55, 0.4); border: 1px solid #f1c40f !important; transition: 0.2s; } .btn-prenota:hover { box-shadow: 0 0 25px rgba(212, 175, 55, 0.9); filter: brightness(1.15); } .btn-prenota:active { box-shadow: 0 0 20px rgba(212, 175, 55, 0.8); transform: scale(0.98); } .btn-action-glow { background: var(--w-green) !important; color: #fff !important; box-shadow: 0 0 12px var(--w-green) !important; border: none !important; } .btn-disabled { background: #444 !important; color: #888 !important; box-shadow: none !important; border: 1px solid #555 !important; cursor: not-allowed; }
@@ -1070,14 +1361,45 @@ body::before {
     <div id="sec-events">
 
         <div id="events-catalog-view">
-            <div class="filter-header">
-                <button class="btn-reset" onclick="resetFilters()" style="margin:0;">Reset Filtri</button>
-                <div id="trip-count-badge" class="trip-counter">Caricamento...</div>
-            </div>
+            <div id="wildu-trip-filter-shell" class="wildu-trip-filter-shell">
+                <div class="wildu-trip-filter-top">
+                    <div style="min-width:0;">
+                        <div id="trip-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento...</div>
+                        <div id="wildu-trip-filter-status" class="wildu-trip-filter-status">Nessun filtro attivo</div>
+                    </div>
 
-            <div class="filter-section-dropdowns">
-                <select id="filter-months-select" class="pill-select" onchange="setFilter('month', this.value)"></select>
-                <select id="filter-regions-select" class="pill-select" onchange="setFilter('region', this.value)"></select>
+                    <div class="wildu-trip-filter-actions">
+                        <button id="wildu-trip-filter-toggle" type="button" class="wildu-trip-action-btn" onclick="toggleTripFiltersPanel()" aria-expanded="false">⚙ Filtri</button>
+                        <button id="wildu-trip-sort-toggle" type="button" class="wildu-trip-action-btn wildu-trip-sort-btn" onclick="cycleTripSortMode()">📅 Data</button>
+                    </div>
+                </div>
+
+                <div id="wildu-trip-active-chips" class="wildu-trip-active-chips" style="display:none;"></div>
+
+                <div id="wildu-trip-filter-panel" class="wildu-trip-filter-panel" style="display:none;">
+                    <div class="wildu-trip-filter-grid">
+                        <input id="filter-title-input" class="wildu-trip-field" type="search" autocomplete="off" placeholder="🔎 Cerca per titolo o luogo" oninput="setTripTitleFilter(this.value)">
+                    </div>
+
+                    <div class="wildu-filter-priority-wrap">
+                        <div class="wildu-filter-priority-label">
+                            <span>Filtri consigliati</span>
+                            <span>Mese + Regione</span>
+                        </div>
+                        <div class="wildu-filter-priority-grid">
+                            <select id="filter-months-select" class="wildu-trip-field" onchange="setFilter('month', this.value)"></select>
+                            <select id="filter-regions-select" class="wildu-trip-field" onchange="setFilter('region', this.value)"></select>
+                        </div>
+                    </div>
+
+                    <div class="wildu-trip-date-row">
+                        <div>
+                            <div class="wildu-trip-date-label">Partenza vicina, massimo ±5 giorni</div>
+                            <input id="filter-date-near-input" class="wildu-trip-field" type="date" onchange="setTripNearDateFilter(this.value)">
+                        </div>
+                        <button type="button" class="wildu-trip-reset-wide" onclick="resetFilters()">Reset filtri</button>
+                    </div>
+                </div>
             </div>
 
 <button
@@ -1187,13 +1509,44 @@ body::before {
     </div>
 
     <div id="sec-free" class="hidden">
-        <div class="filter-header">
-            <button class="btn-reset" onclick="resetODFilters()" style="margin:0;">Reset Filtri</button>
-            <div id="openday-count-badge" class="trip-counter" style="color: #fff; border-color: #fff;">Caricamento Open Day...</div>
-        </div>
-        <div class="filter-section-dropdowns">
-            <select id="filter-od-months-select" class="pill-select"></select>
-            <select id="filter-od-regions-select" class="pill-select"></select>
+        <div id="wildu-od-filter-shell" class="wildu-trip-filter-shell wildu-od-filter-shell">
+            <div class="wildu-trip-filter-top">
+                <div style="min-width:0;">
+                    <div id="openday-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento Open Day...</div>
+                    <div id="wildu-od-filter-status" class="wildu-trip-filter-status">Nessun filtro attivo</div>
+                </div>
+
+                <div class="wildu-trip-filter-actions">
+                    <button id="wildu-od-filter-toggle" type="button" class="wildu-trip-action-btn" onclick="toggleODFiltersPanel()" aria-expanded="false">⚙ Filtri</button>
+                </div>
+            </div>
+
+            <div id="wildu-od-active-chips" class="wildu-trip-active-chips" style="display:none;"></div>
+
+            <div id="wildu-od-filter-panel" class="wildu-trip-filter-panel" style="display:none;">
+                <div class="wildu-trip-filter-grid">
+                    <input id="filter-od-title-input" class="wildu-trip-field" type="search" autocomplete="off" placeholder="🔎 Cerca Open Day per titolo o luogo" oninput="setODTitleFilter(this.value)">
+                </div>
+
+                <div class="wildu-filter-priority-wrap">
+                    <div class="wildu-filter-priority-label">
+                        <span>Filtri consigliati</span>
+                        <span>Mese + Regione</span>
+                    </div>
+                    <div class="wildu-filter-priority-grid">
+                        <select id="filter-od-months-select" class="wildu-trip-field" onchange="setODFilter('month', this.value)"></select>
+                        <select id="filter-od-regions-select" class="wildu-trip-field" onchange="setODFilter('region', this.value)"></select>
+                    </div>
+                </div>
+
+                <div class="wildu-trip-date-row">
+                    <div>
+                        <div class="wildu-trip-date-label">Partenza vicina, massimo ±5 giorni</div>
+                        <input id="filter-od-date-near-input" class="wildu-trip-field" type="date" onchange="setODNearDateFilter(this.value)">
+                    </div>
+                    <button type="button" class="wildu-trip-reset-wide" onclick="resetODFilters()">Reset filtri</button>
+                </div>
+            </div>
         </div>
         <div id="openday-list"></div>
     </div>
@@ -1401,6 +1754,8 @@ body::before {
         <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Scrivici direttamente su WhatsApp per qualsiasi dubbio o informazione sui nostri viaggi.</p>
         <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
     </div>
+
+    <div class="wildu-profile-community-divider"><span>Community Wild-U</span></div>
 
     <div class="wildu-profile-social-card" onclick="document.getElementById('social-action-modal').style.display='flex'">
         <div class="wildu-profile-social-main">
@@ -9492,9 +9847,16 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
  // ==========================================
     // CATALOGO E PRENOTAZIONI (FUSIONE VIAGGI + HIKE)
     // ==========================================
-    let activeFilters = { month: 'Tutti', region: 'Tutte' };
-    
-        function buildFilters() {
+    let activeFilters = {
+        month: 'Tutti',
+        region: 'Tutte',
+        title: '',
+        nearDate: '',
+        sortMode: 'date'
+    };
+    let tripFiltersPanelOpen = false;
+
+    function buildFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
         const mergedCatalog = [...allTrips, ...allPayDays];
 
@@ -9510,23 +9872,241 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         const regionsRaw = [...new Set(mergedCatalog.map(t => String(t.Regione || t.regione || 'Italia').trim().toUpperCase()))].sort();
         const rSel = document.getElementById('filter-regions-select');
         if (rSel) rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
+
+        syncTripFilterControls();
     }
 
-    function setFilter(type, val) { activeFilters[type] = val; filterTrips(); }
+    function normalizeTripFilterText(value) {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
 
-    function resetFilters() { 
-        activeFilters.month = 'Tutti'; 
-        activeFilters.region = 'Tutte'; 
+    function getTripTitleSearchHaystack(item) {
+        item = item || {};
+        return normalizeTripFilterText([
+            item.Titolo,
+            item.titolo,
+            item.title,
+            item.Nome,
+            item.nome,
+            item.name,
+            item.Descrizione,
+            item.descrizione,
+            item.description,
+            item.desc,
+            item.Regione,
+            item.regione,
+            item.area,
+            item.Area,
+            item.Luogo,
+            item.luogo,
+            item.location,
+            item.luogoNome,
+            item["Luogo Nome"],
+            item["Luogo Ritrovo"],
+            item["Luogo Link"],
+            item["Luogo Link Maps"],
+            item.START,
+            item.start,
+            item.ritrovo && item.ritrovo.luogo,
+            item.ritrovo && item.ritrovo.luogoNome,
+            item.ritrovo && item.ritrovo.regione,
+            item.ritrovo && item.ritrovo.area,
+            item.tipo,
+            item.Tipo,
+            item.categoria,
+            item.Categoria
+        ].filter(Boolean).join(' '));
+    }
 
-        if (document.getElementById('filter-months-select')) {
-            document.getElementById('filter-months-select').value = 'Tutti';
+    function getTripSafeDateString(item) {
+        const raw = item["Data inizio"] || item["Data Inizio"] || item.dataInizio || '';
+        if (!raw) return '';
+        const parts = String(raw).split('/');
+        if (parts.length === 3) return raw;
+        const y = item.Anno || new Date().getFullYear();
+        return `${raw}/${y}`;
+    }
+
+    function parseTripDateForFilter(item) {
+        const safeDate = getTripSafeDateString(item);
+        return safeDate ? parseItalianDate(safeDate) : new Date(8640000000000000);
+    }
+
+    function getTripPriceValue(item) {
+        const hasOfferta = item && item["Offerta Attiva"] === true;
+        const prezzoBase = item && (item["Prezzo Prime"] || item.prezzo_std || item.Prezzo || item["Prezzo (€)"] || item.prezzo || '');
+        const prezzoEarly = item && (item["Prezzo Early"] || prezzoBase || '');
+        const raw = String(hasOfferta ? prezzoEarly : prezzoBase || '').trim();
+        if (!raw) return Number.POSITIVE_INFINITY;
+
+        const clean = raw
+            .replace(/gratis|gratuito|free/ig, '0')
+            .replace(/[^0-9,.-]+/g, '')
+            .replace(/\.(?=\d{3}(\D|$))/g, '')
+            .replace(',', '.');
+
+        const n = parseFloat(clean);
+        return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+    }
+
+    function formatTripDateChip(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        const parts = raw.split('-');
+        if (parts.length !== 3) return raw;
+        return `${parts[2]}/${parts[1]}`;
+    }
+
+    function getTripSortLabel() {
+        if (activeFilters.sortMode === 'priceAsc') return '€ ↑';
+        if (activeFilters.sortMode === 'priceDesc') return '€ ↓';
+        return '📅 Data';
+    }
+
+    function setTripFiltersPanelOpen(open) {
+        tripFiltersPanelOpen = open === true;
+        const panel = document.getElementById('wildu-trip-filter-panel');
+        const toggle = document.getElementById('wildu-trip-filter-toggle');
+        if (panel) panel.style.display = tripFiltersPanelOpen ? 'block' : 'none';
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', tripFiltersPanelOpen ? 'true' : 'false');
+            toggle.classList.toggle('active', tripFiltersPanelOpen || countTripActiveFilters() > 0);
+        }
+    }
+
+    function toggleTripFiltersPanel() {
+        setTripFiltersPanelOpen(!tripFiltersPanelOpen);
+    }
+
+    function setFilter(type, val) {
+        activeFilters[type] = val;
+        filterTrips();
+    }
+
+    function setTripTitleFilter(value) {
+        activeFilters.title = String(value || '').trim();
+        filterTrips();
+    }
+
+    function setTripNearDateFilter(value) {
+        activeFilters.nearDate = String(value || '').trim();
+        filterTrips();
+    }
+
+    function cycleTripSortMode() {
+        if (activeFilters.sortMode === 'date') activeFilters.sortMode = 'priceAsc';
+        else if (activeFilters.sortMode === 'priceAsc') activeFilters.sortMode = 'priceDesc';
+        else activeFilters.sortMode = 'date';
+        filterTrips();
+    }
+
+    function countTripActiveFilters() {
+        let n = 0;
+        if (activeFilters.month && activeFilters.month !== 'Tutti') n++;
+        if (activeFilters.region && activeFilters.region !== 'Tutte') n++;
+        if (String(activeFilters.title || '').trim()) n++;
+        if (String(activeFilters.nearDate || '').trim()) n++;
+        return n;
+    }
+
+    function syncTripFilterControls() {
+        const mSel = document.getElementById('filter-months-select');
+        if (mSel) mSel.value = activeFilters.month || 'Tutti';
+
+        const rSel = document.getElementById('filter-regions-select');
+        if (rSel) rSel.value = activeFilters.region || 'Tutte';
+
+        const titleInput = document.getElementById('filter-title-input');
+        if (titleInput && titleInput.value !== (activeFilters.title || '')) titleInput.value = activeFilters.title || '';
+
+        const dateInput = document.getElementById('filter-date-near-input');
+        if (dateInput && dateInput.value !== (activeFilters.nearDate || '')) dateInput.value = activeFilters.nearDate || '';
+
+        const sortBtn = document.getElementById('wildu-trip-sort-toggle');
+        if (sortBtn) {
+            sortBtn.textContent = getTripSortLabel();
+            sortBtn.classList.toggle('active', activeFilters.sortMode !== 'date');
+            sortBtn.setAttribute('aria-label', activeFilters.sortMode === 'date' ? 'Ordina per data' : 'Ordina per prezzo');
         }
 
-        if (document.getElementById('filter-regions-select')) {
-            document.getElementById('filter-regions-select').value = 'Tutte';
+        const toggle = document.getElementById('wildu-trip-filter-toggle');
+        if (toggle) {
+            const count = countTripActiveFilters();
+            toggle.textContent = count ? `⚙ Filtri · ${count}` : '⚙ Filtri';
+            toggle.classList.toggle('active', tripFiltersPanelOpen || count > 0);
+        }
+    }
+
+    function removeTripFilter(kind) {
+        if (kind === 'month') activeFilters.month = 'Tutti';
+        if (kind === 'region') activeFilters.region = 'Tutte';
+        if (kind === 'title') activeFilters.title = '';
+        if (kind === 'nearDate') activeFilters.nearDate = '';
+        filterTrips();
+    }
+
+    function renderTripFilterSummary(filteredCount) {
+        const activeCount = countTripActiveFilters();
+        const status = document.getElementById('wildu-trip-filter-status');
+        const chips = document.getElementById('wildu-trip-active-chips');
+
+        if (status) {
+            const sortText = activeFilters.sortMode === 'priceAsc'
+                ? 'ordinati per prezzo crescente'
+                : activeFilters.sortMode === 'priceDesc'
+                    ? 'ordinati per prezzo decrescente'
+                    : 'ordinati per partenza vicina';
+            status.textContent = activeCount ? `${activeCount} filtri attivi · ${sortText}` : `Nessun filtro attivo · ${sortText}`;
         }
 
-        filterTrips(); 
+        if (!chips) {
+            syncTripFilterControls();
+            return;
+        }
+
+        const parts = [];
+        if (activeFilters.month && activeFilters.month !== 'Tutti') {
+            const monthLabel = new Date(2026, parseInt(activeFilters.month, 10) - 1).toLocaleString('it-IT', { month: 'long' });
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeTripFilter('month')">${monthLabel} ×</button>`);
+        }
+        if (activeFilters.region && activeFilters.region !== 'Tutte') {
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeTripFilter('region')">${String(activeFilters.region).replace(/</g, '&lt;')} ×</button>`);
+        }
+        if (String(activeFilters.title || '').trim()) {
+            const title = String(activeFilters.title).trim().replace(/</g, '&lt;');
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeTripFilter('title')">“${title}” ×</button>`);
+        }
+        if (String(activeFilters.nearDate || '').trim()) {
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeTripFilter('nearDate')">${formatTripDateChip(activeFilters.nearDate)} ±5gg ×</button>`);
+        }
+
+        if (parts.length) {
+            parts.push(`<button type="button" class="wildu-trip-chip reset" onclick="resetFilters()">Reset</button>`);
+            chips.innerHTML = parts.join('');
+            chips.style.display = 'flex';
+        } else {
+            chips.innerHTML = '';
+            chips.style.display = 'none';
+        }
+
+        syncTripFilterControls();
+    }
+
+    function resetFilters(options) {
+        options = options || {};
+        activeFilters.month = 'Tutti';
+        activeFilters.region = 'Tutte';
+        activeFilters.title = '';
+        activeFilters.nearDate = '';
+        activeFilters.sortMode = 'date';
+        setTripFiltersPanelOpen(false);
+        syncTripFilterControls();
+        filterTrips();
     }
 
     // ==========================================
@@ -9637,46 +10217,72 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     }
 
 function filterTrips() {
-        const today = new Date(); 
+        const today = new Date();
         today.setHours(0,0,0,0);
 
-        // Creiamo il catalogo ibrido
         const mergedCatalog = [
             ...allTrips.map(t => ({ ...t, isHike: false })),
             ...allPayDays.map(p => ({ ...p, isHike: true }))
         ];
 
-        // 🛡️ SCUDO DATE: Normalizza perfettamente le date da qualsiasi database provengano
-        const getSafeDate = (item) => {
-            const raw = item["Data inizio"] || item["Data Inizio"] || "";
-            if (!raw) return "";
-            const parts = raw.split('/');
-            // Se ha già 3 pezzi (DD/MM/YYYY), è perfetta così. Altrimenti aggiungiamo l'anno.
-            if (parts.length === 3) return raw; 
-            const y = item.Anno || today.getFullYear();
-            return `${raw}/${y}`; 
-        };
+        const query = normalizeTripFilterText(activeFilters.title || '');
+        const queryTokens = query ? query.split(/\s+/).filter(Boolean) : [];
+        const nearDate = activeFilters.nearDate ? new Date(activeFilters.nearDate + 'T00:00:00') : null;
+        const nearTime = nearDate && !isNaN(nearDate.getTime()) ? nearDate.getTime() : null;
+        const maxNearMs = 5 * 24 * 60 * 60 * 1000;
 
         const filtered = mergedCatalog.filter(t => {
-            const safeDateStr = getSafeDate(t);
-            const dataViaggio = parseItalianDate(safeDateStr);
-            
+            const dataViaggio = parseTripDateForFilter(t);
             const isScaduto = dataViaggio < today;
-            
-            // Il mese si trova sempre all'indice 1, sia nel formato DD/MM che DD/MM/YYYY
-            const rawInizio = t["Data inizio"] || t["Data Inizio"] || "";
+
+            const rawInizio = t["Data inizio"] || t["Data Inizio"] || t.dataInizio || '';
             const passMonth = (activeFilters.month === 'Tutti' || (rawInizio && rawInizio.split('/')[1] === activeFilters.month));
-            
-            const rVal = String(t.Regione || t.regione || "").trim().toUpperCase();
+
+            const rVal = String(t.Regione || t.regione || '').trim().toUpperCase();
             const passRegion = (activeFilters.region === 'Tutte' || rVal === activeFilters.region);
 
-            return !isScaduto && passMonth && passRegion;
+            let passTitle = true;
+            if (queryTokens.length) {
+                const haystack = getTripTitleSearchHaystack(t);
+                passTitle = queryTokens.every(token => haystack.indexOf(token) >= 0) || haystack.indexOf(query) >= 0;
+            }
+
+            let passNearDate = true;
+            if (nearTime !== null) {
+                passNearDate = Math.abs(dataViaggio.getTime() - nearTime) <= maxNearMs;
+            }
+
+            return !isScaduto && passMonth && passRegion && passTitle && passNearDate;
         }).sort((a, b) => {
-            // ORDINE CRONOLOGICO ASSOLUTO (Usa lo scudo per estrarre date matematiche esatte)
-            return parseItalianDate(getSafeDate(a)) - parseItalianDate(getSafeDate(b));
+            const dateA = parseTripDateForFilter(a);
+            const dateB = parseTripDateForFilter(b);
+
+            if (activeFilters.sortMode === 'priceAsc' || activeFilters.sortMode === 'priceDesc') {
+                const priceA = getTripPriceValue(a);
+                const priceB = getTripPriceValue(b);
+                const aMissing = !Number.isFinite(priceA);
+                const bMissing = !Number.isFinite(priceB);
+
+                if (aMissing && !bMissing) return 1;
+                if (!aMissing && bMissing) return -1;
+
+                if (priceA !== priceB) {
+                    return activeFilters.sortMode === 'priceAsc' ? priceA - priceB : priceB - priceA;
+                }
+            }
+
+            return dateA - dateB;
         });
 
-        document.getElementById('trip-count-badge').innerText = filtered.length + " Avventure in Vetrina";
+        const badge = document.getElementById('trip-count-badge');
+        const activeCount = countTripActiveFilters();
+        if (badge) {
+            badge.innerText = activeCount
+                ? filtered.length + " Avventure filtrate"
+                : filtered.length + " Avventure disponibili";
+        }
+
+        renderTripFilterSummary(filtered.length);
         renderTrips(filtered, 'event-list');
     }
 
@@ -10000,39 +10606,192 @@ renderUnifiedDetailMapFromItem(ev);
 
 
     // ==========================================
-    // MOTORE FILTRI OPEN DAY
+    // MOTORE FILTRI OPEN DAY — V7 compatto/coerente con Viaggi
     // ==========================================
-    let activeODFilters = { month: 'Tutti', region: 'Tutte' };
+    let activeODFilters = {
+        month: 'Tutti',
+        region: 'Tutte',
+        title: '',
+        nearDate: ''
+    };
+    let odFiltersPanelOpen = false;
 
     function buildODFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
         const today = new Date(); today.setHours(0,0,0,0);
-        
-        // Prendiamo solo gli eventi futuri
         const futuri = allOpenDays.filter(od => !od["Data Inizio"] || parseItalianDate(od["Data Inizio"]) >= today);
 
-        // Costruiamo i Mesi
-        const monthsRaw = [...new Set(futuri.map(t => t["Data Inizio"] ? t["Data Inizio"].split('/')[1] : null))].filter(x => x).sort((a,b) => monthOrder[a] - monthOrder[b]);
+        const monthsRaw = [...new Set(futuri.map(t => t["Data Inizio"] ? t["Data Inizio"].split('/')[1] : null))]
+            .filter(x => x)
+            .sort((a,b) => monthOrder[a] - monthOrder[b]);
+
         const mSel = document.getElementById('filter-od-months-select');
         if (mSel) {
             mSel.innerHTML = '<option value="Tutti">📅 Qualsiasi Mese</option>' + monthsRaw.map(m => `<option value="${m}">${new Date(2026, parseInt(m)-1).toLocaleString('it-IT', {month:'long'})}</option>`).join('');
-            mSel.onchange = (e) => { activeODFilters.month = e.target.value; renderOpenDays(); };
         }
         
-        // Costruiamo le Regioni: legge sia "Regione" che "regione" per sicurezza
-const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].filter(x => x && x.trim() !== "").sort();
+        const regionsRaw = [...new Set(futuri.map(t => String(t["Regione"] || t["regione"] || '').trim()))]
+            .filter(x => x)
+            .sort((a, b) => a.localeCompare(b, 'it'));
+
         const rSel = document.getElementById('filter-od-regions-select');
         if (rSel) {
             rSel.innerHTML = '<option value="Tutte">📍 Tutte le Regioni</option>' + regionsRaw.map(r => `<option value="${r}">${r}</option>`).join('');
-            rSel.onchange = (e) => { activeODFilters.region = e.target.value; renderOpenDays(); };
+        }
+
+        syncODFilterControls();
+    }
+
+    function getOpenDaySearchHaystack(od) {
+        od = od || {};
+        return normalizeTripFilterText([
+            od["Titolo"],
+            od.titolo,
+            od.title,
+            od["Descrizione"],
+            od.descrizione,
+            od.description,
+            od["Regione"],
+            od.regione,
+            od.area,
+            od["Luogo Nome"],
+            od["Luogo Ritrovo"],
+            od.Luogo,
+            od.luogo,
+            od.location,
+            od.START,
+            od.start,
+            od.ritrovo && od.ritrovo.luogo,
+            od.ritrovo && od.ritrovo.regione,
+            od["KM"],
+            od["Dislivello"]
+        ].filter(Boolean).join(' '));
+    }
+
+    function getOpenDayDateForFilter(od) {
+        return od && od["Data Inizio"] ? parseItalianDate(od["Data Inizio"]) : new Date(8640000000000000);
+    }
+
+    function setODFiltersPanelOpen(open) {
+        odFiltersPanelOpen = open === true;
+        const panel = document.getElementById('wildu-od-filter-panel');
+        const toggle = document.getElementById('wildu-od-filter-toggle');
+        if (panel) panel.style.display = odFiltersPanelOpen ? 'block' : 'none';
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', odFiltersPanelOpen ? 'true' : 'false');
+            toggle.classList.toggle('active', odFiltersPanelOpen || countODActiveFilters() > 0);
         }
     }
 
-    function resetODFilters() { 
+    function toggleODFiltersPanel() {
+        setODFiltersPanelOpen(!odFiltersPanelOpen);
+    }
+
+    function setODFilter(type, val) {
+        activeODFilters[type] = val;
+        renderOpenDays();
+    }
+
+    function setODTitleFilter(value) {
+        activeODFilters.title = String(value || '').trim();
+        renderOpenDays();
+    }
+
+    function setODNearDateFilter(value) {
+        activeODFilters.nearDate = String(value || '').trim();
+        renderOpenDays();
+    }
+
+    function countODActiveFilters() {
+        let n = 0;
+        if (activeODFilters.month && activeODFilters.month !== 'Tutti') n++;
+        if (activeODFilters.region && activeODFilters.region !== 'Tutte') n++;
+        if (String(activeODFilters.title || '').trim()) n++;
+        if (String(activeODFilters.nearDate || '').trim()) n++;
+        return n;
+    }
+
+    function syncODFilterControls() {
+        const mSel = document.getElementById('filter-od-months-select');
+        if (mSel) mSel.value = activeODFilters.month || 'Tutti';
+
+        const rSel = document.getElementById('filter-od-regions-select');
+        if (rSel) rSel.value = activeODFilters.region || 'Tutte';
+
+        const titleInput = document.getElementById('filter-od-title-input');
+        if (titleInput && titleInput.value !== (activeODFilters.title || '')) titleInput.value = activeODFilters.title || '';
+
+        const dateInput = document.getElementById('filter-od-date-near-input');
+        if (dateInput && dateInput.value !== (activeODFilters.nearDate || '')) dateInput.value = activeODFilters.nearDate || '';
+
+        const toggle = document.getElementById('wildu-od-filter-toggle');
+        if (toggle) {
+            const count = countODActiveFilters();
+            toggle.textContent = count ? `⚙ Filtri · ${count}` : '⚙ Filtri';
+            toggle.classList.toggle('active', odFiltersPanelOpen || count > 0);
+        }
+    }
+
+    function removeODFilter(kind) {
+        if (kind === 'month') activeODFilters.month = 'Tutti';
+        if (kind === 'region') activeODFilters.region = 'Tutte';
+        if (kind === 'title') activeODFilters.title = '';
+        if (kind === 'nearDate') activeODFilters.nearDate = '';
+        renderOpenDays();
+    }
+
+    function renderODFilterSummary(filteredCount) {
+        const activeCount = countODActiveFilters();
+        const status = document.getElementById('wildu-od-filter-status');
+        const chips = document.getElementById('wildu-od-active-chips');
+
+        if (status) {
+            status.textContent = activeCount
+                ? `${activeCount} filtri attivi · mese e regione consigliati`
+                : 'Nessun filtro attivo · usa mese e regione per trovare subito l’Open Day giusto';
+        }
+
+        if (!chips) {
+            syncODFilterControls();
+            return;
+        }
+
+        const parts = [];
+        if (activeODFilters.month && activeODFilters.month !== 'Tutti') {
+            const monthLabel = new Date(2026, parseInt(activeODFilters.month, 10) - 1).toLocaleString('it-IT', { month: 'long' });
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeODFilter('month')">${monthLabel} ×</button>`);
+        }
+        if (activeODFilters.region && activeODFilters.region !== 'Tutte') {
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeODFilter('region')">${String(activeODFilters.region).replace(/</g, '&lt;')} ×</button>`);
+        }
+        if (String(activeODFilters.title || '').trim()) {
+            const title = String(activeODFilters.title).trim().replace(/</g, '&lt;');
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeODFilter('title')">“${title}” ×</button>`);
+        }
+        if (String(activeODFilters.nearDate || '').trim()) {
+            parts.push(`<button type="button" class="wildu-trip-chip" onclick="removeODFilter('nearDate')">${formatTripDateChip(activeODFilters.nearDate)} ±5gg ×</button>`);
+        }
+
+        if (parts.length) {
+            parts.push(`<button type="button" class="wildu-trip-chip reset" onclick="resetODFilters()">Reset</button>`);
+            chips.innerHTML = parts.join('');
+            chips.style.display = 'flex';
+        } else {
+            chips.innerHTML = '';
+            chips.style.display = 'none';
+        }
+
+        syncODFilterControls();
+    }
+
+    function resetODFilters(options) { 
+        options = options || {};
         activeODFilters.month = 'Tutti'; 
         activeODFilters.region = 'Tutte'; 
-        if(document.getElementById('filter-od-months-select')) document.getElementById('filter-od-months-select').value = 'Tutti';
-        if(document.getElementById('filter-od-regions-select')) document.getElementById('filter-od-regions-select').value = 'Tutte';
+        activeODFilters.title = '';
+        activeODFilters.nearDate = '';
+        setODFiltersPanelOpen(false);
+        syncODFilterControls();
         renderOpenDays(); 
     }
 
@@ -10042,23 +10801,46 @@ const regionsRaw = [...new Set(futuri.map(t => t["Regione"] || t["regione"]))].f
         if(!container) return; 
 
         const today = new Date(); today.setHours(0,0,0,0);
+        const query = normalizeTripFilterText(activeODFilters.title || '');
+        const queryTokens = query ? query.split(/\s+/).filter(Boolean) : [];
+        const nearDate = activeODFilters.nearDate ? new Date(activeODFilters.nearDate + 'T00:00:00') : null;
+        const nearTime = nearDate && !isNaN(nearDate.getTime()) ? nearDate.getTime() : null;
+        const maxNearMs = 5 * 24 * 60 * 60 * 1000;
         
-        // 1. Filtro Temporale + Ordinamento
         let processedList = allOpenDays.filter(od => {
-            if (!od["Data Inizio"]) return true;
-            return parseItalianDate(od["Data Inizio"]) >= today;
+            const dataOpenDay = getOpenDayDateForFilter(od);
+            if (dataOpenDay < today) return false;
+
+            const rawInizio = od["Data Inizio"] || '';
+            const passMonth = (activeODFilters.month === 'Tutti' || (rawInizio && rawInizio.split('/')[1] === activeODFilters.month));
+            const rVal = String(od["Regione"] || od["regione"] || '').trim().toLowerCase();
+            const selectedRegion = String(activeODFilters.region || '').trim().toLowerCase();
+            const passRegion = (activeODFilters.region === 'Tutte' || rVal === selectedRegion);
+
+            let passTitle = true;
+            if (queryTokens.length) {
+                const haystack = getOpenDaySearchHaystack(od);
+                passTitle = queryTokens.every(token => haystack.indexOf(token) >= 0) || haystack.indexOf(query) >= 0;
+            }
+
+            let passNearDate = true;
+            if (nearTime !== null) {
+                passNearDate = Math.abs(dataOpenDay.getTime() - nearTime) <= maxNearMs;
+            }
+
+            return passMonth && passRegion && passTitle && passNearDate;
         }).sort((a, b) => {
-            return parseItalianDate(a["Data Inizio"]) - parseItalianDate(b["Data Inizio"]);
+            return getOpenDayDateForFilter(a) - getOpenDayDateForFilter(b);
         });
 
-        // 2. Applica i filtri a tendina (Mese e Regione)
-        processedList = processedList.filter(od => {
-            const passMonth = (activeODFilters.month === 'Tutti' || (od["Data Inizio"] && od["Data Inizio"].split('/')[1] === activeODFilters.month));
-            // Cerca il dato in entrambe le varianti di scrittura
-            const rVal = od["Regione"] || od["regione"] || "";
-            const passRegion = (activeODFilters.region === 'Tutte' || rVal.toLowerCase() === activeODFilters.region.toLowerCase());
-            return passMonth && passRegion;
-        });
+        const activeCount = countODActiveFilters();
+        if(badge) {
+            badge.innerText = activeCount
+                ? processedList.length + " Open Day filtrati"
+                : processedList.length + " Open Day disponibili";
+        }
+
+        renderODFilterSummary(processedList.length);
 
         if(!processedList || processedList.length === 0) {
             if(badge) badge.innerText = "Nessun evento";
@@ -11075,6 +11857,15 @@ if (profKeyEl) {
         if (previousTab === 'profile' && id !== 'profile') {
             setWilduPassportDetailsOpen(false, 'leave-profile');
             setWilduGradeLegendOpen(false);
+        }
+
+        if (previousTab && previousTab !== id) {
+            if (typeof resetFilters === 'function') {
+                resetFilters({ reason: 'tab-change' });
+            }
+            if (typeof resetODFilters === 'function') {
+                resetODFilters({ reason: 'tab-change' });
+            }
         }
 
         currentTab = id;
