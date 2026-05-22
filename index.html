@@ -5494,6 +5494,7 @@ function requireLoggedAccess(reason, options = {}) {
     // Il volume NON viene cotto nel buffer: viene letto a ogni play dalla config viva.
     let wildSystemSoundBufferPromises = new Map();
     let wildActiveSystemSoundSources = new WeakMap();
+    let wildSystemSoundPlaySerial = new WeakMap();
 
     // Lock anti re-entry:
     // evita triplo start/restart quando dopo cache nucleare arrivano touchstart,
@@ -11698,8 +11699,30 @@ if (profKeyEl) {
         }
     }
 
+    function bumpWilduSystemSoundPlaySerial(audio) {
+        if (!audio) return 0;
+
+        try {
+            const next = Number(wildSystemSoundPlaySerial.get(audio) || 0) + 1;
+            wildSystemSoundPlaySerial.set(audio, next);
+            return next;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function getWilduSystemSoundPlaySerial(audio) {
+        try {
+            return Number(wildSystemSoundPlaySerial.get(audio) || 0);
+        } catch (e) {
+            return 0;
+        }
+    }
+
     function stopWilduSystemBufferSound(audio, reason) {
         if (!audio) return false;
+
+        bumpWilduSystemSoundPlaySerial(audio);
 
         try {
             const active = wildActiveSystemSoundSources.get(audio);
@@ -11768,10 +11791,21 @@ if (profKeyEl) {
             stopWilduSystemBufferSound(audio, "reset-before-play");
         }
 
+        const playSerial = bumpWilduSystemSoundPlaySerial(audio);
+
         primeWilduAudioContextNow("system-buffer-" + String(label || "sound"));
         await resumeWildAudioContextWithTimeout("system-buffer-" + String(label || "sound"), 1800);
 
         const buffer = await getWilduSystemSoundDecodedBuffer(originalUrl);
+
+        // Race guard: se nel frattempo è arrivato stop/reset, non avviare un suono in ritardo.
+        if (getWilduSystemSoundPlaySerial(audio) !== playSerial) {
+            wilduAudioDebugLog("SYSTEM_BUFFER_SOUND_CANCELLED_STALE_PLAY", {
+                label: label || "",
+                url: originalUrl
+            });
+            return "cancelled";
+        }
 
         // Cache-first / refresh config guard:
         // se durante resume/fetch/decode la config ha cambiato URL, non suonare il vecchio file.
@@ -11782,14 +11816,22 @@ if (profKeyEl) {
                 originalUrl: originalUrl,
                 currentUrl: currentUrl
             });
-            return false;
+            return "cancelled";
         }
 
         // Il volume si legge ORA, non quando il buffer è stato decodificato.
         targetVolume = clampWildVolume(getWilduSystemSoundTargetVolume(label));
         if (targetVolume <= 0) {
             stopWilduSystemBufferSound(audio, "muted-after-await");
-            return false;
+            return "cancelled";
+        }
+
+        if (getWilduSystemSoundPlaySerial(audio) !== playSerial) {
+            wilduAudioDebugLog("SYSTEM_BUFFER_SOUND_CANCELLED_BEFORE_START", {
+                label: label || "",
+                url: originalUrl
+            });
+            return "cancelled";
         }
 
         const source = ctx.createBufferSource();
@@ -11849,7 +11891,8 @@ if (profKeyEl) {
         if (isSystemR2Sound) {
             return playWilduSystemBufferSound(audio, label, options)
                 .then(function (ok) {
-                    if (ok) return true;
+                    if (ok === true) return true;
+                    if (ok === "cancelled") return false;
 
                     // Su iOS non facciamo fallback nativo: audio.volume può essere ignorato e sparare al 100%.
                     if (isIOS) return false;
