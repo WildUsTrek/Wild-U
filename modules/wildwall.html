@@ -454,9 +454,6 @@
             </div>
         </div>
 
-        <div class="wildwall-shorts-actions">
-            <a class="wildwall-mini-link" href="https://www.youtube.com/playlist?list=PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh" target="_blank" rel="noopener">Apri playlist</a>
-        </div>
     </section>
 
     <section id="wildwall-preview-section" class="wildwall-gallery-card" aria-label="Carosello foto WildWall">
@@ -505,7 +502,7 @@
 
 <script>
 (function () {
-    console.log("[WILDU WILDWALL] Modulo premium Shorts + foto pulite avviato");
+    console.log("[WILDU WILDWALL] Modulo premium Shorts V3 no-api + foto pulite avviato");
 
     const root = document.getElementById("wildu-wildwall-module");
     const gridEl = document.getElementById("wildwall-grid");
@@ -522,7 +519,20 @@
 
     const PUBLIC_CACHE_KEY = "wildCachePublic";
     const SHORTS_PLAYLIST_ID = "PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh";
-    const SHORTS_RANDOM_FALLBACK_COUNT = 12;
+
+    /*
+     * V3 NO-API:
+     * - niente YouTube IFrame API;
+     * - niente cuePlaylist/cueVideoById/getPlaylist;
+     * - niente PlayerProxy/postMessage verso il player;
+     * - random best-effort tramite parametro index dell'embed playlist.
+     *
+     * Senza YouTube Data API e senza lista hardcoded di video ID non possiamo
+     * conoscere la lunghezza reale della playlist. Per questo usiamo un pool
+     * prudente e configurabile. Se la playlist ha meno video del pool, YouTube
+     * può ricadere sul primo video: è un limite dell'embed, non della UI.
+     */
+    const SHORTS_RANDOM_FALLBACK_COUNT = Math.max(2, parseInt(window.WILDU_WILDWALL_SHORTS_RANDOM_POOL_SIZE, 10) || 12);
 
     function escapeHtml(value) {
         return String(value || "")
@@ -966,163 +976,106 @@
         }).join("");
     }
 
-    function getShortsRandomFallbackIndex() {
-        const max = Math.max(1, parseInt(SHORTS_RANDOM_FALLBACK_COUNT, 10) || 1);
-        return Math.floor(Math.random() * max);
+    function getWildwallCryptoRandomInt(max) {
+        const cleanMax = Math.max(1, parseInt(max, 10) || 1);
+
+        try {
+            if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+                const box = new Uint32Array(1);
+                window.crypto.getRandomValues(box);
+                return box[0] % cleanMax;
+            }
+        } catch (e) {}
+
+        return Math.floor(Math.random() * cleanMax);
     }
 
-    function buildShortsFallbackUrl() {
-        const url = new URL("https://www.youtube-nocookie.com/embed");
-        url.searchParams.set("listType", "playlist");
+    function getShortsLastIndexKey(max) {
+        return "wildu:wildwall:shorts:v3:lastIndex:" + SHORTS_PLAYLIST_ID + ":" + String(max || 0);
+    }
+
+    function rememberShortsIndex(index, max) {
+        try {
+            window.localStorage.setItem(getShortsLastIndexKey(max), String(index));
+        } catch (e) {}
+    }
+
+    function getRememberedShortsIndex(max) {
+        try {
+            const raw = window.localStorage.getItem(getShortsLastIndexKey(max));
+            const parsed = parseInt(raw, 10);
+            return Number.isFinite(parsed) ? parsed : -1;
+        } catch (e) {
+            return -1;
+        }
+    }
+
+    function getShortsRandomIndex(max) {
+        const cleanMax = Math.max(1, parseInt(max, 10) || 1);
+        let index = getWildwallCryptoRandomInt(cleanMax);
+        const last = getRememberedShortsIndex(cleanMax);
+
+        if (cleanMax > 1 && index === last) {
+            index = (index + 1 + getWildwallCryptoRandomInt(cleanMax - 1)) % cleanMax;
+        }
+
+        rememberShortsIndex(index, cleanMax);
+        return index;
+    }
+
+    function getShortsEmbedIndex() {
+        return getShortsRandomIndex(SHORTS_RANDOM_FALLBACK_COUNT);
+    }
+
+    function buildShortsNoApiEmbedUrl(index) {
+        const url = new URL("https://www.youtube-nocookie.com/embed/videoseries");
         url.searchParams.set("list", SHORTS_PLAYLIST_ID);
         url.searchParams.set("rel", "0");
         url.searchParams.set("playsinline", "1");
-        url.searchParams.set("index", String(getShortsRandomFallbackIndex()));
+        url.searchParams.set("modestbranding", "1");
+        url.searchParams.set("iv_load_policy", "3");
+        url.searchParams.set("controls", "1");
+        url.searchParams.set("disablekb", "0");
+        url.searchParams.set("enablejsapi", "0");
+        url.searchParams.set("index", String(Math.max(0, parseInt(index, 10) || 0)));
+
+        /* Cache-buster innocuo: evita che browser/SW riusino sempre lo stesso iframe. */
+        url.searchParams.set("wildu_random", String(Date.now()) + "_" + String(getWildwallCryptoRandomInt(999999)));
+
+        try {
+            if (window.location && /^https?:$/i.test(window.location.protocol)) {
+                url.searchParams.set("origin", window.location.origin);
+            }
+        } catch (e) {}
+
         return url.toString();
     }
 
-    function renderShortsFallbackIframe() {
+    function renderShortsNoApiIframe() {
         if (!shortsPlayerHost) return;
 
+        const index = getShortsEmbedIndex();
+        const src = buildShortsNoApiEmbedUrl(index);
+
+        shortsPlayerHost.dataset.playerReady = "1";
+        shortsPlayerHost.dataset.randomMode = "no-api-v3";
+        shortsPlayerHost.dataset.randomIndex = String(index);
         shortsPlayerHost.innerHTML = `
             <iframe
-                title="Playlist Shorts Baffi Wild"
-                src="${escapeHtml(buildShortsFallbackUrl())}"
+                title="Shorts Baffi Wild"
+                src="${escapeHtml(src)}"
                 loading="lazy"
+                referrerpolicy="strict-origin-when-cross-origin"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowfullscreen
             ></iframe>
         `;
     }
 
-    function loadYouTubeIframeApi() {
-        if (window.YT && typeof window.YT.Player === "function") {
-            return Promise.resolve();
-        }
-
-        if (window.__wilduWildwallYouTubeApiPromise) {
-            return window.__wilduWildwallYouTubeApiPromise;
-        }
-
-        window.__wilduWildwallYouTubeApiPromise = new Promise(function (resolve, reject) {
-            const previousReady = window.onYouTubeIframeAPIReady;
-            let settled = false;
-
-            window.onYouTubeIframeAPIReady = function () {
-                try {
-                    if (typeof previousReady === "function") previousReady();
-                } catch (e) {}
-
-                settled = true;
-                resolve();
-            };
-
-            if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
-                const tag = document.createElement("script");
-                tag.src = "https://www.youtube.com/iframe_api";
-                tag.async = true;
-                tag.onerror = function () {
-                    if (!settled) reject(new Error("YouTube IFrame API non caricata"));
-                };
-                document.head.appendChild(tag);
-            }
-
-            setTimeout(function () {
-                if (!settled && window.YT && typeof window.YT.Player === "function") {
-                    settled = true;
-                    resolve();
-                }
-            }, 2500);
-        });
-
-        return window.__wilduWildwallYouTubeApiPromise;
-    }
-
-    function cueRandomShortFromLoadedPlaylist(player, allowFallback) {
-        if (!player || player.__wilduRandomShortCued === true) return;
-
-        try {
-            const playlist = typeof player.getPlaylist === "function" ? player.getPlaylist() : [];
-
-            if (Array.isArray(playlist) && playlist.length > 1) {
-                const randomIndex = Math.floor(Math.random() * playlist.length);
-                player.__wilduRandomShortCued = true;
-                player.cuePlaylist({
-                    listType: "playlist",
-                    list: playlist,
-                    index: randomIndex,
-                    startSeconds: 0
-                });
-                return;
-            }
-
-            if (allowFallback !== true) return;
-
-            const fallbackIndex = getShortsRandomFallbackIndex();
-            player.__wilduRandomShortCued = true;
-            player.cuePlaylist({
-                listType: "playlist",
-                list: SHORTS_PLAYLIST_ID,
-                index: fallbackIndex,
-                startSeconds: 0
-            });
-        } catch (e) {
-            renderShortsFallbackIframe();
-        }
-    }
-
     function initRandomShortsPlayer() {
-        if (!shortsPlayerEl || !shortsPlayerHost) {
-            renderShortsFallbackIframe();
-            return;
-        }
-
+        if (!shortsPlayerHost) return;
         if (shortsPlayerHost.dataset.playerReady === "1") return;
-        shortsPlayerHost.dataset.playerReady = "1";
-
-        loadYouTubeIframeApi().then(function () {
-            if (!window.YT || typeof window.YT.Player !== "function") {
-                renderShortsFallbackIframe();
-                return;
-            }
-
-            const playerVars = {
-                listType: "playlist",
-                list: SHORTS_PLAYLIST_ID,
-                rel: 0,
-                playsinline: 1,
-                modestbranding: 1
-            };
-
-            try {
-                if (window.location && /^https?:$/i.test(window.location.protocol)) {
-                    playerVars.origin = window.location.origin;
-                }
-            } catch (e) {}
-
-            new window.YT.Player("wildwall-shorts-player", {
-                width: "100%",
-                height: "100%",
-                playerVars: playerVars,
-                events: {
-                    onReady: function (event) {
-                        const player = event && event.target;
-                        try { if (player && typeof player.setShuffle === "function") player.setShuffle(true); } catch (e) {}
-
-                        setTimeout(function () { cueRandomShortFromLoadedPlaylist(player, false); }, 450);
-                        setTimeout(function () { cueRandomShortFromLoadedPlaylist(player, false); }, 1200);
-                        setTimeout(function () { cueRandomShortFromLoadedPlaylist(player, true); }, 2200);
-                    },
-                    onStateChange: function (event) {
-                        if (event && event.data === 5) {
-                            cueRandomShortFromLoadedPlaylist(event.target, false);
-                        }
-                    }
-                }
-            });
-        }).catch(function () {
-            renderShortsFallbackIframe();
-        });
+        renderShortsNoApiIframe();
     }
 
     function renderShortsBlock() {
