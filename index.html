@@ -69,7 +69,7 @@ body::before {
     box-sizing: border-box;
     box-shadow: none;
 
-    transition: padding-top 0.12s ease, box-shadow 0.12s ease;
+    transition: padding-top 0.20s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease;
 }
 
 /* Stato sticky reale: solo quando la navbar è attaccata al bordo alto */
@@ -1744,6 +1744,15 @@ body::before {
     overflow: hidden !important;
     text-overflow: ellipsis !important;
 }
+.wildu-adventure-place {
+    display: block !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    line-height: 1.28 !important;
+}
 .wildu-adventure-details-btn,
 .wildu-adventure-card .btn-book.wildu-adventure-details-btn {
     border-radius: 14px !important;
@@ -2246,7 +2255,7 @@ body::before {
 
     <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
         <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
-        <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Scrivici direttamente su WhatsApp per qualsiasi dubbio o informazione sui nostri viaggi.</p>
+        <p style="font-size:14px; color:#aaa; margin-bottom:20px; line-height:1.42;">Scrivici su WhatsApp per qualsiasi dubbio.</p>
         <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
     </div>
 
@@ -11243,7 +11252,7 @@ function renderTrips(trips, targetId) {
                     <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
                     ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
                 </div>
-                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+                <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;" title="${luogoCompleto}">📍 ${luogoCompleto}</p>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
                     ${km ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: bold; height: 42px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">${km}</div>` : ''}
@@ -11273,7 +11282,7 @@ function renderTrips(trips, targetId) {
                     <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
                     ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
                 </div>
-                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+                <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;" title="${luogoCompleto}">📍 ${luogoCompleto}</p>
 
                 <div class="price-box">
                     <div>
@@ -11748,7 +11757,7 @@ renderUnifiedDetailMapFromItem(ev);
                     <div style="color: #00aaff; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
-                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+                <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;" title="${luogoCompleto}">📍 ${luogoCompleto}</p>
                 <div style="display: flex; gap: 10px; margin-bottom: 20px;">
                     ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
                     ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
@@ -11862,7 +11871,7 @@ function renderPayDays() {
                     <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
-                <p style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
+                <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;" title="${luogoCompleto}">📍 ${luogoCompleto}</p>
             <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                 ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
                 ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
@@ -18112,7 +18121,9 @@ function bindWilduStickyNavSafeArea() {
             La classe e il riallineamento dock audio vengono aggiornati solo
             quando lo stato sticky cambia davvero, riducendo micro-reflow mobile.
         */
-        const shouldBeStuck = window.scrollY > 0 && rect.top <= 0;
+        const shouldBeStuck = lastStickyState === true
+            ? (window.scrollY > 1 && rect.top <= 6)
+            : (window.scrollY > 1 && rect.top <= -1);
 
         if (lastStickyState === shouldBeStuck) {
             return;
