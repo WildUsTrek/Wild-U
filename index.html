@@ -5913,6 +5913,15 @@ const WilduMediaClient = (() => {
         }
     }
 
+    // WILDU REWARDS BOTTOM — export prudente per il ciclo cache-first del client.
+    // Le funzioni vivono in questo scope perché riusano helper interni del blocco Media,
+    // ma vengono richiamate dal resto della Client App dopo cache/render/refresh.
+    try {
+        window.renderWilduRewardsRealNews = renderWilduRewardsRealNews;
+        window.renderWilduRewardsWildWallRandomImage = renderWilduRewardsWildWallRandomImage;
+        window.renderWilduRewardsBottom = renderWilduRewardsBottom;
+    } catch (e) {}
+
     return {
         getPublicVersions,
         loadTag,
