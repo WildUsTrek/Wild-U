@@ -1,98 +1,247 @@
-<div id="wildu-wildwall-module" style="padding-bottom: 30px;">
-    <div class="card" style="border-left-color: var(--w-gold); margin-top: 20px;">
-        <h2 style="color: var(--w-gold); margin-top:0; text-align:center;">🖼️ WildWall</h2>
-
-        <p style="color:#ccc; font-size:14px; line-height:1.5; text-align:center; margin-bottom:18px;">
-            Un mosaico vivo delle avventure Wild-U già passate dalla tua bussola.
-        </p>
-
-        <div id="wildwall-count" style="color:#777; font-size:11px; font-weight:900; letter-spacing:1px; text-align:center; text-transform:uppercase; margin-bottom:16px;"></div>
-
-        <style>
-    #wildu-wildwall-module .wildwall-masonry {
-        column-count: 2;
-        column-gap: 10px;
-    }
-
-    @media (min-width: 720px) {
-        #wildu-wildwall-module .wildwall-masonry {
-            column-count: 3;
+<div id="wildu-wildwall-module" class="wildu-wildwall-premium" style="padding-bottom:30px;">
+    <style>
+        #wildu-wildwall-module,
+        #wildu-wildwall-module * {
+            box-sizing: border-box;
         }
-    }
 
-    #wildu-wildwall-module .wildwall-photo-card {
-        width: 100%;
-        display: inline-block;
-        break-inside: avoid;
-        margin: 0 0 10px 0;
-        padding: 0;
-        border: 1px solid rgba(255,255,255,0.10);
-        border-radius: 14px;
-        background: #111;
-        overflow: hidden;
-        position: relative;
-        cursor: pointer;
-        text-align: left;
-        box-shadow: 0 5px 16px rgba(0,0,0,0.35);
-        vertical-align: top;
-    }
+        #wildu-wildwall-module {
+            color: #fff;
+        }
 
-    #wildu-wildwall-module .wildwall-photo-card img {
-        width: 100%;
-        height: auto;
-        display: block;
-        filter: saturate(1.08) contrast(1.03);
-    }
+        #wildu-wildwall-module .wildwall-shell-card,
+        #wildu-wildwall-module .wildwall-shorts-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 24px;
+            border: 1px solid rgba(212,175,55,0.20);
+            background:
+                radial-gradient(circle at top left, rgba(212,175,55,0.15), transparent 34%),
+                radial-gradient(circle at bottom right, rgba(45,90,39,0.16), transparent 38%),
+                linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025));
+            box-shadow: 0 12px 34px rgba(0,0,0,0.46);
+            padding: 18px;
+            margin-top: 18px;
+        }
 
-    #wildu-wildwall-module .wildwall-photo-gradient {
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(180deg, rgba(0,0,0,0.02) 30%, rgba(0,0,0,0.82) 100%);
-        pointer-events: none;
-    }
+        #wildu-wildwall-module .wildwall-shorts-card {
+            margin-top: 8px;
+            border-color: rgba(255,255,255,0.13);
+            background:
+                radial-gradient(circle at top, rgba(255,0,0,0.13), transparent 38%),
+                radial-gradient(circle at bottom left, rgba(212,175,55,0.12), transparent 40%),
+                linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025));
+        }
 
-    #wildu-wildwall-module .wildwall-zoom-pill {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: rgba(0,0,0,0.68);
-        color: #fff;
-        border: 1px solid rgba(255,255,255,0.22);
-        border-radius: 999px;
-        padding: 4px 8px;
-        font-size: 9px;
-        font-weight: 900;
-        letter-spacing: 0.6px;
-        text-transform: uppercase;
-    }
-</style>
+        #wildu-wildwall-module .wildwall-section-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin: 0 auto 9px auto;
+            border-radius: 999px;
+            padding: 6px 11px;
+            border: 1px solid rgba(212,175,55,0.34);
+            background: rgba(212,175,55,0.08);
+            color: #f2d98c;
+            font-size: 10px;
+            font-weight: 950;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
 
-<div id="wildwall-grid" class="wildwall-masonry"></div>
+        #wildu-wildwall-module .wildwall-title {
+            margin: 0;
+            color: var(--w-gold);
+            text-align: center;
+            text-transform: uppercase;
+            font-size: clamp(24px, 7vw, 34px);
+            line-height: 1;
+            letter-spacing: 0.4px;
+            text-shadow: 0 5px 20px rgba(0,0,0,0.65);
+        }
 
-        <div id="wildwall-empty" style="display:none; text-align:center; padding:28px 10px;">
-            <div style="font-size:46px; margin-bottom:10px;">🌲</div>
-            <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
-                Nessuna immagine viaggio trovata nella cache.<br>
-                Apri qualche avventura e torna qui.
-            </p>
-        </div>
-      </div>
+        #wildu-wildwall-module .wildwall-subtitle {
+            color: #cfcfcf;
+            font-size: 13px;
+            line-height: 1.45;
+            text-align: center;
+            margin: 10px auto 16px auto;
+            max-width: 560px;
+        }
 
-    <div id="wildwall-photo-overlay" style="
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100vh;
-        height: 100dvh;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0,0,0,0.96);
-        z-index: 31000;
-        padding: calc(76px + env(safe-area-inset-top, 0px)) 14px calc(24px + env(safe-area-inset-bottom, 0px)) 14px;
-        box-sizing: border-box;
-    ">
-        <button id="wildwall-photo-close" type="button" aria-label="Chiudi foto" style="
+        #wildu-wildwall-module .wildwall-shorts-frame-wrap {
+            width: min(100%, 370px);
+            margin: 14px auto 0 auto;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: #050505;
+            overflow: hidden;
+            box-shadow: 0 12px 34px rgba(0,0,0,0.58);
+        }
+
+        #wildu-wildwall-module .wildwall-shorts-frame {
+            width: 100%;
+            aspect-ratio: 9 / 16;
+            display: block;
+            border: 0;
+            background: #000;
+        }
+
+        #wildu-wildwall-module .wildwall-shorts-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        #wildu-wildwall-module .wildwall-mini-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 9px 13px;
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.055);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 950;
+            text-decoration: none;
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+        }
+
+        #wildu-wildwall-module .wildwall-count {
+            color: #9b9b9b;
+            font-size: 10px;
+            font-weight: 950;
+            letter-spacing: 1px;
+            text-align: center;
+            text-transform: uppercase;
+            margin: 0 0 14px 0;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-wrap {
+            display: none;
+            margin: 8px -18px 20px -18px;
+            padding: 0 0 3px 0;
+            position: relative;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-rail {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 2px 18px 8px 18px;
+            scroll-snap-type: x proximity;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            overscroll-behavior-x: contain;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-rail::-webkit-scrollbar {
+            display: none;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-thumb {
+            flex: 0 0 92px;
+            width: 92px;
+            height: 126px;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 17px;
+            padding: 0;
+            background: #111;
+            overflow: hidden;
+            cursor: pointer;
+            box-shadow: 0 7px 18px rgba(0,0,0,0.42);
+            scroll-snap-align: start;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-thumb img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+            filter: saturate(1.08) contrast(1.03);
+        }
+
+        #wildu-wildwall-module .wildwall-masonry {
+            column-count: 2;
+            column-gap: 11px;
+        }
+
+        @media (min-width: 720px) {
+            #wildu-wildwall-module .wildwall-masonry {
+                column-count: 3;
+                column-gap: 13px;
+            }
+        }
+
+        #wildu-wildwall-module .wildwall-photo-card {
+            width: 100%;
+            display: inline-block;
+            break-inside: avoid;
+            margin: 0 0 11px 0;
+            padding: 0;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 18px;
+            background: #101010;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            text-align: left;
+            box-shadow: 0 8px 22px rgba(0,0,0,0.42);
+            vertical-align: top;
+        }
+
+        #wildu-wildwall-module .wildwall-photo-card:active,
+        #wildu-wildwall-module .wildwall-preview-thumb:active,
+        #wildu-wildwall-module .wildwall-mini-link:active {
+            transform: scale(0.985);
+        }
+
+        #wildu-wildwall-module .wildwall-photo-card img {
+            width: 100%;
+            height: auto;
+            display: block;
+            filter: saturate(1.08) contrast(1.03);
+        }
+
+        #wildu-wildwall-module .wildwall-empty {
+            display: none;
+            text-align: center;
+            padding: 28px 10px;
+            border-radius: 18px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        #wildu-wildwall-module .wildwall-empty p {
+            color: #aaa;
+            font-size: 14px;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        #wildwall-photo-overlay {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(circle at top, rgba(212,175,55,0.08), transparent 35%),
+                rgba(0,0,0,0.96);
+            z-index: 31000;
+            padding: calc(76px + env(safe-area-inset-top, 0px)) 14px calc(24px + env(safe-area-inset-bottom, 0px)) 14px;
+            box-sizing: border-box;
+        }
+
+        #wildwall-photo-close {
             position: absolute;
             top: calc(14px + env(safe-area-inset-top, 0px));
             right: calc(14px + env(safe-area-inset-right, 0px));
@@ -108,9 +257,9 @@
             cursor: pointer;
             z-index: 31002;
             box-shadow: 0 8px 26px rgba(0,0,0,0.8);
-        ">×</button>
+        }
 
-        <div style="
+        #wildu-wildwall-module .wildwall-overlay-inner {
             width: 100%;
             max-width: 900px;
             max-height: 100%;
@@ -118,53 +267,115 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-        ">
-            <img id="wildwall-photo-big" src="" alt="" style="
-                max-width: 100%;
-                max-height: calc(100dvh - 170px);
-                width: auto;
-                height: auto;
-                display: block;
-                border-radius: 16px;
-                background: #111;
-                box-shadow: 0 12px 40px rgba(0,0,0,0.85);
-            ">
+        }
 
-            <div id="wildwall-photo-caption" style="
-                margin-top: 12px;
-                color: #fff;
-                text-align: center;
-                font-size: 14px;
-                font-weight: 900;
-                line-height: 1.35;
-                text-transform: uppercase;
-                text-shadow: 0 2px 8px rgba(0,0,0,0.9);
-            "></div>
+        #wildwall-photo-big {
+            max-width: 100%;
+            max-height: calc(100dvh - 170px);
+            width: auto;
+            height: auto;
+            display: block;
+            border-radius: 18px;
+            background: #111;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.85);
+        }
 
-            <div id="wildwall-photo-meta" style="
-                margin-top: 4px;
-                color: #aaa;
-                text-align: center;
-                font-size: 11px;
-                font-weight: 800;
-                text-transform: uppercase;
-                letter-spacing: 0.7px;
-            "></div>
+        #wildwall-photo-caption {
+            margin-top: 12px;
+            color: #fff;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 950;
+            line-height: 1.35;
+            text-transform: uppercase;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+        }
+
+        #wildwall-photo-meta {
+            margin-top: 4px;
+            color: #aaa;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 850;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+        }
+    </style>
+
+    <section id="wildwall-shorts-section" class="wildwall-shorts-card" aria-label="Shorts Wild-U">
+        <div style="text-align:center;">
+            <div class="wildwall-section-kicker">▶ Shorts Wild-U</div>
+            <h2 class="wildwall-title">Baffi Wild Shorts</h2>
+            <p class="wildwall-subtitle">Una selezione verticale dalla playlist ufficiale.</p>
+        </div>
+
+        <div class="wildwall-shorts-frame-wrap">
+            <iframe
+                id="wildwall-shorts-frame"
+                class="wildwall-shorts-frame"
+                title="Playlist Shorts Baffi Wild"
+                src="https://www.youtube-nocookie.com/embed/videoseries?list=PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh&rel=0&modestbranding=1&playsinline=1"
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+            ></iframe>
+        </div>
+
+        <div class="wildwall-shorts-actions">
+            <a class="wildwall-mini-link" href="https://www.youtube.com/playlist?list=PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh" target="_blank" rel="noopener">Apri playlist</a>
+        </div>
+    </section>
+
+    <section class="wildwall-shell-card" aria-label="WildWall foto">
+        <div style="text-align:center;">
+            <div class="wildwall-section-kicker">🖼️ Foto cache</div>
+            <h2 class="wildwall-title">WildWall</h2>
+            <p class="wildwall-subtitle">Un mosaico vivo delle avventure Wild-U già passate dalla tua bussola.</p>
+            <div id="wildwall-count" class="wildwall-count"></div>
+        </div>
+
+        <div id="wildwall-preview-wrap" class="wildwall-preview-wrap">
+            <div id="wildwall-preview-rail" class="wildwall-preview-rail" aria-label="Anteprima foto WildWall"></div>
+        </div>
+
+        <div id="wildwall-grid" class="wildwall-masonry"></div>
+
+        <div id="wildwall-empty" class="wildwall-empty">
+            <div style="font-size:46px; margin-bottom:10px;">🌲</div>
+            <p>
+                Nessuna immagine viaggio trovata nella cache.<br>
+                Apri qualche avventura e torna qui.
+            </p>
+        </div>
+    </section>
+
+    <div id="wildwall-photo-overlay">
+        <button id="wildwall-photo-close" type="button" aria-label="Chiudi foto">×</button>
+
+        <div class="wildwall-overlay-inner">
+            <img id="wildwall-photo-big" src="" alt="">
+            <div id="wildwall-photo-caption"></div>
+            <div id="wildwall-photo-meta"></div>
         </div>
     </div>
 </div>
 
 <script>
 (function () {
-    console.log("[WILDU WILDWALL] Avvio modulo anti-asset + anti-doppioni");
+    console.log("[WILDU WILDWALL] Modulo premium Shorts + foto pulite avviato");
 
+    const root = document.getElementById("wildu-wildwall-module");
     const gridEl = document.getElementById("wildwall-grid");
     const emptyEl = document.getElementById("wildwall-empty");
     const countEl = document.getElementById("wildwall-count");
+    const previewWrap = document.getElementById("wildwall-preview-wrap");
+    const previewRail = document.getElementById("wildwall-preview-rail");
+    const shortsSection = document.getElementById("wildwall-shorts-section");
 
-    if (!gridEl || !emptyEl || !countEl) return;
+    if (!root || !gridEl || !emptyEl || !countEl) return;
 
     const PUBLIC_CACHE_KEY = "wildCachePublic";
+    const SHORTS_PLAYLIST_ID = "PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh";
 
     function escapeHtml(value) {
         return String(value || "")
@@ -260,34 +471,19 @@
 
         try {
             const u = new URL(value, window.location.href);
-
             const host = u.hostname.toLowerCase().replace(/^www\./, "");
-            let path = u.pathname || "";
+            const path = u.pathname || "";
 
-            // Google Drive già convertito da formatAssetLink: la vera identità è l'id.
             const driveId = u.searchParams.get("id");
             if (driveId && (host.includes("docs.google.com") || host.includes("drive.google.com"))) {
                 return "gdrive:" + driveId.trim();
             }
 
-            // Rimuove parametri volatili che creano falsi doppioni.
             [
-                "t",
-                "time",
-                "timestamp",
-                "nocache",
-                "cache",
-                "cachebust",
-                "cacheBust",
-                "cb",
-                "rand",
-                "random",
-                "shellv",
-                "mr",
-                "v"
-            ].forEach(k => u.searchParams.delete(k));
+                "t", "time", "timestamp", "nocache", "cache", "cachebust", "cacheBust",
+                "cb", "rand", "random", "shellv", "mr", "v"
+            ].forEach(function (k) { u.searchParams.delete(k); });
 
-            // Normalizzazione prudente: host minuscolo, path stabile.
             const query = u.searchParams.toString();
             return host + path + (query ? "?" + query : "");
         } catch (e) {
@@ -298,9 +494,7 @@
         }
     }
 
-
-
-        function canonicalTitleKey(rawTitle) {
+    function canonicalTitleKey(rawTitle) {
         return String(rawTitle || "")
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")
@@ -317,9 +511,6 @@
 
             const raw = String(v || "").trim();
             if (!raw) return;
-
-            // Censura solo valori che sembrano davvero immagini/asset visuali.
-            // Non vogliamo mischiare link social, WhatsApp, audio, ecc.
             if (!looksLikeImageUrl(raw)) return;
 
             const key = canonicalImageKey(raw);
@@ -328,7 +519,7 @@
 
         try {
             if (window.WILD_ASSETS && typeof window.WILD_ASSETS === "object") {
-                Object.keys(window.WILD_ASSETS).forEach(k => {
+                Object.keys(window.WILD_ASSETS).forEach(function (k) {
                     addAssetValue(window.WILD_ASSETS[k]);
                 });
             }
@@ -336,7 +527,7 @@
 
         try {
             if (cachePayload && cachePayload.assets && typeof cachePayload.assets === "object") {
-                Object.keys(cachePayload.assets).forEach(k => {
+                Object.keys(cachePayload.assets).forEach(function (k) {
                     addAssetValue(cachePayload.assets[k]);
                 });
             }
@@ -381,7 +572,7 @@
     function collectTravelImages(sourceName, list, forbiddenAssetKeys, outputMap) {
         if (!Array.isArray(list)) return;
 
-        list.forEach(item => {
+        list.forEach(function (item) {
             if (!item || typeof item !== "object") return;
 
             const rawImg = firstNonEmpty(item, [
@@ -403,10 +594,6 @@
 
             const imageKey = canonicalImageKey(finalUrl);
             if (!imageKey) return;
-
-            // CENSURA ASSOLUTA ASSET:
-            // se l'immagine coincide con header, logo, icone o altri asset globali,
-            // non entra nel WildWall.
             if (forbiddenAssetKeys.has(imageKey)) return;
 
             const titolo = firstNonEmpty(item, [
@@ -431,30 +618,25 @@
             if (sourceName === "opendays") badge = "OPEN DAY";
             if (sourceName === "paydays") badge = "HIKE";
 
-            // ANTI-DOPPIONE PER TITOLO:
-            // stesso titolo = una sola card, anche se cambia data.
-            // Se ha immagini diverse, ne terremo una random nel render.
             if (!outputMap.has(titleKey)) {
                 outputMap.set(titleKey, {
-                    titleKey,
-                    titolo,
+                    titleKey: titleKey,
+                    titolo: titolo,
                     candidates: [],
                     imageKeys: new Set()
                 });
             }
 
             const group = outputMap.get(titleKey);
-
-            // Dentro lo stesso titolo evitiamo immagini identiche duplicate.
             if (group.imageKeys.has(imageKey)) return;
 
             group.imageKeys.add(imageKey);
             group.candidates.push({
                 key: imageKey,
                 url: finalUrl,
-                titolo,
-                regione,
-                badge
+                titolo: titolo,
+                regione: regione,
+                badge: badge
             });
         });
     }
@@ -472,106 +654,14 @@
         return copy;
     }
 
-
-
-    let wildwallRenderedImages = [];
-
-function getWildwallPopupEls() {
-    return {
-        overlay: document.getElementById("wildwall-photo-overlay"),
-        closeBtn: document.getElementById("wildwall-photo-close"),
-        bigImg: document.getElementById("wildwall-photo-big"),
-        caption: document.getElementById("wildwall-photo-caption"),
-        meta: document.getElementById("wildwall-photo-meta")
-    };
-}
-
-function openWildwallPhoto(index) {
-    const img = wildwallRenderedImages[index];
-    if (!img) return;
-
-    const els = getWildwallPopupEls();
-    if (!els.overlay || !els.bigImg || !els.caption || !els.meta) return;
-
-    els.bigImg.src = img.url || "";
-    els.bigImg.alt = img.titolo || "Foto Wild-U";
-    els.caption.innerText = img.titolo || "Avventura Wild-U";
-
-    const metaParts = [];
-    if (img.badge) metaParts.push(img.badge);
-    if (img.regione) metaParts.push("📍 " + img.regione);
-
-    els.meta.innerText = metaParts.join(" · ");
-
-    els.overlay.style.display = "flex";
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-}
-
-function closeWildwallPhoto() {
-    const els = getWildwallPopupEls();
-    if (!els.overlay || !els.bigImg) return;
-
-    els.overlay.style.display = "none";
-    els.bigImg.src = "";
-
-    document.body.style.overflow = "";
-    document.documentElement.style.overflow = "";
-}
-
-function bindWildwallPopupEvents() {
-    const els = getWildwallPopupEls();
-    if (!els.overlay || els.overlay.dataset.bound === "1") return;
-
-    els.overlay.dataset.bound = "1";
-
-    els.overlay.addEventListener("click", function (e) {
-        if (e.target === els.overlay) closeWildwallPhoto();
-    });
-
-    if (els.closeBtn) {
-        els.closeBtn.addEventListener("click", function () {
-            closeWildwallPhoto();
-        });
-    }
-
-    if (!window.__wildwallEscBound) {
-        window.__wildwallEscBound = true;
-
-        document.addEventListener("keydown", function (e) {
-            if (e.key === "Escape") {
-                const nowEls = getWildwallPopupEls();
-                if (nowEls.overlay && nowEls.overlay.style.display !== "none") {
-                    closeWildwallPhoto();
-                }
-            }
-        });
-    }
-}
-
-function bindWildwallPhotoClicks() {
-    document.querySelectorAll(".wildwall-photo-card").forEach(function (card) {
-        if (card.dataset.bound === "1") return;
-        card.dataset.bound = "1";
-
-        card.addEventListener("click", function () {
-            const index = parseInt(card.getAttribute("data-wildwall-index"), 10);
-            openWildwallPhoto(index);
-        });
-    });
-}
-
-    
-    function renderWildWall() {
+    function collectWildwallImages() {
         const cachePayload = readWildPublicCachePayload();
         const forbiddenAssetKeys = buildForbiddenAssetKeys(cachePayload);
-
         const uniqueTitleGroups = new Map();
 
         const runtimeLists = getRuntimeLists();
         const cachedLists = getCachedLists(cachePayload);
 
-        // Prima runtime, poi cache: se l'app ha dati freschi, hanno priorità.
         collectTravelImages("events", runtimeLists.events, forbiddenAssetKeys, uniqueTitleGroups);
         collectTravelImages("opendays", runtimeLists.opendays, forbiddenAssetKeys, uniqueTitleGroups);
         collectTravelImages("paydays", runtimeLists.paydays, forbiddenAssetKeys, uniqueTitleGroups);
@@ -582,114 +672,194 @@ function bindWildwallPhotoClicks() {
 
         const pickedImages = [];
 
-        uniqueTitleGroups.forEach(group => {
+        uniqueTitleGroups.forEach(function (group) {
             if (!group || !Array.isArray(group.candidates) || !group.candidates.length) return;
-
-            // Stesso titolo: una sola immagine random.
             const pick = group.candidates[Math.floor(Math.random() * group.candidates.length)];
             pickedImages.push(pick);
         });
 
-        const images = shuffleList(pickedImages);
+        return {
+            images: shuffleList(pickedImages),
+            groupsCount: uniqueTitleGroups.size,
+            forbiddenCount: forbiddenAssetKeys.size
+        };
+    }
+
+    let wildwallRenderedImages = [];
+
+    function getWildwallPopupEls() {
+        return {
+            overlay: document.getElementById("wildwall-photo-overlay"),
+            closeBtn: document.getElementById("wildwall-photo-close"),
+            bigImg: document.getElementById("wildwall-photo-big"),
+            caption: document.getElementById("wildwall-photo-caption"),
+            meta: document.getElementById("wildwall-photo-meta")
+        };
+    }
+
+    function openWildwallPhoto(index) {
+        const img = wildwallRenderedImages[index];
+        if (!img) return;
+
+        const els = getWildwallPopupEls();
+        if (!els.overlay || !els.bigImg || !els.caption || !els.meta) return;
+
+        els.bigImg.src = img.url || "";
+        els.bigImg.alt = img.titolo || "Foto Wild-U";
+        els.caption.innerText = img.titolo || "Avventura Wild-U";
+
+        const metaParts = [];
+        if (img.badge) metaParts.push(img.badge);
+        if (img.regione) metaParts.push("📍 " + img.regione);
+
+        els.meta.innerText = metaParts.join(" · ");
+        els.overlay.style.display = "flex";
+        document.body.style.overflow = "hidden";
+        document.documentElement.style.overflow = "hidden";
+    }
+
+    function closeWildwallPhoto() {
+        const els = getWildwallPopupEls();
+        if (!els.overlay || !els.bigImg) return;
+
+        els.overlay.style.display = "none";
+        els.bigImg.src = "";
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+    }
+
+    function bindWildwallPopupEvents() {
+        const els = getWildwallPopupEls();
+        if (!els.overlay || els.overlay.dataset.bound === "1") return;
+
+        els.overlay.dataset.bound = "1";
+
+        els.overlay.addEventListener("click", function (e) {
+            if (e.target === els.overlay) closeWildwallPhoto();
+        });
+
+        if (els.closeBtn) {
+            els.closeBtn.addEventListener("click", closeWildwallPhoto);
+        }
+
+        if (!window.__wildwallEscBound) {
+            window.__wildwallEscBound = true;
+
+            document.addEventListener("keydown", function (e) {
+                if (e.key === "Escape") {
+                    const nowEls = getWildwallPopupEls();
+                    if (nowEls.overlay && nowEls.overlay.style.display !== "none") {
+                        closeWildwallPhoto();
+                    }
+                }
+            });
+        }
+    }
+
+    function bindWildwallPhotoClicks() {
+        root.querySelectorAll("[data-wildwall-index]").forEach(function (card) {
+            if (card.dataset.bound === "1") return;
+            card.dataset.bound = "1";
+
+            card.addEventListener("click", function () {
+                const index = parseInt(card.getAttribute("data-wildwall-index"), 10);
+                openWildwallPhoto(index);
+            });
+        });
+    }
+
+    function renderWildwallPreview(images) {
+        if (!previewWrap || !previewRail) return;
+
+        if (!Array.isArray(images) || !images.length) {
+            previewWrap.style.display = "none";
+            previewRail.innerHTML = "";
+            return;
+        }
+
+        previewWrap.style.display = "block";
+        previewRail.innerHTML = images.map(function (img, index) {
+            const safeUrl = escapeHtml(img.url);
+            const safeTitle = escapeHtml(img.titolo);
+
+            return `
+                <button
+                    type="button"
+                    class="wildwall-preview-thumb"
+                    data-wildwall-index="${index}"
+                    aria-label="Apri foto ${safeTitle}"
+                >
+                    <img src="${safeUrl}" alt="${safeTitle}" loading="lazy">
+                </button>
+            `;
+        }).join("");
+    }
+
+    function renderWildwallGrid(images) {
+        gridEl.innerHTML = images.map(function (img, index) {
+            const safeUrl = escapeHtml(img.url);
+            const safeTitle = escapeHtml(img.titolo);
+
+            return `
+                <button
+                    type="button"
+                    class="wildwall-photo-card"
+                    data-wildwall-index="${index}"
+                    aria-label="Apri foto ${safeTitle}"
+                >
+                    <img src="${safeUrl}" alt="${safeTitle}" loading="lazy">
+                </button>
+            `;
+        }).join("");
+    }
+
+    function renderShortsBlock() {
+        if (!shortsSection) return;
+
+        if (!SHORTS_PLAYLIST_ID) {
+            shortsSection.style.display = "none";
+            return;
+        }
+
+        shortsSection.style.display = "block";
+    }
+
+    function renderWildWall() {
+        renderShortsBlock();
+
+        const result = collectWildwallImages();
+        const images = result.images || [];
 
         if (!images.length) {
+            wildwallRenderedImages = [];
             gridEl.innerHTML = "";
+            renderWildwallPreview([]);
             emptyEl.style.display = "block";
             countEl.innerText = "0 immagini viaggio trovate";
             return;
         }
 
+        wildwallRenderedImages = images;
         emptyEl.style.display = "none";
         countEl.innerText = images.length + " avventure uniche";
 
-wildwallRenderedImages = images;
+        renderWildwallPreview(images);
+        renderWildwallGrid(images);
+        bindWildwallPopupEvents();
+        bindWildwallPhotoClicks();
 
-gridEl.innerHTML = images.map((img, index) => {
-    const safeUrl = escapeHtml(img.url);
-    const safeTitle = escapeHtml(img.titolo);
-    const safeRegione = escapeHtml(img.regione);
-    const safeBadge = escapeHtml(img.badge);
-
-    return `
-        <button
-            type="button"
-            class="wildwall-photo-card"
-            data-wildwall-index="${index}"
-            aria-label="Apri foto ${safeTitle}"
-        >
-            <img
-                src="${safeUrl}"
-                alt="${safeTitle}"
-                loading="lazy"
-            >
-
-            <div class="wildwall-photo-gradient"></div>
-
-            <div style="
-                position:absolute;
-                top:8px;
-                left:8px;
-                background:rgba(0,0,0,0.65);
-                border:1px solid rgba(212,175,55,0.55);
-                color:var(--w-gold);
-                border-radius:999px;
-                padding:4px 8px;
-                font-size:9px;
-                font-weight:900;
-                letter-spacing:0.7px;
-                text-transform:uppercase;
-            ">${safeBadge}</div>
-
-            <div class="wildwall-zoom-pill">Apri</div>
-
-            <div style="
-                position:absolute;
-                left:10px;
-                right:10px;
-                bottom:10px;
-                text-align:left;
-            ">
-                <div style="
-                    color:#fff;
-                    font-size:12px;
-                    font-weight:900;
-                    line-height:1.15;
-                    text-transform:uppercase;
-                    text-shadow:0 2px 8px rgba(0,0,0,0.8);
-                    display:-webkit-box;
-                    -webkit-line-clamp:2;
-                    -webkit-box-orient:vertical;
-                    overflow:hidden;
-                ">${safeTitle}</div>
-
-                <div style="
-                    margin-top:4px;
-                    color:#ccc;
-                    font-size:10px;
-                    font-weight:700;
-                    line-height:1.2;
-                    text-shadow:0 2px 8px rgba(0,0,0,0.8);
-                    white-space:nowrap;
-                    overflow:hidden;
-                    text-overflow:ellipsis;
-                ">
-                    ${safeRegione ? "📍 " + safeRegione : ""}
-                </div>
-            </div>
-        </button>
-    `;
-}).join("");
-
-bindWildwallPopupEvents();
-bindWildwallPhotoClicks();
-
-        console.log("[WILDU WILDWALL] Render completato", {
+        console.log("[WILDU WILDWALL] Render premium completato", {
             avventureUnichePerTitolo: images.length,
-            gruppiTitoloTotali: uniqueTitleGroups.size,
-            assetCensuratiPotenziali: forbiddenAssetKeys.size
+            gruppiTitoloTotali: result.groupsCount,
+            assetCensuratiPotenziali: result.forbiddenCount,
+            shortsPlaylist: SHORTS_PLAYLIST_ID
         });
     }
 
     renderWildWall();
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
+        try { window.WILDU_MODULE.rewriteRoot(root); } catch (e) {}
+    }
 })();
 </script>
