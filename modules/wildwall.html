@@ -10,7 +10,8 @@
         }
 
         #wildu-wildwall-module .wildwall-shell-card,
-        #wildu-wildwall-module .wildwall-shorts-card {
+        #wildu-wildwall-module .wildwall-shorts-card,
+        #wildu-wildwall-module .wildwall-gallery-card {
             position: relative;
             overflow: hidden;
             border-radius: 24px;
@@ -31,6 +32,58 @@
                 radial-gradient(circle at top, rgba(255,0,0,0.13), transparent 38%),
                 radial-gradient(circle at bottom left, rgba(212,175,55,0.12), transparent 40%),
                 linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.025));
+        }
+
+        #wildu-wildwall-module .wildwall-gallery-card {
+            display: none;
+            padding: 0;
+            border-color: rgba(212,175,55,0.28);
+            background:
+                radial-gradient(circle at 12% 0%, rgba(212,175,55,0.20), transparent 38%),
+                radial-gradient(circle at 90% 18%, rgba(255,255,255,0.08), transparent 34%),
+                linear-gradient(145deg, rgba(21,28,20,0.98), rgba(8,8,8,0.96));
+            box-shadow:
+                0 18px 42px rgba(0,0,0,0.58),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+
+        #wildu-wildwall-module .wildwall-gallery-head {
+            display: grid;
+            grid-template-columns: 42px 1fr;
+            gap: 12px;
+            align-items: center;
+            padding: 16px 16px 8px 16px;
+        }
+
+        #wildu-wildwall-module .wildwall-gallery-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(212,175,55,0.14);
+            border: 1px solid rgba(212,175,55,0.42);
+            box-shadow: inset 0 0 18px rgba(212,175,55,0.10);
+            font-size: 20px;
+        }
+
+        #wildu-wildwall-module .wildwall-gallery-title {
+            margin: 0;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 950;
+            line-height: 1.08;
+            text-transform: uppercase;
+            letter-spacing: 0.35px;
+        }
+
+        #wildu-wildwall-module .wildwall-gallery-copy {
+            margin: 5px 0 0 0;
+            color: #aaa;
+            font-size: 11px;
+            font-weight: 750;
+            line-height: 1.35;
         }
 
         #wildu-wildwall-module .wildwall-section-kicker {
@@ -72,16 +125,30 @@
         #wildu-wildwall-module .wildwall-shorts-frame-wrap {
             width: min(100%, 370px);
             margin: 14px auto 0 auto;
-            border-radius: 24px;
-            border: 1px solid rgba(255,255,255,0.14);
-            background: #050505;
+            border-radius: 26px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015)),
+                #050505;
             overflow: hidden;
-            box-shadow: 0 12px 34px rgba(0,0,0,0.58);
+            box-shadow:
+                0 16px 42px rgba(0,0,0,0.62),
+                0 0 0 7px rgba(255,255,255,0.025);
         }
 
         #wildu-wildwall-module .wildwall-shorts-frame {
             width: 100%;
             aspect-ratio: 9 / 16;
+            display: block;
+            border: 0;
+            background: #000;
+        }
+
+        #wildu-wildwall-module #wildwall-shorts-player,
+        #wildu-wildwall-module #wildwall-shorts-player iframe,
+        #wildu-wildwall-module .wildwall-shorts-frame iframe {
+            width: 100% !important;
+            height: 100% !important;
             display: block;
             border: 0;
             background: #000;
@@ -123,17 +190,38 @@
 
         #wildu-wildwall-module .wildwall-preview-wrap {
             display: none;
-            margin: 8px -18px 20px -18px;
-            padding: 0 0 3px 0;
+            margin: 0;
+            padding: 0 0 14px 0;
             position: relative;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-wrap::before,
+        #wildu-wildwall-module .wildwall-preview-wrap::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 14px;
+            width: 34px;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-wrap::before {
+            left: 0;
+            background: linear-gradient(90deg, rgba(10,12,10,0.96), rgba(10,12,10,0));
+        }
+
+        #wildu-wildwall-module .wildwall-preview-wrap::after {
+            right: 0;
+            background: linear-gradient(270deg, rgba(10,12,10,0.96), rgba(10,12,10,0));
         }
 
         #wildu-wildwall-module .wildwall-preview-rail {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             overflow-x: auto;
             overflow-y: hidden;
-            padding: 2px 18px 8px 18px;
+            padding: 4px 16px 12px 16px;
             scroll-snap-type: x proximity;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
@@ -145,17 +233,21 @@
         }
 
         #wildu-wildwall-module .wildwall-preview-thumb {
-            flex: 0 0 92px;
-            width: 92px;
-            height: 126px;
-            border: 1px solid rgba(255,255,255,0.14);
-            border-radius: 17px;
+            flex: 0 0 clamp(118px, 35vw, 154px);
+            width: clamp(118px, 35vw, 154px);
+            height: clamp(154px, 46vw, 198px);
+            border: 1px solid rgba(212,175,55,0.30);
+            border-radius: 22px;
             padding: 0;
             background: #111;
             overflow: hidden;
             cursor: pointer;
-            box-shadow: 0 7px 18px rgba(0,0,0,0.42);
-            scroll-snap-align: start;
+            box-shadow:
+                0 12px 28px rgba(0,0,0,0.52),
+                inset 0 0 0 1px rgba(255,255,255,0.04);
+            scroll-snap-align: center;
+            position: relative;
+            transform: translateZ(0);
         }
 
         #wildu-wildwall-module .wildwall-preview-thumb img {
@@ -163,7 +255,50 @@
             height: 100%;
             display: block;
             object-fit: cover;
-            filter: saturate(1.08) contrast(1.03);
+            filter: saturate(1.10) contrast(1.04);
+            transform: scale(1.015);
+        }
+
+        #wildu-wildwall-module .wildwall-preview-gradient {
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(180deg, rgba(0,0,0,0.02) 22%, rgba(0,0,0,0.84) 100%),
+                radial-gradient(circle at top right, rgba(212,175,55,0.12), transparent 34%);
+            pointer-events: none;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-label {
+            position: absolute;
+            left: 10px;
+            right: 10px;
+            bottom: 10px;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 950;
+            line-height: 1.18;
+            text-transform: uppercase;
+            text-align: left;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.86);
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        #wildu-wildwall-module .wildwall-preview-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            border-radius: 999px;
+            padding: 4px 8px;
+            background: rgba(0,0,0,0.62);
+            border: 1px solid rgba(212,175,55,0.45);
+            color: var(--w-gold);
+            font-size: 8px;
+            font-weight: 950;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
         }
 
         #wildu-wildwall-module .wildwall-masonry {
@@ -310,19 +445,31 @@
         </div>
 
         <div class="wildwall-shorts-frame-wrap">
-            <iframe
-                id="wildwall-shorts-frame"
+            <div
+                id="wildwall-shorts-player-host"
                 class="wildwall-shorts-frame"
-                title="Playlist Shorts Baffi Wild"
-                src="https://www.youtube-nocookie.com/embed/videoseries?list=PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh&rel=0&modestbranding=1&playsinline=1"
-                loading="lazy"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-            ></iframe>
+                aria-label="Player Shorts Baffi Wild"
+            >
+                <div id="wildwall-shorts-player"></div>
+            </div>
         </div>
 
         <div class="wildwall-shorts-actions">
             <a class="wildwall-mini-link" href="https://www.youtube.com/playlist?list=PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh" target="_blank" rel="noopener">Apri playlist</a>
+        </div>
+    </section>
+
+    <section id="wildwall-preview-section" class="wildwall-gallery-card" aria-label="Carosello foto WildWall">
+        <div class="wildwall-gallery-head">
+            <div class="wildwall-gallery-icon">✨</div>
+            <div>
+                <h3 class="wildwall-gallery-title">Galleria in evidenza</h3>
+                <p class="wildwall-gallery-copy">Scorri le avventure: il mosaico completo resta ordinato sotto.</p>
+            </div>
+        </div>
+
+        <div id="wildwall-preview-wrap" class="wildwall-preview-wrap">
+            <div id="wildwall-preview-rail" class="wildwall-preview-rail" aria-label="Anteprima foto WildWall"></div>
         </div>
     </section>
 
@@ -332,10 +479,6 @@
             <h2 class="wildwall-title">WildWall</h2>
             <p class="wildwall-subtitle">Un mosaico vivo delle avventure Wild-U già passate dalla tua bussola.</p>
             <div id="wildwall-count" class="wildwall-count"></div>
-        </div>
-
-        <div id="wildwall-preview-wrap" class="wildwall-preview-wrap">
-            <div id="wildwall-preview-rail" class="wildwall-preview-rail" aria-label="Anteprima foto WildWall"></div>
         </div>
 
         <div id="wildwall-grid" class="wildwall-masonry"></div>
@@ -368,14 +511,18 @@
     const gridEl = document.getElementById("wildwall-grid");
     const emptyEl = document.getElementById("wildwall-empty");
     const countEl = document.getElementById("wildwall-count");
+    const previewSection = document.getElementById("wildwall-preview-section");
     const previewWrap = document.getElementById("wildwall-preview-wrap");
     const previewRail = document.getElementById("wildwall-preview-rail");
     const shortsSection = document.getElementById("wildwall-shorts-section");
+    const shortsPlayerHost = document.getElementById("wildwall-shorts-player-host");
+    const shortsPlayerEl = document.getElementById("wildwall-shorts-player");
 
     if (!root || !gridEl || !emptyEl || !countEl) return;
 
     const PUBLIC_CACHE_KEY = "wildCachePublic";
     const SHORTS_PLAYLIST_ID = "PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh";
+    const SHORTS_RANDOM_FALLBACK_COUNT = 12;
 
     function escapeHtml(value) {
         return String(value || "")
@@ -772,15 +919,18 @@
         if (!previewWrap || !previewRail) return;
 
         if (!Array.isArray(images) || !images.length) {
+            if (previewSection) previewSection.style.display = "none";
             previewWrap.style.display = "none";
             previewRail.innerHTML = "";
             return;
         }
 
+        if (previewSection) previewSection.style.display = "block";
         previewWrap.style.display = "block";
         previewRail.innerHTML = images.map(function (img, index) {
             const safeUrl = escapeHtml(img.url);
             const safeTitle = escapeHtml(img.titolo);
+            const safeBadge = escapeHtml(img.badge || "Wild-U");
 
             return `
                 <button
@@ -790,6 +940,9 @@
                     aria-label="Apri foto ${safeTitle}"
                 >
                     <img src="${safeUrl}" alt="${safeTitle}" loading="lazy">
+                    <span class="wildwall-preview-gradient"></span>
+                    <span class="wildwall-preview-badge">${safeBadge}</span>
+                    <span class="wildwall-preview-label">${safeTitle}</span>
                 </button>
             `;
         }).join("");
@@ -813,6 +966,165 @@
         }).join("");
     }
 
+    function getShortsRandomFallbackIndex() {
+        const max = Math.max(1, parseInt(SHORTS_RANDOM_FALLBACK_COUNT, 10) || 1);
+        return Math.floor(Math.random() * max);
+    }
+
+    function buildShortsFallbackUrl() {
+        const url = new URL("https://www.youtube-nocookie.com/embed");
+        url.searchParams.set("listType", "playlist");
+        url.searchParams.set("list", SHORTS_PLAYLIST_ID);
+        url.searchParams.set("rel", "0");
+        url.searchParams.set("playsinline", "1");
+        url.searchParams.set("index", String(getShortsRandomFallbackIndex()));
+        return url.toString();
+    }
+
+    function renderShortsFallbackIframe() {
+        if (!shortsPlayerHost) return;
+
+        shortsPlayerHost.innerHTML = `
+            <iframe
+                title="Playlist Shorts Baffi Wild"
+                src="${escapeHtml(buildShortsFallbackUrl())}"
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowfullscreen
+            ></iframe>
+        `;
+    }
+
+    function loadYouTubeIframeApi() {
+        if (window.YT && typeof window.YT.Player === "function") {
+            return Promise.resolve();
+        }
+
+        if (window.__wilduWildwallYouTubeApiPromise) {
+            return window.__wilduWildwallYouTubeApiPromise;
+        }
+
+        window.__wilduWildwallYouTubeApiPromise = new Promise(function (resolve, reject) {
+            const previousReady = window.onYouTubeIframeAPIReady;
+            let settled = false;
+
+            window.onYouTubeIframeAPIReady = function () {
+                try {
+                    if (typeof previousReady === "function") previousReady();
+                } catch (e) {}
+
+                settled = true;
+                resolve();
+            };
+
+            if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+                const tag = document.createElement("script");
+                tag.src = "https://www.youtube.com/iframe_api";
+                tag.async = true;
+                tag.onerror = function () {
+                    if (!settled) reject(new Error("YouTube IFrame API non caricata"));
+                };
+                document.head.appendChild(tag);
+            }
+
+            setTimeout(function () {
+                if (!settled && window.YT && typeof window.YT.Player === "function") {
+                    settled = true;
+                    resolve();
+                }
+            }, 2500);
+        });
+
+        return window.__wilduWildwallYouTubeApiPromise;
+    }
+
+    function cueRandomShortFromLoadedPlaylist(player, allowFallback) {
+        if (!player || player.__wilduRandomShortCued === true) return;
+
+        try {
+            const playlist = typeof player.getPlaylist === "function" ? player.getPlaylist() : [];
+
+            if (Array.isArray(playlist) && playlist.length > 1) {
+                const randomIndex = Math.floor(Math.random() * playlist.length);
+                player.__wilduRandomShortCued = true;
+                player.cuePlaylist({
+                    listType: "playlist",
+                    list: playlist,
+                    index: randomIndex,
+                    startSeconds: 0
+                });
+                return;
+            }
+
+            if (allowFallback !== true) return;
+
+            const fallbackIndex = getShortsRandomFallbackIndex();
+            player.__wilduRandomShortCued = true;
+            player.cuePlaylist({
+                listType: "playlist",
+                list: SHORTS_PLAYLIST_ID,
+                index: fallbackIndex,
+                startSeconds: 0
+            });
+        } catch (e) {
+            renderShortsFallbackIframe();
+        }
+    }
+
+    function initRandomShortsPlayer() {
+        if (!shortsPlayerEl || !shortsPlayerHost) {
+            renderShortsFallbackIframe();
+            return;
+        }
+
+        if (shortsPlayerHost.dataset.playerReady === "1") return;
+        shortsPlayerHost.dataset.playerReady = "1";
+
+        loadYouTubeIframeApi().then(function () {
+            if (!window.YT || typeof window.YT.Player !== "function") {
+                renderShortsFallbackIframe();
+                return;
+            }
+
+            const playerVars = {
+                listType: "playlist",
+                list: SHORTS_PLAYLIST_ID,
+                rel: 0,
+                playsinline: 1,
+                modestbranding: 1
+            };
+
+            try {
+                if (window.location && /^https?:$/i.test(window.location.protocol)) {
+                    playerVars.origin = window.location.origin;
+                }
+            } catch (e) {}
+
+            new window.YT.Player("wildwall-shorts-player", {
+                width: "100%",
+                height: "100%",
+                playerVars: playerVars,
+                events: {
+                    onReady: function (event) {
+                        const player = event && event.target;
+                        try { if (player && typeof player.setShuffle === "function") player.setShuffle(true); } catch (e) {}
+
+                        setTimeout(function () { cueRandomShortFromLoadedPlaylist(player, false); }, 450);
+                        setTimeout(function () { cueRandomShortFromLoadedPlaylist(player, false); }, 1200);
+                        setTimeout(function () { cueRandomShortFromLoadedPlaylist(player, true); }, 2200);
+                    },
+                    onStateChange: function (event) {
+                        if (event && event.data === 5) {
+                            cueRandomShortFromLoadedPlaylist(event.target, false);
+                        }
+                    }
+                }
+            });
+        }).catch(function () {
+            renderShortsFallbackIframe();
+        });
+    }
+
     function renderShortsBlock() {
         if (!shortsSection) return;
 
@@ -822,6 +1134,7 @@
         }
 
         shortsSection.style.display = "block";
+        initRandomShortsPlayer();
     }
 
     function renderWildWall() {
