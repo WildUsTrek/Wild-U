@@ -50,8 +50,14 @@ body::before {
     display: flex;
     gap: 8px;
 
-    /* Stato normale: sotto l'header NON deve creare spazio extra */
-    padding: 12px;
+    /*
+       V19: geometria stabile.
+       L'header resta nel flusso e sparisce con lo scroll; la navbar resta sticky,
+       ma non cambia più padding/altezza quando diventa stuck. Questo evita il
+       micro-jump/reflow su iOS/Android e lascia la safe-area gestita in modo
+       compatibile con PWA/browser moderni.
+    */
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 12px 12px;
 
     background: #000;
 
@@ -69,12 +75,13 @@ body::before {
     box-sizing: border-box;
     box-shadow: none;
 
-    transition: box-shadow 0.16s ease-out, background-color 0.16s ease-out;
+    transition: box-shadow 0.16s ease-out, background-color 0.16s ease-out, border-color 0.16s ease-out;
 }
 
-/* Stato sticky reale: solo quando la navbar è attaccata al bordo alto */
+/* Stato sticky reale: cambia solo look, non geometria. */
 .nav.nav-is-stuck {
-    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    background: #000;
+    border-bottom-color: #141414;
     box-shadow: 0 8px 18px rgba(0,0,0,0.55);
 }
 
