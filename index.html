@@ -814,6 +814,174 @@ body::before {
 
     
         
+
+/* --- WILDU PROFILO / PASSAPORTO COMPATTO V1 --- */
+.wildu-passport-shell {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 20px;
+    border-radius: 22px;
+    border: 1px solid rgba(212,175,55,0.34);
+    background:
+        radial-gradient(circle at top left, rgba(212,175,55,0.18), transparent 42%),
+        linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.025));
+    box-shadow: 0 10px 30px rgba(0,0,0,0.48);
+}
+
+.wildu-passport-toggle {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: #fff;
+    padding: 18px 16px 14px 16px;
+    display: grid;
+    grid-template-columns: 58px 1fr auto 24px;
+    gap: 12px;
+    align-items: center;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.wildu-passport-toggle:active {
+    transform: scale(0.992);
+}
+
+#wildu-passport-compact-name {
+    color: #fff;
+    font-size: 18px;
+    font-weight: 950;
+    line-height: 1.12;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#wildu-passport-compact-phone {
+    color: #b8b8b8;
+    font-size: 12px;
+    font-weight: 800;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wildu-passport-mini-xp {
+    height: 5px;
+    margin: 0 16px 0 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+}
+
+#wildu-passport-mini-xp-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #d4af37, #f1c40f, #fff3b0);
+    box-shadow: 0 0 12px rgba(212,175,55,0.45);
+    transition: width 0.45s ease;
+}
+
+.wildu-passport-details {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    padding: 0 16px;
+    transition: max-height 0.32s ease, opacity 0.22s ease, padding 0.22s ease;
+}
+
+.wildu-passport-shell.passport-open .wildu-passport-details {
+    max-height: 980px;
+    opacity: 1;
+    padding: 16px;
+}
+
+#wildu-passport-chevron {
+    color: var(--w-gold);
+    font-size: 18px;
+    font-weight: 950;
+    transition: transform 0.22s ease;
+}
+
+.wildu-passport-shell.passport-open #wildu-passport-chevron {
+    transform: rotate(180deg);
+}
+
+.wildu-grade-legend-card {
+    border-left-color: var(--w-gold) !important;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.wildu-grade-legend-toggle {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: #fff;
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.wildu-grade-legend-body {
+    display: none;
+    padding: 0 18px 18px 18px;
+}
+
+.wildu-grade-legend-card.legend-open .wildu-grade-legend-body {
+    display: block;
+}
+
+.wildu-grade-row {
+    padding: 12px;
+    background: #222;
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.wildu-grade-row.unlocked {
+    border-color: rgba(212,175,55,0.55);
+    color: var(--w-gold);
+    opacity: 1;
+}
+
+.wildu-grade-row.locked {
+    opacity: 0.34;
+}
+
+.wildu-grade-row.current-grade {
+    box-shadow: 0 0 18px rgba(212,175,55,0.22);
+    background: rgba(212,175,55,0.10);
+}
+
+@media (max-width: 390px) {
+    .wildu-passport-toggle {
+        grid-template-columns: 50px 1fr auto 20px;
+        gap: 9px;
+        padding-left: 13px;
+        padding-right: 13px;
+    }
+
+    #wildu-passport-compact-name {
+        font-size: 15px;
+    }
+
+    #prof-grado {
+        font-size: 18px !important;
+    }
+}
+
     </style>
     
 </head>
@@ -1145,46 +1313,81 @@ body::before {
             <div class="card" style="border-left-color: var(--w-gold);">
                 <h3 style="margin-top:0;">Ultimo Passo!</h3>
                 <p style="font-size:14px; color:#aaa; margin-bottom:20px;">Per poterti contattare in caso di modifiche ai viaggi, inserisci il tuo numero WhatsApp.</p>
-                <input type="tel" id="reg-phone" placeholder="Es: +39 333 1234567">
+                <input type="tel" id="reg-phone" name="tel" inputmode="tel" autocomplete="tel" placeholder="Es: +39 333 1234567">
+                <div id="reg-phone-hint" style="font-size:12px; color:#999; line-height:1.4; margin:-8px 0 15px 0; text-align:center;">
+                    Se il dispositivo lo permette, ti suggerirà il numero salvato. Puoi modificarlo prima di continuare.
+                </div>
                 <button onclick="completeRegistration()" class="btn-book btn-action-glow" style="width:100%;">INIZIA L'AVVENTURA</button>
             </div>
         </div>
 
         <div id="profile-data" class="hidden">
-    <div class="card" style="text-align:center;">
-        <div id="prof-main-icon" style="font-size: 60px; margin-bottom: 10px;">🌲</div>
-        <h2 id="prof-grado" style="color:var(--w-gold); margin:0; font-size: 32px; text-transform: uppercase;">...</h2>
-        <div id="prof-key" style="font-size:12px; opacity:0.4; margin-bottom: 20px;"></div>
-        
-        <div class="xp-bar">
-            <div class="xp-text-inside" id="xp-percentage">0%</div>
-            <div id="xp-fill" class="xp-fill"></div>
-        </div>
-        <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;">
-            <span id="prof-xp">0 XP</span>
-            <span id="prof-missing" style="color:var(--w-gold);"></span>
+    <div id="wildu-passport-shell" class="wildu-passport-shell">
+        <div id="wildu-passport-toggle" class="wildu-passport-toggle" role="button" tabindex="0" onclick="toggleWilduPassportDetails()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWilduPassportDetails();}" aria-expanded="false">
+            <div id="prof-main-icon" style="font-size: 46px; line-height:1; text-align:center;">🌲</div>
+
+            <div style="min-width:0;">
+                <div style="color:var(--w-gold); font-size:10px; font-weight:950; letter-spacing:1px; text-transform:uppercase; margin-bottom:5px;">Passaporto Wild-U</div>
+                <div id="wildu-passport-compact-name">Esploratore Wild-U</div>
+                <div id="wildu-passport-compact-phone">Telefono non impostato</div>
+            </div>
+
+            <div style="text-align:right; min-width:78px;">
+                <div id="prof-grado" style="color:var(--w-gold); margin:0; font-size: 21px; font-weight:950; text-transform: uppercase; line-height:1.05;">...</div>
+                <div id="wildu-passport-mini-xp-label" style="color:#aaa; font-size:11px; font-weight:900; margin-top:5px;">0%</div>
+            </div>
+
+            <span id="wildu-passport-chevron">⌄</span>
         </div>
 
-        <div class="profile-info-container" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-top: 25px; text-align: left;">
-            <div style="margin-bottom: 15px;">
-                <label style="color: #888; font-size: 11px; display: block; margin-bottom: 2px; letter-spacing: 1px;">NOME E COGNOME</label>
-                <input type="text" id="user-name-input" class="wild-input-profile" placeholder="Clicca modifica per inserire" readonly>
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label style="color: #888; font-size: 11px; display: block; margin-bottom: 2px; letter-spacing: 1px;">TELEFONO / TELEGRAM</label>
-                <input type="text" id="user-phone-input" class="wild-input-profile" placeholder="Clicca modifica per inserire" readonly>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 5px;">
-                <button id="edit-profile-btn" onclick="toggleProfileEdit(true)" class="btn-profile-edit">✏️ Modifica</button>
-                <button id="save-profile-btn" onclick="saveProfileData()" class="btn-profile-save" style="display: none;">✅ Salva</button>
-                <button id="cancel-profile-btn" onclick="toggleProfileEdit(false)" class="btn-profile-cancel" style="display: none;">✖️</button>
-            </div>
+        <div class="wildu-passport-mini-xp" aria-hidden="true">
+            <div id="wildu-passport-mini-xp-fill"></div>
         </div>
 
-        <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px; margin-top: 25px;"></div>
-        
-        <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:40px; text-decoration:underline;">Ricarica / Scollega Account</button>
-        <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
+        <div id="wildu-passport-details" class="wildu-passport-details" aria-hidden="true">
+            <div id="prof-key" style="font-size:12px; opacity:0.4; margin-bottom: 16px; text-align:center;"></div>
+            
+            <div class="xp-bar" style="margin-top:0;">
+                <div class="xp-text-inside" id="xp-percentage">0%</div>
+                <div id="xp-fill" class="xp-fill"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;">
+                <span id="prof-xp">0 XP</span>
+                <span id="prof-missing" style="color:var(--w-gold);"></span>
+            </div>
+
+            <div class="profile-info-container" style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; margin-top: 25px; text-align: left;">
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #888; font-size: 11px; display: block; margin-bottom: 2px; letter-spacing: 1px;">NOME E COGNOME</label>
+                    <input type="text" id="user-name-input" class="wild-input-profile" placeholder="Clicca modifica per inserire" readonly>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #888; font-size: 11px; display: block; margin-bottom: 2px; letter-spacing: 1px;">TELEFONO / TELEGRAM</label>
+                    <input type="text" id="user-phone-input" class="wild-input-profile" placeholder="Clicca modifica per inserire" readonly>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 5px;">
+                    <button id="edit-profile-btn" onclick="toggleProfileEdit(true)" class="btn-profile-edit">✏️ Modifica</button>
+                    <button id="save-profile-btn" onclick="saveProfileData()" class="btn-profile-save" style="display: none;">✅ Salva</button>
+                    <button id="cancel-profile-btn" onclick="toggleProfileEdit(false)" class="btn-profile-cancel" style="display: none;">✖️</button>
+                </div>
+            </div>
+            
+            <button onclick="logout()" style="background:none; border:none; color:#666; font-size:14px; margin-top:30px; text-decoration:underline; width:100%;">Ricarica / Scollega Account</button>
+            <div class="alert-revoca">I punti possono essere revocati in caso di mancata adesione.</div>
+        </div>
+    </div>
+
+    <div id="wildu-grade-legend-card" class="card wildu-grade-legend-card">
+        <div id="wildu-grade-legend-toggle" class="wildu-grade-legend-toggle" role="button" tabindex="0" onclick="toggleWilduGradeLegend()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleWilduGradeLegend();}" aria-expanded="false">
+            <div>
+                <div style="color:#fff; font-weight:950; font-size:16px;">🏅 Legenda gradi Wild-U</div>
+                <div style="color:#aaa; font-size:12px; margin-top:4px;">Livelli sbloccati, prossimo traguardo e gradi futuri</div>
+            </div>
+            <span id="wildu-grade-legend-chevron" style="color:var(--w-gold); font-size:18px; font-weight:950;">⌄</span>
+        </div>
+        <div id="wildu-grade-legend-body" class="wildu-grade-legend-body">
+            <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px;"></div>
+        </div>
     </div>
     
     <div class="card" style="border-left-color: #0088cc;">
@@ -1217,7 +1420,6 @@ body::before {
         In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
     </div>
     <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
-</div>
 </div>
 
 
@@ -4643,6 +4845,7 @@ function reconcileProfileShellWithClientSession() {
     if (tempGoogleUser || tempTelegramUser) {
         loginScreen.classList.add('hidden');
         completeScreen.classList.remove('hidden');
+        suggestRegistrationPhone('profile-shell');
     } else {
         completeScreen.classList.add('hidden');
         loginScreen.classList.remove('hidden');
@@ -5227,6 +5430,182 @@ function requireLoggedAccess(reason, options = {}) {
     document.addEventListener('click', handleWilduAudioStartGesture);
 
 
+// ==========================================
+// PASSAPORTO PROFILO COMPATTO / ACCORDION
+// ==========================================
+
+function formatWilduProfilePhoneForDisplay(value) {
+    const clean = String(value || '').trim();
+    return clean ? clean : 'Telefono non impostato';
+}
+
+function rememberWilduLastKnownPhone(value) {
+    const clean = String(value || '').trim();
+    if (!clean) return;
+
+    try {
+        localStorage.setItem('wilduLastKnownPhone', clean);
+    } catch (e) {}
+}
+
+function syncWilduPassportSummary(data) {
+    data = data || cachedXPData || {};
+
+    const nameEl = document.getElementById('wildu-passport-compact-name');
+    const phoneEl = document.getElementById('wildu-passport-compact-phone');
+
+    if (nameEl) {
+        nameEl.innerText = String(data.nome || '').trim() || 'Esploratore Wild-U';
+    }
+
+    if (phoneEl) {
+        phoneEl.innerText = formatWilduProfilePhoneForDisplay(data.telefono || '');
+    }
+}
+
+function setWilduPassportDetailsOpen(isOpen, reason) {
+    const shell = document.getElementById('wildu-passport-shell');
+    const toggle = document.getElementById('wildu-passport-toggle');
+    const details = document.getElementById('wildu-passport-details');
+
+    if (!shell) return;
+
+    shell.classList.toggle('passport-open', !!isOpen);
+
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        toggle.title = isOpen ? 'Chiudi dettagli passaporto' : 'Apri dettagli passaporto';
+    }
+
+    if (details) {
+        details.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    }
+
+    try {
+        pageDebug('PROFILE_PASSPORT_TOGGLE', {
+            open: !!isOpen,
+            reason: reason || ''
+        });
+    } catch (e) {}
+}
+
+function toggleWilduPassportDetails() {
+    const shell = document.getElementById('wildu-passport-shell');
+    const willOpen = !(shell && shell.classList.contains('passport-open'));
+    setWilduPassportDetailsOpen(willOpen, 'manual');
+}
+
+function openWilduPassportForXPAnimation() {
+    setWilduPassportDetailsOpen(true, 'xp-animation');
+}
+
+function setWilduGradeLegendOpen(isOpen) {
+    const card = document.getElementById('wildu-grade-legend-card');
+    const toggle = document.getElementById('wildu-grade-legend-toggle');
+    const body = document.getElementById('wildu-grade-legend-body');
+    const chev = document.getElementById('wildu-grade-legend-chevron');
+
+    if (!card) return;
+
+    card.classList.toggle('legend-open', !!isOpen);
+    if (toggle) toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (body) body.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    if (chev) chev.style.transform = isOpen ? 'rotate(180deg)' : '';
+}
+
+function toggleWilduGradeLegend() {
+    const card = document.getElementById('wildu-grade-legend-card');
+    setWilduGradeLegendOpen(!(card && card.classList.contains('legend-open')));
+}
+
+function extractPhoneFromFirebaseUser(user) {
+    if (!user) return '';
+
+    if (user.phoneNumber) return String(user.phoneNumber).trim();
+
+    try {
+        const providerData = Array.isArray(user.providerData) ? user.providerData : [];
+        for (let i = 0; i < providerData.length; i++) {
+            if (providerData[i] && providerData[i].phoneNumber) {
+                return String(providerData[i].phoneNumber).trim();
+            }
+        }
+    } catch (e) {}
+
+    return '';
+}
+
+function getSuggestedRegistrationPhone() {
+    const candidates = [];
+
+    candidates.push(extractPhoneFromFirebaseUser(tempGoogleUser));
+
+    try {
+        if (tempTelegramUser && tempTelegramUser.phone_number) {
+            candidates.push(tempTelegramUser.phone_number);
+        }
+    } catch (e) {}
+
+    try {
+        if (cachedXPData && cachedXPData.telefono) candidates.push(cachedXPData.telefono);
+    } catch (e) {}
+
+    try {
+        const profilePhone = document.getElementById('user-phone-input');
+        if (profilePhone && profilePhone.value) candidates.push(profilePhone.value);
+    } catch (e) {}
+
+    try {
+        const bookingPhone = document.getElementById('cb-telefono');
+        if (bookingPhone && bookingPhone.value) candidates.push(bookingPhone.value);
+    } catch (e) {}
+
+    try {
+        candidates.push(localStorage.getItem('wilduLastKnownPhone') || '');
+    } catch (e) {}
+
+    for (let i = 0; i < candidates.length; i++) {
+        const clean = String(candidates[i] || '').trim();
+        if (clean.length >= 8) return clean;
+    }
+
+    return '';
+}
+
+function suggestRegistrationPhone(reason) {
+    const input = document.getElementById('reg-phone');
+    const hint = document.getElementById('reg-phone-hint');
+    if (!input) return;
+
+    input.setAttribute('autocomplete', 'tel');
+    input.setAttribute('inputmode', 'tel');
+    input.setAttribute('name', 'tel');
+
+    const current = String(input.value || '').trim();
+    const suggested = getSuggestedRegistrationPhone();
+
+    if (!current && suggested) {
+        input.value = suggested;
+        if (hint) {
+            hint.innerText = 'Ho precompilato il numero più affidabile trovato. Controllalo e modificalo se serve.';
+            hint.style.color = '#d4af37';
+        }
+
+        try {
+            pageDebug('REG_PHONE_SUGGESTED', {
+                reason: reason || '',
+                source: 'safe-candidates'
+            });
+        } catch (e) {}
+        return;
+    }
+
+    if (hint) {
+        hint.innerText = 'Se il dispositivo lo permette, ti suggerirà il numero salvato. Puoi modificarlo prima di continuare.';
+        hint.style.color = '#999';
+    }
+}
+
     // 1. Funzione per attivare/disattivare la modalità modifica
 function toggleProfileEdit(isEditing) {
     const nameInput = document.getElementById('user-name-input');
@@ -5277,6 +5656,9 @@ async function saveProfileData() {
             cachedXPData.nome = newName;
             cachedXPData.telefono = newPhone;
         }
+
+        rememberWilduLastKnownPhone(newPhone);
+        syncWilduPassportSummary({ nome: newName, telefono: newPhone });
 
         alert("✅ Profilo aggiornato con successo!");
         toggleProfileEdit(false);
@@ -5546,6 +5928,7 @@ if (docSnap.exists) {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('profile-data').classList.add('hidden');
                 document.getElementById('complete-profile-screen').classList.remove('hidden');
+                suggestRegistrationPhone('google-new-user');
             }
 
         } catch (e) {
@@ -5718,6 +6101,8 @@ async function completeRegistration() {
         showToast("Inserisci un numero valido per le prenotazioni.");
         return;
     }
+
+    rememberWilduLastKnownPhone(phone);
 
     try {
         let userId, userEmail, userName;
@@ -8084,6 +8469,7 @@ async function fetchXP() {
         const phoneInput = document.getElementById('user-phone-input');
         if (nameInput) nameInput.value = userData.nome;
         if (phoneInput) phoneInput.value = userData.telefono;
+        rememberWilduLastKnownPhone(userData.telefono);
 
         evaluateBookings();
 
@@ -10128,6 +10514,11 @@ if (result.alreadyBooked === true) {
         
 const currentConfig = data.config || config || {};
 const finalXP = parseInt(data.xp || 0);
+syncWilduPassportSummary(data);
+const shouldOpenPassportForXP = currentTab === 'profile' && finalXP > lastVXP;
+if (shouldOpenPassportForXP) {
+    openWilduPassportForXPAnimation();
+}
 const soglie = (currentConfig && currentConfig.soglie) ? currentConfig.soglie : [
     {nome: "Socio Novizio", punti: 0}, {nome: "Esploratore", punti: 100}, {nome: "Sentinella", punti: 300},
     {nome: "Veterano", punti: 900}, {nome: "Leggenda", punti: 1800}, {nome: "Divinità", punti: 3600}
@@ -10155,13 +10546,18 @@ if (profKeyEl) {
     }
 }
         
-        document.getElementById('legenda-container').innerHTML = soglie.map(s => {
-            const isUnlocked = finalXP >= s.punti;
-            const opacita = isUnlocked ? '1' : '0.3';
-            const bordo = isUnlocked ? 'border: 1px solid var(--w-gold); color: var(--w-gold);' : '';
-            const icona = GRADI_MAP[s.nome] ? GRADI_MAP[s.nome].ico : "🌿";
-            return `<div style="padding: 12px; background: #222; border-radius: 10px; display: flex; justify-content: space-between; opacity: ${opacita}; ${bordo}"><span>${icona} ${s.nome}</span> <b>${s.punti}</b></div>`;
-        }).join('');
+        const legendaEl = document.getElementById('legenda-container');
+        if (legendaEl) {
+            const currentLegendLevel = soglie.filter(s => s.punti <= finalXP).pop() || soglie[0];
+            legendaEl.innerHTML = soglie.map(s => {
+                const isUnlocked = finalXP >= s.punti;
+                const isCurrent = currentLegendLevel && currentLegendLevel.nome === s.nome;
+                const icona = GRADI_MAP[s.nome] ? GRADI_MAP[s.nome].ico : "🌿";
+                const stateLabel = isCurrent ? 'ATTUALE' : (isUnlocked ? 'SBLOCCATO' : 'FUTURO');
+                const stateClass = (isUnlocked ? 'unlocked' : 'locked') + (isCurrent ? ' current-grade' : '');
+                return `<div class="wildu-grade-row ${stateClass}"><span>${icona} ${s.nome}<small style="display:block; color:#999; font-size:10px; margin-top:3px;">${stateLabel}</small></span><b>${s.punti} XP</b></div>`;
+            }).join('');
+        }
 
         if (finalXP > lastVXP) {
             isAnimatingXP = true; let tempXP = lastVXP;
@@ -10190,6 +10586,10 @@ if (profKeyEl) {
         const nextLevel = soglie.find(s => s.punti > finalXP) || { punti: finalXP, nome: "DIVINITÀ" };
         const p = finalXP >= nextLevel.punti ? 100 : Math.min(100, ((finalXP - currentLevel.punti) / (nextLevel.punti - currentLevel.punti)) * 100);
         xpFill.style.width = p + "%"; xpPercentText.innerText = Math.floor(p) + "%";
+        const miniXpFill = document.getElementById('wildu-passport-mini-xp-fill');
+        const miniXpLabel = document.getElementById('wildu-passport-mini-xp-label');
+        if (miniXpFill) miniXpFill.style.width = p + "%";
+        if (miniXpLabel) miniXpLabel.innerText = Math.floor(p) + "%";
         profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome] ? GRADI_MAP[currentLevel.nome].ico : "🌿";
         profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "-" + (nextLevel.punti - finalXP) + " XP";
         if(!isAnimatingXP){ lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome); }
@@ -10663,12 +11063,18 @@ if (profKeyEl) {
     
     function show(id) {
         const requestedTab = id;
+        const previousTab = currentTab;
 
         // Compatibilità prudente:
         // se qualche vecchio pezzo di codice chiama ancora show('wheel'),
         // non cerchiamo più una tab autonoma: mandiamo a Premi e Giochi.
         if (id === 'wheel') {
             id = 'rewards';
+        }
+
+        if (previousTab === 'profile' && id !== 'profile') {
+            setWilduPassportDetailsOpen(false, 'leave-profile');
+            setWilduGradeLegendOpen(false);
         }
 
         currentTab = id;
