@@ -19,6 +19,11 @@ on:
         required: false
         default: 'all'
 
+      shortsPlaylistId:
+        description: 'Playlist ID verticale/WildWall Shorts già normalizzato dalla Admin Suite'
+        required: false
+        default: ''
+
       horizontalPlaylistId:
         description: 'Playlist ID orizzontale già normalizzato dalla Admin Suite'
         required: false
@@ -56,32 +61,39 @@ jobs:
 
       - name: Generate YouTube playlists manifest
         env:
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || 'false' }}
-          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
+          WILDU_YOUTUBE_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || 'false' }}
+          WILDU_YOUTUBE_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
           WILDU_YOUTUBE_MIN_REFRESH_DAYS: '10'
+          WILDU_YOUTUBE_CONFIG_OUTPUT: 'data/youtube-playlists-config.json'
 
-          # Playlist Shorts WildWall: stabile e già nota.
-          WILDU_SHORTS_PLAYLIST_ID: 'PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh'
+          # Playlist verticale/WildWall Shorts:
+          # - se arriva da GAS/Admin Suite tramite workflow_dispatch, vince shortsPlaylistId;
+          # - per cron automatico lo script usa prima data/youtube-playlists-config.json,
+          #   poi il manifest precedente, poi la Repository Variable come fallback di emergenza.
+          WILDU_SHORTS_PLAYLIST_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.shortsPlaylistId || '' }}
+          WILDU_SHORTS_PLAYLIST_ID_FALLBACK: ${{ vars.WILDU_SHORTS_PLAYLIST_ID }}
 
           # Playlist orizzontale:
           # - se arriva da GAS/Admin Suite tramite workflow_dispatch, vince horizontalPlaylistId;
-          # - altrimenti usa la Repository Variable WILDU_HORIZONTAL_PLAYLIST_ID.
-          WILDU_HORIZONTAL_PLAYLIST_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.horizontalPlaylistId || vars.WILDU_HORIZONTAL_PLAYLIST_ID }}
+          # - per cron automatico lo script usa prima data/youtube-playlists-config.json,
+          #   poi il manifest precedente, poi la Repository Variable come fallback di emergenza.
+          WILDU_HORIZONTAL_PLAYLIST_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.horizontalPlaylistId || '' }}
+          WILDU_HORIZONTAL_PLAYLIST_ID_FALLBACK: ${{ vars.WILDU_HORIZONTAL_PLAYLIST_ID }}
 
           WILDU_REQUESTED_BY_UID: ${{ github.event_name == 'workflow_dispatch' && inputs.requestedByUid || '' }}
           WILDU_REQUESTED_BY_EMAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.requestedByEmail || '' }}
 
-        run: node tools/update-youtube-playlists.js --output=data/youtube-playlists.json
+        run: node tools/update-youtube-playlists.js --output=data/youtube-playlists.json --config=data/youtube-playlists-config.json
 
       - name: Commit manifest if changed
         run: |
-          if git diff --quiet -- data/youtube-playlists.json; then
-            echo "Nessun cambiamento nel manifest YouTube."
+          if [ -z "$(git status --porcelain -- data/youtube-playlists.json data/youtube-playlists-config.json)" ]; then
+            echo "Nessun cambiamento nei manifest YouTube."
             exit 0
           fi
 
           git config user.name "wildu-youtube-bot"
           git config user.email "actions@github.com"
-          git add data/youtube-playlists.json
+          git add data/youtube-playlists.json data/youtube-playlists-config.json
           git commit -m "Update YouTube playlists manifest"
           git push
