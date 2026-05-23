@@ -2,21 +2,33 @@ name: Update YouTube playlists manifest
 
 on:
   schedule:
+    # Trigger giornaliero leggero.
+    # Lo script aggiorna davvero solo se sono passati almeno 10 giorni,
+    # salvo workflow_dispatch con force=true.
     - cron: '17 4 * * *'
+
   workflow_dispatch:
     inputs:
       force:
         description: 'Forza refresh anche se non sono passati 10 giorni'
         required: false
         default: 'true'
+
       target:
         description: 'all | wildwall_shorts | video_horizontal'
         required: false
         default: 'all'
+
+      horizontalPlaylistId:
+        description: 'Playlist ID orizzontale già normalizzato dalla Admin Suite'
+        required: false
+        default: ''
+
       requestedByUid:
         description: 'Audit UID admin richiedente'
         required: false
         default: ''
+
       requestedByEmail:
         description: 'Audit email admin richiedente'
         required: false
@@ -47,8 +59,18 @@ jobs:
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || 'false' }}
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
           WILDU_YOUTUBE_MIN_REFRESH_DAYS: '10'
+
+          # Playlist Shorts WildWall: stabile e già nota.
           WILDU_SHORTS_PLAYLIST_ID: 'PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh'
-          WILDU_HORIZONTAL_PLAYLIST_ID: ${{ vars.WILDU_HORIZONTAL_PLAYLIST_ID }}
+
+          # Playlist orizzontale:
+          # - se arriva da GAS/Admin Suite tramite workflow_dispatch, vince horizontalPlaylistId;
+          # - altrimenti usa la Repository Variable WILDU_HORIZONTAL_PLAYLIST_ID.
+          WILDU_HORIZONTAL_PLAYLIST_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.horizontalPlaylistId || vars.WILDU_HORIZONTAL_PLAYLIST_ID }}
+
+          WILDU_REQUESTED_BY_UID: ${{ github.event_name == 'workflow_dispatch' && inputs.requestedByUid || '' }}
+          WILDU_REQUESTED_BY_EMAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.requestedByEmail || '' }}
+
         run: node tools/update-youtube-playlists.js --output=data/youtube-playlists.json
 
       - name: Commit manifest if changed
