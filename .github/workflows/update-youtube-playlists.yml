@@ -1,9 +1,6 @@
 name: Update YouTube playlists manifest
 
 on:
-  # V5.1: trigger giornaliero leggero.
-  # Lo script ha una guardia interna: non legge/scrive se non sono passati almeno 10 giorni,
-  # salvo workflow_dispatch con force=true. Evita le irregolarità di */10 al cambio mese.
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:
@@ -36,6 +33,9 @@ jobs:
   update-youtube-playlists:
     runs-on: ubuntu-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Generate YouTube playlists manifest
         env:
@@ -51,7 +51,6 @@ jobs:
           TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
           WILDU_YOUTUBE_MIN_REFRESH_DAYS: '10'
           WILDU_SHORTS_PLAYLIST_ID: 'PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh'
-          # Inserisci questa variabile nelle Repository Variables/Secrets se non vuoi scriverla qui.
           WILDU_HORIZONTAL_PLAYLIST_ID: ${{ vars.WILDU_HORIZONTAL_PLAYLIST_ID }}
         run: node tools/update-youtube-playlists.js --output=data/youtube-playlists.json
 
