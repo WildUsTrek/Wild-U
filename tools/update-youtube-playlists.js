@@ -211,12 +211,13 @@ function buildPlaylists(config, previous) {
   };
 }
 
-function buildNextConfig(playlists, previousConfig) {
+function buildNextConfig(playlists, previousConfig, manifestVersion) {
   const now = new Date().toISOString();
   const prev = previousConfig && typeof previousConfig === 'object' ? previousConfig : {};
 
   const next = {
     schemaVersion: 1,
+    manifestVersion: String(manifestVersion || Date.now()),
     updatedAt: now,
     updatedBy: 'github-action:update-youtube-playlists',
     note: 'Ultimi playlistId usati dalla GitHub Action. Permette al cron automatico di non tornare a vecchie variabili GitHub.',
@@ -325,7 +326,9 @@ async function main() {
     return;
   }
 
+  const manifestVersion = String(Date.now());
   const manifest = buildBaseManifest(previous);
+  manifest.manifestVersion = manifestVersion;
   manifest.generatedAt = new Date().toISOString();
   manifest.minRefreshDays = minRefreshDays;
   manifest.refreshMode = force ? 'manual-force' : 'scheduled';
@@ -371,7 +374,7 @@ async function main() {
     }
   }
 
-  const nextConfig = buildNextConfig(playlists, previousConfig);
+  const nextConfig = buildNextConfig(playlists, previousConfig, manifestVersion);
 
   writeJsonIfChanged(output, manifest);
   writeJsonIfChanged(configPath, nextConfig);
