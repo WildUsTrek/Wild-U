@@ -57,6 +57,7 @@
     textarea { min-height: 92px; resize: vertical; }
     .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
     #admin-map { height: 420px; width: 100%; border-radius: 18px; border: 1px solid var(--line); background: #0b120e; }
     .list { display: grid; gap: 10px; margin-top: 12px; }
     .item { border: 1px solid var(--line); background: rgba(255,255,255,.035); padding: 12px; border-radius: 16px; }
@@ -78,6 +79,7 @@
     }
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
+      .four { grid-template-columns: 1fr 1fr; }
       header { align-items: flex-start; flex-direction: column; }
       #admin-map { height: 340px; }
     }
@@ -264,11 +266,13 @@
 <label>Oppure GPX file URL esterno</label>
 <input id="track-file-url" placeholder="https://.../traccia.gpx" />
 <div id="track-area-suggestion" class="status" style="display:none; margin-top:10px;"></div>
-          <div class="three">
+          <div class="four">
             <div><label>Distanza km</label><input id="track-distance-km" type="number" step="0.1" /></div>
             <div><label>Dislivello + m</label><input id="track-elevation-gain-m" type="number" step="1" /></div>
+            <div><label>Dislivello - m</label><input id="track-elevation-loss-m" type="number" step="1" /></div>
             <div><label>Difficoltà</label><input id="track-difficulty" placeholder="E" /></div>
           </div>
+          <p class="hint">I valori calcolati dal GPX sono solo una proposta: come admin puoi ritoccare manualmente km, dislivello e difficoltà prima di salvare.</p>
           <div class="two">
             <div><label>Status</label><select id="track-status"><option>ACTIVE</option><option>HIDDEN</option></select></div>
             <div><label>Ordine</label><input id="track-sort-order" type="number" value="10" /></div>
@@ -287,6 +291,19 @@
         <div class="card">
           <h2>Tracce dell’area selezionata</h2>
           <div class="body"><div id="tracks-list" class="list"></div></div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h2>Tutti i GPX caricati</h2>
+          <div class="body">
+            <div class="bar">
+              <button id="btn-refresh-all-tracks" class="ghost" type="button">Ricarica tutti i GPX</button>
+            </div>
+            <p class="hint">
+              Vista admin globale: mostra tutte le tracce, senza filtro area. Da qui puoi modificare metadati, area principale, km, dislivello, difficoltà, stato e ordine.
+            </p>
+            <div id="tracks-all-list" class="list"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -442,6 +459,7 @@ const state = {
   adminGateMessage: "",
 
   areas: [],
+  allTracks: [],
   activeTab: "areas",
   viewerConfig: null,
 
@@ -1147,7 +1165,11 @@ function clearAdminSessionData() {
 
   const tracksList = $("tracks-list");
   if (tracksList) tracksList.innerHTML = `<div class="hint">Accesso admin richiesto.</div>`;
+
+  const allTracksList = $("tracks-all-list");
+  if (allTracksList) allTracksList.innerHTML = `<div class="hint">Accesso admin richiesto.</div>`;
 }
+
 
     function initMap() {
       state.map = L.map("admin-map", { zoomControl: true }).setView(WILDU_MAP_CONFIG.defaultCenter, WILDU_MAP_CONFIG.defaultZoom);
@@ -1522,6 +1544,7 @@ async function reloadAll() {
   await loadAreas();
   await loadWaypointsForSelectedArea();
   await loadTracksForSelectedArea();
+  await loadAllTracks();
   await loadViewerSettings();
 }
 
@@ -1835,6 +1858,94 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
       renderTracks(items);
     }
 
+async function loadAllTracks() {
+  if (!state.user || !isAdminVerified()) return;
+
+  const box = $("tracks-all-list");
+  if (box) box.innerHTML = `<div class="hint">Carico elenco GPX globale...</div>`;
+
+  const snap = await getDocs(collection(db, WILDU_MAP_COLLECTIONS.TRACKS));
+  state.allTracks = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => {
+      const areaCompare = String(a.areaSlug || "").localeCompare(String(b.areaSlug || ""));
+      if (areaCompare) return areaCompare;
+      return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) || String(a.title || "").localeCompare(String(b.title || ""));
+    });
+
+  renderAllTracks(state.allTracks);
+}
+
+function renderTrackItemHtml(t, options = {}) {
+  const isGlobal = options.global === true;
+  const safeId = escapeHtml(t.id || "");
+  const areaSlugs = Array.isArray(t.areaSlugs) && t.areaSlugs.length
+    ? t.areaSlugs.join(", ")
+    : (t.areaSlug || "");
+
+  return `
+    <div class="item">
+      <div class="item-title">${escapeHtml(t.title || t.id)}</div>
+
+      <div class="item-meta">
+        Area principale: ${escapeHtml(t.areaSlug || "")} · ${escapeHtml(t.status || "")} · ${escapeHtml(t.fileType || "GPX")}
+        ${areaSlugs ? `<br>Aree collegate: ${escapeHtml(areaSlugs)}` : ""}
+        ${t.distanceKm !== undefined && t.distanceKm !== null ? `<br>Distanza: ${escapeHtml(t.distanceKm)} km` : ""}
+        ${t.elevationGainM !== undefined && t.elevationGainM !== null ? ` · Dislivello +: ${escapeHtml(t.elevationGainM)} m` : ""}
+        ${t.elevationLossM !== undefined && t.elevationLossM !== null ? ` · Dislivello -: ${escapeHtml(t.elevationLossM)} m` : ""}
+        ${t.difficulty ? ` · Difficoltà: ${escapeHtml(t.difficulty)}` : ""}
+        <br>${escapeHtml(t.description || "")}
+        <br>${escapeHtml(t.fileUrl || "")}
+        ${t.objectKey ? `<br><small>R2 objectKey: ${escapeHtml(t.objectKey)}</small>` : ""}
+      </div>
+
+      <div class="item-actions">
+        <button class="ghost" data-${isGlobal ? "edit-all-track" : "edit-track-id"}="${safeId}">Modifica</button>
+        ${isGlobal && t.areaSlug ? `<button class="ghost" data-focus-track-area="${escapeHtml(t.areaSlug)}">Apri area</button>` : ""}
+        <button class="danger" data-${isGlobal ? "delete-all-track" : "delete-track-id"}="${safeId}">Elimina</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderAllTracks(items) {
+  const box = $("tracks-all-list");
+  if (!box) return;
+
+  if (!items.length) {
+    box.innerHTML = `<div class="hint">Nessuna traccia GPX presente nella collection.</div>`;
+    return;
+  }
+
+  box.innerHTML = items.map(t => renderTrackItemHtml(t, { global: true })).join("");
+
+  box.querySelectorAll("[data-edit-all-track]").forEach(btn => {
+    btn.onclick = () => {
+      const track = state.allTracks.find(t => t.id === btn.dataset.editAllTrack);
+      if (!track) return;
+      fillTrackForm(track);
+      setStatus(`Traccia caricata nel pannello modifica: ${track.title || track.id}`);
+    };
+  });
+
+  box.querySelectorAll("[data-focus-track-area]").forEach(btn => {
+    btn.onclick = () => {
+      const slug = btn.dataset.focusTrackArea;
+      if (!slug) return;
+      $("track-area").value = slug;
+      focusAreaBySlug(slug);
+      loadTracksForSelectedArea().catch(e => setStatus(e.message, true));
+    };
+  });
+
+  box.querySelectorAll("[data-delete-all-track]").forEach(btn => {
+    btn.onclick = () => {
+      const track = state.allTracks.find(t => t.id === btn.dataset.deleteAllTrack);
+      deleteTrack(track).catch(e => setStatus(e.message, true));
+    };
+  });
+}
+
 function renderTracks(items) {
   const box = $("tracks-list");
 
@@ -1843,34 +1954,18 @@ function renderTracks(items) {
     return;
   }
 
-  box.innerHTML = items.map(t => `
-    <div class="item">
-      <div class="item-title">${escapeHtml(t.title || t.id)}</div>
+  box.innerHTML = items.map(t => renderTrackItemHtml(t, { global: false })).join("");
 
-      <div class="item-meta">
-        ${escapeHtml(t.areaSlug || "")} · ${escapeHtml(t.status || "")} · ${escapeHtml(t.fileType || "GPX")}
-        ${t.distanceKm ? `<br>Distanza: ${escapeHtml(t.distanceKm)} km` : ""}
-        ${t.elevationGainM ? ` · Dislivello +: ${escapeHtml(t.elevationGainM)} m` : ""}
-        ${t.elevationLossM ? ` · Dislivello -: ${escapeHtml(t.elevationLossM)} m` : ""}
-        <br>${escapeHtml(t.description || "")}
-        <br>${escapeHtml(t.fileUrl || "")}
-        ${t.objectKey ? `<br><small>R2 objectKey: ${escapeHtml(t.objectKey)}</small>` : ""}
-      </div>
-
-      <div class="item-actions">
-        <button class="ghost" data-edit-track='${escapeHtml(JSON.stringify(t))}'>Modifica</button>
-        <button class="danger" data-delete-track="${escapeHtml(t.id)}">Elimina</button>
-      </div>
-    </div>
-  `).join("");
-
-  box.querySelectorAll("[data-edit-track]").forEach(btn => {
-    btn.onclick = () => fillTrackForm(JSON.parse(btn.dataset.editTrack));
+  box.querySelectorAll("[data-edit-track-id]").forEach(btn => {
+    btn.onclick = () => {
+      const track = items.find(t => t.id === btn.dataset.editTrackId) || state.allTracks.find(t => t.id === btn.dataset.editTrackId);
+      if (track) fillTrackForm(track);
+    };
   });
 
-  box.querySelectorAll("[data-delete-track]").forEach(btn => {
+  box.querySelectorAll("[data-delete-track-id]").forEach(btn => {
     btn.onclick = () => {
-      const track = items.find(t => t.id === btn.dataset.deleteTrack);
+      const track = items.find(t => t.id === btn.dataset.deleteTrackId) || state.allTracks.find(t => t.id === btn.dataset.deleteTrackId);
       deleteTrack(track).catch(e => setStatus(e.message, true));
     };
   });
@@ -1891,6 +1986,7 @@ function fillTrackForm(t) {
 
   $("track-distance-km").value = t.distanceKm ?? "";
   $("track-elevation-gain-m").value = t.elevationGainM ?? "";
+  $("track-elevation-loss-m").value = t.elevationLossM ?? "";
   $("track-difficulty").value = t.difficulty || "";
   $("track-status").value = t.status || "ACTIVE";
   $("track-sort-order").value = t.sortOrder ?? 10;
@@ -1910,7 +2006,7 @@ function fillTrackForm(t) {
 }
 
 function clearTrackForm() {
-  ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-difficulty"].forEach(id => $(id).value = "");
+  ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-elevation-loss-m","track-difficulty"].forEach(id => $(id).value = "");
   $("track-file").value = "";
   state.pendingTrackGpxAnalysis = null;
   state.pendingTrackAreaMatches = [];
@@ -2384,6 +2480,10 @@ function applyGpxAnalysisToForm(analysis) {
   if (Number.isFinite(Number(analysis.elevationGainM))) {
     $("track-elevation-gain-m").value = analysis.elevationGainM;
   }
+
+  if (Number.isFinite(Number(analysis.elevationLossM))) {
+    $("track-elevation-loss-m").value = analysis.elevationLossM;
+  }
 }
     
 async function readJsonResponse(res) {
@@ -2524,8 +2624,14 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
 
     gpxAnalysis = reusableAnalysis || await analyzeGpxFile(file);
     state.pendingTrackGpxAnalysis = gpxAnalysis;
-    applyGpxAnalysisToForm(gpxAnalysis);
-    applyTrackAreaSuggestion(gpxAnalysis, { autoSelect: true });
+
+    // Se l’analisi era già stata fatta al cambio file, non riscriviamo di nuovo
+    // km/dislivello/area: l’admin potrebbe averli corretti manualmente prima di salvare.
+    if (!reusableAnalysis) {
+      applyGpxAnalysisToForm(gpxAnalysis);
+    }
+
+    applyTrackAreaSuggestion(gpxAnalysis, { autoSelect: !reusableAnalysis });
 
     areaSlug = val("track-area");
     if (!areaSlug) throw new Error("Area obbligatoria: il GPX non ha prodotto un suggerimento automatico, selezionala manualmente.");
@@ -2568,9 +2674,11 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
 
     fileType: "GPX",
 
-    distanceKm: gpxAnalysis ? gpxAnalysis.distanceKm : num("track-distance-km"),
-    elevationGainM: gpxAnalysis ? gpxAnalysis.elevationGainM : num("track-elevation-gain-m"),
-    elevationLossM: gpxAnalysis ? gpxAnalysis.elevationLossM : null,
+    // I valori GPX compilano il form, ma il salvataggio usa sempre il form:
+    // così l’admin può correggere manualmente km/dislivello anche dopo il calcolo automatico.
+    distanceKm: num("track-distance-km"),
+    elevationGainM: num("track-elevation-gain-m"),
+    elevationLossM: num("track-elevation-loss-m"),
 
     bounds: gpxAnalysis ? gpxAnalysis.bounds : null,
     centerLat: gpxAnalysis ? gpxAnalysis.centerLat : null,
@@ -2589,13 +2697,11 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
     updatedAt: serverTimestamp()
   };
 
-  if (gpxAnalysis) {
-    const matches = Array.isArray(state.pendingTrackAreaMatches) ? state.pendingTrackAreaMatches : [];
-    payload.areaSlugs = buildTrackAreaSlugsForSave(areaSlug, matches);
-    payload.areaMatches = buildTrackAreaMatchesForSave(matches);
-    payload.autoAreaSuggested = matches.length > 0;
-    payload.autoAreaConfidence = getTrackAutoAreaConfidence(matches);
-  }
+  const matches = Array.isArray(state.pendingTrackAreaMatches) ? state.pendingTrackAreaMatches : [];
+  payload.areaSlugs = buildTrackAreaSlugsForSave(areaSlug, matches);
+  payload.areaMatches = buildTrackAreaMatchesForSave(matches);
+  payload.autoAreaSuggested = matches.length > 0;
+  payload.autoAreaConfidence = getTrackAutoAreaConfidence(matches);
 
   // Se ho caricato/scelto un nuovo file, salvo i metadati file.
   // Se sto modificando senza sostituire file R2, NON tocco fileUrl/objectKey esistenti.
@@ -2612,7 +2718,6 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
   // Se sto modificando senza nuovo GPX analizzato, non cancellare analisi esistente.
   // Se invece ho selezionato un GPX, anche senza upload R2, l’analisi va aggiornata.
   if (id && !gpxAnalysis) {
-    delete payload.elevationLossM;
     delete payload.bounds;
     delete payload.centerLat;
     delete payload.centerLng;
@@ -2667,6 +2772,7 @@ if (id) {
   }
 
   await loadTracksForSelectedArea();
+  await loadAllTracks();
 }
 
     const MAP_PROVIDER_PRESETS = [
@@ -2911,6 +3017,10 @@ $("coord-search").addEventListener("keydown", (e) => {
       $("track-area").onchange = () => { loadTracksForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("track-area")); };
       $("btn-save-track").onclick = () => saveTrack().catch(e => setStatus(e.message, true));
       $("btn-new-track").onclick = clearTrackForm;
+      const refreshAllTracksBtn = $("btn-refresh-all-tracks");
+      if (refreshAllTracksBtn) {
+        refreshAllTracksBtn.onclick = () => loadAllTracks().catch(e => setStatus(e.message, true));
+      }
 const trackFileInput = $("track-file");
 if (trackFileInput) {
   trackFileInput.addEventListener("change", () => {
