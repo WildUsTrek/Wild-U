@@ -1787,9 +1787,11 @@ async function validateWilduSecureLaunchOrSession() {
 
 // Cache persistente leggera del viewer.
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
-const WILDU_MAP_CACHE_VERSION = 3;
+const WILDU_MAP_CACHE_VERSION = 4;
 const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
 const WILDU_MAP_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 ore
+const WILDU_AREA_BOUNDS_REFIT_WINDOW_MS = 3600; // protegge il framing confini mentre i GPX asincroni finiscono di caricarsi
+const WILDU_AREA_BOUNDS_REFIT_DELAYS_MS = [120, 520, 1300];
 // v2 invalida i vecchi areaContent salvati prima del supporto areaSlugs multi-area.
 
 // GPX personale locale: un solo file alla volta, salvato solo sul dispositivo.
@@ -1832,6 +1834,8 @@ const state = {
   // quando l’utente riapre la stessa area nella stessa pagina.
   areaContentCache: new Map(),
   gpsAreaAutoLoaded: false,
+  areaBoundsRefitUntil: 0,
+  areaBoundsRefitTimers: [],
 
   waypointsLayer: L.layerGroup(),
   tracksLayer: L.layerGroup(),
@@ -2322,6 +2326,8 @@ function renderAreaSelect() {
 async function selectAllAreas() {
   state.area = null;
   state.gpsAreaAutoLoaded = false;
+  state.areaBoundsRefitUntil = 0;
+  cancelScheduledAreaBoundsRefits();
 
   $("area-select").value = ALL_AREAS_VALUE;
   $("area-select").title = "Scegli area";
@@ -2530,6 +2536,7 @@ const layer = new L.GPX(url, {
     layer.on("loaded", () => {
       loaded++;
       bindTrackPopup(layer, t);
+      refitAreaBoundsDuringTrackLoad();
       setStatus(`${loaded}/${items.length} tracce GPX caricate.`);
     });
 
@@ -2650,23 +2657,75 @@ function fitMapToAreaBounds(area, options = {}) {
   const cfg = state.viewerConfig || fallbackViewerConfig();
   const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
   const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+  const padFactor = Number.isFinite(Number(options.padFactor)) ? Number(options.padFactor) : 0;
 
   try {
     if (state.map && typeof state.map.stop === "function") state.map.stop();
 
-    // Le regioni Wildu sono volutamente disegnate per eccesso:
-    // usiamo padding minimo per mostrare il confine a schermo senza restare troppo lontani.
-    state.map.fitBounds(bounds.pad(0.035), {
-      maxZoom: Math.min(Number(options.maxZoom || 11), maxZoom),
+    // V5: la selezione area deve essere governata dai confini, non dai GPX/POI.
+    // I poligoni regionali sono già disegnati larghi per eccesso: niente pad extra,
+    // padding UI ridotto e maxZoom più generoso. L’utente può sempre allargare dopo.
+    state.map.fitBounds(bounds.pad(padFactor), {
+      maxZoom: Math.min(Number(options.maxZoom || 12), maxZoom),
       animate: options.animate === true,
-      paddingTopLeft: [18, 132],
-      paddingBottomRight: [18, 88]
+      paddingTopLeft: [8, 88],
+      paddingBottomRight: [8, 56]
     });
 
     return true;
   } catch (_) {
     return false;
   }
+}
+
+function getAreaBoundsMaxZoom(area) {
+  return area && area.areaType === "REGION" ? 10 : 14;
+}
+
+function cancelScheduledAreaBoundsRefits() {
+  (state.areaBoundsRefitTimers || []).forEach(timerId => {
+    try { clearTimeout(timerId); } catch (_) {}
+  });
+
+  state.areaBoundsRefitTimers = [];
+}
+
+function scheduleAreaBoundsRefits(area) {
+  if (!getViewerAreaLeafletBounds(area)) return false;
+
+  cancelScheduledAreaBoundsRefits();
+  state.areaBoundsRefitUntil = Date.now() + WILDU_AREA_BOUNDS_REFIT_WINDOW_MS;
+
+  WILDU_AREA_BOUNDS_REFIT_DELAYS_MS.forEach(delay => {
+    const timerId = setTimeout(() => {
+      if (!state.area || (state.area.areaSlug || state.area.id) !== (area.areaSlug || area.id)) return;
+      if (Date.now() > Number(state.areaBoundsRefitUntil || 0)) return;
+
+      fitMapToAreaBounds(area, {
+        animate: false,
+        maxZoom: getAreaBoundsMaxZoom(area),
+        padFactor: 0
+      });
+    }, delay);
+
+    state.areaBoundsRefitTimers.push(timerId);
+  });
+
+  return true;
+}
+
+function refitAreaBoundsDuringTrackLoad() {
+  if (!state.area || Date.now() > Number(state.areaBoundsRefitUntil || 0)) return;
+
+  requestAnimationFrame(() => {
+    if (!state.area || Date.now() > Number(state.areaBoundsRefitUntil || 0)) return;
+
+    fitMapToAreaBounds(state.area, {
+      animate: false,
+      maxZoom: getAreaBoundsMaxZoom(state.area),
+      padFactor: 0
+    });
+  });
 }
 
 
@@ -2689,9 +2748,12 @@ async function selectArea(areaSlug) {
   $("area-title").textContent = area.title || area.areaSlug || "Wildu Map";
   $("area-subtitle").textContent = area.subtitle || area.description || "Mappa escursionistica con Wildu Waypoints e tracce GPX.";
 
+  cancelScheduledAreaBoundsRefits();
+
   const didFitAreaBounds = fitMapToAreaBounds(area, {
     animate: false,
-    maxZoom: area.areaType === "REGION" ? 9 : 13
+    maxZoom: getAreaBoundsMaxZoom(area),
+    padFactor: 0
   });
 
   if (!didFitAreaBounds) {
@@ -2710,8 +2772,16 @@ async function selectArea(areaSlug) {
 
   // Se l’area ha confini/bounds, il framing resta sui confini regionali/area.
   // Evita che 100 waypoint o una traccia marginale riscrivano lo zoom della regione.
-  // Fallback legacy: senza confini, continuiamo a centrare sui contenuti utili.
-  if (!didFitAreaBounds) {
+  // Refit breve dopo il caricamento perché i layer GPX sono asincroni e possono terminare dopo.
+  if (didFitAreaBounds) {
+    fitMapToAreaBounds(area, {
+      animate: false,
+      maxZoom: getAreaBoundsMaxZoom(area),
+      padFactor: 0
+    });
+    scheduleAreaBoundsRefits(area);
+  } else {
+    // Fallback legacy: senza confini, continuiamo a centrare sui contenuti utili.
     fitUsefulBounds();
   }
 }
@@ -2851,6 +2921,7 @@ const layer = new L.GPX(url, {
     layer.on("loaded", () => {
       loaded++;
       bindTrackPopup(layer, t);
+      refitAreaBoundsDuringTrackLoad();
       setStatus(`${loaded}/${items.length} tracce GPX caricate.`);
     });
 
