@@ -871,6 +871,35 @@
             </div>
 
             <div class="field full">
+              <label for="client-youtube-shorts-playlist-url">Playlist YouTube verticale / WildWall Shorts</label>
+              <input
+                id="client-youtube-shorts-playlist-url"
+                type="text"
+                inputmode="url"
+                autocomplete="off"
+                placeholder="Incolla URL playlist Shorts/WildWall o ID playlist, es. https://www.youtube.com/playlist?list=..."
+              >
+              <small class="muted">
+                Incolla anche un URL completo: il pulsante smart estrae solo l’ID playlist.
+                Campo salvato in <code>PARAMETERS_PARTNER/client_config.youtube_wildwall_shorts_playlist_id</code>.
+              </small>
+            </div>
+
+            <div class="field full">
+              <label for="client-youtube-shorts-playlist-id">ID playlist verticale normalizzato</label>
+              <input
+                id="client-youtube-shorts-playlist-id"
+                type="text"
+                readonly
+                placeholder="Sarà compilato automaticamente, es. PL..."
+                style="opacity:.78; cursor:not-allowed; background:rgba(255,255,255,.05);"
+              >
+              <small class="muted">
+                Questo valore viene passato al bridge GAS come <code>shortsPlaylistId</code>.
+              </small>
+            </div>
+
+            <div class="field full">
               <label for="client-youtube-horizontal-playlist-url">Playlist YouTube orizzontale</label>
               <input
                 id="client-youtube-horizontal-playlist-url"
@@ -886,7 +915,7 @@
             </div>
 
             <div class="field full">
-              <label for="client-youtube-horizontal-playlist-id">ID playlist normalizzato</label>
+              <label for="client-youtube-horizontal-playlist-id">ID playlist orizzontale normalizzato</label>
               <input
                 id="client-youtube-horizontal-playlist-id"
                 type="text"
@@ -895,8 +924,38 @@
                 style="opacity:.78; cursor:not-allowed; background:rgba(255,255,255,.05);"
               >
               <small class="muted">
-                Questo valore è quello da usare anche come GitHub variable <code>WILDU_HORIZONTAL_PLAYLIST_ID</code>.
+                Questo valore viene passato al bridge GAS come <code>horizontalPlaylistId</code>.
               </small>
+            </div>
+
+            <div class="field full">
+              <details style="border:1px solid rgba(214,178,94,.28); border-radius:16px; background:rgba(214,178,94,.07); padding:12px 14px;">
+                <summary style="cursor:pointer; color:var(--w-gold); font-weight:950;">
+                  🔐 Istruzioni token GitHub / Bridge GAS
+                </summary>
+                <div class="small-text" style="white-space:pre-wrap; margin-top:10px; line-height:1.55;">Potrebbe essere scaduto il token GitHub, oppure:
+1. Il token GitHub è stato revocato.
+2. Il token non è stato aggiornato in Apps Script → Project Settings → Script Properties.
+3. Il token non ha Actions: Read and write.
+4. Il token è stato creato con Resource owner sbagliato.
+5. Il token non è limitato/selezionato sul repository WildUsTrek/Wild-U.
+6. GITHUB_OWNER, GITHUB_REPO, GITHUB_WORKFLOW_ID o GITHUB_REF sono sbagliati nelle Script Properties.
+7. Il workflow non contiene workflow_dispatch oppure non è nel branch configurato.
+
+Come rigenerare e installare il token:
+1. GitHub → foto profilo → Settings.
+2. Developer settings.
+3. Personal access tokens → Fine-grained tokens.
+4. Generate new token.
+5. Token name: Wildu YouTube Playlist Bridge - GAS.
+6. Resource owner: WildUsTrek.
+7. Repository access: Only selected repositories → Wild-U.
+8. Repository permissions: Actions = Read and write; Metadata = Read-only.
+9. Generate token e copialo subito.
+10. Apps Script del Bridge → Project Settings → Script Properties.
+11. Aggiorna GITHUB_TOKEN con il nuovo token.
+12. Salva e riprova dal bottone “Apri bridge GAS + GitHub Action”.</div>
+              </details>
             </div>
 
             <div class="field full">
@@ -906,8 +965,10 @@
 
             <div class="form-actions">
               <button data-requires-auth type="submit">Salva configurazione client</button>
-              <button data-requires-auth type="button" id="btn-save-client-youtube-horizontal-playlist">Ripulisci + salva playlist video</button>
-              <button data-requires-auth type="button" id="btn-copy-client-youtube-horizontal-id">Copia ID playlist</button>
+              <button data-requires-auth type="button" id="btn-save-client-youtube-horizontal-playlist">Ripulisci + salva playlist YouTube</button>
+              <button data-requires-auth type="button" id="btn-open-youtube-gas-bridge">Apri bridge GAS + GitHub Action</button>
+              <button data-requires-auth type="button" id="btn-copy-client-youtube-shorts-id">Copia ID verticale</button>
+              <button data-requires-auth type="button" id="btn-copy-client-youtube-horizontal-id">Copia ID orizzontale</button>
               <button data-requires-auth type="button" id="btn-refresh-client-content-config">Ricarica config client</button>
             </div>
           </form>
