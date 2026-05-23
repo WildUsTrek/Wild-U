@@ -678,6 +678,7 @@ button.gps-chip:hover {
 #btn-tracks { width: 76px; }
 #btn-local-gpx-main { width: 80px; text-align: center; }
 #btn-local-gpx-toggle { width: 112px; }
+#btn-local-gpx-fit { width: 104px; }
 
 .topbar button.active,
 .controls button.active {
@@ -1102,6 +1103,7 @@ button.gps-chip,
   #btn-tracks { width: 74px; }
   #btn-local-gpx-main { width: 78px; }
   #btn-local-gpx-toggle { width: 108px; }
+  #btn-local-gpx-fit { width: 100px; }
 
   .gps-chip,
   button.gps-chip,
@@ -1153,6 +1155,7 @@ button.gps-chip,
   #btn-tracks { width: 70px; }
   #btn-local-gpx-main { width: 74px; }
   #btn-local-gpx-toggle { width: 102px; }
+  #btn-local-gpx-fit { width: 94px; }
 
   .gps-chip,
   button.gps-chip,
@@ -1223,6 +1226,7 @@ button.gps-chip,
     </label>
     <input id="local-gpx" type="file" accept=".gpx" />
     <button id="btn-local-gpx-toggle" class="hidden" type="button" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
+    <button id="btn-local-gpx-fit" class="hidden" type="button" title="Centra la mappa sulla traccia GPX personale">Centra GPX</button>
   </div>
 </div>
 
@@ -2775,6 +2779,7 @@ function updateLocalGpxControls() {
   const hasLocal = !!state.localGpxLayer;
   const mainBtn = $("btn-local-gpx-main");
   const toggleBtn = $("btn-local-gpx-toggle");
+  const fitBtn = $("btn-local-gpx-fit");
 
   if (mainBtn) {
     mainBtn.textContent = hasLocal ? "Togli GPX" : "Apri GPX";
@@ -2797,6 +2802,14 @@ function updateLocalGpxControls() {
     toggleBtn.classList.toggle("hidden", !hasLocal);
     toggleBtn.textContent = state.localGpxVisible ? "Nascondi GPX" : "Mostra GPX";
     toggleBtn.classList.toggle("active", state.localGpxVisible);
+  }
+
+  if (fitBtn) {
+    fitBtn.classList.toggle("hidden", !hasLocal);
+    fitBtn.classList.toggle("active", hasLocal && state.localGpxVisible);
+    fitBtn.title = hasLocal
+      ? "Centra la mappa sulla traccia GPX personale. Se il GPS è acceso, il follow resta in pausa per alcuni secondi."
+      : "Carica prima una traccia GPX personale";
   }
 }
 
@@ -2849,19 +2862,98 @@ async function clearLocalGpx() {
 }
 
 
- function pauseGpsFollowForLocalGpx(ms = 10000) {
-  if (!state.gpsTrackingActive) return;
+ function pauseGpsFollowForLocalGpx(ms = 10000, reason = "loaded") {
+  if (!state.gpsTrackingActive) return false;
 
-  state.gpsFollowPauseUntil = Date.now() + ms;
+  const pauseMs = Math.max(1000, Number(ms || 0) || 10000);
+  const seconds = Math.max(1, Math.round(pauseMs / 1000));
+
+  state.gpsFollowPauseUntil = Date.now() + pauseMs;
+
+  const prefix = reason === "center"
+    ? "Centro sulla traccia GPX personale."
+    : "GPX personale caricato.";
 
   setStatus(
-    "GPX personale caricato. Il follow GPS resta in pausa per 10 secondi per mostrarti la traccia."
+    `${prefix} Il follow GPS resta in pausa per ${seconds} secondi per mostrarti la traccia.`
   );
+
+  return true;
 }
 
 function isGpsFollowPaused() {
   return Number(state.gpsFollowPauseUntil || 0) > Date.now();
-}   
+}
+
+function getLocalGpxBounds() {
+  if (!state.localGpxLayer || typeof state.localGpxLayer.getBounds !== "function") {
+    return null;
+  }
+
+  try {
+    const bounds = state.localGpxLayer.getBounds();
+    if (!bounds || (typeof bounds.isValid === "function" && !bounds.isValid())) {
+      return null;
+    }
+
+    return bounds;
+  } catch (_) {
+    return null;
+  }
+}
+
+function centerOnLocalGpxTrace(options = {}) {
+  if (!state.localGpxLayer) {
+    setStatus("Carica prima una traccia GPX personale.", true);
+    showGpsToast("Nessun GPX personale caricato", "warn");
+    return false;
+  }
+
+  const bounds = getLocalGpxBounds();
+
+  if (!bounds) {
+    setStatus("La traccia GPX personale non è ancora pronta. Riprova tra un secondo.", true);
+    showGpsToast("GPX non ancora pronto", "warn");
+    return false;
+  }
+
+  state.localGpxVisible = true;
+
+  if (!state.map.hasLayer(state.localTracksLayer)) {
+    state.localTracksLayer.addTo(state.map);
+  }
+
+  updateLocalGpxControls();
+
+  const pauseMs = Math.max(3000, Number(options.pauseMs || 0) || 14000);
+  const seconds = Math.max(1, Math.round(pauseMs / 1000));
+  const paused = pauseGpsFollowForLocalGpx(pauseMs, "center");
+
+  try {
+    state.map.fitBounds(bounds.pad(0.22), {
+      animate: true,
+      duration: 0.85,
+      padding: [26, 26]
+    });
+  } catch (_) {
+    try {
+      state.map.fitBounds(bounds.pad(0.22));
+    } catch (e) {
+      setStatus("Impossibile centrare la traccia GPX personale.", true);
+      return false;
+    }
+  }
+
+  if (paused) {
+    showGpsToast(`Traccia GPX centrata · GPS in pausa ${seconds}s`, "ok");
+    setStatus(`Traccia GPX personale centrata. Il follow GPS riprenderà tra circa ${seconds} secondi.`);
+  } else {
+    showGpsToast("Traccia GPX centrata", "ok");
+    setStatus("Traccia GPX personale centrata.");
+  }
+
+  return true;
+}
 
 function renderLocalGpxFromText(xmlText, fileName, options = {}) {
   const text = String(xmlText || "");
@@ -2900,7 +2992,7 @@ if (options.fit !== false) {
   // serve a far capire all’utente che il file è stato aperto.
   // Se il GPS è acceso, blocchiamo il follow per 10 secondi.
   if (!options.fromDevice) {
-    pauseGpsFollowForLocalGpx(10000);
+    pauseGpsFollowForLocalGpx(10000, "loaded");
   }
 
   try {
@@ -3536,6 +3628,7 @@ $("btn-local-gpx-main").onclick = (e) => {
 };
 
 $("btn-local-gpx-toggle").onclick = () => setLocalGpxVisible(!state.localGpxVisible);
+$("btn-local-gpx-fit").onclick = () => centerOnLocalGpxTrace({ pauseMs: 14000 });
 $("btn-exit-mother").onclick = exitToMotherApp;
       
       $("area-select").onchange = () => {
