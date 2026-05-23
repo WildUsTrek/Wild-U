@@ -1787,9 +1787,10 @@ async function validateWilduSecureLaunchOrSession() {
 
 // Cache persistente leggera del viewer.
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
-const WILDU_MAP_CACHE_VERSION = 1;
+const WILDU_MAP_CACHE_VERSION = 2;
 const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
 const WILDU_MAP_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 ore
+// v2 invalida i vecchi areaContent salvati prima del supporto areaSlugs multi-area.
 
 // GPX personale locale: un solo file alla volta, salvato solo sul dispositivo.
 const WILDU_LOCAL_GPX_DB_NAME = "wildu_map_local_gpx_v1";
@@ -2360,7 +2361,28 @@ async function queryWaypointsForArea(areaSlug) {
     .sort(sortByOrderTitle);
 }
 
-async function queryTracksForArea(areaSlug) {
+function isPublicActiveTrack(track) {
+  return !!track &&
+    String(track.status || "ACTIVE").toUpperCase() === "ACTIVE" &&
+    String(track.visibility || "PUBLIC").toUpperCase() === "PUBLIC";
+}
+
+function mergeTrackListsById(primary, secondary) {
+  const map = new Map();
+
+  [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])]
+    .filter(isPublicActiveTrack)
+    .forEach(item => {
+      const key = String(item.id || item.eventDocId || item.fileUrl || item.title || Math.random()).trim();
+      if (!map.has(key)) {
+        map.set(key, item);
+      }
+    });
+
+  return Array.from(map.values()).sort(sortByOrderTitle);
+}
+
+async function queryLegacyTracksForArea(areaSlug) {
   const q = query(
     collection(db, WILDU_MAP_COLLECTIONS.TRACKS),
     where("areaSlug", "==", areaSlug),
@@ -2373,6 +2395,37 @@ async function queryTracksForArea(areaSlug) {
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort(sortByOrderTitle);
+}
+
+async function queryMultiAreaTracksForArea(areaSlug) {
+  const q = query(
+    collection(db, WILDU_MAP_COLLECTIONS.TRACKS),
+    where("areaSlugs", "array-contains", areaSlug),
+    where("status", "==", "ACTIVE"),
+    where("visibility", "==", "PUBLIC")
+  );
+
+  const snap = await getDocs(q);
+
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort(sortByOrderTitle);
+}
+
+async function queryTracksForArea(areaSlug) {
+  const legacyTracks = await queryLegacyTracksForArea(areaSlug);
+  let multiAreaTracks = [];
+
+  try {
+    multiAreaTracks = await queryMultiAreaTracksForArea(areaSlug);
+  } catch (e) {
+    // Fallback conservativo: se Firestore richiede un indice per array-contains
+    // o se l’ambiente non supporta ancora il nuovo campo, il viewer continua
+    // a funzionare con areaSlug legacy senza rompere la mappa.
+    console.warn("[Wildu Map] Query multi-area areaSlugs non disponibile, uso fallback areaSlug.", e);
+  }
+
+  return mergeTrackListsById(legacyTracks, multiAreaTracks);
 }
 
 function getAreaContentCacheName(areaSlug) {
@@ -3877,8 +3930,8 @@ boot().catch(e => {
 
 window.wilduMapCacheDebug = async function wilduMapCacheDebug() {
   const now = Date.now();
-  const CACHE_PREFIX = "wildu_map_viewer_v1:";
-  const TTL_MS = 6 * 60 * 60 * 1000;
+  const CACHE_PREFIX = WILDU_MAP_CACHE_PREFIX;
+  const TTL_MS = WILDU_MAP_CACHE_TTL_MS;
 
   function safeJson(raw) {
     try { return JSON.parse(raw); } catch (_) { return null; }
@@ -4146,8 +4199,8 @@ window.wilduMapCacheDebug = async function wilduMapCacheDebug() {
 };
 
  window.wilduMapCacheDebug9B = function wilduMapCacheDebug9B() {
-  const PREFIX = "wildu_map_viewer_v1:";
-  const TTL_MS = 48 * 60 * 60 * 1000;
+  const PREFIX = WILDU_MAP_CACHE_PREFIX;
+  const TTL_MS = WILDU_MAP_CACHE_TTL_MS;
   const now = Date.now();
 
   function safeJson(raw) {
