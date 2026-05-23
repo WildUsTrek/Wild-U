@@ -1787,7 +1787,7 @@ async function validateWilduSecureLaunchOrSession() {
 
 // Cache persistente leggera del viewer.
 // Non passa dal Service Worker: governa solo dati Firestore pubblici della mappa.
-const WILDU_MAP_CACHE_VERSION = 2;
+const WILDU_MAP_CACHE_VERSION = 3;
 const WILDU_MAP_CACHE_PREFIX = "wildu_map_viewer_v1:";
 const WILDU_MAP_CACHE_TTL_MS = 48 * 60 * 60 * 1000; // 48 ore
 // v2 invalida i vecchi areaContent salvati prima del supporto areaSlugs multi-area.
@@ -2577,6 +2577,99 @@ async function loadAreaContent(areaSlug) {
 }
 
 
+function normalizeAreaBoundsObject(raw) {
+  if (!raw || typeof raw !== "object") return null;
+
+  const minLat = Number(raw.minLat ?? raw.south ?? raw.s ?? raw._southWest?.lat);
+  const minLng = Number(raw.minLng ?? raw.west ?? raw.w ?? raw._southWest?.lng);
+  const maxLat = Number(raw.maxLat ?? raw.north ?? raw.n ?? raw._northEast?.lat);
+  const maxLng = Number(raw.maxLng ?? raw.east ?? raw.e ?? raw._northEast?.lng);
+
+  if (
+    !Number.isFinite(minLat) ||
+    !Number.isFinite(minLng) ||
+    !Number.isFinite(maxLat) ||
+    !Number.isFinite(maxLng)
+  ) {
+    return null;
+  }
+
+  const south = Math.min(minLat, maxLat);
+  const north = Math.max(minLat, maxLat);
+  const west = Math.min(minLng, maxLng);
+  const east = Math.max(minLng, maxLng);
+
+  if (south === north || west === east) return null;
+
+  return { south, west, north, east };
+}
+
+function computeViewerAreaBoundsFromPolygon(polygon) {
+  const pts = Array.isArray(polygon) ? polygon : [];
+  const clean = pts
+    .map(p => ({ lat: Number(p.lat), lng: Number(p.lng) }))
+    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+  if (clean.length < 3) return null;
+
+  const lats = clean.map(p => p.lat);
+  const lngs = clean.map(p => p.lng);
+
+  return {
+    south: Math.min(...lats),
+    west: Math.min(...lngs),
+    north: Math.max(...lats),
+    east: Math.max(...lngs)
+  };
+}
+
+function getViewerAreaLeafletBounds(area) {
+  if (!area || !window.L || !state.map) return null;
+
+  const rawBounds = normalizeAreaBoundsObject(area.bounds) || computeViewerAreaBoundsFromPolygon(area.polygon);
+  if (!rawBounds) return null;
+
+  try {
+    const bounds = L.latLngBounds(
+      [rawBounds.south, rawBounds.west],
+      [rawBounds.north, rawBounds.east]
+    );
+
+    if (bounds && typeof bounds.isValid === "function" && bounds.isValid()) {
+      return bounds;
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+function fitMapToAreaBounds(area, options = {}) {
+  const bounds = getViewerAreaLeafletBounds(area);
+  if (!bounds) return false;
+
+  const cfg = state.viewerConfig || fallbackViewerConfig();
+  const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
+  const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+
+  try {
+    if (state.map && typeof state.map.stop === "function") state.map.stop();
+
+    // Le regioni Wildu sono volutamente disegnate per eccesso:
+    // usiamo padding minimo per mostrare il confine a schermo senza restare troppo lontani.
+    state.map.fitBounds(bounds.pad(0.035), {
+      maxZoom: Math.min(Number(options.maxZoom || 11), maxZoom),
+      animate: options.animate === true,
+      paddingTopLeft: [18, 132],
+      paddingBottomRight: [18, 88]
+    });
+
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+
     
 async function selectArea(areaSlug) {
   if (areaSlug === ALL_AREAS_VALUE) {
@@ -2596,19 +2689,31 @@ async function selectArea(areaSlug) {
   $("area-title").textContent = area.title || area.areaSlug || "Wildu Map";
   $("area-subtitle").textContent = area.subtitle || area.description || "Mappa escursionistica con Wildu Waypoints e tracce GPX.";
 
-  const lat = Number(area.centerLat || WILDU_MAP_CONFIG.defaultCenter[0]);
-  const lng = Number(area.centerLng || WILDU_MAP_CONFIG.defaultCenter[1]);
+  const didFitAreaBounds = fitMapToAreaBounds(area, {
+    animate: false,
+    maxZoom: area.areaType === "REGION" ? 9 : 13
+  });
 
-  const cfg = state.viewerConfig || fallbackViewerConfig();
-  const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
-  const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
-  const zoom = clampZoom(area.defaultZoom || 13, maxZoom);
+  if (!didFitAreaBounds) {
+    const lat = Number(area.centerLat || WILDU_MAP_CONFIG.defaultCenter[0]);
+    const lng = Number(area.centerLng || WILDU_MAP_CONFIG.defaultCenter[1]);
 
-  state.map.setView([lat, lng], zoom);
+    const cfg = state.viewerConfig || fallbackViewerConfig();
+    const baseCfg = cfg.baseMap || fallbackViewerConfig().baseMap || {};
+    const maxZoom = clampZoom(baseCfg.maxZoom || WILDU_MAP_CONFIG.tileMaxZoom || 17, 22);
+    const zoom = clampZoom(area.defaultZoom || 13, maxZoom);
+
+    state.map.setView([lat, lng], zoom);
+  }
 
   await loadAreaContent(slug);
 
-  fitUsefulBounds();
+  // Se l’area ha confini/bounds, il framing resta sui confini regionali/area.
+  // Evita che 100 waypoint o una traccia marginale riscrivano lo zoom della regione.
+  // Fallback legacy: senza confini, continuiamo a centrare sui contenuti utili.
+  if (!didFitAreaBounds) {
+    fitUsefulBounds();
+  }
 }
 
     async function loadWaypoints(areaSlug) {
