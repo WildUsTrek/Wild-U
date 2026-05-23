@@ -91,6 +91,404 @@
         renderer: "biblioteca-tabs"
     });
 
+    // =========================================================
+    // WILDU NEWS VIDEO — playlist orizzontale da manifest GitHub
+    // =========================================================
+    // Patch prudente:
+    // - non tocca WilduMediaClient/renderTag;
+    // - non cambia il renderer biblioteca-tabs;
+    // - legge solo data/youtube-playlists.json;
+    // - prova ad agganciarsi sotto "Articolo consigliato" nella tab News;
+    // - fallback sicuro: fondo del modulo Biblioteca.
+    // Nessun link esterno alla playlist, nessuna YouTube API.
+    var WILDU_HORIZONTAL_VIDEO_STATE = {
+        mounted: false,
+        manifestPromise: null,
+        observer: null,
+        lastRenderAt: 0
+    };
+
+    function wilduVideoEscape(value) {
+        return String(value === undefined || value === null ? "" : value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function wilduWithQueryParam(url, key, value) {
+        try {
+            var parsed = new URL(url, window.location.href);
+            parsed.searchParams.set(key, value);
+            return parsed.toString();
+        } catch (e) {
+            var join = String(url || "").indexOf("?") === -1 ? "?" : "&";
+            return String(url || "") + join + encodeURIComponent(key) + "=" + encodeURIComponent(value);
+        }
+    }
+
+    function wilduYoutubeManifestCandidates() {
+        var dayBucket = Math.floor(Date.now() / 86400000);
+        var explicit = window.WILDU_YOUTUBE_PLAYLISTS_URL ||
+            window.WILDU_YT_PLAYLISTS_URL ||
+            "";
+
+        var list = [];
+
+        if (explicit) {
+            list.push(explicit);
+        }
+
+        list.push("data/youtube-playlists.json");
+        list.push("/Wild-U/data/youtube-playlists.json");
+
+        return list
+            .filter(function (url, index, arr) {
+                return url && arr.indexOf(url) === index;
+            })
+            .map(function (url) {
+                return wilduWithQueryParam(url, "ytday", dayBucket);
+            });
+    }
+
+    async function wilduFetchYoutubeManifest() {
+        if (WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise) {
+            return WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise;
+        }
+
+        WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise = (async function () {
+            var candidates = wilduYoutubeManifestCandidates();
+            var lastError = null;
+
+            for (var i = 0; i < candidates.length; i++) {
+                try {
+                    var res = await fetch(candidates[i], { cache: "no-store" });
+                    if (!res.ok) {
+                        throw new Error("HTTP " + res.status);
+                    }
+
+                    return await res.json();
+                } catch (err) {
+                    lastError = err;
+                }
+            }
+
+            throw lastError || new Error("Manifest YouTube non leggibile.");
+        })();
+
+        return WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise;
+    }
+
+    function wilduPickRandomHorizontalVideo(items) {
+        var list = Array.isArray(items)
+            ? items.filter(function (item) {
+                return item && item.videoId;
+            })
+            : [];
+
+        if (!list.length) return null;
+
+        var lastId = "";
+        try {
+            lastId = sessionStorage.getItem("wildu_last_horizontal_video_id") || "";
+        } catch (e) {}
+
+        var pool = list.length > 1
+            ? list.filter(function (item) { return item.videoId !== lastId; })
+            : list;
+
+        if (!pool.length) pool = list;
+
+        var picked = pool[Math.floor(Math.random() * pool.length)];
+
+        try {
+            sessionStorage.setItem("wildu_last_horizontal_video_id", picked.videoId);
+        } catch (e) {}
+
+        return picked;
+    }
+
+    function wilduHorizontalVideoEmbedUrl(video) {
+        var videoId = video && video.videoId ? String(video.videoId) : "";
+        var raw = video && video.embedUrl
+            ? String(video.embedUrl)
+            : "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(videoId);
+
+        try {
+            var parsed = new URL(raw, window.location.href);
+            parsed.searchParams.set("rel", "0");
+            parsed.searchParams.set("modestbranding", "1");
+            parsed.searchParams.set("playsinline", "1");
+            return parsed.toString();
+        } catch (e) {
+            return raw;
+        }
+    }
+
+    function wilduBuildHorizontalVideoCard(video, playlist) {
+        var title = video && video.title ? video.title : "Video Wild-U";
+        var embedUrl = wilduHorizontalVideoEmbedUrl(video);
+        var count = playlist && playlist.count ? Number(playlist.count) : 0;
+
+        return '' +
+            '<section id="wildu-news-horizontal-video-card" style="' +
+                'margin:22px 0 0;' +
+                'border-radius:24px;' +
+                'overflow:hidden;' +
+                'position:relative;' +
+                'border:1px solid rgba(214,175,55,.28);' +
+                'background:' +
+                    'radial-gradient(circle at 12% 0%, rgba(214,175,55,.22), transparent 34%),' +
+                    'radial-gradient(circle at 100% 100%, rgba(124,199,255,.18), transparent 35%),' +
+                    'linear-gradient(135deg, rgba(16,21,18,.98), rgba(6,9,12,.98));' +
+                'box-shadow:0 18px 55px rgba(0,0,0,.54);' +
+            '">' +
+                '<div style="' +
+                    'position:absolute;' +
+                    'right:-24px;' +
+                    'top:-26px;' +
+                    'font-size:112px;' +
+                    'opacity:.045;' +
+                    'transform:rotate(-10deg);' +
+                    'pointer-events:none;' +
+                '">🎬</div>' +
+
+                '<div style="padding:17px 17px 15px; position:relative; z-index:1;">' +
+                    '<div style="' +
+                        'display:flex;' +
+                        'justify-content:space-between;' +
+                        'gap:10px;' +
+                        'align-items:flex-start;' +
+                        'flex-wrap:wrap;' +
+                        'margin-bottom:13px;' +
+                    '">' +
+                        '<div style="min-width:0;">' +
+                            '<div style="' +
+                                'display:inline-flex;' +
+                                'align-items:center;' +
+                                'gap:7px;' +
+                                'padding:6px 10px;' +
+                                'border-radius:999px;' +
+                                'background:rgba(214,175,55,.13);' +
+                                'border:1px solid rgba(214,175,55,.28);' +
+                                'color:var(--w-gold,#d6b25e);' +
+                                'font-size:10px;' +
+                                'font-weight:950;' +
+                                'letter-spacing:.78px;' +
+                                'text-transform:uppercase;' +
+                                'margin-bottom:9px;' +
+                            '">' +
+                                '<span>▶</span><span>Video consigliato</span>' +
+                            '</div>' +
+                            '<h3 style="' +
+                                'margin:0;' +
+                                'color:#fff;' +
+                                'font-size:20px;' +
+                                'line-height:1.15;' +
+                                'letter-spacing:.1px;' +
+                            '">' + wilduVideoEscape(title) + '</h3>' +
+                        '</div>' +
+                        '<div style="' +
+                            'display:inline-flex;' +
+                            'align-items:center;' +
+                            'gap:6px;' +
+                            'padding:7px 10px;' +
+                            'border-radius:999px;' +
+                            'background:rgba(255,255,255,.07);' +
+                            'border:1px solid rgba(255,255,255,.12);' +
+                            'color:#d8e6dc;' +
+                            'font-size:11px;' +
+                            'font-weight:850;' +
+                            'white-space:nowrap;' +
+                        '">' +
+                            '<span>shuffle</span>' +
+                            (count ? '<span>· ' + count + ' video</span>' : '') +
+                        '</div>' +
+                    '</div>' +
+
+                    '<div style="' +
+                        'position:relative;' +
+                        'width:100%;' +
+                        'aspect-ratio:16/9;' +
+                        'border-radius:19px;' +
+                        'overflow:hidden;' +
+                        'background:#050607;' +
+                        'border:1px solid rgba(255,255,255,.11);' +
+                        'box-shadow:0 14px 36px rgba(0,0,0,.45);' +
+                    '">' +
+                        '<iframe ' +
+                            'title="' + wilduVideoEscape(title) + '" ' +
+                            'src="' + wilduVideoEscape(embedUrl) + '" ' +
+                            'loading="lazy" ' +
+                            'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ' +
+                            'allowfullscreen ' +
+                            'style="position:absolute; inset:0; width:100%; height:100%; border:0;"' +
+                        '></iframe>' +
+                    '</div>' +
+
+                    '<p style="' +
+                        'margin:12px 2px 0;' +
+                        'color:#aebcaf;' +
+                        'font-size:12px;' +
+                        'line-height:1.45;' +
+                    '">' +
+                        'Scelto casualmente dalla playlist video Wild-U. Cambia quando riapri la tab o ricarichi il modulo.' +
+                    '</p>' +
+                '</div>' +
+            '</section>';
+    }
+
+    function wilduFindRecommendedArticleTarget(rootEl) {
+        if (!rootEl) return null;
+
+        var all = Array.prototype.slice.call(rootEl.querySelectorAll("*"));
+        var wanted = null;
+
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            var text = String(el.textContent || "");
+            if (/articolo\s+consigliato|consigliat[oa]/i.test(text)) {
+                var card = el.closest ? el.closest("article,.card,section,div") : null;
+                if (card && card !== rootEl && card.parentNode) {
+                    wanted = card;
+                    break;
+                }
+            }
+        }
+
+        return wanted;
+    }
+
+    function wilduFindNewsPanelTarget(rootEl) {
+        if (!rootEl) return null;
+
+        var all = Array.prototype.slice.call(rootEl.querySelectorAll("*"));
+        var best = null;
+
+        for (var i = 0; i < all.length; i++) {
+            var el = all[i];
+            if (!el || /^(BUTTON|A|SPAN|LABEL)$/i.test(el.tagName || "")) continue;
+
+            var signature = [
+                el.id || "",
+                el.className || "",
+                el.getAttribute ? (el.getAttribute("data-tab") || "") : "",
+                el.getAttribute ? (el.getAttribute("data-panel") || "") : "",
+                el.getAttribute ? (el.getAttribute("aria-label") || "") : ""
+            ].join(" ").toLowerCase();
+
+            if (signature.indexOf("news") !== -1 || signature.indexOf("notizie") !== -1) {
+                best = el;
+            }
+        }
+
+        return best;
+    }
+
+    function wilduMountHorizontalVideoCard(html) {
+        var rootEl = document.getElementById("wildu-biblioteca-list");
+        if (!rootEl) return false;
+
+        var old = document.getElementById("wildu-news-horizontal-video-card");
+        if (old && old.parentNode) {
+            old.parentNode.removeChild(old);
+        }
+
+        var holder = document.createElement("div");
+        holder.innerHTML = html;
+        var card = holder.firstElementChild;
+        if (!card) return false;
+
+        var recommended = wilduFindRecommendedArticleTarget(rootEl);
+        if (recommended && recommended.parentNode) {
+            recommended.parentNode.insertBefore(card, recommended.nextSibling);
+            return true;
+        }
+
+        var newsPanel = wilduFindNewsPanelTarget(rootEl);
+        if (newsPanel) {
+            newsPanel.appendChild(card);
+            return true;
+        }
+
+        rootEl.appendChild(card);
+        return true;
+    }
+
+    async function wilduRenderHorizontalVideoCard(forceNewPick) {
+        var now = Date.now();
+
+        if (!forceNewPick && WILDU_HORIZONTAL_VIDEO_STATE.mounted && now - WILDU_HORIZONTAL_VIDEO_STATE.lastRenderAt < 1200) {
+            return;
+        }
+
+        try {
+            var manifest = await wilduFetchYoutubeManifest();
+            var playlist = manifest &&
+                manifest.playlists &&
+                manifest.playlists.video_horizontal
+                    ? manifest.playlists.video_horizontal
+                    : null;
+
+            var video = wilduPickRandomHorizontalVideo(playlist && playlist.items);
+            if (!video) {
+                console.warn("[WILDU MEDIA BIBLIOTECA] Playlist orizzontale vuota o non disponibile.");
+                return;
+            }
+
+            var ok = wilduMountHorizontalVideoCard(wilduBuildHorizontalVideoCard(video, playlist));
+            WILDU_HORIZONTAL_VIDEO_STATE.mounted = ok;
+            WILDU_HORIZONTAL_VIDEO_STATE.lastRenderAt = Date.now();
+        } catch (err) {
+            console.warn("[WILDU MEDIA BIBLIOTECA] Video orizzontale non disponibile:", err);
+        }
+    }
+
+    function wilduScheduleHorizontalVideoRender(forceNewPick) {
+        setTimeout(function () {
+            wilduRenderHorizontalVideoCard(forceNewPick === true);
+        }, 450);
+
+        setTimeout(function () {
+            wilduRenderHorizontalVideoCard(forceNewPick === true);
+        }, 1200);
+    }
+
+    function wilduInstallHorizontalVideoObserver() {
+        var rootEl = document.getElementById("wildu-biblioteca-list");
+        var moduleEl = document.getElementById("wildu-biblioteca-module");
+        if (!rootEl || WILDU_HORIZONTAL_VIDEO_STATE.observer) return;
+
+        WILDU_HORIZONTAL_VIDEO_STATE.observer = new MutationObserver(function () {
+            wilduScheduleHorizontalVideoRender(false);
+        });
+
+        WILDU_HORIZONTAL_VIDEO_STATE.observer.observe(rootEl, {
+            childList: true,
+            subtree: true
+        });
+
+        if (moduleEl) {
+            moduleEl.addEventListener("click", function (evt) {
+                var t = evt && evt.target ? evt.target : null;
+                var text = "";
+                while (t && t !== moduleEl) {
+                    text += " " + String(t.textContent || "");
+                    t = t.parentNode;
+                }
+
+                if (/news|notizie/i.test(text)) {
+                    WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise = null;
+                    wilduScheduleHorizontalVideoRender(true);
+                }
+            }, true);
+        }
+    }
+
+    wilduInstallHorizontalVideoObserver();
+    wilduScheduleHorizontalVideoRender(true);
+
     if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
         window.WILDU_MODULE.rewriteRoot(document.getElementById("wildu-biblioteca-module"));
     }
