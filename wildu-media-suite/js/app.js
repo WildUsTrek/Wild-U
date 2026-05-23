@@ -907,6 +907,8 @@
   // È configurazione globale della client app.
   // La playlist YouTube orizzontale viene salvata come ID pulito; nessun token GitHub nel frontend.
 
+  var WILDU_YOUTUBE_GAS_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycbw67v1hxoezw56hO6M6vSPG8IMGQKaFiRt7I4PhvI-DENy9GpS7VXG8RG7uWPI81LTyVA/exec';
+
   function getClientBooksMinGradeValue() {
     var cfg = state.partnerClientConfig || {};
     return String(cfg.biblioteca_libri_grado_minimo || '').trim();
@@ -964,6 +966,27 @@
     return '';
   }
 
+  function getClientYoutubeShortsPlaylistIdValue() {
+    var cfg = state.partnerClientConfig || {};
+
+    return String(
+      cfg.youtube_wildwall_shorts_playlist_id ||
+      cfg.youtube_shorts_playlist_id ||
+      cfg.WILDU_SHORTS_PLAYLIST_ID ||
+      ''
+    ).trim();
+  }
+
+  function getClientYoutubeShortsPlaylistRawValue() {
+    var cfg = state.partnerClientConfig || {};
+    return String(
+      cfg.youtube_wildwall_shorts_playlist_raw ||
+      cfg.youtube_wildwall_shorts_playlist_url ||
+      getClientYoutubeShortsPlaylistIdValue() ||
+      ''
+    ).trim();
+  }
+
   function getClientYoutubeHorizontalPlaylistIdValue() {
     var cfg = state.partnerClientConfig || {};
 
@@ -985,11 +1008,11 @@
     ).trim();
   }
 
-  function syncClientYoutubeHorizontalPlaylistFields(options) {
+  function syncYoutubePlaylistFields(rawId, normalizedId, options) {
     options = options || {};
 
-    var rawInput = document.getElementById('client-youtube-horizontal-playlist-url');
-    var idInput = document.getElementById('client-youtube-horizontal-playlist-id');
+    var rawInput = document.getElementById(rawId);
+    var idInput = document.getElementById(normalizedId);
 
     if (!rawInput && !idInput) return '';
 
@@ -1005,6 +1028,29 @@
     }
 
     return id;
+  }
+
+  function syncClientYoutubeShortsPlaylistFields(options) {
+    return syncYoutubePlaylistFields(
+      'client-youtube-shorts-playlist-url',
+      'client-youtube-shorts-playlist-id',
+      options
+    );
+  }
+
+  function syncClientYoutubeHorizontalPlaylistFields(options) {
+    return syncYoutubePlaylistFields(
+      'client-youtube-horizontal-playlist-url',
+      'client-youtube-horizontal-playlist-id',
+      options
+    );
+  }
+
+  function syncClientYoutubePlaylistFields(options) {
+    return {
+      shortsPlaylistId: syncClientYoutubeShortsPlaylistFields(options),
+      horizontalPlaylistId: syncClientYoutubeHorizontalPlaylistFields(options)
+    };
   }
 
   function renderClientBooksGradeOptions() {
@@ -1048,6 +1094,16 @@
       newsField.value = String(cfg.real_news || '');
     }
 
+    var rawShortsPlaylistField = document.getElementById('client-youtube-shorts-playlist-url');
+    if (rawShortsPlaylistField && document.activeElement !== rawShortsPlaylistField) {
+      rawShortsPlaylistField.value = getClientYoutubeShortsPlaylistRawValue();
+    }
+
+    var shortsPlaylistIdField = document.getElementById('client-youtube-shorts-playlist-id');
+    if (shortsPlaylistIdField) {
+      shortsPlaylistIdField.value = getClientYoutubeShortsPlaylistIdValue();
+    }
+
     var rawPlaylistField = document.getElementById('client-youtube-horizontal-playlist-url');
     if (rawPlaylistField && document.activeElement !== rawPlaylistField) {
       rawPlaylistField.value = getClientYoutubeHorizontalPlaylistRawValue();
@@ -1063,16 +1119,26 @@
 
     var grade = getClientBooksMinGradeValue();
     var news = String(cfg.real_news || '').trim();
+    var shortsPlaylistId = getClientYoutubeShortsPlaylistIdValue();
     var playlistId = getClientYoutubeHorizontalPlaylistIdValue();
 
     var updatedBy = cfg.client_content_config_updatedByEmail ||
+      cfg.youtube_playlists_updatedByEmail ||
+      cfg.youtube_wildwall_shorts_playlist_updatedByEmail ||
       cfg.youtube_video_horizontal_playlist_updatedByEmail ||
       cfg.client_content_config_updatedByUid ||
+      cfg.youtube_playlists_updatedByUid ||
+      cfg.youtube_wildwall_shorts_playlist_updatedByUid ||
       cfg.youtube_video_horizontal_playlist_updatedByUid ||
       '';
 
     var updatedAt = root.toDateTimeLabel
-      ? root.toDateTimeLabel(cfg.client_content_config_updatedAt || cfg.youtube_video_horizontal_playlist_updatedAt)
+      ? root.toDateTimeLabel(
+          cfg.client_content_config_updatedAt ||
+          cfg.youtube_playlists_updatedAt ||
+          cfg.youtube_wildwall_shorts_playlist_updatedAt ||
+          cfg.youtube_video_horizontal_playlist_updatedAt
+        )
       : '';
 
     current.innerHTML =
@@ -1083,12 +1149,18 @@
         '<span class="badge ' + (news ? 'good' : 'warn') + '">' +
           'real_news: ' + root.escapeHtml(news ? 'presente' : 'vuota') +
         '</span>' +
+        '<span class="badge ' + (shortsPlaylistId ? 'good' : 'warn') + '">' +
+          'playlist verticale: ' + root.escapeHtml(shortsPlaylistId ? 'configurata' : 'vuota') +
+        '</span>' +
         '<span class="badge ' + (playlistId ? 'good' : 'warn') + '">' +
-          'playlist video: ' + root.escapeHtml(playlistId ? 'configurata' : 'vuota') +
+          'playlist orizzontale: ' + root.escapeHtml(playlistId ? 'configurata' : 'vuota') +
         '</span>' +
       '</div>' +
+      (shortsPlaylistId
+        ? '<div style="margin-top:8px;">ID playlist verticale/WildWall: <code>' + root.escapeHtml(shortsPlaylistId) + '</code></div>'
+        : '') +
       (playlistId
-        ? '<div style="margin-top:8px;">ID playlist video: <code>' + root.escapeHtml(playlistId) + '</code></div>'
+        ? '<div style="margin-top:8px;">ID playlist orizzontale: <code>' + root.escapeHtml(playlistId) + '</code></div>'
         : '') +
       '<div style="margin-top:8px;">' +
         root.escapeHtml(
@@ -1126,23 +1198,42 @@
     if (!root.db) throw new Error('Firestore non inizializzato.');
     if (!state.currentUser) throw new Error('Login richiesto.');
 
-    var rawField = document.getElementById('client-youtube-horizontal-playlist-url');
-    var raw = rawField ? String(rawField.value || '').trim() : '';
-    var playlistId = extractYoutubePlaylistId(raw);
+    var shortsRawField = document.getElementById('client-youtube-shorts-playlist-url');
+    var horizontalRawField = document.getElementById('client-youtube-horizontal-playlist-url');
 
-    if (raw && !playlistId) {
-      throw new Error('Playlist YouTube non valida. Incolla un URL playlist con parametro list=... oppure un ID playlist.');
+    var shortsRaw = shortsRawField ? String(shortsRawField.value || '').trim() : '';
+    var horizontalRaw = horizontalRawField ? String(horizontalRawField.value || '').trim() : '';
+
+    var shortsPlaylistId = extractYoutubePlaylistId(shortsRaw);
+    var horizontalPlaylistId = extractYoutubePlaylistId(horizontalRaw);
+
+    if (shortsRaw && !shortsPlaylistId) {
+      throw new Error('Playlist YouTube verticale/WildWall non valida. Incolla un URL playlist con parametro list=... oppure un ID playlist.');
+    }
+
+    if (horizontalRaw && !horizontalPlaylistId) {
+      throw new Error('Playlist YouTube orizzontale non valida. Incolla un URL playlist con parametro list=... oppure un ID playlist.');
     }
 
     var user = root.requireCurrentUser();
     var now = root.FieldValue.serverTimestamp();
 
     var patch = {
-      youtube_video_horizontal_playlist_id: playlistId,
-      youtube_video_horizontal_playlist_raw: raw,
+      youtube_wildwall_shorts_playlist_id: shortsPlaylistId,
+      youtube_wildwall_shorts_playlist_raw: shortsRaw,
+      youtube_wildwall_shorts_playlist_updatedAt: now,
+      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
+      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+
+      youtube_video_horizontal_playlist_id: horizontalPlaylistId,
+      youtube_video_horizontal_playlist_raw: horizontalRaw,
       youtube_video_horizontal_playlist_updatedAt: now,
       youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null
+      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+
+      youtube_playlists_updatedAt: now,
+      youtube_playlists_updatedByUid: user.uid,
+      youtube_playlists_updatedByEmail: user.email || null
     };
 
     await root.db
@@ -1151,24 +1242,54 @@
       .set(patch, { merge: true });
 
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
-      youtube_video_horizontal_playlist_id: playlistId,
-      youtube_video_horizontal_playlist_raw: raw,
+      youtube_wildwall_shorts_playlist_id: shortsPlaylistId,
+      youtube_wildwall_shorts_playlist_raw: shortsRaw,
+      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
+      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+
+      youtube_video_horizontal_playlist_id: horizontalPlaylistId,
+      youtube_video_horizontal_playlist_raw: horizontalRaw,
       youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null
+      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+
+      youtube_playlists_updatedByUid: user.uid,
+      youtube_playlists_updatedByEmail: user.email || null
     });
 
+    var shortsIdField = document.getElementById('client-youtube-shorts-playlist-id');
+    if (shortsIdField) shortsIdField.value = shortsPlaylistId;
+
     var idField = document.getElementById('client-youtube-horizontal-playlist-id');
-    if (idField) idField.value = playlistId;
+    if (idField) idField.value = horizontalPlaylistId;
 
     renderClientContentConfigState();
     renderDebug();
 
     root.toast(
-      playlistId
-        ? 'Playlist video orizzontale salvata: ' + playlistId
-        : 'Playlist video orizzontale svuotata.',
+      'Playlist YouTube salvate. Verticale: ' + (shortsPlaylistId || 'vuota') +
+      ' | Orizzontale: ' + (horizontalPlaylistId || 'vuota'),
       'success'
     );
+  }
+
+  async function copyClientYoutubeShortsPlaylistId() {
+    var id = syncClientYoutubeShortsPlaylistFields();
+
+    if (!id) {
+      id = getClientYoutubeShortsPlaylistIdValue();
+    }
+
+    if (!id) {
+      throw new Error('Nessun ID playlist verticale da copiare.');
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(id);
+      root.toast('ID playlist verticale copiato: ' + id, 'success');
+      return;
+    }
+
+    window.prompt('Copia manualmente questo ID playlist verticale:', id);
   }
 
   async function copyClientYoutubeHorizontalPlaylistId() {
@@ -1179,16 +1300,50 @@
     }
 
     if (!id) {
-      throw new Error('Nessun ID playlist da copiare.');
+      throw new Error('Nessun ID playlist orizzontale da copiare.');
     }
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(id);
-      root.toast('ID playlist copiato: ' + id, 'success');
+      root.toast('ID playlist orizzontale copiato: ' + id, 'success');
       return;
     }
 
-    window.prompt('Copia manualmente questo ID playlist:', id);
+    window.prompt('Copia manualmente questo ID playlist orizzontale:', id);
+  }
+
+  function openClientYoutubeGasBridge() {
+    var ids = syncClientYoutubePlaylistFields({ rewriteInput: false });
+    var shortsPlaylistId = ids.shortsPlaylistId || getClientYoutubeShortsPlaylistIdValue();
+    var horizontalPlaylistId = ids.horizontalPlaylistId || getClientYoutubeHorizontalPlaylistIdValue();
+
+    if (!shortsPlaylistId && !horizontalPlaylistId) {
+      throw new Error('Prima inserisci almeno una playlist YouTube valida: verticale/WildWall oppure orizzontale.');
+    }
+
+    var url = WILDU_YOUTUBE_GAS_BRIDGE_URL +
+      '?shortsPlaylistId=' + encodeURIComponent(shortsPlaylistId || '') +
+      '&horizontalPlaylistId=' + encodeURIComponent(horizontalPlaylistId || '');
+
+    var opened = window.open(url, '_blank', 'noopener=no');
+
+    if (!opened) {
+      window.location.href = url;
+      return;
+    }
+
+    root.toast('Bridge GAS aperto. Conferma il lancio nella nuova scheda privata.', 'info');
+  }
+
+  function handleYoutubeGasBridgeMessage(evt) {
+    var data = evt && evt.data;
+    if (!data || data.source !== 'wildu-youtube-gas-bridge') return;
+
+    if (data.ok) {
+      root.toast('Bridge GAS: workflow YouTube avviato correttamente.', 'success');
+    } else {
+      root.toast('Bridge GAS: errore. Controlla la scheda GAS per istruzioni token/permessi.', 'error');
+    }
   }
 
   async function saveClientContentConfig(evt) {
@@ -1199,15 +1354,23 @@
 
     var gradeSelect = document.getElementById('client-books-min-grade');
     var newsField = document.getElementById('client-real-news');
+    var youtubeShortsPlaylistField = document.getElementById('client-youtube-shorts-playlist-url');
     var youtubePlaylistField = document.getElementById('client-youtube-horizontal-playlist-url');
 
     var grade = gradeSelect ? String(gradeSelect.value || '').trim() : '';
     var realNews = newsField ? String(newsField.value || '').trim() : '';
+    var youtubeShortsRaw = youtubeShortsPlaylistField ? String(youtubeShortsPlaylistField.value || '').trim() : '';
     var youtubeRaw = youtubePlaylistField ? String(youtubePlaylistField.value || '').trim() : '';
+
+    var youtubeShortsPlaylistId = extractYoutubePlaylistId(youtubeShortsRaw);
     var youtubePlaylistId = extractYoutubePlaylistId(youtubeRaw);
 
+    if (youtubeShortsRaw && !youtubeShortsPlaylistId) {
+      throw new Error('Playlist YouTube verticale/WildWall non valida. Incolla un URL playlist con parametro list=... oppure un ID playlist.');
+    }
+
     if (youtubeRaw && !youtubePlaylistId) {
-      throw new Error('Playlist YouTube non valida. Incolla un URL playlist con parametro list=... oppure un ID playlist.');
+      throw new Error('Playlist YouTube orizzontale non valida. Incolla un URL playlist con parametro list=... oppure un ID playlist.');
     }
 
     var user = root.requireCurrentUser();
@@ -1216,15 +1379,26 @@
     var patch = {
       biblioteca_libri_grado_minimo: grade,
       real_news: realNews,
+
+      youtube_wildwall_shorts_playlist_id: youtubeShortsPlaylistId,
+      youtube_wildwall_shorts_playlist_raw: youtubeShortsRaw,
+      youtube_wildwall_shorts_playlist_updatedAt: now,
+      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
+      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+
       youtube_video_horizontal_playlist_id: youtubePlaylistId,
       youtube_video_horizontal_playlist_raw: youtubeRaw,
+      youtube_video_horizontal_playlist_updatedAt: now,
+      youtube_video_horizontal_playlist_updatedByUid: user.uid,
+      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+
+      youtube_playlists_updatedAt: now,
+      youtube_playlists_updatedByUid: user.uid,
+      youtube_playlists_updatedByEmail: user.email || null,
 
       client_content_config_updatedAt: now,
       client_content_config_updatedByUid: user.uid,
-      client_content_config_updatedByEmail: user.email || null,
-      youtube_video_horizontal_playlist_updatedAt: now,
-      youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null
+      client_content_config_updatedByEmail: user.email || null
     };
 
     await root.db
@@ -1235,18 +1409,28 @@
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
       biblioteca_libri_grado_minimo: grade,
       real_news: realNews,
+
+      youtube_wildwall_shorts_playlist_id: youtubeShortsPlaylistId,
+      youtube_wildwall_shorts_playlist_raw: youtubeShortsRaw,
+      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
+      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+
       youtube_video_horizontal_playlist_id: youtubePlaylistId,
       youtube_video_horizontal_playlist_raw: youtubeRaw,
-      client_content_config_updatedByUid: user.uid,
-      client_content_config_updatedByEmail: user.email || null,
       youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null
+      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+
+      youtube_playlists_updatedByUid: user.uid,
+      youtube_playlists_updatedByEmail: user.email || null,
+
+      client_content_config_updatedByUid: user.uid,
+      client_content_config_updatedByEmail: user.email || null
     });
 
     renderClientContentConfigState();
     renderDebug();
 
-    root.toast('Configurazione client salvata: Libri + real_news + playlist video.', 'success');
+    root.toast('Configurazione client salvata: Libri + real_news + playlist YouTube.', 'success');
   }
 
   async function loadPartnerModuleContextQuietly() {
@@ -4293,6 +4477,21 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       });
     }
 
+    var youtubeShortsInput = document.getElementById('client-youtube-shorts-playlist-url');
+    if (youtubeShortsInput) {
+      youtubeShortsInput.addEventListener('input', function () {
+        syncClientYoutubeShortsPlaylistFields();
+      });
+      youtubeShortsInput.addEventListener('blur', function () {
+        syncClientYoutubeShortsPlaylistFields({ rewriteInput: false });
+      });
+      youtubeShortsInput.addEventListener('paste', function () {
+        setTimeout(function () {
+          syncClientYoutubeShortsPlaylistFields({ rewriteInput: false });
+        }, 0);
+      });
+    }
+
     var youtubeHorizontalInput = document.getElementById('client-youtube-horizontal-playlist-url');
     if (youtubeHorizontalInput) {
       youtubeHorizontalInput.addEventListener('input', function () {
@@ -4315,12 +4514,28 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       });
     }
 
+    var copyYoutubeShortsBtn = document.getElementById('btn-copy-client-youtube-shorts-id');
+    if (copyYoutubeShortsBtn) {
+      copyYoutubeShortsBtn.addEventListener('click', function () {
+        run(copyClientYoutubeShortsPlaylistId);
+      });
+    }
+
     var copyYoutubeHorizontalBtn = document.getElementById('btn-copy-client-youtube-horizontal-id');
     if (copyYoutubeHorizontalBtn) {
       copyYoutubeHorizontalBtn.addEventListener('click', function () {
         run(copyClientYoutubeHorizontalPlaylistId);
       });
     }
+
+    var openYoutubeGasBridgeBtn = document.getElementById('btn-open-youtube-gas-bridge');
+    if (openYoutubeGasBridgeBtn) {
+      openYoutubeGasBridgeBtn.addEventListener('click', function () {
+        run(openClientYoutubeGasBridge);
+      });
+    }
+
+    window.addEventListener('message', handleYoutubeGasBridgeMessage);
 
     var refreshSystemAudioBtn = root.$('#btn-refresh-system-audio');
     if (refreshSystemAudioBtn) {
