@@ -9055,6 +9055,70 @@ function consumeWilduGlobalCacheUrlParamsOnce() {
     }
 }
 
+function consumeWilduReturnTabUrlParamOnce() {
+    try {
+        const currentUrl = new URL(window.location.href);
+        const params = currentUrl.searchParams;
+        const rawTab = String(params.get('wilduReturnTab') || '').trim().toLowerCase();
+
+        // Micro-parametro one-shot usato solo dal MapViewer quando l'utente preme "Esci".
+        // Non tocca nocache/cache/off/globalCacheEpoch/moduleRefresh/gameRefresh/etc.
+        if (!rawTab) return false;
+
+        const allowedTabs = {
+            rewards: 'rewards'
+        };
+
+        const targetTab = allowedTabs[rawTab] || '';
+
+        // Anche se il valore non è valido, consumiamo solo questo parametro per evitare URL sporchi.
+        params.delete('wilduReturnTab');
+
+        const cleanSearch = params.toString();
+        const cleanUrl =
+            currentUrl.pathname +
+            (cleanSearch ? '?' + cleanSearch : '') +
+            currentUrl.hash;
+
+        if (window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState(window.history.state || {}, document.title, cleanUrl);
+        }
+
+        if (!targetTab) {
+            pageDebug('WILDU_RETURN_TAB_IGNORED', {
+                rawTab,
+                cleanUrl
+            });
+            return false;
+        }
+
+        setTimeout(() => {
+            try {
+                if (typeof show === 'function') {
+                    show(targetTab);
+                    pageDebug('WILDU_RETURN_TAB_CONSUMED', {
+                        targetTab,
+                        cleanUrl
+                    });
+                }
+            } catch (e) {
+                pageDebug('WILDU_RETURN_TAB_SHOW_FAILED', {
+                    targetTab,
+                    error: e && e.message ? e.message : String(e)
+                });
+            }
+        }, 0);
+
+        return true;
+    } catch (e) {
+        pageDebug('WILDU_RETURN_TAB_CONSUME_FAILED', {
+            error: e && e.message ? e.message : String(e)
+        });
+        return false;
+    }
+}
+
+
 function triggerWilduGlobalCacheReload(targetUrl) {
     const finalUrl = String(targetUrl || window.location.href);
 
@@ -9694,6 +9758,7 @@ async function init() {
 
     maybeShowWilduGlobalCacheNotice();
     consumeWilduGlobalCacheUrlParamsOnce();
+    consumeWilduReturnTabUrlParamOnce();
 
     checkAuthEnvironment();
 
