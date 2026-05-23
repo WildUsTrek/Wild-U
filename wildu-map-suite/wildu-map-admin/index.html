@@ -67,6 +67,15 @@
     .status { padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.06); border: 1px solid var(--line); color: var(--muted); font-size: 13px; }
     .hidden { display: none !important; }
     .pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 8px; border-radius: 999px; background: rgba(255,255,255,.08); color: var(--muted); font-size: 12px; }
+
+    /* WILDU ADMIN GATE — UI chiusa finché le Firestore Rules non confermano l’admin. */
+    body.admin-gate-locked main > .tabs,
+    body.admin-gate-locked main > section {
+      display: none !important;
+    }
+    body.admin-gate-locked #status {
+      margin-top: 16px;
+    }
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       header { align-items: flex-start; flex-direction: column; }
@@ -74,7 +83,7 @@
     }
   </style>
 </head>
-<body>
+<body class="admin-gate-locked">
   <header>
     <div>
       <h1>Wildu Map Admin</h1>
@@ -413,8 +422,13 @@
 
 const state = {
   user: null,
-  isMaster: false,
-  masterUid: "z5jE639FZsaWG59AgeFd2i8ovtT2",
+
+  // Gate admin frontend: nessun UID hardcoded qui.
+  // La certificazione reale resta nelle Firestore Rules tramite isAdmin().
+  isAdminVerified: false,
+  adminGateChecking: false,
+  adminGateMessage: "",
+
   areas: [],
   activeTab: "areas",
   viewerConfig: null,
@@ -455,8 +469,8 @@ const state = {
       return /^https:\/\//i.test(v) ? v : "";
     }
 
-    function isMasterUser(user) {
-  return !!user && user.uid === state.masterUid;
+    function isAdminVerified() {
+  return !!state.user && state.isAdminVerified === true;
 }
 
 function requireUser() {
@@ -464,11 +478,72 @@ function requireUser() {
     throw new Error("Devi fare login Google.");
   }
 
-  if (!isMasterUser(state.user)) {
-    throw new Error("Accesso non autorizzato: questo pannello è riservato all’admin master.");
+  if (!isAdminVerified()) {
+    throw new Error("Accesso admin non verificato dalle Firestore Rules.");
   }
 
   return state.user;
+}
+
+function setAdminGateLocked(locked, message = "", isError = false) {
+  document.body.classList.toggle("admin-gate-locked", locked);
+
+  const boot = $("boot-warning");
+  if (boot) {
+    boot.innerHTML = message
+      ? message
+      : "Configura <strong>shared/firebase-config.js</strong>, poi abilita le regole Firestore/Storage suggerite.";
+    boot.style.borderColor = isError ? "rgba(255,107,107,.45)" : "rgba(255,255,255,.12)";
+    boot.style.color = isError ? "#ffd4d4" : "#aab8a8";
+  }
+}
+
+async function verifyMapAdminThroughFirestoreRules() {
+  try {
+    // Documento probe admin-only: non deve esistere per forza.
+    // Se le Rules permettono la lettura, l’utente è l’admin reale.
+    await getDoc(doc(db, "wildu_admin_probe", "map_admin_gate"));
+    return { ok: true, message: "" };
+  } catch (err) {
+    const code = String((err && err.code) || "").toLowerCase();
+
+    if (code.includes("permission-denied")) {
+      return {
+        ok: false,
+        message: "Account Google loggato, ma non autorizzato come admin dalle Firestore Rules."
+      };
+    }
+
+    return {
+      ok: false,
+      message: "Impossibile verificare i permessi admin: " + (err && err.message ? err.message : String(err))
+    };
+  }
+}
+
+function clearAdminSessionData() {
+  state.isAdminVerified = false;
+  state.adminGateChecking = false;
+  state.adminGateMessage = "";
+  state.areas = [];
+  state.viewerConfig = null;
+  state.areaDrawMode = false;
+  state.areaPolygonPoints = [];
+
+  if (state.areaPolygonLayer && state.map) {
+    try { state.map.removeLayer(state.areaPolygonLayer); } catch (_) {}
+  }
+
+  state.areaPolygonLayer = null;
+
+  const areasList = $("areas-list");
+  if (areasList) areasList.innerHTML = `<div class="hint">Accesso admin richiesto.</div>`;
+
+  const waypointsList = $("waypoints-list");
+  if (waypointsList) waypointsList.innerHTML = `<div class="hint">Accesso admin richiesto.</div>`;
+
+  const tracksList = $("tracks-list");
+  if (tracksList) tracksList.innerHTML = `<div class="hint">Accesso admin richiesto.</div>`;
 }
 
     function initMap() {
@@ -2015,36 +2090,66 @@ $("btn-load-map-settings").onclick = () => {
     }
 
     onAuthStateChanged(auth, async (user) => {
-  state.user = user;
-  state.isMaster = isMasterUser(user);
+  state.user = user || null;
+  state.isAdminVerified = false;
+  state.adminGateChecking = false;
+  state.adminGateMessage = "";
 
   $("btn-login").classList.toggle("hidden", !!user);
   $("btn-logout").classList.toggle("hidden", !user);
 
   if (!user) {
+    clearAdminSessionData();
     $("auth-state").textContent = "Non autenticato";
+    setAdminGateLocked(
+      true,
+      "<strong>Accesso richiesto.</strong><br>Effettua il login Google con l’account admin per aprire Wildu Map Admin.",
+      false
+    );
     setStatus("Fai login Google per gestire le mappe.");
     return;
   }
 
   const label = user.email || user.uid;
 
-  if (!state.isMaster) {
+  state.adminGateChecking = true;
+  $("auth-state").textContent = `VERIFICA ADMIN · ${label}`;
+  setAdminGateLocked(
+    true,
+    "<strong>Verifica admin in corso...</strong><br>Controllo dei permessi tramite Firestore Rules.",
+    false
+  );
+  setStatus("Verifico permessi admin tramite Firestore Rules...");
+
+  const gate = await verifyMapAdminThroughFirestoreRules();
+
+  state.adminGateChecking = false;
+
+  if (!gate.ok) {
+    state.isAdminVerified = false;
+    state.adminGateMessage = gate.message || "";
+    clearAdminSessionData();
+
     $("auth-state").textContent = `NON AUTORIZZATO · ${label}`;
-    setStatus(
-      `Login riuscito, ma questo account non è autorizzato. UID rilevato: ${user.uid}`,
+    setAdminGateLocked(
+      true,
+      "<strong>Accesso non autorizzato.</strong><br>" + escapeHtml(gate.message || "Questo account non ha permessi admin."),
       true
     );
+    setStatus(gate.message || "Accesso non autorizzato.", true);
     return;
   }
 
-  $("auth-state").textContent = `ADMIN · ${label}`;
+  state.isAdminVerified = true;
+  state.adminGateMessage = "";
 
+  $("auth-state").textContent = `ADMIN · ${label}`;
+  setAdminGateLocked(false, "", false);
   setStatus("Login admin riuscito. Carico dati mappa...");
 
   try {
     await reloadAll();
-    setStatus("Dati mappa caricati. Accesso admin verificato.");
+    setStatus("Dati mappa caricati. Accesso admin verificato dalle Firestore Rules.");
   } catch (e) {
     setStatus(e.message, true);
   }
