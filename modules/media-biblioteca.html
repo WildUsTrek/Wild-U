@@ -133,18 +133,28 @@
         }
     }
 
-    function wilduYoutubeManifestCandidates() {
-        var dayBucket = Math.floor(Date.now() / 86400000);
+    function wilduYoutubeConfigCandidates() {
+        var explicit = window.WILDU_YOUTUBE_PLAYLISTS_CONFIG_URL || "";
+        var list = [];
+
+        if (explicit) list.push(explicit);
+        list.push("data/youtube-playlists-config.json");
+        list.push("/Wild-U/data/youtube-playlists-config.json");
+
+        return list.filter(function (url, index, arr) {
+            return url && arr.indexOf(url) === index;
+        });
+    }
+
+    function wilduYoutubeManifestCandidates(manifestVersion) {
         var explicit = window.WILDU_YOUTUBE_PLAYLISTS_URL ||
             window.WILDU_YT_PLAYLISTS_URL ||
             "";
 
+        var version = manifestVersion ? String(manifestVersion) : String(Math.floor(Date.now() / 86400000));
         var list = [];
 
-        if (explicit) {
-            list.push(explicit);
-        }
-
+        if (explicit) list.push(explicit);
         list.push("data/youtube-playlists.json");
         list.push("/Wild-U/data/youtube-playlists.json");
 
@@ -153,8 +163,27 @@
                 return url && arr.indexOf(url) === index;
             })
             .map(function (url) {
-                return wilduWithQueryParam(url, "ytday", dayBucket);
+                return wilduWithQueryParam(url, "v", version);
             });
+    }
+
+    async function wilduFetchYoutubeConfig() {
+        var candidates = wilduYoutubeConfigCandidates();
+        var lastError = null;
+
+        for (var i = 0; i < candidates.length; i++) {
+            try {
+                var freshUrl = wilduWithQueryParam(candidates[i], "cfgts", String(Date.now()));
+                var res = await fetch(freshUrl, { cache: "no-store" });
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return await res.json();
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        console.warn("[WILDU MEDIA BIBLIOTECA] Config YouTube non disponibile, uso fallback manifest diretto:", lastError);
+        return null;
     }
 
     async function wilduFetchYoutubeManifest() {
@@ -163,12 +192,14 @@
         }
 
         WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise = (async function () {
-            var candidates = wilduYoutubeManifestCandidates();
+            var config = await wilduFetchYoutubeConfig();
+            var manifestVersion = config && config.manifestVersion ? config.manifestVersion : "";
+            var candidates = wilduYoutubeManifestCandidates(manifestVersion);
             var lastError = null;
 
             for (var i = 0; i < candidates.length; i++) {
                 try {
-                    var res = await fetch(candidates[i], { cache: "no-store" });
+                    var res = await fetch(candidates[i]);
                     if (!res.ok) {
                         throw new Error("HTTP " + res.status);
                     }
@@ -338,7 +369,7 @@
                         'font-size:12px;' +
                         'line-height:1.45;' +
                     '">' +
-                        'Scelto casualmente dalla playlist video Wild-U. Cambia quando riapri la tab o ricarichi il modulo.' +
+                        'Scelto casualmente dalla playlist video Wild-U. Il manifest è cache-safe e versionato da Admin/GitHub Action.' +
                     '</p>' +
                 '</div>' +
             '</section>';
