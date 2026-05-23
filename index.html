@@ -2242,7 +2242,7 @@ body::before {
 
             <div style="text-align:right; min-width:78px;">
                 <div id="prof-grado" style="color:var(--w-gold); margin:0; font-size: 21px; font-weight:950; text-transform: uppercase; line-height:1.05;">...</div>
-                <div id="wildu-passport-mini-xp-label" style="color:#aaa; font-size:11px; font-weight:900; margin-top:5px;">0%</div>
+                <div id="wildu-passport-mini-xp-label" style="color:#c9b88c; font-size:11px; font-weight:900; margin-top:5px;">0%</div>
             </div>
 
             <span id="wildu-passport-chevron">⌄</span>
@@ -2876,7 +2876,7 @@ const WilduMediaClient = (() => {
     // Se serve forzare subito un aggiornamento media, usare:
     // ?mediaRefresh=1 oppure ?nocache=1 oppure ?cache=off
     const PUBLIC_VERSIONS_CACHE_KEY = CACHE_PREFIX + "public_versions";
-    const PUBLIC_VERSIONS_TTL_MS = 3 * 60 * 60 * 1000; // 3 ore
+    const PUBLIC_VERSIONS_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 giorni: meno letture Firestore, invalidazione via admin/cache epoch
 
     let publicVersionsMemory = null;
     let publicVersionsLoadedAt = 0;
@@ -3323,6 +3323,59 @@ const WilduMediaClient = (() => {
         return { type: "paragraph", role, text };
     }
 
+
+    const WILDU_MEDIA_READER_COLLECTION = "wildu_media_reader";
+
+    function hasWilduPreparedReader(item) {
+        return !!(
+            item &&
+            (
+                safeString(item.readerDocPath || item.reader_doc_path || "") ||
+                safeString(item.readerStatus || "").toUpperCase() === "READY" ||
+                Number(item.readerBlockCount || 0) > 0 ||
+                normalizeWilduReaderText(item.readerPreview || item.reader_preview || "")
+            )
+        );
+    }
+
+    function getWilduReaderDocIdFromItem(item) {
+        if (!item || typeof item !== "object") return "";
+
+        const rawPath = safeString(item.readerDocPath || item.reader_doc_path || "");
+        if (rawPath) {
+            const parts = rawPath.split("/").map(function (part) { return safeString(part); }).filter(Boolean);
+            if (parts.length >= 2 && parts[parts.length - 2] === WILDU_MEDIA_READER_COLLECTION) {
+                return parts[parts.length - 1];
+            }
+            if (parts.length === 1) return parts[0];
+        }
+
+        return safeString(item.id || item.docId || item.catalogId || "");
+    }
+
+    async function loadWilduReaderDocumentForItem(item) {
+        if (!item || typeof item !== "object") return null;
+
+        const hasSplitReader = safeString(item.readerDocPath || item.reader_doc_path || "");
+        if (!hasSplitReader) return null;
+
+        const docId = getWilduReaderDocIdFromItem(item);
+        if (!docId) return null;
+
+        const snap = await db
+            .collection(WILDU_MEDIA_READER_COLLECTION)
+            .doc(docId)
+            .get();
+
+        if (!snap.exists) {
+            throw new Error("Reader ottimizzato non trovato: " + WILDU_MEDIA_READER_COLLECTION + "/" + docId);
+        }
+
+        const data = snap.data() || {};
+        data.id = snap.id;
+        return data;
+    }
+
     function getWilduReaderBlocksFromItem(item) {
         if (!item || typeof item !== "object") return [];
 
@@ -3627,7 +3680,7 @@ const WilduMediaClient = (() => {
                     display:block;
                 ">
                 ${block.caption ? `<figcaption style="
-                    color:#aeb7bd;
+                    color:#6f7a6d;
                     font-size:12px;
                     line-height:1.45;
                     margin-top:9px;
@@ -3653,7 +3706,7 @@ const WilduMediaClient = (() => {
                 <div style="
                     font-size:17px;
                     line-height:1.72;
-                    color:#eee;
+                    color:#253126;
                     margin:18px 0;
                 ">
                     ${block.html || ""}
@@ -3680,14 +3733,14 @@ const WilduMediaClient = (() => {
                     margin:${blockIndex > 0 ? "38px" : "12px"} 0 14px 0;
                 ">
                     <h2 style="
-                        color:#fff;
+                        color:#1f3a25;
                         font-size:24px;
                         line-height:1.18;
                         margin:0;
                         letter-spacing:.05px;
                         padding-left:13px;
                         border-left:4px solid var(--w-gold);
-                        text-shadow:0 1px 12px rgba(0,0,0,.35);
+                        text-shadow:none;
                     ">${formatWilduReaderTextBeauty(safeText, "heading", role)}</h2>
                 </section>
             `;
@@ -3699,8 +3752,8 @@ const WilduMediaClient = (() => {
                     margin:26px 0;
                     padding:18px 18px;
                     border-left:4px solid var(--w-gold);
-                    background:linear-gradient(135deg, rgba(212,175,55,.13), rgba(124,199,255,.05));
-                    color:#f4e8c6;
+                    background:linear-gradient(135deg, rgba(255,247,232,.96), rgba(239,226,201,.88));
+                    color:#3b321f;
                     border-radius:18px;
                     font-size:18px;
                     line-height:1.62;
@@ -3716,9 +3769,9 @@ const WilduMediaClient = (() => {
                     margin:28px 0 18px 0;
                     padding:13px 15px;
                     border-radius:16px;
-                    background:rgba(212,175,55,.10);
+                    background:rgba(255,247,232,.74);
                     border:1px solid rgba(212,175,55,.28);
-                    color:#f0dfaa;
+                    color:#5a4b27;
                     font-size:15px;
                     line-height:1.55;
                     font-style:italic;
@@ -3734,8 +3787,8 @@ const WilduMediaClient = (() => {
                     padding:15px 16px;
                     border-radius:18px;
                     border:1px solid rgba(124,199,255,.30);
-                    background:rgba(124,199,255,.075);
-                    color:#dff3ff;
+                    background:rgba(238,242,230,.92);
+                    color:#354736;
                     font-size:15px;
                     line-height:1.58;
                     box-shadow:0 8px 22px rgba(0,0,0,.18);
@@ -3747,7 +3800,7 @@ const WilduMediaClient = (() => {
 
         return `
             <p style="
-                color:${isLead ? "#f4f1e8" : "#ededed"};
+                color:${isLead ? "#384738" : "#253126"};
                 font-size:${isLead ? "19px" : "18px"};
                 line-height:${isLead ? "1.74" : "1.72"};
                 margin:${isLead ? "6px 0 24px 0" : "0 0 22px 0"};
@@ -3772,9 +3825,9 @@ const WilduMediaClient = (() => {
                 padding:0;
                 border-radius:28px;
                 overflow:hidden;
-                background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.025));
-                border:1px solid rgba(255,255,255,.10);
-                box-shadow:0 20px 60px rgba(0,0,0,.42);
+                background:linear-gradient(180deg, rgba(255,250,240,.95), rgba(239,226,201,.72));
+                border:1px solid rgba(87,104,72,.18);
+                box-shadow:0 16px 42px rgba(81,58,22,.14);
             ">
                 ${heroImg ? `<div style="padding:14px 14px 0 14px;">${heroImg}</div>` : ""}
 
@@ -3793,7 +3846,7 @@ const WilduMediaClient = (() => {
                             padding:6px 10px;
                             border-radius:999px;
                             background:rgba(212,175,55,.14);
-                            color:#f4d777;
+                            color:#9b7220;
                             border:1px solid rgba(212,175,55,.32);
                             font-size:11px;
                             font-weight:900;
@@ -3807,7 +3860,7 @@ const WilduMediaClient = (() => {
                             padding:6px 10px;
                             border-radius:999px;
                             background:rgba(124,199,255,.10);
-                            color:#aee3ff;
+                            color:#315b35;
                             border:1px solid rgba(124,199,255,.22);
                             font-size:11px;
                             font-weight:800;
@@ -3817,16 +3870,16 @@ const WilduMediaClient = (() => {
                     </div>
 
                     <h1 style="
-                        color:#fff;
+                        color:#1f3a25;
                         font-size:clamp(29px, 8vw, 42px);
                         line-height:1.05;
                         margin:0 0 12px 0;
                         letter-spacing:-.45px;
-                        text-shadow:0 2px 20px rgba(0,0,0,.45);
+                        text-shadow:none;
                     ">${title}</h1>
 
                     ${lead ? `<p style="
-                        color:#d9e1df;
+                        color:#4e5f50;
                         font-size:18px;
                         line-height:1.58;
                         margin:0;
@@ -3844,15 +3897,15 @@ const WilduMediaClient = (() => {
             <details style="
                 margin:0 0 28px 0;
                 border-radius:18px;
-                border:1px solid rgba(255,255,255,.10);
-                background:rgba(255,255,255,.045);
+                border:1px solid rgba(87,104,72,.18);
+                background:rgba(255,247,232,.74);
                 overflow:hidden;
             ">
                 <summary style="
                     list-style:none;
                     cursor:pointer;
                     padding:14px 16px;
-                    color:#f2d474;
+                    color:#8a651b;
                     font-size:13px;
                     font-weight:900;
                     text-transform:uppercase;
@@ -3862,7 +3915,7 @@ const WilduMediaClient = (() => {
                     align-items:center;
                 ">
                     <span>Indice rapido</span>
-                    <span style="color:#8fa2a8; font-size:12px;">tocca</span>
+                    <span style="color:#6f7a6d; font-size:12px;">tocca</span>
                 </summary>
 
                 <div style="padding:0 16px 14px 16px;">
@@ -3873,12 +3926,12 @@ const WilduMediaClient = (() => {
                         return `
                             <a href="#${escapeHtml(id)}" style="
                                 display:block;
-                                color:#d8eef7;
+                                color:#2f5a36;
                                 text-decoration:none;
                                 font-size:14px;
                                 line-height:1.4;
                                 padding:9px 0;
-                                border-top:${i === 0 ? "none" : "1px solid rgba(255,255,255,.08)"};
+                                border-top:${i === 0 ? "none" : "1px solid rgba(87,104,72,.14)"};
                             ">${escapeHtml(text)}</a>
                         `;
                     }).join("")}
@@ -3902,14 +3955,14 @@ const WilduMediaClient = (() => {
                 margin:34px 0 4px 0;
                 border-radius:22px;
                 border:1px solid rgba(212,175,55,.24);
-                background:linear-gradient(180deg, rgba(212,175,55,.10), rgba(255,255,255,.035));
+                background:linear-gradient(180deg, rgba(255,247,232,.84), rgba(238,242,230,.74));
                 overflow:hidden;
             ">
                 <summary style="
                     list-style:none;
                     cursor:pointer;
                     padding:16px 18px;
-                    color:#f4d777;
+                    color:#9b7220;
                     font-size:14px;
                     font-weight:900;
                     text-transform:uppercase;
@@ -3935,9 +3988,9 @@ const WilduMediaClient = (() => {
                                 margin:13px 0 0 0;
                                 padding:13px 14px;
                                 border-radius:15px;
-                                background:rgba(0,0,0,.18);
-                                border:1px solid rgba(255,255,255,.075);
-                                color:#d8d2bd;
+                                background:rgba(255,255,255,.54);
+                                border:1px solid rgba(87,104,72,.14);
+                                color:#435340;
                                 font-size:13px;
                                 line-height:1.48;
                             ">${formatWilduReaderTextBeauty(block.text, "note", "sources")}</div>
@@ -4003,11 +4056,16 @@ const WilduMediaClient = (() => {
 
         const articleEl = document.createElement("article");
         articleEl.style.cssText = [
-            "width:min(780px,100%)",
+            "width:min(820px,100%)",
             "margin:0 auto",
-            "padding:8px 5px 34px 5px",
+            "padding:16px 12px 38px 12px",
             "box-sizing:border-box",
-            "text-align:left"
+            "text-align:left",
+            "color:#253126",
+            "background:linear-gradient(180deg, #f4ecd9 0%, #efe2c9 100%)",
+            "border:1px solid rgba(71,83,58,.18)",
+            "border-radius:28px",
+            "box-shadow:0 18px 48px rgba(0,0,0,.18)"
         ].join(";");
 
         articleEl.innerHTML = `
@@ -4018,14 +4076,14 @@ const WilduMediaClient = (() => {
                 height:3px;
                 width:100%;
                 margin:0 0 12px 0;
-                background:rgba(255,255,255,.06);
+                background:rgba(37,49,38,.10);
                 border-radius:999px;
                 overflow:hidden;
             ">
                 <div id="wildu-reader-progress-fill" style="
                     height:100%;
                     width:0%;
-                    background:linear-gradient(90deg, var(--w-gold), #7cc7ff);
+                    background:linear-gradient(90deg, #b88a2b, #2f5a36);
                     border-radius:999px;
                     transition:width .08s linear;
                 "></div>
@@ -4696,7 +4754,7 @@ const WilduMediaClient = (() => {
             "inset:0",
             "z-index:26000",
             "display:none",
-            "background:rgba(0,0,0,.96)",
+            "background:linear-gradient(180deg, #101512 0%, #0b100d 100%)",
             "color:#fff",
             "font-family:-apple-system,BlinkMacSystemFont,Roboto,sans-serif",
             "box-sizing:border-box"
@@ -4707,11 +4765,11 @@ const WilduMediaClient = (() => {
                 position:sticky;
                 top:0;
                 z-index:2;
-                background:linear-gradient(180deg, rgba(10,14,18,.98), rgba(10,14,18,.92));
-                border-bottom:1px solid rgba(124,199,255,.25);
+                background:linear-gradient(180deg, rgba(20,31,23,.98), rgba(12,18,14,.95));
+                border-bottom:1px solid rgba(214,175,55,.22);
                 padding:calc(10px + env(safe-area-inset-top,0px)) 10px 10px 10px;
                 box-sizing:border-box;
-                box-shadow:0 8px 24px rgba(0,0,0,.55);
+                box-shadow:0 8px 24px rgba(0,0,0,.42);
             ">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <button id="wildu-pdf-reader-close" type="button" style="
@@ -4719,18 +4777,18 @@ const WilduMediaClient = (() => {
                         height:36px;
                         border-radius:999px;
                         border:1px solid rgba(255,255,255,.22);
-                        background:#222;
-                        color:#fff;
+                        background:#f3ead8;
+                        color:#1f3a25;
                         font-weight:900;
                         cursor:pointer;
                     ">×</button>
 
                     <div style="min-width:0; flex:1;">
-                        <div style="font-size:10px; color:#7cc7ff; font-weight:900; text-transform:uppercase; letter-spacing:.9px;">
+                        <div style="font-size:10px; color:#d6b25e; font-weight:900; text-transform:uppercase; letter-spacing:.9px;">
                             Lettura in app
                         </div>
                         <div id="wildu-pdf-reader-title" style="
-                            color:#fff;
+                            color:#f6ecd4;
                             font-size:14px;
                             font-weight:900;
                             white-space:nowrap;
@@ -4741,7 +4799,7 @@ const WilduMediaClient = (() => {
 
                     <a id="wildu-pdf-reader-external" href="#" target="_blank" rel="noopener" style="
                         color:#000;
-                        background:#7cc7ff;
+                        background:#d6b25e;
                         border-radius:999px;
                         padding:9px 10px;
                         text-decoration:none;
@@ -4759,28 +4817,29 @@ const WilduMediaClient = (() => {
                     align-items:center;
                     margin-top:10px;
                 ">
-                    <button id="wildu-pdf-reader-prev" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">‹</button>
-                    <button id="wildu-pdf-reader-next" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">›</button>
+                    <button id="wildu-pdf-reader-prev" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">‹</button>
+                    <button id="wildu-pdf-reader-next" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">›</button>
 
-                    <div id="wildu-pdf-reader-page-label" style="text-align:center; color:#aaa; font-size:11px; font-weight:900;">
+                    <div id="wildu-pdf-reader-page-label" style="text-align:center; color:#c9b88c; font-size:11px; font-weight:900;">
                         Pagina -
                     </div>
 
-                    <button id="wildu-pdf-reader-zoom-out" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">−</button>
-                    <button id="wildu-pdf-reader-zoom-in" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid #333; background:#1e1e1e; color:#fff; font-weight:900;">+</button>
+                    <button id="wildu-pdf-reader-zoom-out" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">−</button>
+                    <button id="wildu-pdf-reader-zoom-in" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">+</button>
                 </div>
             </div>
 
             <div id="wildu-pdf-reader-body" style="
                 height:calc(100vh - 112px);
                 overflow:auto;
+                background:linear-gradient(180deg, #efe4d0 0%, #f6f0e5 100%);
                 -webkit-overflow-scrolling:touch;
                 padding:12px 8px calc(22px + env(safe-area-inset-bottom,0px)) 8px;
                 box-sizing:border-box;
             ">
                 <div id="wildu-pdf-reader-status" style="
                     text-align:center;
-                    color:#7cc7ff;
+                    color:#7a5a16;
                     font-weight:900;
                     padding:40px 12px;
                     font-size:14px;
@@ -4842,7 +4901,9 @@ const WilduMediaClient = (() => {
         } catch (e) {}
 
         try {
-            const preprocessedBlocks = getWilduReaderBlocksFromItem(item);
+            ui.status.textContent = "Carico lettura ottimizzata...";
+            const readerDoc = await loadWilduReaderDocumentForItem(item);
+            const preprocessedBlocks = readerDoc ? getWilduReaderBlocksFromItem(readerDoc) : [];
 
             if (preprocessedBlocks.length) {
                 renderWilduReaderArticle(ui, {
@@ -5079,7 +5140,7 @@ const WilduMediaClient = (() => {
                                 padding:12px 10px;
                                 border-radius:999px;
                                 border:0;
-                                background:#7cc7ff;
+                                background:#d6b25e;
                                 color:#000;
                                 font-size:11px;
                                 font-weight:900;
@@ -5133,7 +5194,7 @@ const WilduMediaClient = (() => {
                     margin-bottom:7px;
                 ">${escapeHtml(sectionLabel)}</div>
 
-                ${getWilduReaderBlocksFromItem(item).length ? `<div style="
+                ${hasWilduPreparedReader(item) ? `<div style="
                     display:inline-flex;
                     align-items:center;
                     gap:6px;
@@ -5579,7 +5640,7 @@ const WilduMediaClient = (() => {
                     padding:11px 7px;
                     border-radius:999px;
                     border:1px solid rgba(124,199,255,.50);
-                    background:#7cc7ff;
+                    background:#d6b25e;
                     color:#000;
                     font-size:10px;
                     font-weight:900;
@@ -5590,7 +5651,7 @@ const WilduMediaClient = (() => {
                     padding:11px 7px;
                     border-radius:999px;
                     border:1px solid rgba(212,175,55,.55);
-                    background:rgba(212,175,55,.10);
+                    background:rgba(255,247,232,.74);
                     color:var(--w-gold);
                     font-size:10px;
                     font-weight:900;
@@ -5601,7 +5662,7 @@ const WilduMediaClient = (() => {
                     padding:11px 7px;
                     border-radius:999px;
                     border:1px solid rgba(212,175,55,.55);
-                    background:rgba(212,175,55,.10);
+                    background:rgba(255,247,232,.74);
                     color:var(--w-gold);
                     font-size:10px;
                     font-weight:900;
@@ -5639,7 +5700,7 @@ const WilduMediaClient = (() => {
             const newsTitle = safeString(newsItem.title || newsItem.Titolo || "Documento consigliato");
             const newsUrl = safeString(newsItem.fileUrl);
             const newsPreview = getWilduReaderPreviewFromItem(newsItem, 1400);
-            const hasPreparedReader = getWilduReaderBlocksFromItem(newsItem).length > 0 || !!newsPreview;
+            const hasPreparedReader = hasWilduPreparedReader(newsItem) || !!newsPreview;
 
             newsPreviewHtml = `
                 <div style="
@@ -14733,25 +14794,34 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
 
     const legacyModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
-    // 1) Manifesto moduli contenitori.
-    // Se Firestore inciampa nel momento esatto del click, non blocchiamo il modulo:
-    // usiamo il moduleRev legacy già renderizzato sulla card e lasciamo il runtime come bonus.
-    let runtimeVersions = {};
-    try {
-        runtimeVersions = await getWilduRuntimeVersions();
-    } catch (e) {
-        console.warn("[WILDU RUNTIME VERSION] Manifesto modulo non disponibile, uso rev legacy:", e);
-    }
+    // Feedback immediato: prima mostrava “Evocazione...” solo DOPO i runtime.
+    // Ora l'utente vede subito che il modulo sta aprendo. Non cambiamo la logica rev.
+    ['events', 'free', 'paid', 'rewards', 'profile', 'groups', 'install'].forEach(s => {
+        if (document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden');
+    });
 
-    // 2) Manifesto giochi specifici.
-    // Lo carichiamo qui una volta, con TTL 3 ore, così quando il modulo giochi
-    // chiama WILDU_MODULE.getUrl("giochi/...") ha già la rev del singolo gioco.
-    // Se il documento non esiste, non rompe nulla.
-    try {
-        await getWilduGameRuntime();
-    } catch (e) {
+    const m = document.getElementById('module-container');
+    m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>';
+    m.classList.remove('hidden');
+
+    handleModuleAudio(a);
+    if (i) document.querySelector('.nav').style.display = 'none';
+
+    // Runtime in parallelo, ma entrambi restano caricati.
+    // Non saltiamo getWilduGameRuntime(): il sistema moduli non può sapere a priori
+    // quanti moduli/giochi siano contenuti dentro il modulo HTML.
+    const runtimeVersionsPromise = getWilduRuntimeVersions().catch(function (e) {
+        console.warn("[WILDU RUNTIME VERSION] Manifesto modulo non disponibile, uso rev legacy:", e);
+        return {};
+    });
+
+    const gameRuntimePromise = getWilduGameRuntime().catch(function (e) {
         console.warn("[WILDU GAME RUNTIME] Preload saltato:", e);
-    }
+        return null;
+    });
+
+    const runtimeVersions = await runtimeVersionsPromise;
+    await gameRuntimePromise;
 
     // Firestore module_versions comanda solo per il modulo contenitore.
     // module_rev legacy resta fallback.
@@ -14764,20 +14834,6 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     window.currentModuleRev = resolvedModuleRev;
     window.currentModuleUrl = f;
     window.currentModuleVersionedUrl = versionedModuleUrl;
-
-    // "wheel" non è più una sezione autonoma.
-    // Nascondere #sec-rewards nasconde già anche la Ruota.
-    ['events', 'free', 'paid', 'rewards', 'profile', 'groups', 'install'].forEach(s => {
-        if (document.getElementById('sec-' + s)) document.getElementById('sec-' + s).classList.add('hidden');
-    });
-
-    
-    const m = document.getElementById('module-container');
-    m.innerHTML = '<div style="text-align:center; padding:50px; color:var(--w-gold);">Evocazione...</div>';
-    m.classList.remove('hidden');
-
-    handleModuleAudio(a);
-    if (i) document.querySelector('.nav').style.display = 'none';
 
     try {
         const res = await fetch(versionedModuleUrl);
