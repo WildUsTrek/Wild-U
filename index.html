@@ -1924,9 +1924,11 @@ body::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #wildu-boot-veil,
+    /* Mantiene attiva la failsafe CSS del velo anche se il JS non parte.
+       Disattiva solo il movimento decorativo della barra. */
     .wildu-boot-veil-bar {
         animation: none;
+        transform: translateX(0);
     }
 }
 
@@ -3901,12 +3903,12 @@ const WilduMediaClient = (() => {
         const figureMaxWidth = isHero
             ? "100%"
             : isSmallImage
-                ? "min(72%, 360px)"
-                : "min(100%, 680px)";
+                ? "min(70%, 340px)"
+                : "min(100%, 660px)";
 
-        const imageMaxHeight = isHero ? "440px" : isSmallImage ? "280px" : "430px";
+        const imageMaxHeight = isHero ? "410px" : isSmallImage ? "250px" : "400px";
         const radius = isHero ? "24px" : "18px";
-        const margin = isHero ? "18px 0 24px 0" : "28px auto";
+        const margin = isHero ? "16px 0 22px 0" : "28px auto";
 
         return `
             <figure style="
@@ -3921,13 +3923,13 @@ const WilduMediaClient = (() => {
                     max-height:${imageMaxHeight};
                     object-fit:contain;
                     border-radius:${radius};
-                    background:rgba(255,255,255,.025);
-                    border:1px solid rgba(255,255,255,.10);
-                    box-shadow:${isHero ? "0 18px 48px rgba(0,0,0,.55)" : "0 10px 28px rgba(0,0,0,.42)"};
+                    background:linear-gradient(135deg, rgba(38,49,32,.10), rgba(255,246,224,.10));
+                    border:1px solid rgba(119,91,33,.22);
+                    box-shadow:${isHero ? "0 18px 42px rgba(23,18,9,.30)" : "0 10px 24px rgba(23,18,9,.22)"};
                     display:block;
                 ">
                 ${block.caption ? `<figcaption style="
-                    color:#6f7a6d;
+                    color:#706653;
                     font-size:12px;
                     line-height:1.45;
                     margin-top:9px;
@@ -3953,7 +3955,7 @@ const WilduMediaClient = (() => {
                 <div style="
                     font-size:17px;
                     line-height:1.72;
-                    color:#253126;
+                    color:#263324;
                     margin:18px 0;
                 ">
                     ${block.html || ""}
@@ -3977,16 +3979,16 @@ const WilduMediaClient = (() => {
             return `
                 <section ${anchorId ? `id="${escapeHtml(anchorId)}"` : ""} style="
                     scroll-margin-top:18px;
-                    margin:${blockIndex > 0 ? "38px" : "12px"} 0 14px 0;
+                    margin:${blockIndex > 0 ? "40px" : "14px"} 0 15px 0;
                 ">
                     <h2 style="
-                        color:#1f3a25;
+                        color:#1d3322;
                         font-size:24px;
                         line-height:1.18;
                         margin:0;
-                        letter-spacing:.05px;
+                        letter-spacing:.03px;
                         padding-left:13px;
-                        border-left:4px solid var(--w-gold);
+                        border-left:4px solid #a97f27;
                         text-shadow:none;
                     ">${formatWilduReaderTextBeauty(safeText, "heading", role)}</h2>
                 </section>
@@ -3996,16 +3998,16 @@ const WilduMediaClient = (() => {
         if (type === "quote") {
             return `
                 <blockquote style="
-                    margin:26px 0;
+                    margin:27px 0;
                     padding:18px 18px;
-                    border-left:4px solid var(--w-gold);
-                    background:linear-gradient(135deg, rgba(255,247,232,.96), rgba(239,226,201,.88));
-                    color:#3b321f;
-                    border-radius:18px;
+                    border-left:4px solid #a97f27;
+                    background:linear-gradient(135deg, rgba(213,195,151,.72), rgba(190,168,121,.54));
+                    color:#342d1d;
+                    border-radius:19px;
                     font-size:18px;
                     line-height:1.62;
                     font-style:italic;
-                    box-shadow:0 10px 26px rgba(0,0,0,.22);
+                    box-shadow:0 10px 24px rgba(23,18,9,.18), inset 0 1px 0 rgba(255,255,255,.22);
                 ">${formatWilduReaderTextBeauty(safeText, "quote", role)}</blockquote>
             `;
         }
@@ -4016,9 +4018,9 @@ const WilduMediaClient = (() => {
                     margin:28px 0 18px 0;
                     padding:13px 15px;
                     border-radius:16px;
-                    background:rgba(255,247,232,.74);
-                    border:1px solid rgba(212,175,55,.28);
-                    color:#5a4b27;
+                    background:rgba(206,188,142,.48);
+                    border:1px solid rgba(169,127,39,.24);
+                    color:#534622;
                     font-size:15px;
                     line-height:1.55;
                     font-style:italic;
@@ -4030,15 +4032,15 @@ const WilduMediaClient = (() => {
         if (type === "note") {
             return `
                 <div style="
-                    margin:22px 0;
+                    margin:23px 0;
                     padding:15px 16px;
                     border-radius:18px;
-                    border:1px solid rgba(124,199,255,.30);
-                    background:rgba(238,242,230,.92);
-                    color:#354736;
+                    border:1px solid rgba(58,86,52,.22);
+                    background:linear-gradient(135deg, rgba(204,190,151,.66), rgba(185,169,126,.42));
+                    color:#30412f;
                     font-size:15px;
                     line-height:1.58;
-                    box-shadow:0 8px 22px rgba(0,0,0,.18);
+                    box-shadow:0 8px 20px rgba(23,18,9,.13);
                 ">${formatWilduReaderTextBeauty(safeText, "note", role)}</div>
             `;
         }
@@ -4047,11 +4049,11 @@ const WilduMediaClient = (() => {
 
         return `
             <p style="
-                color:${isLead ? "#384738" : "#253126"};
+                color:${isLead ? "#344433" : "#263324"};
                 font-size:${isLead ? "19px" : "18px"};
                 line-height:${isLead ? "1.74" : "1.72"};
-                margin:${isLead ? "6px 0 24px 0" : "0 0 22px 0"};
-                letter-spacing:.04px;
+                margin:${isLead ? "6px 0 25px 0" : "0 0 22px 0"};
+                letter-spacing:.035px;
                 ${isLead ? "font-weight:650;" : ""}
             ">${formatWilduReaderTextBeauty(safeText, isLead ? "lead" : "paragraph", role)}</p>
         `;
@@ -4068,23 +4070,25 @@ const WilduMediaClient = (() => {
 
         return `
             <section style="
-                margin:0 0 30px 0;
+                margin:0 0 31px 0;
                 padding:0;
                 border-radius:28px;
                 overflow:hidden;
-                background:linear-gradient(180deg, rgba(255,250,240,.95), rgba(239,226,201,.72));
-                border:1px solid rgba(87,104,72,.18);
-                box-shadow:0 16px 42px rgba(81,58,22,.14);
+                background:
+                    radial-gradient(circle at top left, rgba(169,127,39,.18), transparent 42%),
+                    linear-gradient(180deg, rgba(216,199,157,.92), rgba(195,174,129,.78));
+                border:1px solid rgba(67,77,48,.20);
+                box-shadow:0 18px 42px rgba(23,18,9,.18), inset 0 1px 0 rgba(255,255,255,.18);
             ">
                 ${heroImg ? `<div style="padding:14px 14px 0 14px;">${heroImg}</div>` : ""}
 
-                <div style="padding:${heroImg ? "4px 20px 22px 20px" : "22px 20px"};">
+                <div style="padding:${heroImg ? "4px 20px 23px 20px" : "24px 20px"};">
                     <div style="
                         display:flex;
                         align-items:center;
                         gap:8px;
                         flex-wrap:wrap;
-                        margin-bottom:12px;
+                        margin-bottom:13px;
                     ">
                         <span style="
                             display:inline-flex;
@@ -4092,9 +4096,9 @@ const WilduMediaClient = (() => {
                             gap:6px;
                             padding:6px 10px;
                             border-radius:999px;
-                            background:rgba(212,175,55,.14);
-                            color:#9b7220;
-                            border:1px solid rgba(212,175,55,.32);
+                            background:rgba(83,61,23,.13);
+                            color:#755418;
+                            border:1px solid rgba(169,127,39,.30);
                             font-size:11px;
                             font-weight:900;
                             text-transform:uppercase;
@@ -4106,18 +4110,18 @@ const WilduMediaClient = (() => {
                             align-items:center;
                             padding:6px 10px;
                             border-radius:999px;
-                            background:rgba(124,199,255,.10);
-                            color:#315b35;
-                            border:1px solid rgba(124,199,255,.22);
+                            background:rgba(38,68,42,.10);
+                            color:#28442d;
+                            border:1px solid rgba(38,68,42,.20);
                             font-size:11px;
-                            font-weight:800;
+                            font-weight:850;
                             text-transform:uppercase;
                             letter-spacing:.55px;
                         ">${minutes} min</span>
                     </div>
 
                     <h1 style="
-                        color:#1f3a25;
+                        color:#172816;
                         font-size:clamp(29px, 8vw, 42px);
                         line-height:1.05;
                         margin:0 0 12px 0;
@@ -4126,7 +4130,7 @@ const WilduMediaClient = (() => {
                     ">${title}</h1>
 
                     ${lead ? `<p style="
-                        color:#4e5f50;
+                        color:#3d4a34;
                         font-size:18px;
                         line-height:1.58;
                         margin:0;
@@ -4144,15 +4148,16 @@ const WilduMediaClient = (() => {
             <details style="
                 margin:0 0 28px 0;
                 border-radius:18px;
-                border:1px solid rgba(87,104,72,.18);
-                background:rgba(255,247,232,.74);
+                border:1px solid rgba(67,77,48,.19);
+                background:rgba(211,194,151,.42);
                 overflow:hidden;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.14);
             ">
                 <summary style="
                     list-style:none;
                     cursor:pointer;
                     padding:14px 16px;
-                    color:#8a651b;
+                    color:#735316;
                     font-size:13px;
                     font-weight:900;
                     text-transform:uppercase;
@@ -4162,7 +4167,7 @@ const WilduMediaClient = (() => {
                     align-items:center;
                 ">
                     <span>Indice rapido</span>
-                    <span style="color:#6f7a6d; font-size:12px;">tocca</span>
+                    <span style="color:#66715c; font-size:12px;">tocca</span>
                 </summary>
 
                 <div style="padding:0 16px 14px 16px;">
@@ -4173,12 +4178,12 @@ const WilduMediaClient = (() => {
                         return `
                             <a href="#${escapeHtml(id)}" style="
                                 display:block;
-                                color:#2f5a36;
+                                color:#294c31;
                                 text-decoration:none;
                                 font-size:14px;
                                 line-height:1.4;
                                 padding:9px 0;
-                                border-top:${i === 0 ? "none" : "1px solid rgba(87,104,72,.14)"};
+                                border-top:${i === 0 ? "none" : "1px solid rgba(67,77,48,.13)"};
                             ">${escapeHtml(text)}</a>
                         `;
                     }).join("")}
@@ -4201,15 +4206,16 @@ const WilduMediaClient = (() => {
             <details style="
                 margin:34px 0 4px 0;
                 border-radius:22px;
-                border:1px solid rgba(212,175,55,.24);
-                background:linear-gradient(180deg, rgba(255,247,232,.84), rgba(238,242,230,.74));
+                border:1px solid rgba(169,127,39,.22);
+                background:linear-gradient(180deg, rgba(210,192,148,.52), rgba(184,166,123,.36));
                 overflow:hidden;
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.14);
             ">
                 <summary style="
                     list-style:none;
                     cursor:pointer;
                     padding:16px 18px;
-                    color:#9b7220;
+                    color:#765517;
                     font-size:14px;
                     font-weight:900;
                     text-transform:uppercase;
@@ -4220,7 +4226,7 @@ const WilduMediaClient = (() => {
                 ">
                     <span>Fonti e riferimenti</span>
                     <span style="
-                        color:#c7b56d;
+                        color:#8d7942;
                         font-size:12px;
                         font-weight:800;
                         text-transform:none;
@@ -4235,9 +4241,9 @@ const WilduMediaClient = (() => {
                                 margin:13px 0 0 0;
                                 padding:13px 14px;
                                 border-radius:15px;
-                                background:rgba(255,255,255,.54);
-                                border:1px solid rgba(87,104,72,.14);
-                                color:#435340;
+                                background:rgba(232,217,177,.45);
+                                border:1px solid rgba(67,77,48,.14);
+                                color:#3f4d3d;
                                 font-size:13px;
                                 line-height:1.48;
                             ">${formatWilduReaderTextBeauty(block.text, "note", "sources")}</div>
@@ -4305,14 +4311,14 @@ const WilduMediaClient = (() => {
         articleEl.style.cssText = [
             "width:min(820px,100%)",
             "margin:0 auto",
-            "padding:16px 12px 38px 12px",
+            "padding:18px 13px 42px 13px",
             "box-sizing:border-box",
             "text-align:left",
-            "color:#253126",
-            "background:linear-gradient(180deg, #f4ecd9 0%, #efe2c9 100%)",
-            "border:1px solid rgba(71,83,58,.18)",
-            "border-radius:28px",
-            "box-shadow:0 18px 48px rgba(0,0,0,.18)"
+            "color:#263324",
+            "background:radial-gradient(circle at top left, rgba(255,239,197,.24), transparent 38%), linear-gradient(180deg, #d8c79f 0%, #c7b282 100%)",
+            "border:1px solid rgba(85,89,58,.24)",
+            "border-radius:30px",
+            "box-shadow:0 22px 52px rgba(13,10,5,.30), inset 0 1px 0 rgba(255,255,255,.22), inset 0 -18px 44px rgba(54,41,16,.055)"
         ].join(";");
 
         articleEl.innerHTML = `
@@ -4322,15 +4328,15 @@ const WilduMediaClient = (() => {
                 z-index:3;
                 height:3px;
                 width:100%;
-                margin:0 0 12px 0;
-                background:rgba(37,49,38,.10);
+                margin:0 0 13px 0;
+                background:rgba(34,47,35,.14);
                 border-radius:999px;
                 overflow:hidden;
             ">
                 <div id="wildu-reader-progress-fill" style="
                     height:100%;
                     width:0%;
-                    background:linear-gradient(90deg, #b88a2b, #2f5a36);
+                    background:linear-gradient(90deg, #a97f27, #233f28);
                     border-radius:999px;
                     transition:width .08s linear;
                 "></div>
@@ -5001,7 +5007,7 @@ const WilduMediaClient = (() => {
             "inset:0",
             "z-index:26000",
             "display:none",
-            "background:linear-gradient(180deg, #101512 0%, #0b100d 100%)",
+            "background:radial-gradient(circle at top left, rgba(80,65,32,.28), transparent 42%), linear-gradient(180deg, #0b120d 0%, #070a08 100%)",
             "color:#fff",
             "font-family:-apple-system,BlinkMacSystemFont,Roboto,sans-serif",
             "box-sizing:border-box"
@@ -5012,32 +5018,34 @@ const WilduMediaClient = (() => {
                 position:sticky;
                 top:0;
                 z-index:2;
-                background:linear-gradient(180deg, rgba(20,31,23,.98), rgba(12,18,14,.95));
-                border-bottom:1px solid rgba(214,175,55,.22);
+                background:linear-gradient(180deg, rgba(17,27,20,.98), rgba(9,14,10,.96));
+                border-bottom:1px solid rgba(169,127,39,.28);
                 padding:calc(10px + env(safe-area-inset-top,0px)) 10px 10px 10px;
                 box-sizing:border-box;
-                box-shadow:0 8px 24px rgba(0,0,0,.42);
+                box-shadow:0 10px 26px rgba(0,0,0,.48);
+                backdrop-filter:blur(10px);
             ">
                 <div style="display:flex; align-items:center; gap:8px;">
                     <button id="wildu-pdf-reader-close" type="button" style="
                         width:36px;
                         height:36px;
                         border-radius:999px;
-                        border:1px solid rgba(255,255,255,.22);
-                        background:#f3ead8;
-                        color:#1f3a25;
-                        font-weight:900;
+                        border:1px solid rgba(214,175,55,.38);
+                        background:linear-gradient(135deg, #d0b46d, #9c7421);
+                        color:#11170f;
+                        font-weight:950;
                         cursor:pointer;
+                        box-shadow:0 7px 18px rgba(0,0,0,.34);
                     ">×</button>
 
                     <div style="min-width:0; flex:1;">
-                        <div style="font-size:10px; color:#d6b25e; font-weight:900; text-transform:uppercase; letter-spacing:.9px;">
-                            Lettura in app
+                        <div style="font-size:10px; color:#d6b25e; font-weight:950; text-transform:uppercase; letter-spacing:1px;">
+                            Lettura premium
                         </div>
                         <div id="wildu-pdf-reader-title" style="
-                            color:#f6ecd4;
+                            color:#f0e0b9;
                             font-size:14px;
-                            font-weight:900;
+                            font-weight:950;
                             white-space:nowrap;
                             overflow:hidden;
                             text-overflow:ellipsis;
@@ -5045,15 +5053,16 @@ const WilduMediaClient = (() => {
                     </div>
 
                     <a id="wildu-pdf-reader-external" href="#" target="_blank" rel="noopener" style="
-                        color:#000;
-                        background:#d6b25e;
+                        color:#11170f;
+                        background:linear-gradient(135deg, #d6b25e, #b98d2e);
                         border-radius:999px;
                         padding:9px 10px;
                         text-decoration:none;
                         font-size:10px;
-                        font-weight:900;
+                        font-weight:950;
                         text-transform:uppercase;
                         white-space:nowrap;
+                        box-shadow:0 6px 16px rgba(0,0,0,.32);
                     ">Apri</a>
                 </div>
 
@@ -5064,30 +5073,32 @@ const WilduMediaClient = (() => {
                     align-items:center;
                     margin-top:10px;
                 ">
-                    <button id="wildu-pdf-reader-prev" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">‹</button>
-                    <button id="wildu-pdf-reader-next" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">›</button>
+                    <button id="wildu-pdf-reader-prev" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.28); background:#d4bd7a; color:#11170f; font-weight:950;">‹</button>
+                    <button id="wildu-pdf-reader-next" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.28); background:#d4bd7a; color:#11170f; font-weight:950;">›</button>
 
-                    <div id="wildu-pdf-reader-page-label" style="text-align:center; color:#c9b88c; font-size:11px; font-weight:900;">
+                    <div id="wildu-pdf-reader-page-label" style="text-align:center; color:#cbb271; font-size:11px; font-weight:950; letter-spacing:.25px;">
                         Pagina -
                     </div>
 
-                    <button id="wildu-pdf-reader-zoom-out" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">−</button>
-                    <button id="wildu-pdf-reader-zoom-in" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.24); background:#f3ead8; color:#1f3a25; font-weight:900;">+</button>
+                    <button id="wildu-pdf-reader-zoom-out" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.28); background:#d4bd7a; color:#11170f; font-weight:950;">−</button>
+                    <button id="wildu-pdf-reader-zoom-in" type="button" style="padding:8px 10px; border-radius:10px; border:1px solid rgba(214,175,55,.28); background:#d4bd7a; color:#11170f; font-weight:950;">+</button>
                 </div>
             </div>
 
             <div id="wildu-pdf-reader-body" style="
                 height:calc(100vh - 112px);
                 overflow:auto;
-                background:linear-gradient(180deg, #efe4d0 0%, #f6f0e5 100%);
+                background:
+                    radial-gradient(circle at top, rgba(169,127,39,.11), transparent 44%),
+                    linear-gradient(180deg, #151d16 0%, #0d120e 100%);
                 -webkit-overflow-scrolling:touch;
-                padding:12px 8px calc(22px + env(safe-area-inset-bottom,0px)) 8px;
+                padding:14px 8px calc(24px + env(safe-area-inset-bottom,0px)) 8px;
                 box-sizing:border-box;
             ">
                 <div id="wildu-pdf-reader-status" style="
                     text-align:center;
-                    color:#7a5a16;
-                    font-weight:900;
+                    color:#d6b25e;
+                    font-weight:950;
                     padding:40px 12px;
                     font-size:14px;
                 ">Caricamento PDF...</div>
