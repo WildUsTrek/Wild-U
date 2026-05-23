@@ -472,8 +472,8 @@ button.gps-chip:hover {
   .gps-hud {
     left: 8px;
     right: 8px;
-    bottom: 52px;
-    max-width: calc(100vw - 16px);
+    bottom: calc(var(--safe-bottom) + 106px);
+    max-width: none;
   }
 
 .gps-chip {
@@ -938,14 +938,15 @@ button.gps-chip,
 .gps-hud {
   position: fixed;
   left: max(10px, calc(var(--safe-left) + 10px));
-  bottom: calc(var(--safe-bottom) + 56px);
-  z-index: 520;
+  right: max(10px, calc(var(--safe-right) + 10px));
+  bottom: calc(var(--safe-bottom) + 116px);
+  z-index: 780;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  align-items: flex-start;
+  align-items: center;
   pointer-events: none;
-  max-width: min(540px, calc(100vw - 20px));
+  max-width: none;
 }
 
 .safety-note {
@@ -1844,6 +1845,8 @@ const state = {
 gpsToastTimer: null,
 safetyNoteTimer: null,
 statusHideTimer: null,
+gpsResumeCenterTimer: null,
+gpsForceRecenterAfterPause: false,
   
 localGpxLayer: null,
 localGpxVisible: true,
@@ -2739,7 +2742,7 @@ function scheduleSafetyNoteHide() {
 
   state.safetyNoteTimer = setTimeout(() => {
     note.classList.add("is-hidden");
-  }, 30000);
+  }, 10000);
 }
 
 function exitToMotherApp() {
@@ -2977,6 +2980,32 @@ async function clearLocalGpx() {
   const seconds = Math.max(1, Math.round(pauseMs / 1000));
 
   state.gpsFollowPauseUntil = Date.now() + pauseMs;
+  state.gpsForceRecenterAfterPause = true;
+
+  if (state.gpsResumeCenterTimer) {
+    clearTimeout(state.gpsResumeCenterTimer);
+    state.gpsResumeCenterTimer = null;
+  }
+
+  // Se il GPS non emette un nuovo fix subito dopo la pausa, rientriamo comunque
+  // sull'ultima posizione nota. Così la vista non resta sulla traccia con il marker utente decentrato.
+  state.gpsResumeCenterTimer = setTimeout(() => {
+    try {
+      if (!state.gpsTrackingActive || !state.gpsForceRecenterAfterPause || !state.gpsLastFix || !state.map) return;
+      if (isGpsFollowPaused()) return;
+
+      state.gpsForceRecenterAfterPause = false;
+      if (typeof state.map.stop === "function") state.map.stop();
+      if (typeof state.map.closePopup === "function") state.map.closePopup();
+
+      state.map.panTo([state.gpsLastFix.lat, state.gpsLastFix.lng], {
+        animate: true,
+        duration: 0.55
+      });
+
+      setStatus(`GPS ricentrato sulla tua posizione dopo la pausa GPX. Precisione circa ${Math.round(state.gpsLastFix.acc || 0)} m.`);
+    } catch (_) {}
+  }, pauseMs + 120);
 
   const prefix = reason === "center"
     ? "Centro sulla traccia GPX personale."
@@ -3042,7 +3071,8 @@ function centerOnLocalGpxTrace(options = {}) {
     state.map.fitBounds(bounds.pad(0.22), {
       animate: true,
       duration: 0.85,
-      padding: [26, 26]
+      paddingTopLeft: [28, 142],
+      paddingBottomRight: [28, 126]
     });
   } catch (_) {
     try {
@@ -3106,7 +3136,10 @@ if (options.fit !== false) {
 
   try {
     if (state.map && typeof state.map.stop === "function") state.map.stop();
-    state.map.fitBounds(e.target.getBounds().pad(0.2));
+    state.map.fitBounds(e.target.getBounds().pad(0.2), {
+      paddingTopLeft: [28, 142],
+      paddingBottomRight: [28, 126]
+    });
   } catch (_) {}
 
   if (paused) {
@@ -3298,6 +3331,11 @@ if (state.gpsWatchId != null) {
   state.gpsWatchId = null;
   state.gpsTrackingActive = false;
   state.gpsFollowPauseUntil = 0;
+  state.gpsForceRecenterAfterPause = false;
+  if (state.gpsResumeCenterTimer) {
+    clearTimeout(state.gpsResumeCenterTimer);
+    state.gpsResumeCenterTimer = null;
+  }
 
   if (btn) btn.classList.remove("active");
 
@@ -3418,7 +3456,8 @@ function centerOnFix(fix, mode) {
       animate: true,
       duration: 0.8
     });
-    state.gpsMarker.openPopup();
+    // Non apriamo automaticamente il popup: su mobile Leaflet può auto-pannare
+    // e lasciare il marker utente non centrato dopo la centratura GPS.
     return;
   }
 
@@ -3467,6 +3506,19 @@ if (!state.gpsInitialCenterDone) {
       return;
     }
 
+    if (state.gpsForceRecenterAfterPause) {
+      state.gpsForceRecenterAfterPause = false;
+      if (state.gpsResumeCenterTimer) {
+        clearTimeout(state.gpsResumeCenterTimer);
+        state.gpsResumeCenterTimer = null;
+      }
+      if (state.map && typeof state.map.stop === "function") state.map.stop();
+      if (state.map && typeof state.map.closePopup === "function") state.map.closePopup();
+      centerOnFix(fix, "follow");
+      setStatus(`GPS ricentrato sulla tua posizione dopo la pausa GPX. Precisione circa ${Math.round(fix.acc)} m.`);
+      return;
+    }
+
     // Aggiorna la visuale solo se ti sei mosso davvero.
     // Evita tremolii quando il GPS balla da fermo.
     if (moved >= 8) {
@@ -3497,7 +3549,12 @@ setStatus(msg, true);
       }
 
 state.gpsTrackingActive = false;
-state.gpsFollowPauseUntil = 0;      
+state.gpsFollowPauseUntil = 0;
+state.gpsForceRecenterAfterPause = false;
+if (state.gpsResumeCenterTimer) {
+  clearTimeout(state.gpsResumeCenterTimer);
+  state.gpsResumeCenterTimer = null;
+}      
 if (btn) btn.classList.remove("active");
 
 setGpsHud("off", "GPS spento", null);
@@ -3737,6 +3794,11 @@ function stopWilduGpsFromGuide() {
 
   state.gpsTrackingActive = false;
   state.gpsFollowPauseUntil = 0;
+  state.gpsForceRecenterAfterPause = false;
+  if (state.gpsResumeCenterTimer) {
+    clearTimeout(state.gpsResumeCenterTimer);
+    state.gpsResumeCenterTimer = null;
+  }
 
   const btn = $("gps-status-chip");
   if (btn) btn.classList.remove("active");
