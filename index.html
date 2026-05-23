@@ -1815,11 +1815,139 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
     .wildu-adventure-card { transition: none !important; }
 }
+
+
+/* ==========================================
+   WILDU BOOT VEIL — velo estetico fail-open
+   ========================================== */
+#wildu-boot-veil {
+    position: fixed;
+    inset: 0;
+    z-index: 2450;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(18px + env(safe-area-inset-top, 0px)) 18px calc(18px + env(safe-area-inset-bottom, 0px)) 18px;
+    box-sizing: border-box;
+    background:
+        radial-gradient(circle at 18% 8%, rgba(212,175,55,0.22), transparent 34%),
+        radial-gradient(circle at 100% 14%, rgba(45,90,39,0.30), transparent 32%),
+        linear-gradient(180deg, rgba(8,13,10,0.985), rgba(18,18,18,0.965));
+    color: #fff;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity .34s ease, visibility .34s ease;
+    animation: wilduBootVeilCssFailsafe 8s linear forwards;
+}
+
+#wildu-boot-veil.wildu-boot-veil-manual-control {
+    animation: none;
+}
+
+#wildu-boot-veil.wildu-boot-veil-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.wildu-boot-veil-card {
+    width: min(420px, 92vw);
+    padding: 25px 23px 23px 23px;
+    border-radius: 26px;
+    border: 1px solid rgba(212,175,55,.34);
+    background:
+        radial-gradient(circle at top left, rgba(212,175,55,.16), transparent 45%),
+        linear-gradient(145deg, rgba(31,49,37,.96), rgba(15,21,17,.985));
+    box-shadow:
+        0 24px 80px rgba(0,0,0,.58),
+        inset 0 1px 0 rgba(255,255,255,.09);
+    text-align: center;
+}
+
+.wildu-boot-veil-mark {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto 14px auto;
+    border-radius: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(212,175,55,.13);
+    border: 1px solid rgba(212,175,55,.32);
+    box-shadow: inset 0 0 22px rgba(212,175,55,.10), 0 10px 30px rgba(0,0,0,.28);
+    font-size: 34px;
+}
+
+.wildu-boot-veil-title {
+    color: var(--w-gold);
+    font-size: 21px;
+    line-height: 1.08;
+    font-weight: 950;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    margin: 0 0 8px 0;
+}
+
+.wildu-boot-veil-subtitle {
+    color: #d7dfd6;
+    font-size: 14px;
+    line-height: 1.45;
+    margin: 0;
+}
+
+.wildu-boot-veil-track {
+    height: 8px;
+    margin-top: 18px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.12);
+    overflow: hidden;
+}
+
+.wildu-boot-veil-bar {
+    width: 45%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(45,90,39,.95), rgba(212,175,55,.96), rgba(124,199,255,.70));
+    animation: wilduBootVeilPulse 1.05s ease-in-out infinite alternate;
+}
+
+@keyframes wilduBootVeilPulse {
+    from { transform: translateX(-60%); }
+    to { transform: translateX(185%); }
+}
+
+@keyframes wilduBootVeilCssFailsafe {
+    0%, 88% { opacity: 1; visibility: visible; pointer-events: auto; }
+    100% { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #wildu-boot-veil,
+    .wildu-boot-veil-bar {
+        animation: none;
+    }
+}
+
 </style>
     
 </head>
     
 <body>
+
+<div id="wildu-boot-veil" role="status" aria-live="polite" aria-label="Caricamento Wild-U">
+    <div class="wildu-boot-veil-card">
+        <div class="wildu-boot-veil-mark" aria-hidden="true">🌲</div>
+        <h2 class="wildu-boot-veil-title">Wild-U si prepara</h2>
+        <p id="wildu-boot-veil-status" class="wildu-boot-veil-subtitle">
+            Sincronizzo bussola, viaggi e risorse senza disturbare il cammino.
+        </p>
+        <div class="wildu-boot-veil-track" aria-hidden="true">
+            <div class="wildu-boot-veil-bar"></div>
+        </div>
+    </div>
+</div>
 
 <div id="book-modal" class="modal-overlay">
     <div class="modal-card">
@@ -2691,6 +2819,125 @@ const FS = WILDU_FIREBASE.store;
 const FV = WILDU_FIREBASE.store.fieldValue;
 
 WILDU_FIREBASE.boot();
+
+// =========================================================
+// WILDU BOOT VEIL — velo estetico fail-open anti-flash
+// =========================================================
+// Regola: questo velo NON governa cache, routing, login o redirect.
+// Copre solo il primo bootstrap visivo e si apre sempre in fail-open.
+const WILDU_BOOT_VEIL_MAX_MS = 6500;
+const WILDU_BOOT_VEIL_MIN_MS = 520;
+let WILDU_BOOT_VEIL_STARTED_AT = Date.now();
+let WILDU_BOOT_VEIL_TIMER = null;
+let WILDU_BOOT_VEIL_HIDDEN = false;
+
+function getWilduBootVeilEl() {
+    return document.getElementById('wildu-boot-veil');
+}
+
+function updateWilduBootVeilStatus(message) {
+    try {
+        const status = document.getElementById('wildu-boot-veil-status');
+        if (status && message) status.textContent = String(message || '');
+    } catch (e) {}
+}
+
+function hideWilduBootVeil(reason, options = {}) {
+    try {
+        if (WILDU_BOOT_VEIL_HIDDEN) return false;
+
+        const veil = getWilduBootVeilEl();
+        if (!veil) {
+            WILDU_BOOT_VEIL_HIDDEN = true;
+            return false;
+        }
+
+        WILDU_BOOT_VEIL_HIDDEN = true;
+
+        if (WILDU_BOOT_VEIL_TIMER) {
+            clearTimeout(WILDU_BOOT_VEIL_TIMER);
+            WILDU_BOOT_VEIL_TIMER = null;
+        }
+
+        const elapsed = Date.now() - WILDU_BOOT_VEIL_STARTED_AT;
+        const delay = options.immediate === true
+            ? 0
+            : Math.max(0, WILDU_BOOT_VEIL_MIN_MS - elapsed);
+
+        setTimeout(() => {
+            try {
+                veil.classList.add('wildu-boot-veil-hidden');
+
+                setTimeout(() => {
+                    try {
+                        if (veil && veil.parentNode) veil.parentNode.removeChild(veil);
+                    } catch (e) {}
+                }, 430);
+            } catch (e) {
+                try { if (veil && veil.parentNode) veil.parentNode.removeChild(veil); } catch (_) {}
+            }
+        }, delay);
+
+        try {
+            if (typeof pageDebug === 'function') {
+                pageDebug('BOOT_VEIL_HIDE', {
+                    reason: String(reason || ''),
+                    elapsed,
+                    delay
+                });
+            }
+        } catch (e) {}
+
+        return true;
+    } catch (e) {
+        WILDU_BOOT_VEIL_HIDDEN = true;
+        try {
+            const veil = getWilduBootVeilEl();
+            if (veil && veil.parentNode) veil.parentNode.removeChild(veil);
+        } catch (_) {}
+        return false;
+    }
+}
+
+function markWilduBootVeilStable(reason) {
+    if (WILDU_BOOT_VEIL_HIDDEN) return;
+
+    updateWilduBootVeilStatus('Bussola pronta. Apro il sentiero...');
+
+    try {
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                hideWilduBootVeil(reason || 'STABLE');
+            }, 120);
+        });
+    } catch (e) {
+        hideWilduBootVeil(reason || 'STABLE_FALLBACK');
+    }
+}
+
+function scheduleWilduBootVeilFailOpen(reason) {
+    try {
+        const veil = getWilduBootVeilEl();
+        if (veil) veil.classList.add('wildu-boot-veil-manual-control');
+
+        if (WILDU_BOOT_VEIL_TIMER) clearTimeout(WILDU_BOOT_VEIL_TIMER);
+
+        WILDU_BOOT_VEIL_TIMER = setTimeout(() => {
+            updateWilduBootVeilStatus('Connessione lenta: mostro comunque l’app.');
+            hideWilduBootVeil('FAIL_OPEN_' + String(reason || 'BOOT'), { immediate: true });
+        }, WILDU_BOOT_VEIL_MAX_MS);
+    } catch (e) {
+        hideWilduBootVeil('FAIL_OPEN_SCHEDULER_ERROR', { immediate: true });
+    }
+}
+
+window.addEventListener('error', () => {
+    hideWilduBootVeil('WINDOW_ERROR_FAIL_OPEN');
+});
+
+window.addEventListener('unhandledrejection', () => {
+    hideWilduBootVeil('UNHANDLED_REJECTION_FAIL_OPEN');
+});
 
 
 // =========================================================
@@ -8709,6 +8956,75 @@ function maybeShowWilduGlobalCacheNotice() {
     }, 800);
 }
 
+function consumeWilduGlobalCacheUrlParamsOnce() {
+    try {
+        const currentUrl = new URL(window.location.href);
+        const params = currentUrl.searchParams;
+        const urlEpoch = normalizeWilduGlobalCacheEpoch(params.get('globalCacheEpoch'));
+
+        // Consumo one-shot SOLO per link generati dal nuclear admin.
+        // Non tocchiamo ?nocache=1 / ?cache=off manuali senza globalCacheEpoch,
+        // perché restano utili per test/debug intenzionali.
+        if (!urlEpoch) return false;
+
+        const seenEpoch = readWilduGlobalCacheSeenEpoch();
+
+        // Se l'epoch in URL non è ancora stata applicata, non puliamo:
+        // prima deve avvenire il nuke reale, poi l'URL può tornare normale.
+        if (urlEpoch !== seenEpoch) {
+            pageDebug('GLOBAL_CACHE_URL_KEEP_PENDING', {
+                urlEpoch,
+                seenEpoch
+            });
+            return false;
+        }
+
+        const nuclearKeys = [
+            'globalCacheEpoch',
+            'nocache',
+            'cache',
+            'refresh',
+            'publicRefresh',
+            'publicCacheRefresh',
+            'moduleRefresh',
+            'gameRefresh',
+            'adminRefresh'
+        ];
+
+        let changed = false;
+        nuclearKeys.forEach((key) => {
+            if (params.has(key)) {
+                params.delete(key);
+                changed = true;
+            }
+        });
+
+        if (!changed) return false;
+
+        const cleanSearch = params.toString();
+        const cleanUrl =
+            currentUrl.pathname +
+            (cleanSearch ? '?' + cleanSearch : '') +
+            currentUrl.hash;
+
+        if (window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState(window.history.state || {}, document.title, cleanUrl);
+        }
+
+        pageDebug('GLOBAL_CACHE_URL_CONSUMED', {
+            epoch: urlEpoch,
+            cleanUrl
+        });
+
+        return true;
+    } catch (e) {
+        pageDebug('GLOBAL_CACHE_URL_CONSUME_FAILED', {
+            error: e && e.message ? e.message : String(e)
+        });
+        return false;
+    }
+}
+
 function triggerWilduGlobalCacheReload(targetUrl) {
     const finalUrl = String(targetUrl || window.location.href);
 
@@ -9347,6 +9663,7 @@ async function init() {
     }
 
     maybeShowWilduGlobalCacheNotice();
+    consumeWilduGlobalCacheUrlParamsOnce();
 
     checkAuthEnvironment();
 
@@ -9477,6 +9794,8 @@ if (cachedPublicData && !bypassPublicCache) {
             pageDebug('PUBLIC_CACHE_SHORT_CIRCUIT', {
     mode: 'CACHE_ONLY_NO_REMOTE_FETCH'
 });
+
+            markWilduBootVeilStable('PUBLIC_CACHE_SHORT_CIRCUIT');
             
             return cachedPublicData;
         }
@@ -9605,6 +9924,8 @@ const publicCachePayload = {
                 }, 700);
             }
 
+            markWilduBootVeilStable('INITDATA_REMOTE_RENDERED');
+
             return data;
 
         } catch (e) {
@@ -9629,6 +9950,8 @@ const publicCachePayload = {
                     maybeShowStartupRegistrationCTA();
                 }, 700);
             }
+
+            hideWilduBootVeil('INITDATA_ERROR_FAIL_OPEN');
 
             throw e;
         } finally {
@@ -18297,6 +18620,7 @@ function bindWilduStickyNavSafeArea() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    scheduleWilduBootVeilFailOpen('DOMContentLoaded');
     syncAmazonFooterViewportOffset();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
