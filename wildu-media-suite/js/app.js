@@ -22,7 +22,14 @@
     systemAudio: null,
     systemAudioItems: [],
 
-    selectedTab: 'dashboard'
+    selectedTab: 'dashboard',
+
+    // Gate visuale admin: la certificazione vera resta nelle Firestore Rules.
+    adminGate: {
+      checking: false,
+      allowed: false,
+      message: ''
+    }
   };
 
   function renderConfigWarning() {
@@ -32,15 +39,134 @@
       'Controlla <code>shared/firebase-config.js</code>: ' + root.escapeHtml(missing.join(', ')) + '</div>';
   }
 
-  function setAuthUi(user) {
+  function setSuiteLocked(locked, message, tone) {
+    var bootWarning = root.$('#boot-warning');
+    var tabs = root.$('.tabs');
+    var helpbar = root.$('.suite-helpbar');
+
+    if (tabs) tabs.style.display = locked ? 'none' : '';
+    if (helpbar) helpbar.style.display = locked ? 'none' : 'flex';
+
+    root.$all('.tab-panel').forEach(function (panel) {
+      panel.style.display = locked ? 'none' : '';
+    });
+
+    if (bootWarning) {
+      bootWarning.innerHTML = message
+        ? '<div class="alert ' + (tone || 'warn') + '">' + message + '</div>'
+        : '';
+    }
+  }
+
+  function setAuthUi(user, adminAllowed, gateStatus) {
     state.currentUser = user || null;
+
     var logged = !!user;
-    root.$('#auth-status').innerHTML = logged
-      ? '<span class="badge good">LOGGATO</span> ' + root.escapeHtml(user.email || user.uid)
-      : '<span class="badge warn">NON LOGGATO</span>';
+    var allowed = !!adminAllowed;
+
+    state.adminGate.allowed = allowed;
+    state.adminGate.checking = gateStatus === 'checking';
+
+    if (!logged) {
+      root.$('#auth-status').innerHTML = '<span class="badge warn">NON LOGGATO</span>';
+    } else if (gateStatus === 'checking') {
+      root.$('#auth-status').innerHTML =
+        '<span class="badge warn">VERIFICA ADMIN</span> ' +
+        root.escapeHtml(user.email || user.uid);
+    } else if (allowed) {
+      root.$('#auth-status').innerHTML =
+        '<span class="badge good">ADMIN OK</span> ' +
+        root.escapeHtml(user.email || user.uid);
+    } else {
+      root.$('#auth-status').innerHTML =
+        '<span class="badge error">ACCESSO NEGATO</span> ' +
+        root.escapeHtml(user.email || user.uid);
+    }
+
     root.$('#btn-login').style.display = logged ? 'none' : '';
     root.$('#btn-logout').style.display = logged ? '' : 'none';
-    root.$all('[data-requires-auth]').forEach(function (el) { el.disabled = !logged; });
+
+    // Prima era !logged. Ora i comandi admin si abilitano solo dopo prova positiva contro le Rules.
+    root.$all('[data-requires-auth]').forEach(function (el) {
+      el.disabled = !allowed;
+    });
+  }
+
+  async function verifyAdminThroughFirestoreRules() {
+    if (!root.db || !root.auth || !root.auth.currentUser) {
+      return {
+        ok: false,
+        message: 'Firebase non pronto o utente non loggato.'
+      };
+    }
+
+    try {
+      // Non serve che il documento esista.
+      // Serve solo che le Firestore Rules permettano la lettura all’admin universale.
+      await root.db
+        .collection('wildu_admin_probe')
+        .doc('media_suite_admin_gate')
+        .get();
+
+      return { ok: true, message: '' };
+    } catch (err) {
+      var code = String(err && err.code || '').toLowerCase();
+
+      if (code.indexOf('permission-denied') >= 0) {
+        return {
+          ok: false,
+          message: 'Account Google loggato, ma non autorizzato come admin dalle Firestore Rules.'
+        };
+      }
+
+      return {
+        ok: false,
+        message: 'Impossibile verificare i permessi admin: ' + (err && err.message ? err.message : String(err))
+      };
+    }
+  }
+
+  function installAdminRequireCurrentUserGuard() {
+    if (root.__wilduMediaAdminGateInstalled) return;
+
+    var originalRequireCurrentUser = root.requireCurrentUser;
+
+    root.requireCurrentUser = function () {
+      var user = originalRequireCurrentUser
+        ? originalRequireCurrentUser()
+        : (root.auth && root.auth.currentUser);
+
+      if (!state.adminGate.allowed) {
+        throw new Error('Accesso admin non verificato dalle Firestore Rules.');
+      }
+
+      return user;
+    };
+
+    root.__wilduMediaAdminGateInstalled = true;
+  }
+
+  function clearAdminStateAfterLogoutOrDeny() {
+    state.tags = [];
+    state.media = [];
+
+    state.runtimeManifest = null;
+    state.gameRuntime = null;
+    state.moduleRuntime = null;
+    state.partnerClientConfig = null;
+    state.legacyModuleResources = null;
+    state.moduleGradeOptions = [];
+    state.systemAudio = null;
+    state.systemAudioItems = [];
+
+    renderTags();
+    renderMedia();
+    renderGameVersions();
+    renderModuleVersions();
+    renderSystemAudio();
+    renderLibraryClientSettingsCardState();
+    renderDashboard();
+    renderDebug();
   }
 
   async function login() {
@@ -4832,46 +4958,79 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var initResult = root.initFirebase();
     if (!initResult) {
       root.$('#boot-warning').innerHTML = renderConfigWarning();
-      setAuthUi(null);
+      setAuthUi(null, false, 'not-logged');
+      setSuiteLocked(
+        true,
+        '<strong>Config Firebase incompleta.</strong><br>Completa la configurazione prima di usare la Media Suite.',
+        'error'
+      );
       return;
     }
 
-    root.auth.onAuthStateChanged(function (user) {
-      setAuthUi(user);
-      if (user) {
-        run(async function () {
-          
-          await loadPartnerModuleContextQuietly();
-          await refreshSystemAudio();
-          await refreshTags();
-          await refreshMedia();
-          await refreshGameVersions();
-          await refreshModuleVersions();
-          renderDashboard();
-          
-        });
-      } else {
-        state.tags = [];
-        state.media = [];
-        
-        state.runtimeManifest = null;
-        state.gameRuntime = null;
-        state.moduleRuntime = null;
-        state.partnerClientConfig = null;
-        state.legacyModuleResources = null;
-        state.moduleGradeOptions = [];
-        state.systemAudio = null;
-        state.systemAudioItems = [];
-        
-        renderTags();
-        renderMedia();
-        renderGameVersions();
-        renderModuleVersions();
-        renderSystemAudio();
-        renderLibraryClientSettingsCardState();
-        renderDashboard();
-        renderDebug();
+    installAdminRequireCurrentUserGuard();
+
+    root.auth.onAuthStateChanged(async function (user) {
+      if (!user) {
+        state.adminGate.allowed = false;
+        state.adminGate.checking = false;
+        state.adminGate.message = '';
+
+        setAuthUi(null, false, 'not-logged');
+        setSuiteLocked(
+          true,
+          '<strong>Accesso richiesto.</strong><br>Effettua il login Google con l’account admin per aprire la Wildu Media Suite.',
+          'warn'
+        );
+
+        clearAdminStateAfterLogoutOrDeny();
+        return;
       }
+
+      state.adminGate.allowed = false;
+      state.adminGate.checking = true;
+      state.adminGate.message = '';
+
+      setAuthUi(user, false, 'checking');
+      setSuiteLocked(
+        true,
+        '<strong>Verifica admin in corso...</strong><br>Controllo dei permessi tramite Firestore Rules.',
+        'warn'
+      );
+
+      var gate = await verifyAdminThroughFirestoreRules();
+
+      if (!gate.ok) {
+        state.adminGate.allowed = false;
+        state.adminGate.checking = false;
+        state.adminGate.message = gate.message || '';
+
+        setAuthUi(user, false, 'denied');
+        setSuiteLocked(
+          true,
+          '<strong>Accesso non autorizzato.</strong><br>' + root.escapeHtml(gate.message || 'Questo account non ha permessi admin.'),
+          'error'
+        );
+
+        clearAdminStateAfterLogoutOrDeny();
+        return;
+      }
+
+      state.adminGate.allowed = true;
+      state.adminGate.checking = false;
+      state.adminGate.message = '';
+
+      setAuthUi(user, true, 'allowed');
+      setSuiteLocked(false, '', '');
+
+      run(async function () {
+        await loadPartnerModuleContextQuietly();
+        await refreshSystemAudio();
+        await refreshTags();
+        await refreshMedia();
+        await refreshGameVersions();
+        await refreshModuleVersions();
+        renderDashboard();
+      });
     });
   }
 
