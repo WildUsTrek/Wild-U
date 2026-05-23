@@ -201,6 +201,25 @@ if (url.pathname.toLowerCase() === VERSION_PATHNAME) {
     return;
 }
 
+
+// Manifesto configurazione YouTube: deve restare fresco per ricavare manifestVersion.
+// Il JSON playlist vero resta invece cacheabile/versionato con ?v=<manifestVersion>.
+if (getScopeRelativePath(url) === 'data/youtube-playlists-config.json') {
+    swDebug('YOUTUBE_CONFIG_NETWORK_FIRST', {
+        request: req.url
+    });
+
+    e.respondWith(
+        fetch(req, { cache: 'no-store' }).catch(async () => {
+            const cached = await caches.match(req);
+            return cached || Response.error();
+        })
+    );
+    return;
+}    
+
+
+    
     if (isShellRequest(req, url)) {
         e.respondWith(handleShellRequest(req, url));
         return;
