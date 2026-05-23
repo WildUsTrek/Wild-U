@@ -204,19 +204,76 @@ if (url.pathname.toLowerCase() === VERSION_PATHNAME) {
 
 // Manifesto configurazione YouTube: deve restare fresco per ricavare manifestVersion.
 // Il JSON playlist vero resta invece cacheabile/versionato con ?v=<manifestVersion>.
+// Robusto offline: quando la rete risponde, salviamo una copia stabile in ASSET_CACHE.
 if (getScopeRelativePath(url) === 'data/youtube-playlists-config.json') {
     swDebug('YOUTUBE_CONFIG_NETWORK_FIRST', {
         request: req.url
     });
 
-    e.respondWith(
-        fetch(req, { cache: 'no-store' }).catch(async () => {
-            const cached = await caches.match(req);
-            return cached || Response.error();
-        })
-    );
+    e.respondWith((async () => {
+        const stableConfigUrl = new URL('data/youtube-playlists-config.json', self.registration.scope).toString();
+        const stableConfigRequest = new Request(stableConfigUrl, { method: 'GET' });
+        const cache = await caches.open(ASSET_CACHE);
+
+        try {
+            const fresh = await fetch(req, { cache: 'no-store' });
+
+            if (fresh && fresh.ok) {
+                await safeCachePut(
+                    ASSET_CACHE,
+                    stableConfigRequest,
+                    fresh,
+                    ASSET_CACHE_MAX_ENTRIES,
+                    ASSET_CACHE_TRIM_TO
+                );
+
+                swDebug('YOUTUBE_CONFIG_NETWORK_OK_CACHED', {
+                    request: req.url,
+                    cacheKey: stableConfigUrl,
+                    status: fresh.status
+                });
+
+                return fresh;
+            }
+
+            const cached = await cache.match(stableConfigRequest);
+            if (cached) {
+                swDebug('YOUTUBE_CONFIG_CACHE_FALLBACK_AFTER_NON_OK', {
+                    request: req.url,
+                    cacheKey: stableConfigUrl,
+                    status: fresh ? fresh.status : 'NO_RESPONSE'
+                });
+                return cached;
+            }
+
+            return fresh || Response.error();
+        } catch (err) {
+            const cached = await cache.match(stableConfigRequest);
+            if (cached) {
+                swDebug('YOUTUBE_CONFIG_CACHE_FALLBACK_AFTER_ERROR', {
+                    request: req.url,
+                    cacheKey: stableConfigUrl,
+                    error: err && err.message ? err.message : 'unknown'
+                });
+                return cached;
+            }
+
+            swDebug('YOUTUBE_CONFIG_TOTAL_FAILURE', {
+                request: req.url,
+                error: err && err.message ? err.message : 'unknown'
+            });
+
+            return new Response(
+                JSON.stringify({ offline: true, manifestVersion: null, playlists: {} }),
+                {
+                    status: 503,
+                    headers: { 'Content-Type': 'application/json' }
+                }
+            );
+        }
+    })());
     return;
-}    
+}
 
 
     
