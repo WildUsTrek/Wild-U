@@ -2711,6 +2711,34 @@
       /\.pdf(\?|#|$)/i.test(String(item.fileUrl || item.objectKey || ''));
   }
 
+  function isBookMediaItem(item) {
+    item = item || {};
+
+    function norm(value) {
+      return String(value || '')
+        .trim()
+        .toLowerCase();
+    }
+
+    var subcategory = norm(item.subcategory);
+    var subcategoryLabel = norm(item.subcategoryLabel);
+
+    return (
+      subcategory === 'libri' ||
+      subcategory === 'libro' ||
+      subcategory === 'books' ||
+      subcategory === 'book' ||
+      subcategoryLabel === 'libri' ||
+      subcategoryLabel === 'libro' ||
+      /(^|[^a-z0-9])libri([^a-z0-9]|$)/i.test(subcategoryLabel) ||
+      /(^|[^a-z0-9])libro([^a-z0-9]|$)/i.test(subcategoryLabel)
+    );
+  }
+
+  function canBuildPdfReaderForMedia(item) {
+    return isPdfMediaForReader(item) && !isBookMediaItem(item);
+  }
+
   var WILDU_MEDIA_READER_COLLECTION = 'wildu_media_reader';
   var WILDU_MEDIA_READER_HEAVY_FIELDS = [
     'readerBlocks',
@@ -2742,6 +2770,14 @@
   function readerBuildChipHtml(item) {
     if (!isPdfMediaForReader(item)) return '';
 
+    if (isBookMediaItem(item)) {
+      if (hasReaderBuild(item)) {
+        return '<span class="chip warn">libro: reader ottimizzato da pulire</span>';
+      }
+
+      return '<span class="chip">libro: lettura PDF fallback</span>';
+    }
+
     if (hasReaderBuild(item)) {
       var count = Number(item.readerBlockCount || 0);
       var version = Number(item.readerVersion || 1);
@@ -2762,6 +2798,12 @@
     if (!isPdfMediaForReader(item)) return '';
 
     var id = root.escapeHtml(item.id || '');
+
+    if (isBookMediaItem(item)) {
+      return hasReaderBuild(item)
+        ? '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
+        : '';
+    }
 
     return '' +
       '<button class="small" data-build-pdf-reader="' + id + '">Genera reader + anteprima</button>' +
@@ -4324,6 +4366,10 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
     if (!isPdfMediaForReader(item)) {
       throw new Error('Reader Build disponibile solo per PDF.');
+    }
+
+    if (!canBuildPdfReaderForMedia(item)) {
+      throw new Error('I Libri non devono essere ottimizzati in reader editoriale. Restano leggibili in app tramite fallback PDF standard.');
     }
 
     var ok = confirm(
