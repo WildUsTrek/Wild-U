@@ -502,7 +502,7 @@
 
 <script>
 (function () {
-    console.log("[WILDU WILDWALL] Modulo premium Shorts V3 no-api + foto pulite avviato");
+    console.log("[WILDU WILDWALL] Modulo premium Shorts V5 manifest RSS + foto pulite avviato");
 
     const root = document.getElementById("wildu-wildwall-module");
     const gridEl = document.getElementById("wildwall-grid");
@@ -518,21 +518,27 @@
     if (!root || !gridEl || !emptyEl || !countEl) return;
 
     const PUBLIC_CACHE_KEY = "wildCachePublic";
-    const SHORTS_PLAYLIST_ID = "PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh";
 
     /*
-     * V3 NO-API:
+     * V5 MANIFEST RSS:
      * - niente YouTube IFrame API;
-     * - niente cuePlaylist/cueVideoById/getPlaylist;
-     * - niente PlayerProxy/postMessage verso il player;
-     * - random best-effort tramite parametro index dell'embed playlist.
-     *
-     * Senza YouTube Data API e senza lista hardcoded di video ID non possiamo
-     * conoscere la lunghezza reale della playlist. Per questo usiamo un pool
-     * prudente e configurabile. Se la playlist ha meno video del pool, YouTube
-     * può ricadere sul primo video: è un limite dell'embed, non della UI.
+     * - niente lista video hardcoded nel modulo;
+     * - legge data/youtube-playlists.json generato da GitHub Action;
+     * - il JSON contiene due playlist: wildwall_shorts e video_horizontal;
+     * - questo modulo usa solo wildwall_shorts e sceglie SEMPRE un video random
+     *   dalla lista già cacheata/pubblicata quando si apre la tab/modulo.
      */
-    const SHORTS_RANDOM_FALLBACK_COUNT = Math.max(2, parseInt(window.WILDU_WILDWALL_SHORTS_RANDOM_POOL_SIZE, 10) || 12);
+    const YOUTUBE_MANIFEST_URL = String(
+        window.WILDU_YOUTUBE_PLAYLISTS_MANIFEST_URL ||
+        new URL("data/youtube-playlists.json", window.location.href).toString()
+    );
+    const SHORTS_PLAYLIST_KEY = "wildwall_shorts";
+    const SHORTS_FALLBACK_PLAYLIST_ID = "PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh";
+    const YOUTUBE_MANIFEST_CACHE_KEY = "wildu:youtubePlaylists:v1";
+    const SHORTS_REFRESH_COOLDOWN_MS = Math.max(600, parseInt(window.WILDU_WILDWALL_SHORTS_REFRESH_COOLDOWN_MS, 10) || 1200);
+    let shortsLastRenderAt = 0;
+    let shortsVisibilityArmed = true;
+    let shortsManifestFetchStarted = false;
 
     function escapeHtml(value) {
         return String(value || "")
@@ -990,103 +996,312 @@
         return Math.floor(Math.random() * cleanMax);
     }
 
-    function getShortsLastIndexKey(max) {
-        return "wildu:wildwall:shorts:v3:lastIndex:" + SHORTS_PLAYLIST_ID + ":" + String(max || 0);
+    function getYoutubeManifestCache() {
+        try {
+            const raw = window.localStorage.getItem(YOUTUBE_MANIFEST_CACHE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
     }
 
-    function rememberShortsIndex(index, max) {
+    function setYoutubeManifestCache(manifest) {
         try {
-            window.localStorage.setItem(getShortsLastIndexKey(max), String(index));
+            if (!manifest || typeof manifest !== "object") return;
+            window.localStorage.setItem(YOUTUBE_MANIFEST_CACHE_KEY, JSON.stringify({
+                savedAt: Date.now(),
+                manifest: manifest
+            }));
         } catch (e) {}
     }
 
-    function getRememberedShortsIndex(max) {
+    function readPlaylistFromManifest(manifest, key) {
+        const rootManifest = manifest && manifest.manifest ? manifest.manifest : manifest;
+        const playlists = rootManifest && rootManifest.playlists && typeof rootManifest.playlists === "object"
+            ? rootManifest.playlists
+            : {};
+        const playlist = playlists[key] || null;
+        if (!playlist || !Array.isArray(playlist.items)) return null;
+        return playlist;
+    }
+
+    function getShortsItemsFromManifest(manifest) {
+        const playlist = readPlaylistFromManifest(manifest, SHORTS_PLAYLIST_KEY);
+        if (!playlist || !Array.isArray(playlist.items)) return [];
+
+        return playlist.items
+            .map(function (item) {
+                const videoId = String(item && item.videoId || "").trim();
+                if (!/^[A-Za-z0-9_-]{6,}$/.test(videoId)) return null;
+                return {
+                    videoId: videoId,
+                    title: String(item.title || "Shorts Wild-U").trim() || "Shorts Wild-U",
+                    thumbnail: String(item.thumbnail || "").trim(),
+                    publishedAt: String(item.publishedAt || "").trim()
+                };
+            })
+            .filter(Boolean);
+    }
+
+    function getShortsLastVideoKey() {
+        return "wildu:wildwall:shorts:v5:lastVideo:" + SHORTS_PLAYLIST_KEY;
+    }
+
+    function rememberShortsVideo(videoId) {
         try {
-            const raw = window.localStorage.getItem(getShortsLastIndexKey(max));
-            const parsed = parseInt(raw, 10);
-            return Number.isFinite(parsed) ? parsed : -1;
+            window.localStorage.setItem(getShortsLastVideoKey(), String(videoId || ""));
+        } catch (e) {}
+    }
+
+    function getRememberedShortsVideo() {
+        try {
+            return String(window.localStorage.getItem(getShortsLastVideoKey()) || "").trim();
         } catch (e) {
-            return -1;
+            return "";
         }
     }
 
-    function getShortsRandomIndex(max) {
-        const cleanMax = Math.max(1, parseInt(max, 10) || 1);
-        let index = getWildwallCryptoRandomInt(cleanMax);
-        const last = getRememberedShortsIndex(cleanMax);
+    function pickRandomShortsItem(items) {
+        const cleanItems = Array.isArray(items) ? items.filter(function (x) { return x && x.videoId; }) : [];
+        if (!cleanItems.length) return null;
+        if (cleanItems.length === 1) return cleanItems[0];
 
-        if (cleanMax > 1 && index === last) {
-            index = (index + 1 + getWildwallCryptoRandomInt(cleanMax - 1)) % cleanMax;
+        const lastVideoId = getRememberedShortsVideo();
+        let picked = cleanItems[getWildwallCryptoRandomInt(cleanItems.length)];
+
+        if (picked && picked.videoId === lastVideoId) {
+            const alternatives = cleanItems.filter(function (item) { return item.videoId !== lastVideoId; });
+            if (alternatives.length) {
+                picked = alternatives[getWildwallCryptoRandomInt(alternatives.length)];
+            }
         }
 
-        rememberShortsIndex(index, cleanMax);
-        return index;
+        rememberShortsVideo(picked.videoId);
+        return picked;
     }
 
-    function getShortsEmbedIndex() {
-        return getShortsRandomIndex(SHORTS_RANDOM_FALLBACK_COUNT);
-    }
-
-    function buildShortsNoApiEmbedUrl(index) {
-        const url = new URL("https://www.youtube-nocookie.com/embed/videoseries");
-        url.searchParams.set("list", SHORTS_PLAYLIST_ID);
+    function buildSingleShortsEmbedUrl(videoId, reason) {
+        const url = new URL("https://www.youtube-nocookie.com/embed/" + encodeURIComponent(videoId));
         url.searchParams.set("rel", "0");
         url.searchParams.set("playsinline", "1");
         url.searchParams.set("modestbranding", "1");
         url.searchParams.set("iv_load_policy", "3");
         url.searchParams.set("controls", "1");
-        url.searchParams.set("disablekb", "0");
-        url.searchParams.set("enablejsapi", "0");
-        url.searchParams.set("index", String(Math.max(0, parseInt(index, 10) || 0)));
-
-        /* Cache-buster innocuo: evita che browser/SW riusino sempre lo stesso iframe. */
-        url.searchParams.set("wildu_random", String(Date.now()) + "_" + String(getWildwallCryptoRandomInt(999999)));
-
-        try {
-            if (window.location && /^https?:$/i.test(window.location.protocol)) {
-                url.searchParams.set("origin", window.location.origin);
-            }
-        } catch (e) {}
-
+        url.searchParams.set("fs", "1");
+        url.searchParams.set("wildu_random", [
+            "v5",
+            String(reason || "init"),
+            String(Date.now()),
+            String(getWildwallCryptoRandomInt(999999999))
+        ].join("_"));
         return url.toString();
     }
 
-    function renderShortsNoApiIframe() {
+    function buildFallbackPlaylistEmbedUrl(reason) {
+        const url = new URL("https://www.youtube-nocookie.com/embed/videoseries");
+        url.searchParams.set("list", SHORTS_FALLBACK_PLAYLIST_ID);
+        url.searchParams.set("rel", "0");
+        url.searchParams.set("playsinline", "1");
+        url.searchParams.set("modestbranding", "1");
+        url.searchParams.set("controls", "1");
+        url.searchParams.set("fs", "1");
+        url.searchParams.set("wildu_fallback", [
+            "v5",
+            String(reason || "fallback"),
+            String(Date.now()),
+            String(getWildwallCryptoRandomInt(999999999))
+        ].join("_"));
+        return url.toString();
+    }
+
+    function writeShortsIframe(src, meta) {
         if (!shortsPlayerHost) return;
 
-        const index = getShortsEmbedIndex();
-        const src = buildShortsNoApiEmbedUrl(index);
+        const safeTitle = meta && meta.title ? meta.title : "Shorts Baffi Wild";
 
         shortsPlayerHost.dataset.playerReady = "1";
-        shortsPlayerHost.dataset.randomMode = "no-api-v3";
-        shortsPlayerHost.dataset.randomIndex = String(index);
-        shortsPlayerHost.innerHTML = `
-            <iframe
-                title="Shorts Baffi Wild"
-                src="${escapeHtml(src)}"
-                loading="lazy"
-                referrerpolicy="strict-origin-when-cross-origin"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-            ></iframe>
-        `;
+        shortsPlayerHost.dataset.randomMode = "manifest-v5";
+        shortsPlayerHost.dataset.videoId = String(meta && meta.videoId || "");
+        shortsPlayerHost.dataset.playlistKey = SHORTS_PLAYLIST_KEY;
+        shortsPlayerHost.innerHTML = "";
+
+        window.setTimeout(function () {
+            if (!shortsPlayerHost) return;
+            shortsPlayerHost.innerHTML = `
+                <iframe
+                    title="${escapeHtml(safeTitle)}"
+                    src="${escapeHtml(src)}"
+                    loading="eager"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowfullscreen
+                ></iframe>
+            `;
+        }, 25);
+    }
+
+    function renderShortsFromItems(items, reason) {
+        if (!shortsPlayerHost) return false;
+        const picked = pickRandomShortsItem(items);
+        if (!picked) return false;
+
+        const src = buildSingleShortsEmbedUrl(picked.videoId, reason || "manifest");
+        writeShortsIframe(src, picked);
+        return true;
+    }
+
+    function renderShortsFallback(reason) {
+        if (!shortsPlayerHost) return;
+        writeShortsIframe(buildFallbackPlaylistEmbedUrl(reason || "no-manifest"), {
+            title: "Shorts Wild-U",
+            videoId: ""
+        });
+    }
+
+    function getManifestFetchUrl() {
+        try {
+            const url = new URL(YOUTUBE_MANIFEST_URL, window.location.href);
+            url.searchParams.set("wildu_manifest", String(Date.now()));
+            return url.toString();
+        } catch (e) {
+            return YOUTUBE_MANIFEST_URL;
+        }
+    }
+
+    function fetchYoutubeManifestAndRefresh(reason) {
+        if (shortsManifestFetchStarted) return;
+        shortsManifestFetchStarted = true;
+
+        fetch(getManifestFetchUrl(), {
+            method: "GET",
+            cache: "no-store",
+            credentials: "same-origin"
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error("Manifest YouTube HTTP " + res.status);
+                return res.json();
+            })
+            .then(function (manifest) {
+                setYoutubeManifestCache(manifest);
+                const items = getShortsItemsFromManifest(manifest);
+                if (items.length && shortsPlayerHost && shortsPlayerHost.dataset.userInteracted !== "1") {
+                    renderShortsFromItems(items, reason || "remote");
+                }
+            })
+            .catch(function (err) {
+                console.warn("[WILDU WILDWALL] Manifest YouTube non raggiungibile, uso cache/fallback:", err.message || err);
+                if (!shortsPlayerHost || shortsPlayerHost.dataset.playerReady === "1") return;
+                const cached = getYoutubeManifestCache();
+                const items = getShortsItemsFromManifest(cached);
+                if (!renderShortsFromItems(items, "cache-after-error")) {
+                    renderShortsFallback("manifest-error");
+                }
+            })
+            .finally(function () {
+                shortsManifestFetchStarted = false;
+            });
+    }
+
+    function renderShortsFromCacheOrFallback(reason) {
+        const cached = getYoutubeManifestCache();
+        const items = getShortsItemsFromManifest(cached);
+        if (renderShortsFromItems(items, reason || "cache")) return true;
+        renderShortsFallback(reason || "fallback");
+        return false;
     }
 
     function initRandomShortsPlayer() {
         if (!shortsPlayerHost) return;
-        if (shortsPlayerHost.dataset.playerReady === "1") return;
-        renderShortsNoApiIframe();
+        if (shortsPlayerHost.dataset.playerReady !== "1") {
+            renderShortsFromCacheOrFallback("init");
+        }
+        fetchYoutubeManifestAndRefresh("init-remote");
+    }
+
+    function refreshRandomShortsIfAllowed(reason) {
+        if (!shortsPlayerHost) return;
+        if (shortsPlayerHost.dataset.userInteracted === "1") return;
+
+        const now = Date.now();
+        if (now - shortsLastRenderAt < SHORTS_REFRESH_COOLDOWN_MS) return;
+        shortsLastRenderAt = now;
+
+        renderShortsFromCacheOrFallback(reason || "refresh");
+        fetchYoutubeManifestAndRefresh(reason || "refresh-remote");
+    }
+
+    function isWildwallRootVisible() {
+        if (!root) return false;
+        try {
+            const style = window.getComputedStyle(root);
+            const rect = root.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function armShortsVisibilityRefresh() {
+        if (!shortsPlayerHost || shortsPlayerHost.dataset.visibilityGuards === "1") return;
+        shortsPlayerHost.dataset.visibilityGuards = "1";
+
+        shortsPlayerHost.addEventListener("pointerdown", function () {
+            shortsPlayerHost.dataset.userInteracted = "1";
+        }, { passive: true });
+
+        shortsPlayerHost.addEventListener("touchstart", function () {
+            shortsPlayerHost.dataset.userInteracted = "1";
+        }, { passive: true });
+
+        try {
+            const observer = new IntersectionObserver(function (entries) {
+                const visible = entries && entries.some(function (entry) {
+                    return entry.isIntersecting && entry.intersectionRatio > 0.25;
+                });
+
+                if (visible && shortsVisibilityArmed) {
+                    shortsVisibilityArmed = false;
+                    refreshRandomShortsIfAllowed("visible");
+                } else if (!visible) {
+                    shortsVisibilityArmed = true;
+                }
+            }, { threshold: [0, 0.25, 0.6] });
+            observer.observe(root);
+        } catch (e) {}
+
+        try {
+            const mutationObserver = new MutationObserver(function () {
+                if (!isWildwallRootVisible()) {
+                    shortsVisibilityArmed = true;
+                    return;
+                }
+                if (shortsVisibilityArmed) {
+                    shortsVisibilityArmed = false;
+                    refreshRandomShortsIfAllowed("mutation-visible");
+                }
+            });
+            mutationObserver.observe(root, { attributes: true, attributeFilter: ["class", "style", "hidden"] });
+        } catch (e) {}
+
+        document.addEventListener("visibilitychange", function () {
+            if (!document.hidden && isWildwallRootVisible()) {
+                shortsVisibilityArmed = true;
+                refreshRandomShortsIfAllowed("document-visible");
+            }
+        });
+
+        window.addEventListener("pageshow", function () {
+            if (isWildwallRootVisible()) {
+                shortsVisibilityArmed = true;
+                refreshRandomShortsIfAllowed("pageshow");
+            }
+        });
     }
 
     function renderShortsBlock() {
         if (!shortsSection) return;
-
-        if (!SHORTS_PLAYLIST_ID) {
-            shortsSection.style.display = "none";
-            return;
-        }
-
         shortsSection.style.display = "block";
+        armShortsVisibilityRefresh();
         initRandomShortsPlayer();
     }
 
@@ -1118,7 +1333,8 @@
             avventureUnichePerTitolo: images.length,
             gruppiTitoloTotali: result.groupsCount,
             assetCensuratiPotenziali: result.forbiddenCount,
-            shortsPlaylist: SHORTS_PLAYLIST_ID
+            shortsManifest: YOUTUBE_MANIFEST_URL,
+            shortsPlaylistKey: SHORTS_PLAYLIST_KEY
         });
     }
 
