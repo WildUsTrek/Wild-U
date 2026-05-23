@@ -148,6 +148,17 @@
 </div>
           
           <p class="hint">Il documento area usa come ID lo slug: comodo, leggibile e stabile.</p>
+
+          <div class="status" style="margin-top:14px;">
+            <strong>🇮🇹 Regioni italiane ultra-semplificate</strong>
+            <p class="hint" style="margin:8px 0 10px;">
+              Genera o aggiorna 20 aree regionali molto approssimate, volutamente larghe e sovrapposte.
+              Include l’Isola d’Elba dentro la Toscana. Non cancella aree, waypoint o tracce esistenti.
+            </p>
+            <div class="bar">
+              <button id="btn-import-italy-regions" class="gold" type="button">Genera / aggiorna regioni italiane</button>
+            </div>
+          </div>
         </div>
       </div>
       <div>
@@ -252,6 +263,7 @@
 
 <label>Oppure GPX file URL esterno</label>
 <input id="track-file-url" placeholder="https://.../traccia.gpx" />
+<div id="track-area-suggestion" class="status" style="display:none; margin-top:10px;"></div>
           <div class="three">
             <div><label>Distanza km</label><input id="track-distance-km" type="number" step="0.1" /></div>
             <div><label>Dislivello + m</label><input id="track-elevation-gain-m" type="number" step="1" /></div>
@@ -439,8 +451,596 @@ const state = {
 
   areaDrawMode: false,
   areaPolygonPoints: [],
-  areaPolygonLayer: null
+  areaPolygonLayer: null,
+
+  // Suggerimento area da GPX: dati temporanei in memoria, mai punti completi salvati in Firestore.
+  pendingTrackGpxAnalysis: null,
+  pendingTrackAreaMatches: []
 };
+
+const WILDU_ITALY_REGIONS_SIMPLIFIED = [
+  {
+    "areaSlug": "regione-valle-d-aosta",
+    "title": "Valle d’Aosta",
+    "areaType": "REGION",
+    "regione": "Valle d’Aosta",
+    "centerLat": 45.74,
+    "centerLng": 7.32,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 45.38,
+        "lng": 6.78
+      },
+      {
+        "lat": 45.95,
+        "lng": 6.85
+      },
+      {
+        "lat": 46.05,
+        "lng": 7.92
+      },
+      {
+        "lat": 45.5,
+        "lng": 8.05
+      },
+      {
+        "lat": 45.28,
+        "lng": 7.25
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-piemonte",
+    "title": "Piemonte",
+    "areaType": "REGION",
+    "regione": "Piemonte",
+    "centerLat": 45.05,
+    "centerLng": 7.75,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 43.78,
+        "lng": 6.55
+      },
+      {
+        "lat": 45.95,
+        "lng": 6.65
+      },
+      {
+        "lat": 46.25,
+        "lng": 8.55
+      },
+      {
+        "lat": 45.05,
+        "lng": 9.25
+      },
+      {
+        "lat": 44.05,
+        "lng": 8.55
+      },
+      {
+        "lat": 43.7,
+        "lng": 7.25
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-liguria",
+    "title": "Liguria",
+    "areaType": "REGION",
+    "regione": "Liguria",
+    "centerLat": 44.2,
+    "centerLng": 8.75,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 43.68,
+        "lng": 7.38
+      },
+      {
+        "lat": 44.55,
+        "lng": 7.55
+      },
+      {
+        "lat": 44.75,
+        "lng": 9.85
+      },
+      {
+        "lat": 44.3,
+        "lng": 10.25
+      },
+      {
+        "lat": 43.7,
+        "lng": 9.1
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-lombardia",
+    "title": "Lombardia",
+    "areaType": "REGION",
+    "regione": "Lombardia",
+    "centerLat": 45.6,
+    "centerLng": 9.7,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 44.65,
+        "lng": 8.45
+      },
+      {
+        "lat": 46.65,
+        "lng": 8.3
+      },
+      {
+        "lat": 46.75,
+        "lng": 10.75
+      },
+      {
+        "lat": 45.05,
+        "lng": 10.95
+      },
+      {
+        "lat": 44.62,
+        "lng": 9.55
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-trentino-alto-adige",
+    "title": "Trentino-Alto Adige",
+    "areaType": "REGION",
+    "regione": "Trentino-Alto Adige",
+    "centerLat": 46.45,
+    "centerLng": 11.3,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 45.62,
+        "lng": 10.35
+      },
+      {
+        "lat": 47.15,
+        "lng": 10.3
+      },
+      {
+        "lat": 47.25,
+        "lng": 12.65
+      },
+      {
+        "lat": 45.72,
+        "lng": 12.35
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-veneto",
+    "title": "Veneto",
+    "areaType": "REGION",
+    "regione": "Veneto",
+    "centerLat": 45.65,
+    "centerLng": 11.85,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 44.72,
+        "lng": 10.55
+      },
+      {
+        "lat": 46.65,
+        "lng": 10.7
+      },
+      {
+        "lat": 46.75,
+        "lng": 13.1
+      },
+      {
+        "lat": 45.18,
+        "lng": 13.35
+      },
+      {
+        "lat": 44.55,
+        "lng": 12.05
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-friuli-venezia-giulia",
+    "title": "Friuli-Venezia Giulia",
+    "areaType": "REGION",
+    "regione": "Friuli-Venezia Giulia",
+    "centerLat": 46.1,
+    "centerLng": 13.05,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 45.45,
+        "lng": 12.3
+      },
+      {
+        "lat": 46.75,
+        "lng": 12.15
+      },
+      {
+        "lat": 46.82,
+        "lng": 13.95
+      },
+      {
+        "lat": 45.55,
+        "lng": 14.05
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-emilia-romagna",
+    "title": "Emilia-Romagna",
+    "areaType": "REGION",
+    "regione": "Emilia-Romagna",
+    "centerLat": 44.45,
+    "centerLng": 11.35,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 43.65,
+        "lng": 9.1
+      },
+      {
+        "lat": 45.15,
+        "lng": 9.05
+      },
+      {
+        "lat": 45.35,
+        "lng": 12.85
+      },
+      {
+        "lat": 44.05,
+        "lng": 13.05
+      },
+      {
+        "lat": 43.55,
+        "lng": 10.9
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-toscana",
+    "title": "Toscana",
+    "areaType": "REGION",
+    "regione": "Toscana",
+    "centerLat": 43.35,
+    "centerLng": 11.0,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 42.05,
+        "lng": 9.75
+      },
+      {
+        "lat": 44.35,
+        "lng": 9.75
+      },
+      {
+        "lat": 44.28,
+        "lng": 12.35
+      },
+      {
+        "lat": 42.2,
+        "lng": 12.25
+      },
+      {
+        "lat": 42.02,
+        "lng": 10.05
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-marche",
+    "title": "Marche",
+    "areaType": "REGION",
+    "regione": "Marche",
+    "centerLat": 43.35,
+    "centerLng": 13.1,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 42.55,
+        "lng": 12.05
+      },
+      {
+        "lat": 44.12,
+        "lng": 12.1
+      },
+      {
+        "lat": 44.05,
+        "lng": 13.85
+      },
+      {
+        "lat": 42.58,
+        "lng": 13.65
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-umbria",
+    "title": "Umbria",
+    "areaType": "REGION",
+    "regione": "Umbria",
+    "centerLat": 43.05,
+    "centerLng": 12.45,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 42.2,
+        "lng": 11.75
+      },
+      {
+        "lat": 43.65,
+        "lng": 11.7
+      },
+      {
+        "lat": 43.72,
+        "lng": 13.05
+      },
+      {
+        "lat": 42.35,
+        "lng": 13.12
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-lazio",
+    "title": "Lazio",
+    "areaType": "REGION",
+    "regione": "Lazio",
+    "centerLat": 41.9,
+    "centerLng": 12.65,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 40.7,
+        "lng": 11.2
+      },
+      {
+        "lat": 42.88,
+        "lng": 11.05
+      },
+      {
+        "lat": 43.0,
+        "lng": 13.35
+      },
+      {
+        "lat": 41.15,
+        "lng": 14.15
+      },
+      {
+        "lat": 40.6,
+        "lng": 12.45
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-abruzzo",
+    "title": "Abruzzo",
+    "areaType": "REGION",
+    "regione": "Abruzzo",
+    "centerLat": 42.15,
+    "centerLng": 13.9,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 41.5,
+        "lng": 12.9
+      },
+      {
+        "lat": 42.78,
+        "lng": 12.95
+      },
+      {
+        "lat": 42.9,
+        "lng": 14.85
+      },
+      {
+        "lat": 41.65,
+        "lng": 14.65
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-molise",
+    "title": "Molise",
+    "areaType": "REGION",
+    "regione": "Molise",
+    "centerLat": 41.65,
+    "centerLng": 14.65,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 41.18,
+        "lng": 13.75
+      },
+      {
+        "lat": 42.18,
+        "lng": 13.8
+      },
+      {
+        "lat": 42.18,
+        "lng": 15.25
+      },
+      {
+        "lat": 41.22,
+        "lng": 15.25
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-campania",
+    "title": "Campania",
+    "areaType": "REGION",
+    "regione": "Campania",
+    "centerLat": 40.8,
+    "centerLng": 14.95,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 39.72,
+        "lng": 13.55
+      },
+      {
+        "lat": 41.55,
+        "lng": 13.55
+      },
+      {
+        "lat": 41.65,
+        "lng": 15.9
+      },
+      {
+        "lat": 39.92,
+        "lng": 16.05
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-puglia",
+    "title": "Puglia",
+    "areaType": "REGION",
+    "regione": "Puglia",
+    "centerLat": 40.85,
+    "centerLng": 16.65,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 39.45,
+        "lng": 14.7
+      },
+      {
+        "lat": 42.1,
+        "lng": 14.7
+      },
+      {
+        "lat": 42.45,
+        "lng": 16.1
+      },
+      {
+        "lat": 41.05,
+        "lng": 18.65
+      },
+      {
+        "lat": 39.62,
+        "lng": 18.3
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-basilicata",
+    "title": "Basilicata",
+    "areaType": "REGION",
+    "regione": "Basilicata",
+    "centerLat": 40.5,
+    "centerLng": 16.1,
+    "defaultZoom": 8,
+    "polygon": [
+      {
+        "lat": 39.55,
+        "lng": 15.05
+      },
+      {
+        "lat": 41.15,
+        "lng": 15.05
+      },
+      {
+        "lat": 41.25,
+        "lng": 17.05
+      },
+      {
+        "lat": 39.7,
+        "lng": 17.1
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-calabria",
+    "title": "Calabria",
+    "areaType": "REGION",
+    "regione": "Calabria",
+    "centerLat": 39.05,
+    "centerLng": 16.35,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 37.7,
+        "lng": 15.25
+      },
+      {
+        "lat": 40.45,
+        "lng": 15.35
+      },
+      {
+        "lat": 40.55,
+        "lng": 17.35
+      },
+      {
+        "lat": 37.95,
+        "lng": 16.75
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-sicilia",
+    "title": "Sicilia",
+    "areaType": "REGION",
+    "regione": "Sicilia",
+    "centerLat": 37.6,
+    "centerLng": 14.0,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 36.55,
+        "lng": 11.7
+      },
+      {
+        "lat": 38.45,
+        "lng": 11.7
+      },
+      {
+        "lat": 38.48,
+        "lng": 15.85
+      },
+      {
+        "lat": 36.55,
+        "lng": 15.85
+      }
+    ]
+  },
+  {
+    "areaSlug": "regione-sardegna",
+    "title": "Sardegna",
+    "areaType": "REGION",
+    "regione": "Sardegna",
+    "centerLat": 40.05,
+    "centerLng": 9.0,
+    "defaultZoom": 7,
+    "polygon": [
+      {
+        "lat": 38.65,
+        "lng": 7.95
+      },
+      {
+        "lat": 41.42,
+        "lng": 7.95
+      },
+      {
+        "lat": 41.45,
+        "lng": 9.95
+      },
+      {
+        "lat": 38.65,
+        "lng": 9.95
+      }
+    ]
+  }
+];
+
 
     function setStatus(msg, isError = false) {
       const el = $("status");
@@ -529,6 +1129,9 @@ function clearAdminSessionData() {
   state.viewerConfig = null;
   state.areaDrawMode = false;
   state.areaPolygonPoints = [];
+  state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackAreaMatches = [];
+  renderTrackAreaSuggestion([]);
 
   if (state.areaPolygonLayer && state.map) {
     try { state.map.removeLayer(state.areaPolygonLayer); } catch (_) {}
@@ -808,6 +1411,85 @@ function getAreaPolygonPayload() {
     polygon: points,
     bounds: computeAreaBounds(points)
   };
+}
+
+function buildItalianRegionAreaPayload(region, user, existsAlready) {
+  const polygon = normalizeAreaPolygon(region.polygon);
+  const bounds = computeAreaBounds(polygon);
+
+  const payload = {
+    schemaVersion: 1,
+    status: "ACTIVE",
+    visibility: "PUBLIC",
+    areaSlug: region.areaSlug,
+    title: region.title,
+    subtitle: "Regione italiana — confine ultra-semplificato",
+    description: "Area regionale generata automaticamente da Wildu Map Admin. Poligono volutamente molto approssimato e largo: serve per classificazione GPX e navigazione, non per cartografia ufficiale.",
+    areaType: "REGION",
+    regione: region.regione || region.title,
+    provincia: "",
+    comune: "",
+    centerLat: Number(region.centerLat),
+    centerLng: Number(region.centerLng),
+    defaultZoom: Number(region.defaultZoom || 7),
+    coverImageUrl: "",
+    sortOrder: 1000,
+    polygon,
+    bounds,
+    source: "WILDU_BUILTIN_SIMPLIFIED_ITALY_REGIONS",
+    sourceNote: "Poligoni regionali ultra-semplificati, approssimati per eccesso e sovrapposti dove utile. Toscana include esplicitamente l’Isola d’Elba.",
+    simplificationLevel: "VERY_ROUGH_EXCESS_OVERLAP",
+    updatedByUid: user.uid,
+    updatedByEmail: user.email || "",
+    updatedAt: serverTimestamp()
+  };
+
+  if (!existsAlready) {
+    payload.createdByUid = user.uid;
+    payload.createdByEmail = user.email || "";
+    payload.createdAt = serverTimestamp();
+  }
+
+  return payload;
+}
+
+async function importItalianRegionsAsAreas() {
+  const user = requireUser();
+
+  const ok = window.confirm(
+    "Generare/aggiornare 20 regioni italiane come aree Wildu?
+
+" +
+    "I poligoni sono ultra-semplificati e volutamente larghi/sovrapposti.
+" +
+    "La Toscana include l’Isola d’Elba.
+
+" +
+    "Non verranno cancellati waypoint, tracce o aree personalizzate."
+  );
+
+  if (!ok) return;
+
+  let created = 0;
+  let updated = 0;
+
+  setStatus("Genero/aggiorno le regioni italiane ultra-semplificate...");
+
+  for (const region of WILDU_ITALY_REGIONS_SIMPLIFIED) {
+    const ref = doc(db, WILDU_MAP_COLLECTIONS.AREAS, region.areaSlug);
+    const snap = await getDoc(ref);
+    const existsAlready = snap.exists();
+    const payload = buildItalianRegionAreaPayload(region, user, existsAlready);
+
+    await setDoc(ref, payload, { merge: true });
+
+    if (existsAlready) updated++;
+    else created++;
+  }
+
+  await loadAreas();
+
+  setStatus(`Regioni italiane pronte: ${created} create, ${updated} aggiornate. Poligoni ultra-semplificati e Toscana con Elba inclusa.`);
 }
 
 function switchTab(tab) {
@@ -1221,6 +1903,9 @@ function fillTrackForm(t) {
   if ($("track-replace-r2")) {
     $("track-replace-r2").checked = false;
   }
+  state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackAreaMatches = Array.isArray(t.areaMatches) ? t.areaMatches : [];
+  renderTrackAreaSuggestion(state.pendingTrackAreaMatches);
 
   setStatus(
     t.objectKey
@@ -1232,11 +1917,12 @@ function fillTrackForm(t) {
 function clearTrackForm() {
   ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-difficulty"].forEach(id => $(id).value = "");
   $("track-file").value = "";
-
+  state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackAreaMatches = [];
+  renderTrackAreaSuggestion([]);
   if ($("track-replace-r2")) {
     $("track-replace-r2").checked = false;
   }
-
   $("track-status").value = "ACTIVE";
   $("track-sort-order").value = 10;
 }
@@ -1514,16 +2200,181 @@ function analyzeElevationGainLoss(points) {
   return { gain, loss };
 }
 
-async function analyzeGpxFile(file) {
-  if (!file) return null;
+function sampleGpxPointsForAreaMatch(points, maxSamples = 360) {
+  const clean = Array.isArray(points) ? points.filter(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))) : [];
+  if (clean.length <= maxSamples) return clean.map(p => ({ lat: Number(p.lat), lng: Number(p.lng) }));
 
-  if (!/\.gpx$/i.test(file.name)) {
-    throw new Error("Carica un file .gpx.");
+  const step = Math.max(1, Math.floor(clean.length / maxSamples));
+  const out = [];
+
+  for (let i = 0; i < clean.length; i += step) {
+    out.push({ lat: Number(clean[i].lat), lng: Number(clean[i].lng) });
+    if (out.length >= maxSamples) break;
   }
 
+  const last = clean[clean.length - 1];
+  if (last && out.length && (out[out.length - 1].lat !== Number(last.lat) || out[out.length - 1].lng !== Number(last.lng))) {
+    out.push({ lat: Number(last.lat), lng: Number(last.lng) });
+  }
+
+  return out;
+}
+
+function padBoundsForAreaMatch(bounds, pad = 0.08) {
+  if (!bounds) return null;
+  const minLat = Number(bounds.minLat);
+  const minLng = Number(bounds.minLng);
+  const maxLat = Number(bounds.maxLat);
+  const maxLng = Number(bounds.maxLng);
+
+  if (![minLat, minLng, maxLat, maxLng].every(Number.isFinite)) return null;
+
+  return { minLat: minLat - pad, minLng: minLng - pad, maxLat: maxLat + pad, maxLng: maxLng + pad };
+}
+
+function boundsIntersectForAreaMatch(a, b) {
+  a = padBoundsForAreaMatch(a, 0.08);
+  b = padBoundsForAreaMatch(b, 0.08);
+  if (!a || !b) return true;
+  return !(a.maxLat < b.minLat || a.minLat > b.maxLat || a.maxLng < b.minLng || a.minLng > b.maxLng);
+}
+
+function pointInPolygonForAreaMatch(point, polygon) {
+  const x = Number(point.lng);
+  const y = Number(point.lat);
+  const pts = normalizeAreaPolygon(polygon);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || pts.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = Number(pts[i].lng);
+    const yi = Number(pts[i].lat);
+    const xj = Number(pts[j].lng);
+    const yj = Number(pts[j].lat);
+    const intersects = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 0.0000001) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function getAreaSlugForMatch(area) {
+  return String((area && (area.areaSlug || area.id)) || "").trim();
+}
+
+function scoreAreaAgainstGpx(area, analysis) {
+  const areaSlug = getAreaSlugForMatch(area);
+  const polygon = normalizeAreaPolygon(area && area.polygon);
+  const points = analysis && Array.isArray(analysis.sampledPoints) ? analysis.sampledPoints : [];
+  if (!areaSlug || polygon.length < 3 || !points.length) return null;
+  if (!boundsIntersectForAreaMatch(area.bounds || computeAreaBounds(polygon), analysis.bounds)) return null;
+  let hits = 0;
+  points.forEach(point => { if (pointInPolygonForAreaMatch(point, polygon)) hits++; });
+  const score = Number(((hits / points.length) * 100).toFixed(1));
+  if (score <= 0) return null;
+  return { areaSlug, title: area.title || areaSlug, areaType: area.areaType || "CUSTOM", matchType: "SIMPLIFIED_POLYGON_POINTS", score, pointHits: hits, sampledPoints: points.length };
+}
+
+function suggestAreasForGpx(analysis) {
+  if (!analysis || !analysis.bounds || !Array.isArray(state.areas) || !state.areas.length) return [];
+  return state.areas
+    .filter(area => String(area.status || "ACTIVE") === "ACTIVE")
+    .map(area => scoreAreaAgainstGpx(area, analysis))
+    .filter(Boolean)
+    .filter(match => match.score >= 8)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+}
+
+function renderTrackAreaSuggestion(matches) {
+  const box = $("track-area-suggestion");
+  if (!box) return;
+  matches = Array.isArray(matches) ? matches : [];
+  if (!matches.length) {
+    box.style.display = "none";
+    box.innerHTML = "";
+    return;
+  }
+  const best = matches[0];
+  const rest = matches.slice(1);
+  box.style.display = "block";
+  box.innerHTML =
+    `<strong>Area suggerita dal GPX:</strong> ${escapeHtml(best.title)} <span class="pill">${escapeHtml(String(best.score))}%</span>` +
+    (rest.length
+      ? `<br><span class="hint">Possibili aree aggiuntive/sovrapposte: ${escapeHtml(rest.map(m => `${m.title} ${m.score}%`).join(" · "))}</span>`
+      : `<br><span class="hint">Nessuna altra area sovrapposta rilevante rilevata.</span>`);
+}
+
+function applyTrackAreaSuggestion(analysis, options = {}) {
+  const matches = suggestAreasForGpx(analysis);
+  state.pendingTrackAreaMatches = matches;
+  renderTrackAreaSuggestion(matches);
+  if (options.autoSelect !== false && matches.length) {
+    const select = $("track-area");
+    const best = matches[0].areaSlug;
+    const hasOption = Array.from(select.options || []).some(opt => opt.value === best);
+    if (hasOption) select.value = best;
+  }
+  return matches;
+}
+
+function buildTrackAreaSlugsForSave(primarySlug, matches) {
+  const out = [];
+  const add = value => {
+    const clean = String(value || "").trim();
+    if (clean && !out.includes(clean)) out.push(clean);
+  };
+  add(primarySlug);
+  (Array.isArray(matches) ? matches : []).forEach(match => add(match.areaSlug));
+  return out;
+}
+
+function buildTrackAreaMatchesForSave(matches) {
+  return (Array.isArray(matches) ? matches : []).map(match => ({
+    areaSlug: String(match.areaSlug || ""),
+    title: String(match.title || match.areaSlug || ""),
+    areaType: String(match.areaType || "CUSTOM"),
+    matchType: String(match.matchType || "SIMPLIFIED_POLYGON_POINTS"),
+    score: Number(match.score || 0),
+    pointHits: Number(match.pointHits || 0),
+    sampledPoints: Number(match.sampledPoints || 0)
+  })).filter(match => !!match.areaSlug);
+}
+
+function getTrackAutoAreaConfidence(matches) {
+  const best = Array.isArray(matches) && matches.length ? Number(matches[0].score || 0) : 0;
+  if (best >= 75) return "HIGH";
+  if (best >= 35) return "MEDIUM";
+  if (best > 0) return "LOW";
+  return "NONE";
+}
+
+async function analyzeSelectedTrackFileForAreaSuggestion() {
+  const file = $("track-file").files[0] || null;
+  state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackAreaMatches = [];
+  renderTrackAreaSuggestion([]);
+  if (!file) return;
+  setStatus("Analizzo GPX e cerco l’area regionale/Wildu più probabile...");
+  const analysis = await analyzeGpxFile(file);
+  state.pendingTrackGpxAnalysis = analysis;
+  applyGpxAnalysisToForm(analysis);
+  const matches = applyTrackAreaSuggestion(analysis, { autoSelect: true });
+  if (matches.length) {
+    setStatus(`GPX analizzato. Area suggerita: ${matches[0].title} (${matches[0].score}%). Controlla il menu Area prima di salvare.`);
+  } else {
+    setStatus("GPX analizzato. Nessuna area compatibile trovata: scegli manualmente l’area prima di salvare.", true);
+  }
+}
+
+async function analyzeGpxFile(file) {
+  if (!file) return null;
+  if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
   const xmlText = await readFileAsText(file);
   const points = parseGpxPoints(xmlText);
-  return analyzeGpxPoints(points);
+  const analysis = analyzeGpxPoints(points);
+  analysis.sampledPoints = sampleGpxPointsForAreaMatch(points);
+  analysis.originalFileName = file.name || "";
+  analysis.originalFileSize = Number(file.size || 0);
+  return analysis;
 }
 
 function applyGpxAnalysisToForm(analysis) {
@@ -1632,10 +2483,9 @@ async function uploadTrackFile(areaSlug, file) {
 
 async function saveTrack() {
   const user = requireUser();
-  const areaSlug = val("track-area");
+  let areaSlug = val("track-area");
   const title = val("track-title");
 
-  if (!areaSlug) throw new Error("Area obbligatoria.");
   if (!title) throw new Error("Titolo traccia obbligatorio.");
 
 const id = val("track-id");
@@ -1669,10 +2519,21 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
       throw new Error("Carica un file .gpx.");
     }
 
-    setStatus("Analizzo GPX: km, dislivello e bounds...");
+    setStatus("Analizzo GPX: km, dislivello, bounds e area più probabile...");
 
-    gpxAnalysis = await analyzeGpxFile(file);
+    const reusableAnalysis = state.pendingTrackGpxAnalysis &&
+      state.pendingTrackGpxAnalysis.originalFileName === (file.name || "") &&
+      Number(state.pendingTrackGpxAnalysis.originalFileSize || 0) === Number(file.size || 0)
+        ? state.pendingTrackGpxAnalysis
+        : null;
+
+    gpxAnalysis = reusableAnalysis || await analyzeGpxFile(file);
+    state.pendingTrackGpxAnalysis = gpxAnalysis;
     applyGpxAnalysisToForm(gpxAnalysis);
+    applyTrackAreaSuggestion(gpxAnalysis, { autoSelect: true });
+
+    areaSlug = val("track-area");
+    if (!areaSlug) throw new Error("Area obbligatoria: il GPX non ha prodotto un suggerimento automatico, selezionala manualmente.");
 
     if (!id || replaceR2File) {
       setStatus("Richiedo URL sicuro e carico GPX su R2...");
@@ -1694,6 +2555,9 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
       contentType: "application/gpx+xml"
     };
   }
+
+  areaSlug = val("track-area");
+  if (!areaSlug) throw new Error("Area obbligatoria.");
 
   if (!id && !fileFields.fileUrl) {
     throw new Error("Per creare una nuova traccia devi caricare un GPX o indicare un fileUrl pubblico.");
@@ -1729,6 +2593,14 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
     updatedByEmail: user.email || "",
     updatedAt: serverTimestamp()
   };
+
+  if (gpxAnalysis) {
+    const matches = Array.isArray(state.pendingTrackAreaMatches) ? state.pendingTrackAreaMatches : [];
+    payload.areaSlugs = buildTrackAreaSlugsForSave(areaSlug, matches);
+    payload.areaMatches = buildTrackAreaMatchesForSave(matches);
+    payload.autoAreaSuggested = matches.length > 0;
+    payload.autoAreaConfidence = getTrackAutoAreaConfidence(matches);
+  }
 
   // Se ho caricato/scelto un nuovo file, salvo i metadati file.
   // Se sto modificando senza sostituire file R2, NON tocco fileUrl/objectKey esistenti.
@@ -1999,6 +2871,10 @@ $("btn-area-from-map").onclick = () => {
 $("btn-area-draw").onclick = startAreaPolygonDraw;
 $("btn-area-stop-draw").onclick = stopAreaPolygonDraw;
 $("btn-area-clear-polygon").onclick = clearAreaPolygon;
+const importRegionsBtn = $("btn-import-italy-regions");
+if (importRegionsBtn) {
+  importRegionsBtn.onclick = () => importItalianRegionsAsAreas().catch(e => setStatus(e.message, true));
+}
       $("area-title").addEventListener("input", () => { if (!val("area-slug")) $("area-slug").value = slugify(val("area-title")); });
       $("btn-save-waypoint").onclick = () => saveWaypoint().catch(e => setStatus(e.message, true));
       $("btn-new-waypoint").onclick = clearWaypointForm;
@@ -2040,6 +2916,12 @@ $("coord-search").addEventListener("keydown", (e) => {
       $("track-area").onchange = () => { loadTracksForSelectedArea().catch(e => setStatus(e.message, true)); focusAreaBySlug(val("track-area")); };
       $("btn-save-track").onclick = () => saveTrack().catch(e => setStatus(e.message, true));
       $("btn-new-track").onclick = clearTrackForm;
+const trackFileInput = $("track-file");
+if (trackFileInput) {
+  trackFileInput.addEventListener("change", () => {
+    analyzeSelectedTrackFileForAreaSuggestion().catch(e => setStatus(e.message, true));
+  });
+}
 
 $("btn-autofill-base").onclick = () => applyPresetToForm("base");
 
