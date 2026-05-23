@@ -1,0 +1,69 @@
+name: Update YouTube playlists manifest
+
+on:
+  # V5.1: trigger giornaliero leggero.
+  # Lo script ha una guardia interna: non legge/scrive se non sono passati almeno 10 giorni,
+  # salvo workflow_dispatch con force=true. Evita le irregolarità di */10 al cambio mese.
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Forza refresh anche se non sono passati 10 giorni'
+        required: false
+        default: 'true'
+      target:
+        description: 'all | wildwall_shorts | video_horizontal'
+        required: false
+        default: 'all'
+      requestedByUid:
+        description: 'Audit UID admin richiedente'
+        required: false
+        default: ''
+      requestedByEmail:
+        description: 'Audit email admin richiedente'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: youtube-playlists-manifest
+  cancel-in-progress: false
+
+jobs:
+  update-youtube-playlists:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate YouTube playlists manifest
+        env:
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || 'false' }}
+          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'all' }}
+          WILDU_YOUTUBE_MIN_REFRESH_DAYS: '10'
+          WILDU_SHORTS_PLAYLIST_ID: 'PLrxqst5TP2nI3GGeSe44lnLnCA_0US2hh'
+          # Inserisci questa variabile nelle Repository Variables/Secrets se non vuoi scriverla qui.
+          WILDU_HORIZONTAL_PLAYLIST_ID: ${{ vars.WILDU_HORIZONTAL_PLAYLIST_ID }}
+        run: node tools/update-youtube-playlists.js --output=data/youtube-playlists.json
+
+      - name: Commit manifest if changed
+        run: |
+          if git diff --quiet -- data/youtube-playlists.json; then
+            echo "Nessun cambiamento nel manifest YouTube."
+            exit 0
+          fi
+
+          git config user.name "wildu-youtube-bot"
+          git config user.email "actions@github.com"
+          git add data/youtube-playlists.json
+          git commit -m "Update YouTube playlists manifest"
+          git push
