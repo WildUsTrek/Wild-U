@@ -2711,14 +2711,30 @@
       /\.pdf(\?|#|$)/i.test(String(item.fileUrl || item.objectKey || ''));
   }
 
+  var WILDU_MEDIA_READER_COLLECTION = 'wildu_media_reader';
+  var WILDU_MEDIA_READER_HEAVY_FIELDS = [
+    'readerBlocks',
+    'readerBuildReport',
+    'readerWarnings',
+    'readerSuspiciousBlocks',
+    'readerAdminPreviewHtml',
+    'readerImageErrors',
+    'readerText',
+    'readerHtml'
+  ];
+
+  function getReaderDocRef(mediaId) {
+    return root.db.collection(WILDU_MEDIA_READER_COLLECTION).doc(String(mediaId || '').trim());
+  }
+
   function hasReaderBuild(item) {
     return !!(
       item &&
       (
-        (Array.isArray(item.readerBlocks) && item.readerBlocks.length) ||
+        item.readerDocPath ||
+        item.readerStatus === 'READY' ||
         item.readerPreview ||
-        item.readerText ||
-        item.readerHtml
+        Number(item.readerBlockCount || 0) > 0
       )
     );
   }
@@ -2727,7 +2743,7 @@
     if (!isPdfMediaForReader(item)) return '';
 
     if (hasReaderBuild(item)) {
-      var count = Number(item.readerBlockCount || (Array.isArray(item.readerBlocks) ? item.readerBlocks.length : 0) || 0);
+      var count = Number(item.readerBlockCount || 0);
       var version = Number(item.readerVersion || 1);
       var imgCount = Number(item.readerImageCount || 0);
       var quality = item.readerQualityScore !== undefined && item.readerQualityScore !== null
@@ -4018,6 +4034,105 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
 
 
+  function splitReaderPatchForStorage(item, patch) {
+    item = item || {};
+    patch = patch || {};
+
+    var mediaId = String(item.id || '').trim();
+    if (!mediaId) throw new Error('Media id mancante: impossibile salvare reader separato.');
+
+    var now = root.FieldValue.serverTimestamp();
+    var user = root.requireCurrentUser();
+    var docPath = WILDU_MEDIA_READER_COLLECTION + '/' + mediaId;
+    var light = sanitizeReaderPatchForSave(patch);
+    var heavy = {
+      schemaVersion: 1,
+      storageMode: 'split-v1',
+      mediaId: mediaId,
+      mediaTitle: String(item.title || patch.readerSourceTitle || '').trim(),
+      mediaFileUrl: String(item.fileUrl || patch.readerSourceFileUrl || '').trim(),
+      mediaObjectKey: String(item.objectKey || patch.readerSourceObjectKey || '').trim(),
+      readerDocPath: docPath,
+      readerVersion: patch.readerVersion || light.readerVersion || 1,
+      readerSourceMediaVersion: patch.readerSourceMediaVersion || light.readerSourceMediaVersion || item.mediaVersion || 1,
+      savedAt: now,
+      savedByUid: user.uid,
+      savedByEmail: user.email || null
+    };
+
+    WILDU_MEDIA_READER_HEAVY_FIELDS.forEach(function (field) {
+      if (patch[field] !== undefined) heavy[field] = patch[field];
+      if (light[field] !== undefined) delete light[field];
+      light[field] = root.FieldValue.delete();
+    });
+
+    light.readerDocPath = docPath;
+    light.readerStorageMode = 'split-v1';
+    light.readerPayloadLocation = 'firestore:' + docPath;
+    light.readerUpdatedAt = now;
+    light.readerUpdatedByUid = user.uid;
+    light.readerUpdatedByEmail = user.email || null;
+
+    return { mediaId: mediaId, docPath: docPath, light: light, heavy: heavy };
+  }
+
+  async function loadReaderDocForMedia(item) {
+    item = item || {};
+    var mediaId = String(item.id || '').trim();
+    if (!mediaId) return null;
+
+    var snap = await getReaderDocRef(mediaId).get();
+    if (!snap.exists) return null;
+
+    var data = snap.data() || {};
+    data.id = snap.id;
+    return data;
+  }
+
+  async function saveSplitReaderForMedia(item, patch) {
+    var split = splitReaderPatchForStorage(item, patch);
+
+    await getReaderDocRef(split.mediaId).set(split.heavy, { merge: false });
+
+    try {
+      await root.MediaService.updateMedia(split.mediaId, split.light);
+    } catch (err) {
+      try { await getReaderDocRef(split.mediaId).delete(); } catch (_) {}
+      throw err;
+    }
+
+    return split;
+  }
+
+  async function deleteSplitReaderForMedia(item) {
+    item = item || {};
+    var mediaId = String(item.id || '').trim();
+    if (!mediaId) return;
+
+    try {
+      await getReaderDocRef(mediaId).delete();
+    } catch (err) {
+      console.warn('[WILDU READER] Reader doc non cancellato o già assente:', err);
+    }
+  }
+
+  function buildReaderClearCatalogPatch(item) {
+    var patch = root.PdfReaderService.buildClearReaderPatch(item);
+
+    WILDU_MEDIA_READER_HEAVY_FIELDS.forEach(function (field) {
+      patch[field] = root.FieldValue.delete();
+    });
+
+    patch.readerDocPath = root.FieldValue.delete();
+    patch.readerStorageMode = root.FieldValue.delete();
+    patch.readerPayloadLocation = root.FieldValue.delete();
+    patch.readerUpdatedAt = root.FieldValue.serverTimestamp();
+    patch.readerUpdatedByUid = root.requireCurrentUser().uid;
+    patch.readerUpdatedByEmail = root.requireCurrentUser().email || null;
+
+    return patch;
+  }
+
   function buildPdfReaderPreviewHtmlFromSavedItem(item) {
     if (!item) return '<div class="empty">Media mancante.</div>';
 
@@ -4190,7 +4305,10 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var item = findMediaById(id);
     if (!item) throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
     if (!hasReaderBuild(item)) throw new Error('Questo PDF non ha un reader generato da mostrare.');
-    await showPdfReaderPreviewModal(item, null, { readOnly: true });
+
+    var readerDoc = await loadReaderDocForMedia(item);
+    var previewItem = readerDoc ? Object.assign({}, item, readerDoc) : item;
+    await showPdfReaderPreviewModal(previewItem, null, { readOnly: true });
   }
 
   async function buildPdfReaderForMedia(id) {
@@ -4239,11 +4357,10 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     // Non tocca mai il PDF originale: cancella solo objectKey generati dal reader.
     await cleanupPdfReaderImagesQuietly(item, 'READER_REPLACE_OLD_IMAGES');
 
-    var patchToSave = sanitizeReaderPatchForSave(patch);
-    await root.MediaService.updateMedia(item.id, patchToSave);
+    await saveSplitReaderForMedia(item, patch);
 
     root.toast(
-      'Reader editoriale V6.2 salvato: ' +
+      'Reader editoriale V6.2 salvato in modalità split: ' +
       Number(patch.readerBlockCount || 0) +
       ' blocchi, ' +
       Number(patch.readerPagesProcessed || 0) +
@@ -4281,9 +4398,10 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     if (!confirm('Pulire i campi reader generati per questo PDF? Il PDF originale R2 non verrà toccato. Le immagini reader note verranno cancellate da R2.')) return;
 
     await cleanupPdfReaderImagesQuietly(item, 'READER_CLEAR');
-    await root.MediaService.updateMedia(item.id, root.PdfReaderService.buildClearReaderPatch(item));
+    await deleteSplitReaderForMedia(item);
+    await root.MediaService.updateMedia(item.id, buildReaderClearCatalogPatch(item));
 
-    root.toast('Reader pulito, immagini reader note cancellate e manifesto Biblioteca riallineato.', 'success');
+    root.toast('Reader pulito, documento reader separato cancellato e manifesto Biblioteca riallineato.', 'success');
 
     await refreshTags();
     await refreshMedia();
