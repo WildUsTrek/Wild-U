@@ -564,7 +564,7 @@ button.gps-chip:hover {
   min-height: 56px;
   height: 56px;
   display: grid;
-  grid-template-columns: minmax(126px, 1fr) 46px 76px 80px auto;
+  grid-template-columns: minmax(126px, 1fr) 46px 76px 86px;
   align-items: center;
   gap: 7px;
   padding: 7px;
@@ -679,6 +679,54 @@ button.gps-chip:hover {
 #btn-local-gpx-main { width: 80px; text-align: center; }
 #btn-local-gpx-toggle { width: 112px; }
 #btn-local-gpx-fit { width: 104px; }
+
+.gpx-action-dock {
+  position: fixed;
+  left: max(10px, calc(var(--safe-left) + 10px));
+  right: max(10px, calc(var(--safe-right) + 10px));
+  bottom: calc(var(--safe-bottom) + 64px);
+  z-index: 760;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.gpx-action-dock.hidden {
+  display: none !important;
+}
+
+.gpx-action-dock button {
+  pointer-events: auto;
+  height: 42px;
+  min-height: 42px;
+  border-radius: 999px;
+  padding: 0 14px;
+  border: 1px solid rgba(255,255,255,.16);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(167,209,41,.16), transparent 38%),
+    linear-gradient(135deg, rgba(18,28,21,.96), rgba(7,13,10,.96));
+  color: rgba(243,248,241,.92);
+  font-size: 12px;
+  font-weight: 950;
+  box-shadow:
+    0 14px 34px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(255,255,255,.10);
+  backdrop-filter: blur(16px);
+}
+
+.gpx-action-dock #btn-local-gpx-fit {
+  border-color: rgba(167,209,41,.45);
+  color: #eaffd8;
+}
+
+.gpx-action-dock #btn-local-gpx-toggle.active {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255,255,255,.20), transparent 38%),
+    linear-gradient(135deg, rgba(167,209,41,.92), rgba(126,171,31,.92));
+  color: #142008;
+}
 
 .topbar button.active,
 .controls button.active {
@@ -932,6 +980,7 @@ button.gps-chip,
 .map-onboarding.hidden { display: none !important; }
 
 .map-onboarding-card {
+  position: relative;
   width: min(460px, 100%);
   border-radius: 28px;
   border: 1px solid rgba(255,255,255,.16);
@@ -945,6 +994,32 @@ button.gps-chip,
   backdrop-filter: blur(22px);
   padding: 22px 20px 18px 20px;
   color: var(--text);
+}
+
+.map-onboarding-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border: 1px solid rgba(255,107,107,.62);
+  border-radius: 999px;
+  background: rgba(122,24,24,.94);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 26px rgba(0,0,0,.34);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.map-onboarding-close:active {
+  transform: scale(.94);
 }
 
 .map-onboarding-kicker {
@@ -1071,7 +1146,7 @@ button.gps-chip,
   .controls {
     height: 54px;
     min-height: 54px;
-    grid-template-columns: minmax(132px, 1fr) 44px 74px 78px auto;
+    grid-template-columns: minmax(132px, 1fr) 44px 74px 82px;
     gap: 6px;
     padding: 6px;
     border-radius: 22px;
@@ -1104,6 +1179,20 @@ button.gps-chip,
   #btn-local-gpx-main { width: 78px; }
   #btn-local-gpx-toggle { width: 108px; }
   #btn-local-gpx-fit { width: 100px; }
+
+  .gpx-action-dock {
+    left: max(8px, calc(var(--safe-left) + 8px));
+    right: max(8px, calc(var(--safe-right) + 8px));
+    bottom: calc(var(--safe-bottom) + 58px);
+    gap: 7px;
+  }
+
+  .gpx-action-dock button {
+    height: 40px;
+    min-height: 40px;
+    font-size: 11.5px;
+    padding: 0 12px;
+  }
 
   .gps-chip,
   button.gps-chip,
@@ -1139,7 +1228,7 @@ button.gps-chip,
 @media (max-width: 430px) {
   .panel.controls,
   .controls {
-    grid-template-columns: minmax(120px, 1fr) 42px 70px 74px auto;
+    grid-template-columns: minmax(120px, 1fr) 42px 70px 78px;
     gap: 5px;
   }
 
@@ -1156,6 +1245,15 @@ button.gps-chip,
   #btn-local-gpx-main { width: 74px; }
   #btn-local-gpx-toggle { width: 102px; }
   #btn-local-gpx-fit { width: 94px; }
+
+  .gpx-action-dock {
+    bottom: calc(var(--safe-bottom) + 56px);
+  }
+
+  .gpx-action-dock button {
+    font-size: 11px;
+    padding: 0 11px;
+  }
 
   .gps-chip,
   button.gps-chip,
@@ -1225,9 +1323,12 @@ button.gps-chip,
       Apri GPX
     </label>
     <input id="local-gpx" type="file" accept=".gpx" />
-    <button id="btn-local-gpx-toggle" class="hidden" type="button" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
-    <button id="btn-local-gpx-fit" class="hidden" type="button" title="Centra la mappa sulla traccia GPX personale">Centra GPX</button>
   </div>
+</div>
+
+<div id="local-gpx-action-dock" class="gpx-action-dock hidden" aria-label="Comandi GPX personale">
+  <button id="btn-local-gpx-toggle" class="hidden" type="button" title="Mostra/nascondi la traccia GPX personale">Nascondi GPX</button>
+  <button id="btn-local-gpx-fit" class="hidden" type="button" title="Centra la mappa sulla traccia GPX personale">Centra GPX</button>
 </div>
 
 <div class="gps-hud">
@@ -1242,6 +1343,7 @@ button.gps-chip,
 
 <div id="wildu-map-onboarding" class="map-onboarding hidden" role="dialog" aria-modal="true" aria-live="polite" aria-label="Guida rapida Wildu Map">
   <section class="map-onboarding-card">
+    <button id="wildu-map-onboarding-close" class="map-onboarding-close" type="button" aria-label="Chiudi guida">×</button>
     <div id="wildu-map-onboarding-kicker" class="map-onboarding-kicker">Guida rapida</div>
     <h2 id="wildu-map-onboarding-title" class="map-onboarding-title">Accendi la bussola</h2>
     <p id="wildu-map-onboarding-text" class="map-onboarding-text"></p>
@@ -1693,6 +1795,7 @@ const WILDU_LOCAL_GPX_DB_NAME = "wildu_map_local_gpx_v1";
 const WILDU_LOCAL_GPX_STORE = "localGpx";
 const WILDU_LOCAL_GPX_KEY = "current";
 const WILDU_LOCAL_GPX_MAX_BYTES = 5 * 1024 * 1024; // 5 MB prudente per GPX testuali
+const WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS = 14 * 1000; // pausa unica per carico/mostra/centra GPX personale
 
 // Bypass manuale per test/urgenze:
 // ?nocache=1 oppure ?refresh=1 oppure ?cache=off
@@ -2780,6 +2883,7 @@ function updateLocalGpxControls() {
   const mainBtn = $("btn-local-gpx-main");
   const toggleBtn = $("btn-local-gpx-toggle");
   const fitBtn = $("btn-local-gpx-fit");
+  const dock = $("local-gpx-action-dock");
 
   if (mainBtn) {
     mainBtn.textContent = hasLocal ? "Togli GPX" : "Apri GPX";
@@ -2810,6 +2914,10 @@ function updateLocalGpxControls() {
     fitBtn.title = hasLocal
       ? "Centra la mappa sulla traccia GPX personale. Se il GPS è acceso, il follow resta in pausa per alcuni secondi."
       : "Carica prima una traccia GPX personale";
+  }
+
+  if (dock) {
+    dock.classList.toggle("hidden", !hasLocal);
   }
 }
 
@@ -2862,10 +2970,10 @@ async function clearLocalGpx() {
 }
 
 
- function pauseGpsFollowForLocalGpx(ms = 10000, reason = "loaded") {
+ function pauseGpsFollowForLocalGpx(ms = WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS, reason = "loaded") {
   if (!state.gpsTrackingActive) return false;
 
-  const pauseMs = Math.max(1000, Number(ms || 0) || 10000);
+  const pauseMs = Math.max(1000, Number(ms || 0) || WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS);
   const seconds = Math.max(1, Math.round(pauseMs / 1000));
 
   state.gpsFollowPauseUntil = Date.now() + pauseMs;
@@ -2925,11 +3033,12 @@ function centerOnLocalGpxTrace(options = {}) {
 
   updateLocalGpxControls();
 
-  const pauseMs = Math.max(3000, Number(options.pauseMs || 0) || 14000);
+  const pauseMs = Math.max(3000, Number(options.pauseMs || 0) || WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS);
   const seconds = Math.max(1, Math.round(pauseMs / 1000));
   const paused = pauseGpsFollowForLocalGpx(pauseMs, "center");
 
   try {
+    if (state.map && typeof state.map.stop === "function") state.map.stop();
     state.map.fitBounds(bounds.pad(0.22), {
       animate: true,
       duration: 0.85,
@@ -2990,21 +3099,27 @@ function renderLocalGpxFromText(xmlText, fileName, options = {}) {
 if (options.fit !== false) {
   // Fit una sola volta sul GPX appena caricato:
   // serve a far capire all’utente che il file è stato aperto.
-  // Se il GPS è acceso, blocchiamo il follow per 10 secondi.
-  if (!options.fromDevice) {
-    pauseGpsFollowForLocalGpx(10000, "loaded");
-  }
+  // Se il GPS è acceso, blocchiamo il follow con la stessa pausa del comando "Centra GPX".
+  const paused = !options.fromDevice
+    ? pauseGpsFollowForLocalGpx(WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS, "loaded")
+    : false;
 
   try {
+    if (state.map && typeof state.map.stop === "function") state.map.stop();
     state.map.fitBounds(e.target.getBounds().pad(0.2));
   } catch (_) {}
+
+  if (paused) {
+    const seconds = Math.max(1, Math.round(WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS / 1000));
+    showGpsToast(`GPX caricato · GPS in pausa ${seconds}s`, "ok");
+  }
 }
 
     updateLocalGpxControls();
 
     if (options.fromDevice) {
       setStatus(`GPX personale ripristinato dal dispositivo: ${state.localGpxName}`);
-    } else {
+    } else if (!isGpsFollowPaused()) {
       setStatus("GPX personale aperto e salvato solo sul tuo dispositivo. Non viene inviato ai server Wildu.");
     }
   });
@@ -3017,6 +3132,10 @@ if (options.fit !== false) {
     
 function loadLocalGpx(file) {
   if (!file) return;
+
+  // Pausa immediata: evita che un pan/flyTo GPS già in corso rubi la vista
+  // mentre il GPX viene letto e renderizzato.
+  pauseGpsFollowForLocalGpx(WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS, "loading");
 
   if (!/\.gpx$/i.test(file.name)) {
     setStatus("Carica un file .gpx.", true);
@@ -3326,7 +3445,10 @@ function centerOnFix(fix, mode) {
 
 if (!state.gpsInitialCenterDone) {
   state.gpsInitialCenterDone = true;
-  centerOnFix(fix, "first");
+
+  if (!isGpsFollowPaused()) {
+    centerOnFix(fix, "first");
+  }
 
   if (!state.area && !state.gpsAreaAutoLoaded) {
     state.gpsAreaAutoLoaded = true;
@@ -3338,6 +3460,12 @@ if (!state.gpsInitialCenterDone) {
   handleWilduGuidedGpsFirstFix(fix);
   return;
 }
+
+    if (isGpsFollowPaused()) {
+      const remaining = Math.max(1, Math.ceil((Number(state.gpsFollowPauseUntil || 0) - Date.now()) / 1000));
+      setStatus(`GPS attivo, ma follow in pausa per mostrare la traccia GPX. Riprende tra circa ${remaining}s.`);
+      return;
+    }
 
     // Aggiorna la visuale solo se ti sei mosso davvero.
     // Evita tremolii quando il GPS balla da fermo.
@@ -3404,15 +3532,18 @@ function applyWilduGuideHighlights(step) {
 }
 
 function markWilduMapOnboardingSeen() {
+  // V3: non rendiamo più la guida un one-shot persistente.
+  // La X rossa / Salta guida chiudono il pannello nella sessione corrente,
+  // ma al nuovo accesso la guida torna disponibile.
   try {
-    localStorage.setItem(WILDU_MAP_ONBOARDING_SEEN_KEY, String(Date.now()));
+    sessionStorage.setItem(WILDU_MAP_ONBOARDING_SEEN_KEY, String(Date.now()));
   } catch (_) {}
 }
 
 function shouldShowWilduMapOnboarding() {
   try {
-    if (params.get("mapGuide") === "1" || params.get("guide") === "1") return true;
-    return !localStorage.getItem(WILDU_MAP_ONBOARDING_SEEN_KEY);
+    if (params.get("mapGuide") === "0" || params.get("guide") === "0") return false;
+    return !sessionStorage.getItem(WILDU_MAP_ONBOARDING_SEEN_KEY);
   } catch (_) {
     return true;
   }
@@ -3456,6 +3587,7 @@ function renderWilduMapOnboarding(step) {
   const primary = $("wildu-map-onboarding-primary");
   const secondary = $("wildu-map-onboarding-secondary");
   const skip = $("wildu-map-onboarding-skip");
+  const close = $("wildu-map-onboarding-close");
 
   if (!overlay || !kicker || !title || !text || !tip || !primary || !secondary || !skip) return;
 
@@ -3468,6 +3600,7 @@ function renderWilduMapOnboarding(step) {
   primary.onclick = null;
   secondary.onclick = null;
   skip.onclick = () => closeWilduMapOnboarding(true);
+  if (close) close.onclick = () => closeWilduMapOnboarding(true);
 
   if (step === "welcome") {
     kicker.textContent = "Primo orientamento";
@@ -3628,7 +3761,7 @@ $("btn-local-gpx-main").onclick = (e) => {
 };
 
 $("btn-local-gpx-toggle").onclick = () => setLocalGpxVisible(!state.localGpxVisible);
-$("btn-local-gpx-fit").onclick = () => centerOnLocalGpxTrace({ pauseMs: 14000 });
+$("btn-local-gpx-fit").onclick = () => centerOnLocalGpxTrace({ pauseMs: WILDU_LOCAL_GPX_FOLLOW_PAUSE_MS });
 $("btn-exit-mother").onclick = exitToMotherApp;
       
       $("area-select").onchange = () => {
