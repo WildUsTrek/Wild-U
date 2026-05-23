@@ -105,7 +105,12 @@
         mounted: false,
         manifestPromise: null,
         observer: null,
-        lastRenderAt: 0
+        lastRenderAt: 0,
+        selectedVideo: null,
+        selectedPlaylist: null,
+        renderTimer: null,
+        initialFollowupTimer: null,
+        rendering: false
     };
 
     function wilduVideoEscape(value) {
@@ -232,7 +237,7 @@
         var count = playlist && playlist.count ? Number(playlist.count) : 0;
 
         return '' +
-            '<section id="wildu-news-horizontal-video-card" style="' +
+            '<section id="wildu-news-horizontal-video-card" data-video-id="' + wilduVideoEscape(video && video.videoId ? video.videoId : '') + '" style="' +
                 'margin:22px 0 0;' +
                 'border-radius:24px;' +
                 'overflow:hidden;' +
@@ -386,11 +391,19 @@
         return best;
     }
 
-    function wilduMountHorizontalVideoCard(html) {
+    function wilduMountHorizontalVideoCard(html, videoId) {
         var rootEl = document.getElementById("wildu-biblioteca-list");
         if (!rootEl) return false;
 
+        var cleanVideoId = String(videoId || "");
         var old = document.getElementById("wildu-news-horizontal-video-card");
+
+        // Anti-loop: il renderer Biblioteca può mutare il DOM più volte.
+        // Se il video scelto è già montato, non ricreiamo l'iframe e non scegliamo un nuovo video.
+        if (old && old.getAttribute("data-video-id") === cleanVideoId) {
+            return true;
+        }
+
         if (old && old.parentNode) {
             old.parentNode.removeChild(old);
         }
@@ -419,9 +432,15 @@
     async function wilduRenderHorizontalVideoCard(forceNewPick) {
         var now = Date.now();
 
+        if (WILDU_HORIZONTAL_VIDEO_STATE.rendering) {
+            return;
+        }
+
         if (!forceNewPick && WILDU_HORIZONTAL_VIDEO_STATE.mounted && now - WILDU_HORIZONTAL_VIDEO_STATE.lastRenderAt < 1200) {
             return;
         }
+
+        WILDU_HORIZONTAL_VIDEO_STATE.rendering = true;
 
         try {
             var manifest = await wilduFetchYoutubeManifest();
@@ -431,28 +450,55 @@
                     ? manifest.playlists.video_horizontal
                     : null;
 
-            var video = wilduPickRandomHorizontalVideo(playlist && playlist.items);
+            var mustPick = forceNewPick === true || !WILDU_HORIZONTAL_VIDEO_STATE.selectedVideo;
+            if (mustPick) {
+                WILDU_HORIZONTAL_VIDEO_STATE.selectedVideo = wilduPickRandomHorizontalVideo(playlist && playlist.items);
+                WILDU_HORIZONTAL_VIDEO_STATE.selectedPlaylist = playlist;
+            }
+
+            var video = WILDU_HORIZONTAL_VIDEO_STATE.selectedVideo;
             if (!video) {
                 console.warn("[WILDU MEDIA BIBLIOTECA] Playlist orizzontale vuota o non disponibile.");
                 return;
             }
 
-            var ok = wilduMountHorizontalVideoCard(wilduBuildHorizontalVideoCard(video, playlist));
+            var effectivePlaylist = WILDU_HORIZONTAL_VIDEO_STATE.selectedPlaylist || playlist;
+            var ok = wilduMountHorizontalVideoCard(
+                wilduBuildHorizontalVideoCard(video, effectivePlaylist),
+                video.videoId
+            );
             WILDU_HORIZONTAL_VIDEO_STATE.mounted = ok;
             WILDU_HORIZONTAL_VIDEO_STATE.lastRenderAt = Date.now();
         } catch (err) {
             console.warn("[WILDU MEDIA BIBLIOTECA] Video orizzontale non disponibile:", err);
+        } finally {
+            WILDU_HORIZONTAL_VIDEO_STATE.rendering = false;
         }
     }
 
     function wilduScheduleHorizontalVideoRender(forceNewPick) {
-        setTimeout(function () {
-            wilduRenderHorizontalVideoCard(forceNewPick === true);
-        }, 450);
+        if (WILDU_HORIZONTAL_VIDEO_STATE.renderTimer) {
+            clearTimeout(WILDU_HORIZONTAL_VIDEO_STATE.renderTimer);
+        }
 
-        setTimeout(function () {
+        WILDU_HORIZONTAL_VIDEO_STATE.renderTimer = setTimeout(function () {
+            WILDU_HORIZONTAL_VIDEO_STATE.renderTimer = null;
             wilduRenderHorizontalVideoCard(forceNewPick === true);
-        }, 1200);
+        }, forceNewPick === true ? 520 : 760);
+    }
+
+    function wilduScheduleInitialHorizontalVideoRender() {
+        wilduScheduleHorizontalVideoRender(true);
+
+        if (WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer) {
+            clearTimeout(WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer);
+        }
+
+        // Follow-up senza nuova scelta: serve solo se il renderer Biblioteca monta la tab News in ritardo.
+        WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer = setTimeout(function () {
+            WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer = null;
+            wilduRenderHorizontalVideoCard(false);
+        }, 1600);
     }
 
     function wilduInstallHorizontalVideoObserver() {
@@ -460,8 +506,24 @@
         var moduleEl = document.getElementById("wildu-biblioteca-module");
         if (!rootEl || WILDU_HORIZONTAL_VIDEO_STATE.observer) return;
 
-        WILDU_HORIZONTAL_VIDEO_STATE.observer = new MutationObserver(function () {
-            wilduScheduleHorizontalVideoRender(false);
+        WILDU_HORIZONTAL_VIDEO_STATE.observer = new MutationObserver(function (mutations) {
+            var relevant = false;
+
+            for (var i = 0; i < mutations.length; i++) {
+                var target = mutations[i] && mutations[i].target ? mutations[i].target : null;
+
+                // Ignora le micro-mutazioni generate dal player stesso o dalla nostra card.
+                if (target && target.closest && target.closest("#wildu-news-horizontal-video-card")) {
+                    continue;
+                }
+
+                relevant = true;
+                break;
+            }
+
+            if (relevant) {
+                wilduScheduleHorizontalVideoRender(false);
+            }
         });
 
         WILDU_HORIZONTAL_VIDEO_STATE.observer.observe(rootEl, {
@@ -471,15 +533,27 @@
 
         if (moduleEl) {
             moduleEl.addEventListener("click", function (evt) {
-                var t = evt && evt.target ? evt.target : null;
-                var text = "";
-                while (t && t !== moduleEl) {
-                    text += " " + String(t.textContent || "");
-                    t = t.parentNode;
-                }
+                var target = evt && evt.target ? evt.target : null;
+                var clickable = target && target.closest
+                    ? target.closest("button,a,[role='tab'],[data-tab],[data-panel],[aria-controls]")
+                    : null;
 
-                if (/news|notizie/i.test(text)) {
+                if (!clickable || !moduleEl.contains(clickable)) return;
+
+                var signature = [
+                    clickable.textContent || "",
+                    clickable.id || "",
+                    clickable.className || "",
+                    clickable.getAttribute ? (clickable.getAttribute("data-tab") || "") : "",
+                    clickable.getAttribute ? (clickable.getAttribute("data-panel") || "") : "",
+                    clickable.getAttribute ? (clickable.getAttribute("aria-controls") || "") : "",
+                    clickable.getAttribute ? (clickable.getAttribute("aria-label") || "") : ""
+                ].join(" ");
+
+                if (/\b(news|notizie)\b/i.test(signature)) {
                     WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise = null;
+                    WILDU_HORIZONTAL_VIDEO_STATE.selectedVideo = null;
+                    WILDU_HORIZONTAL_VIDEO_STATE.selectedPlaylist = null;
                     wilduScheduleHorizontalVideoRender(true);
                 }
             }, true);
@@ -487,7 +561,7 @@
     }
 
     wilduInstallHorizontalVideoObserver();
-    wilduScheduleHorizontalVideoRender(true);
+    wilduScheduleInitialHorizontalVideoRender();
 
     if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
         window.WILDU_MODULE.rewriteRoot(document.getElementById("wildu-biblioteca-module"));
