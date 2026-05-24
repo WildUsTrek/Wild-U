@@ -11084,6 +11084,8 @@ function renderUnifiedDetailMap(payload) {
     mapsBtn.href = "#";
     mapsBtn.style.display = "none";
     mapsBtn.rel = "noopener";
+    mapsBtn.onclick = null;
+    mapsBtn.removeAttribute("data-wildu-maps-url");
     mapIframe.removeAttribute("src");
     mapContainer.style.display = "none";
 
@@ -11123,8 +11125,24 @@ function renderUnifiedDetailMap(payload) {
     }
 
     if (buttonUrl) {
-        mapsBtn.href = buttonUrl;
+        mapsBtn.href = "#";
+        mapsBtn.setAttribute("data-wildu-maps-url", buttonUrl);
         mapsBtn.style.display = "block";
+
+        mapsBtn.onclick = function (evt) {
+            evt.preventDefault();
+            evt.stopPropagation();
+
+            const ok = window.confirm(
+                "Aprire il punto di ritrovo su Google Maps?\n\n" +
+                "Uscirai temporaneamente da Wild-U per visualizzare le indicazioni."
+            );
+
+            if (!ok) return false;
+
+            window.open(buttonUrl, "_blank", "noopener");
+            return false;
+        };
     }
 
     if (iframeUrl) {
