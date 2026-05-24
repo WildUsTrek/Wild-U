@@ -2025,6 +2025,15 @@ function fillTrackForm(t) {
       Number(t.elevationPointCount || 0) === 0 &&
       Number(t.elevationGainM || 0) === 0 &&
       Number(t.elevationLossM || 0) === 0
+    ) ||
+    (
+      // Recupero prudente per tracce salvate con vecchio parser bug:
+      // un GPX senza <ele> poteva risultare hasElevationData=true perché Number(null) diventava 0.
+      // Mostriamo il pulsante: al click rianalizziamo il GPX vero e decidiamo se serve DEM.
+      !t.elevationEstimated &&
+      Number(t.elevationGainM || 0) === 0 &&
+      Number(t.elevationLossM || 0) === 0 &&
+      !!safeUrl(t.fileUrl || "")
     )
   );
 
@@ -2032,7 +2041,7 @@ function fillTrackForm(t) {
     renderTrackElevationWarning({
       hasElevationData: false,
       elevationEstimated: t.elevationEstimated === true,
-      elevationWarning: t.elevationWarning || "GPX già caricato senza quote <ele>; puoi analizzare il file pubblico e stimare il dislivello da DEM.",
+      elevationWarning: t.elevationWarning || "GPX già caricato con dislivello assente/zero: puoi rianalizzare il file pubblico e, se mancano quote <ele>, stimare il dislivello da DEM.",
       isMultiTrackGpx: t.isMultiTrackGpx === true,
       gpxTrackCount: t.gpxTrackCount || 0,
       gpxSegmentCount: t.gpxSegmentCount || 0,
@@ -2198,18 +2207,30 @@ function readFileAsText(file) {
   });
 }
 
+function isValidElevationValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string" && value.trim() === "") return false;
+  return Number.isFinite(Number(value));
+}
+
+function normalizeElevationValue(value) {
+  return isValidElevationValue(value) ? Number(value) : null;
+}
+
 function readGpxPointNode(node, segmentIndex, trackIndex, pointIndex) {
   const lat = Number(node.getAttribute("lat"));
   const lng = Number(node.getAttribute("lon"));
   const eleNode = node.getElementsByTagName("ele")[0];
-  const ele = eleNode ? Number(eleNode.textContent) : null;
+  const ele = eleNode ? normalizeElevationValue(eleNode.textContent) : null;
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
   return {
     lat,
     lng,
-    ele: Number.isFinite(ele) ? ele : null,
+    // Importante: quota assente deve restare null.
+    // Non usare Number(null), perché in JavaScript diventa 0 e falsifica dislivelli/DEM.
+    ele,
     segmentIndex: Number(segmentIndex || 0),
     trackIndex: Number(trackIndex || 0),
     pointIndex: Number(pointIndex || 0)
@@ -2339,42 +2360,39 @@ function sumSegmentDistanceMeters(points) {
 
 function analyzeElevationGainLossForPointList(points) {
   const elePoints = (Array.isArray(points) ? points : [])
-    .map(p => Number(p.ele))
-    .filter(ele => Number.isFinite(ele));
+    .filter(p => isValidElevationValue(p && p.ele))
+    .map(p => Number(p.ele));
 
   if (elePoints.length < 2) {
     return { gain: 0, loss: 0 };
   }
 
-  // Soglia anti-rumore per “blocco” di salita/discesa.
-  // Non scarta i micro-incrementi singoli: li accumula e conta il blocco solo se supera questa soglia.
-  const MIN_BLOCK_M = 3;
+  // Filtro anti-rumore più robusto per GPX reali:
+  // - ignora quote mancanti/null;
+  // - non trasforma mai quota assente in 0;
+  // - ignora micro oscillazioni sotto soglia invece di accumularle a blocchi.
+  // Questo evita casi tipo “Via Degli Dei” dove piccoli zig-zag altimetrici
+  // e punti senza <ele> gonfiavano il dislivello fino a decine di migliaia di metri.
+  const MIN_DELTA_M = 2;
 
   let gain = 0;
   let loss = 0;
   let last = elePoints[0];
-  let pendingUp = 0;
-  let pendingDown = 0;
 
   for (let i = 1; i < elePoints.length; i++) {
     const current = elePoints[i];
     const delta = current - last;
 
-    if (delta > 0) {
-      if (pendingDown >= MIN_BLOCK_M) loss += pendingDown;
-      pendingDown = 0;
-      pendingUp += delta;
-    } else if (delta < 0) {
-      if (pendingUp >= MIN_BLOCK_M) gain += pendingUp;
-      pendingUp = 0;
-      pendingDown += Math.abs(delta);
+    if (Math.abs(delta) >= MIN_DELTA_M) {
+      if (delta > 0) {
+        gain += delta;
+      } else {
+        loss += Math.abs(delta);
+      }
     }
 
     last = current;
   }
-
-  if (pendingUp >= MIN_BLOCK_M) gain += pendingUp;
-  if (pendingDown >= MIN_BLOCK_M) loss += pendingDown;
 
   return { gain, loss };
 }
@@ -2410,7 +2428,7 @@ function analyzeGpxStructure(structure) {
     lats.push(p.lat);
     lngs.push(p.lng);
 
-    if (Number.isFinite(Number(p.ele))) {
+    if (isValidElevationValue(p && p.ele)) {
       elevations.push(Number(p.ele));
     }
   });
@@ -2456,7 +2474,7 @@ function analyzeGpxStructure(structure) {
     elevationSource: hasElevationData ? "GPX_ELE" : "MISSING_ELE",
     elevationProvider: hasElevationData ? "gpx_ele" : "none",
     elevationWarning: hasElevationData ? "" : "GPX senza quote <ele>; dislivello non presente nel file.",
-    analysisSource: "client_gpx_domparser_segmented_distance_v5",
+    analysisSource: "client_gpx_domparser_segmented_distance_valid_ele_v6",
     analyzedAtIso: new Date().toISOString()
   };
 }
@@ -2863,8 +2881,8 @@ async function fetchOpenMeteoElevationForPoints(points) {
     lat: Number(point.lat),
     lng: Number(point.lng),
     segmentIndex: Number(point.segmentIndex || 0),
-    ele: Number(elevations[index])
-  })).filter(p => Number.isFinite(p.ele));
+    ele: normalizeElevationValue(elevations[index])
+  })).filter(p => isValidElevationValue(p.ele));
 }
 
 async function estimateMissingElevationFromDem() {
@@ -2903,7 +2921,9 @@ async function estimateMissingElevationFromDem() {
   const elevatedPoints = await fetchOpenMeteoElevationForPoints(samples);
   const demSegments = buildSegmentsFromSampledElevationPoints(elevatedPoints);
   const stats = analyzeElevationGainLossBySegments(demSegments);
-  const elevations = elevatedPoints.map(p => Number(p.ele)).filter(Number.isFinite);
+  const elevations = elevatedPoints
+    .filter(p => isValidElevationValue(p && p.ele))
+    .map(p => Number(p.ele));
 
   analysis.elevationGainM = Math.round(stats.gain);
   analysis.elevationLossM = Math.round(stats.loss);
@@ -2916,7 +2936,7 @@ async function estimateMissingElevationFromDem() {
   analysis.elevationProvider = "open-meteo-elevation-copernicus-glo90";
   analysis.elevationSampleCount = elevatedPoints.length;
   analysis.elevationWarning = "GPX senza quote <ele>; dislivello stimato da modello altimetrico DEM. Verifica prima della pubblicazione.";
-  analysis.analysisSource = "client_gpx_segmented_distance_openmeteo_dem_v5";
+  analysis.analysisSource = "client_gpx_segmented_distance_openmeteo_dem_v6";
   analysis.analyzedAtIso = new Date().toISOString();
 
   $("track-elevation-gain-m").value = analysis.elevationGainM;
