@@ -266,13 +266,17 @@
 <label>Oppure GPX file URL esterno</label>
 <input id="track-file-url" placeholder="https://.../traccia.gpx" />
 <div id="track-area-suggestion" class="status" style="display:none; margin-top:10px;"></div>
+<div id="track-elevation-warning" class="status" style="display:none; margin-top:10px;"></div>
+<div id="track-elevation-dem-actions" class="bar" style="display:none; margin-top:10px;">
+  <button id="btn-estimate-dem-elevation" class="ghost" type="button">Stima dislivello da DEM</button>
+</div>
           <div class="four">
             <div><label>Distanza km</label><input id="track-distance-km" type="number" step="0.1" /></div>
             <div><label>Dislivello + m</label><input id="track-elevation-gain-m" type="number" step="1" /></div>
             <div><label>Dislivello - m</label><input id="track-elevation-loss-m" type="number" step="1" /></div>
             <div><label>Difficoltà</label><input id="track-difficulty" placeholder="E" /></div>
           </div>
-          <p class="hint">I valori calcolati dal GPX sono solo una proposta: come admin puoi ritoccare manualmente km, dislivello e difficoltà prima di salvare.</p>
+          <p class="hint">I valori calcolati dal GPX sono solo una proposta: come admin puoi ritoccare manualmente km, dislivello e difficoltà prima di salvare. Se il GPX non contiene quote, compare un pulsante separato per stimare il dislivello da DEM.</p>
           <div class="two">
             <div><label>Status</label><select id="track-status"><option>ACTIVE</option><option>HIDDEN</option></select></div>
             <div><label>Ordine</label><input id="track-sort-order" type="number" value="10" /></div>
@@ -473,7 +477,11 @@ const state = {
 
   // Suggerimento area da GPX: dati temporanei in memoria, mai punti completi salvati in Firestore.
   pendingTrackGpxAnalysis: null,
-  pendingTrackAreaMatches: []
+  pendingTrackAreaMatches: [],
+
+  // DEM/elevazione: usato solo in admin e solo quando il GPX non contiene <ele>.
+  pendingTrackGpxPoints: [],
+  pendingTrackGpxSegments: []
 };
 
 const WILDU_ITALY_REGIONS_SIMPLIFIED = [
@@ -1894,6 +1902,9 @@ function renderTrackItemHtml(t, options = {}) {
         ${t.elevationGainM !== undefined && t.elevationGainM !== null ? ` · Dislivello +: ${escapeHtml(t.elevationGainM)} m` : ""}
         ${t.elevationLossM !== undefined && t.elevationLossM !== null ? ` · Dislivello -: ${escapeHtml(t.elevationLossM)} m` : ""}
         ${t.difficulty ? ` · Difficoltà: ${escapeHtml(t.difficulty)}` : ""}
+        ${t.isMultiTrackGpx ? `<br><span class="pill">multi-traccia</span> ${escapeHtml(String(t.gpxTrackCount || "?"))} tracce / ${escapeHtml(String(t.gpxSegmentCount || "?"))} segmenti` : ""}
+        ${t.elevationEstimated ? `<br><span class="pill">dislivello stimato DEM</span> ${escapeHtml(t.elevationProvider || "")}` : ""}
+        ${t.elevationWarning ? `<br>⚠️ ${escapeHtml(t.elevationWarning)}` : ""}
         <br>${escapeHtml(t.description || "")}
         <br>${escapeHtml(t.fileUrl || "")}
         ${t.objectKey ? `<br><small>R2 objectKey: ${escapeHtml(t.objectKey)}</small>` : ""}
@@ -1995,8 +2006,11 @@ function fillTrackForm(t) {
     $("track-replace-r2").checked = false;
   }
   state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackGpxPoints = [];
+  state.pendingTrackGpxSegments = [];
   state.pendingTrackAreaMatches = Array.isArray(t.areaMatches) ? t.areaMatches : [];
   renderTrackAreaSuggestion(state.pendingTrackAreaMatches);
+  renderTrackElevationWarning(null);
 
   setStatus(
     t.objectKey
@@ -2009,8 +2023,11 @@ function clearTrackForm() {
   ["track-id","track-title","track-description","track-file-url","track-distance-km","track-elevation-gain-m","track-elevation-loss-m","track-difficulty"].forEach(id => $(id).value = "");
   $("track-file").value = "";
   state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackGpxPoints = [];
+  state.pendingTrackGpxSegments = [];
   state.pendingTrackAreaMatches = [];
   renderTrackAreaSuggestion([]);
+  renderTrackElevationWarning(null);
   if ($("track-replace-r2")) {
     $("track-replace-r2").checked = false;
   }
@@ -2147,7 +2164,25 @@ function readFileAsText(file) {
   });
 }
 
-function parseGpxPoints(xmlText) {
+function readGpxPointNode(node, segmentIndex, trackIndex, pointIndex) {
+  const lat = Number(node.getAttribute("lat"));
+  const lng = Number(node.getAttribute("lon"));
+  const eleNode = node.getElementsByTagName("ele")[0];
+  const ele = eleNode ? Number(eleNode.textContent) : null;
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  return {
+    lat,
+    lng,
+    ele: Number.isFinite(ele) ? ele : null,
+    segmentIndex: Number(segmentIndex || 0),
+    trackIndex: Number(trackIndex || 0),
+    pointIndex: Number(pointIndex || 0)
+  };
+}
+
+function parseGpxStructure(xmlText) {
   const doc = new DOMParser().parseFromString(xmlText, "application/xml");
 
   const parserError = doc.querySelector("parsererror");
@@ -2155,62 +2190,208 @@ function parseGpxPoints(xmlText) {
     throw new Error("GPX non valido o non leggibile.");
   }
 
-  const nodes = [
-    ...Array.from(doc.getElementsByTagName("trkpt")),
-    ...Array.from(doc.getElementsByTagName("rtept"))
-  ];
+  const segments = [];
+  let flatPoints = [];
+  let segmentIndex = 0;
+  const trkNodes = Array.from(doc.getElementsByTagName("trk"));
 
-  const points = nodes
-    .map(node => {
-      const lat = Number(node.getAttribute("lat"));
-      const lng = Number(node.getAttribute("lon"));
-      const eleNode = node.getElementsByTagName("ele")[0];
-      const ele = eleNode ? Number(eleNode.textContent) : null;
+  trkNodes.forEach((trkNode, trackIndex) => {
+    const trksegNodes = Array.from(trkNode.getElementsByTagName("trkseg"));
 
-      return {
-        lat,
-        lng,
-        ele: Number.isFinite(ele) ? ele : null
-      };
-    })
-    .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    if (trksegNodes.length) {
+      trksegNodes.forEach(segNode => {
+        const pts = Array.from(segNode.getElementsByTagName("trkpt"))
+          .map((node, pointIndex) => readGpxPointNode(node, segmentIndex, trackIndex, pointIndex))
+          .filter(Boolean);
 
-  if (points.length < 2) {
+        if (pts.length) {
+          segments.push({
+            type: "trkseg",
+            trackIndex,
+            segmentIndex,
+            points: pts
+          });
+          flatPoints = flatPoints.concat(pts);
+          segmentIndex++;
+        }
+      });
+    } else {
+      const pts = Array.from(trkNode.getElementsByTagName("trkpt"))
+        .map((node, pointIndex) => readGpxPointNode(node, segmentIndex, trackIndex, pointIndex))
+        .filter(Boolean);
+
+      if (pts.length) {
+        segments.push({
+          type: "trk",
+          trackIndex,
+          segmentIndex,
+          points: pts
+        });
+        flatPoints = flatPoints.concat(pts);
+        segmentIndex++;
+      }
+    }
+  });
+
+  const rteNodes = Array.from(doc.getElementsByTagName("rte"));
+
+  rteNodes.forEach((rteNode, routeIndex) => {
+    const pts = Array.from(rteNode.getElementsByTagName("rtept"))
+      .map((node, pointIndex) => readGpxPointNode(node, segmentIndex, trkNodes.length + routeIndex, pointIndex))
+      .filter(Boolean);
+
+    if (pts.length) {
+      segments.push({
+        type: "rte",
+        trackIndex: trkNodes.length + routeIndex,
+        segmentIndex,
+        points: pts
+      });
+      flatPoints = flatPoints.concat(pts);
+      segmentIndex++;
+    }
+  });
+
+  // Fallback compatibile per GPX strani con punti sciolti fuori da trk/rte.
+  if (!flatPoints.length) {
+    const nodes = [
+      ...Array.from(doc.getElementsByTagName("trkpt")),
+      ...Array.from(doc.getElementsByTagName("rtept"))
+    ];
+
+    const pts = nodes
+      .map((node, pointIndex) => readGpxPointNode(node, 0, 0, pointIndex))
+      .filter(Boolean);
+
+    if (pts.length) {
+      segments.push({
+        type: "flat",
+        trackIndex: 0,
+        segmentIndex: 0,
+        points: pts
+      });
+      flatPoints = pts;
+    }
+  }
+
+  if (flatPoints.length < 2) {
     throw new Error("Il GPX contiene troppo pochi punti per calcolare la traccia.");
   }
 
-  return points;
+  return {
+    segments,
+    points: flatPoints,
+    trackCount: trkNodes.length || (rteNodes.length ? rteNodes.length : 1),
+    routeCount: rteNodes.length,
+    segmentCount: segments.length
+  };
 }
 
-function analyzeGpxPoints(points) {
+function parseGpxPoints(xmlText) {
+  // Compatibilità: alcune funzioni storiche si aspettano solo l'array punti.
+  return parseGpxStructure(xmlText).points;
+}
+
+function sumSegmentDistanceMeters(points) {
+  const pts = Array.isArray(points) ? points : [];
   let distanceM = 0;
 
+  for (let i = 1; i < pts.length; i++) {
+    distanceM += haversineMeters(pts[i - 1], pts[i]);
+  }
+
+  return distanceM;
+}
+
+function analyzeElevationGainLossForPointList(points) {
+  const elePoints = (Array.isArray(points) ? points : [])
+    .map(p => Number(p.ele))
+    .filter(ele => Number.isFinite(ele));
+
+  if (elePoints.length < 2) {
+    return { gain: 0, loss: 0 };
+  }
+
+  // Soglia anti-rumore per “blocco” di salita/discesa.
+  // Non scarta i micro-incrementi singoli: li accumula e conta il blocco solo se supera questa soglia.
+  const MIN_BLOCK_M = 3;
+
+  let gain = 0;
+  let loss = 0;
+  let last = elePoints[0];
+  let pendingUp = 0;
+  let pendingDown = 0;
+
+  for (let i = 1; i < elePoints.length; i++) {
+    const current = elePoints[i];
+    const delta = current - last;
+
+    if (delta > 0) {
+      if (pendingDown >= MIN_BLOCK_M) loss += pendingDown;
+      pendingDown = 0;
+      pendingUp += delta;
+    } else if (delta < 0) {
+      if (pendingUp >= MIN_BLOCK_M) gain += pendingUp;
+      pendingUp = 0;
+      pendingDown += Math.abs(delta);
+    }
+
+    last = current;
+  }
+
+  if (pendingUp >= MIN_BLOCK_M) gain += pendingUp;
+  if (pendingDown >= MIN_BLOCK_M) loss += pendingDown;
+
+  return { gain, loss };
+}
+
+function analyzeElevationGainLossBySegments(segments) {
+  let gain = 0;
+  let loss = 0;
+
+  (Array.isArray(segments) ? segments : []).forEach(segment => {
+    const stats = analyzeElevationGainLossForPointList(segment && segment.points);
+    gain += Number(stats.gain || 0);
+    loss += Number(stats.loss || 0);
+  });
+
+  return { gain, loss };
+}
+
+function analyzeElevationGainLoss(points) {
+  // Compatibilità con vecchie chiamate: lista singola = un solo segmento.
+  return analyzeElevationGainLossForPointList(points);
+}
+
+function analyzeGpxStructure(structure) {
+  const segments = Array.isArray(structure && structure.segments) ? structure.segments : [];
+  const points = Array.isArray(structure && structure.points) ? structure.points : [];
+
+  let distanceM = 0;
   const lats = [];
   const lngs = [];
-
   const elevations = [];
 
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-
+  points.forEach(p => {
     lats.push(p.lat);
     lngs.push(p.lng);
 
     if (Number.isFinite(Number(p.ele))) {
       elevations.push(Number(p.ele));
     }
+  });
 
-    if (i > 0) {
-      distanceM += haversineMeters(points[i - 1], p);
-    }
-  }
+  segments.forEach(segment => {
+    distanceM += sumSegmentDistanceMeters(segment.points || []);
+  });
 
-  const elevationStats = analyzeElevationGainLoss(points);
-
+  const elevationStats = analyzeElevationGainLossBySegments(segments);
   const minLat = Math.min(...lats);
   const maxLat = Math.max(...lats);
   const minLng = Math.min(...lngs);
   const maxLng = Math.max(...lngs);
+  const hasElevationData = elevations.length >= 2;
+  const multiTrackOrSegment = Number(structure.trackCount || 0) > 1 || Number(structure.segmentCount || 0) > 1;
 
   return {
     distanceKm: Number((distanceM / 1000).toFixed(2)),
@@ -2231,66 +2412,69 @@ function analyzeGpxPoints(points) {
     centerLng: Number(((minLng + maxLng) / 2).toFixed(6)),
 
     pointCount: points.length,
-    analysisSource: "client_gpx_domparser_elevation_accumulated_v2",
+    gpxTrackCount: Number(structure.trackCount || 0),
+    gpxRouteCount: Number(structure.routeCount || 0),
+    gpxSegmentCount: Number(structure.segmentCount || 0),
+    elevationPointCount: elevations.length,
+    hasElevationData,
+    isMultiTrackGpx: multiTrackOrSegment,
+    elevationEstimated: false,
+    elevationSource: hasElevationData ? "GPX_ELE" : "MISSING_ELE",
+    elevationProvider: hasElevationData ? "gpx_ele" : "none",
+    elevationWarning: hasElevationData ? "" : "GPX senza quote <ele>; dislivello non presente nel file.",
+    analysisSource: "client_gpx_domparser_segmented_distance_v4",
     analyzedAtIso: new Date().toISOString()
   };
 }
 
-function analyzeElevationGainLoss(points) {
-  const elePoints = points
-    .map(p => Number(p.ele))
-    .filter(ele => Number.isFinite(ele));
-
-  if (elePoints.length < 2) {
-    return { gain: 0, loss: 0 };
-  }
-
-  // Soglia anti-rumore per “blocco” di salita/discesa.
-  // Non scarta i micro-incrementi singoli: li accumula e conta il blocco
-  // solo se supera questa soglia.
-  const MIN_BLOCK_M = 3;
-
-  let gain = 0;
-  let loss = 0;
-
-  let last = elePoints[0];
-  let pendingUp = 0;
-  let pendingDown = 0;
-
-  for (let i = 1; i < elePoints.length; i++) {
-    const current = elePoints[i];
-    const delta = current - last;
-
-    if (delta > 0) {
-      if (pendingDown >= MIN_BLOCK_M) {
-        loss += pendingDown;
-      }
-
-      pendingDown = 0;
-      pendingUp += delta;
-    } else if (delta < 0) {
-      if (pendingUp >= MIN_BLOCK_M) {
-        gain += pendingUp;
-      }
-
-      pendingUp = 0;
-      pendingDown += Math.abs(delta);
-    }
-
-    last = current;
-  }
-
-  if (pendingUp >= MIN_BLOCK_M) {
-    gain += pendingUp;
-  }
-
-  if (pendingDown >= MIN_BLOCK_M) {
-    loss += pendingDown;
-  }
-
-  return { gain, loss };
+function analyzeGpxPoints(points) {
+  // Compatibilità con vecchie chiamate: lista piatta = un segmento.
+  return analyzeGpxStructure({
+    points: Array.isArray(points) ? points : [],
+    segments: [{ type: "flat", trackIndex: 0, segmentIndex: 0, points: Array.isArray(points) ? points : [] }],
+    trackCount: 1,
+    routeCount: 0,
+    segmentCount: 1
+  });
 }
 
+function sampleGpxPointsForElevation(points, maxSamples = 100) {
+  const clean = Array.isArray(points)
+    ? points.filter(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    : [];
+
+  if (clean.length <= maxSamples) {
+    return clean.map(p => ({ lat: Number(p.lat), lng: Number(p.lng), segmentIndex: Number(p.segmentIndex || 0) }));
+  }
+
+  const out = [];
+  const step = (clean.length - 1) / Math.max(1, maxSamples - 1);
+
+  for (let i = 0; i < maxSamples; i++) {
+    const idx = Math.min(clean.length - 1, Math.round(i * step));
+    const p = clean[idx];
+    out.push({ lat: Number(p.lat), lng: Number(p.lng), segmentIndex: Number(p.segmentIndex || 0) });
+  }
+
+  return out.filter((p, i, arr) => i === 0 || p.lat !== arr[i - 1].lat || p.lng !== arr[i - 1].lng);
+}
+
+function buildSegmentsFromSampledElevationPoints(sampledPoints) {
+  const groups = new Map();
+
+  (Array.isArray(sampledPoints) ? sampledPoints : []).forEach(point => {
+    const key = Number(point.segmentIndex || 0);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(point);
+  });
+
+  return Array.from(groups.keys()).sort((a, b) => a - b).map((segmentIndex, index) => ({
+    type: "dem-sample",
+    trackIndex: index,
+    segmentIndex,
+    points: groups.get(segmentIndex) || []
+  }));
+}
 function sampleGpxPointsForAreaMatch(points, maxSamples = 360) {
   const clean = Array.isArray(points) ? points.filter(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng))) : [];
   if (clean.length <= maxSamples) return clean.map(p => ({ lat: Number(p.lat), lng: Number(p.lng) }));
@@ -2441,8 +2625,11 @@ function getTrackAutoAreaConfidence(matches) {
 async function analyzeSelectedTrackFileForAreaSuggestion() {
   const file = $("track-file").files[0] || null;
   state.pendingTrackGpxAnalysis = null;
+  state.pendingTrackGpxPoints = [];
+  state.pendingTrackGpxSegments = [];
   state.pendingTrackAreaMatches = [];
   renderTrackAreaSuggestion([]);
+  renderTrackElevationWarning(null);
   if (!file) return;
   setStatus("Analizzo GPX e cerco l’area regionale/Wildu più probabile...");
   const analysis = await analyzeGpxFile(file);
@@ -2460,12 +2647,56 @@ async function analyzeGpxFile(file) {
   if (!file) return null;
   if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
   const xmlText = await readFileAsText(file);
-  const points = parseGpxPoints(xmlText);
-  const analysis = analyzeGpxPoints(points);
-  analysis.sampledPoints = sampleGpxPointsForAreaMatch(points);
+  const structure = parseGpxStructure(xmlText);
+  const analysis = analyzeGpxStructure(structure);
+
+  analysis.sampledPoints = sampleGpxPointsForAreaMatch(structure.points);
+  analysis.demSampledPoints = sampleGpxPointsForElevation(structure.points, 100);
   analysis.originalFileName = file.name || "";
   analysis.originalFileSize = Number(file.size || 0);
+
+  state.pendingTrackGpxPoints = structure.points;
+  state.pendingTrackGpxSegments = structure.segments;
+
   return analysis;
+}
+
+function renderTrackElevationWarning(analysis) {
+  const box = $("track-elevation-warning");
+  const actions = $("track-elevation-dem-actions");
+
+  if (!box || !actions) return;
+
+  if (!analysis) {
+    box.style.display = "none";
+    box.innerHTML = "";
+    actions.style.display = "none";
+    return;
+  }
+
+  const warnings = [];
+
+  if (analysis.isMultiTrackGpx) {
+    warnings.push(`GPX multi-traccia/multi-segmento rilevato: ${Number(analysis.gpxTrackCount || 0)} tracce, ${Number(analysis.gpxSegmentCount || 0)} segmenti. I km sono calcolati per segmenti separati, senza salti artificiali fra tappe.`);
+  }
+
+  if (!analysis.hasElevationData) {
+    warnings.push("Questo GPX non contiene quote <ele>: il dislivello non è nel file. Puoi stimarlo da DEM con il pulsante dedicato oppure compilarlo a mano.");
+  } else if (analysis.elevationEstimated) {
+    warnings.push("Dislivello stimato da modello altimetrico: verifica i valori prima della pubblicazione.");
+  }
+
+  if (!warnings.length) {
+    box.style.display = "none";
+    box.innerHTML = "";
+  } else {
+    box.style.display = "block";
+    box.innerHTML = warnings.map(w => `<div>⚠️ ${escapeHtml(w)}</div>`).join("");
+  }
+
+  actions.style.display = analysis && !analysis.hasElevationData && Array.isArray(analysis.demSampledPoints) && analysis.demSampledPoints.length >= 2
+    ? "flex"
+    : "none";
 }
 
 function applyGpxAnalysisToForm(analysis) {
@@ -2484,8 +2715,106 @@ function applyGpxAnalysisToForm(analysis) {
   if (Number.isFinite(Number(analysis.elevationLossM))) {
     $("track-elevation-loss-m").value = analysis.elevationLossM;
   }
+
+  renderTrackElevationWarning(analysis);
 }
-    
+
+async function fetchOpenMeteoElevationForPoints(points) {
+  const sample = (Array.isArray(points) ? points : [])
+    .filter(p => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    .slice(0, 100);
+
+  if (sample.length < 2) {
+    throw new Error("Servono almeno due punti validi per stimare il dislivello.");
+  }
+
+  const latitudes = sample.map(p => Number(p.lat).toFixed(6)).join(",");
+  const longitudes = sample.map(p => Number(p.lng).toFixed(6)).join(",");
+  const url = `https://api.open-meteo.com/v1/elevation?latitude=${encodeURIComponent(latitudes)}&longitude=${encodeURIComponent(longitudes)}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "Accept": "application/json" }
+  });
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    data = null;
+  }
+
+  if (!res.ok || !data) {
+    throw new Error(`Servizio DEM non disponibile. Status: ${res.status}`);
+  }
+
+  if (data.error) {
+    throw new Error(data.reason || "Open-Meteo Elevation ha restituito errore.");
+  }
+
+  const elevations = Array.isArray(data.elevation) ? data.elevation : [];
+
+  if (elevations.length !== sample.length) {
+    throw new Error("Risposta DEM incompleta: numero quote diverso dal numero punti campionati.");
+  }
+
+  return sample.map((point, index) => ({
+    lat: Number(point.lat),
+    lng: Number(point.lng),
+    segmentIndex: Number(point.segmentIndex || 0),
+    ele: Number(elevations[index])
+  })).filter(p => Number.isFinite(p.ele));
+}
+
+async function estimateMissingElevationFromDem() {
+  const analysis = state.pendingTrackGpxAnalysis;
+
+  if (!analysis) {
+    throw new Error("Carica o seleziona prima un GPX da analizzare.");
+  }
+
+  if (analysis.hasElevationData) {
+    throw new Error("Questo GPX contiene già quote <ele>: non serve stimare il dislivello da DEM.");
+  }
+
+  const samples = Array.isArray(analysis.demSampledPoints) && analysis.demSampledPoints.length
+    ? analysis.demSampledPoints
+    : sampleGpxPointsForElevation(state.pendingTrackGpxPoints, 100);
+
+  if (!samples || samples.length < 2) {
+    throw new Error("Non ci sono abbastanza punti GPX per stimare il dislivello.");
+  }
+
+  setStatus(`Stimo il dislivello da DEM su ${samples.length} punti campionati...`);
+
+  const elevatedPoints = await fetchOpenMeteoElevationForPoints(samples);
+  const demSegments = buildSegmentsFromSampledElevationPoints(elevatedPoints);
+  const stats = analyzeElevationGainLossBySegments(demSegments);
+  const elevations = elevatedPoints.map(p => Number(p.ele)).filter(Number.isFinite);
+
+  analysis.elevationGainM = Math.round(stats.gain);
+  analysis.elevationLossM = Math.round(stats.loss);
+  analysis.minElevationM = elevations.length ? Math.round(Math.min(...elevations)) : null;
+  analysis.maxElevationM = elevations.length ? Math.round(Math.max(...elevations)) : null;
+  analysis.elevationPointCount = elevatedPoints.length;
+  analysis.hasElevationData = false;
+  analysis.elevationEstimated = true;
+  analysis.elevationSource = "DEM_ESTIMATE";
+  analysis.elevationProvider = "open-meteo-elevation-copernicus-glo90";
+  analysis.elevationSampleCount = elevatedPoints.length;
+  analysis.elevationWarning = "GPX senza quote <ele>; dislivello stimato da modello altimetrico DEM. Verifica prima della pubblicazione.";
+  analysis.analysisSource = "client_gpx_segmented_distance_openmeteo_dem_v4";
+  analysis.analyzedAtIso = new Date().toISOString();
+
+  $("track-elevation-gain-m").value = analysis.elevationGainM;
+  $("track-elevation-loss-m").value = analysis.elevationLossM;
+
+  state.pendingTrackGpxAnalysis = analysis;
+  renderTrackElevationWarning(analysis);
+
+  setStatus(`Dislivello stimato da DEM: +${analysis.elevationGainM} m / -${analysis.elevationLossM} m. Valori modificabili a mano.`);
+}
+
 async function readJsonResponse(res) {
   const text = await res.text();
 
@@ -2686,6 +3015,17 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
     minElevationM: gpxAnalysis ? gpxAnalysis.minElevationM : null,
     maxElevationM: gpxAnalysis ? gpxAnalysis.maxElevationM : null,
     pointCount: gpxAnalysis ? gpxAnalysis.pointCount : null,
+    gpxTrackCount: gpxAnalysis ? gpxAnalysis.gpxTrackCount : null,
+    gpxRouteCount: gpxAnalysis ? gpxAnalysis.gpxRouteCount : null,
+    gpxSegmentCount: gpxAnalysis ? gpxAnalysis.gpxSegmentCount : null,
+    elevationPointCount: gpxAnalysis ? gpxAnalysis.elevationPointCount : null,
+    hasElevationData: gpxAnalysis ? gpxAnalysis.hasElevationData === true : null,
+    elevationEstimated: gpxAnalysis ? gpxAnalysis.elevationEstimated === true : false,
+    elevationSource: gpxAnalysis ? gpxAnalysis.elevationSource || "" : "",
+    elevationProvider: gpxAnalysis ? gpxAnalysis.elevationProvider || "" : "",
+    elevationWarning: gpxAnalysis ? gpxAnalysis.elevationWarning || "" : "",
+    elevationSampleCount: gpxAnalysis ? Number(gpxAnalysis.elevationSampleCount || 0) : 0,
+    isMultiTrackGpx: gpxAnalysis ? gpxAnalysis.isMultiTrackGpx === true : false,
     analysisSource: gpxAnalysis ? gpxAnalysis.analysisSource : "",
     analyzedAtIso: gpxAnalysis ? gpxAnalysis.analyzedAtIso : "",
 
@@ -3026,6 +3366,11 @@ if (trackFileInput) {
   trackFileInput.addEventListener("change", () => {
     analyzeSelectedTrackFileForAreaSuggestion().catch(e => setStatus(e.message, true));
   });
+}
+
+const estimateDemBtn = $("btn-estimate-dem-elevation");
+if (estimateDemBtn) {
+  estimateDemBtn.onclick = () => estimateMissingElevationFromDem().catch(e => setStatus(e.message, true));
 }
 
 $("btn-autofill-base").onclick = () => applyPresetToForm("base");
