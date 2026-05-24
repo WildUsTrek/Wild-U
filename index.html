@@ -11086,6 +11086,12 @@ function renderUnifiedDetailMap(payload) {
     mapsBtn.rel = "noopener";
     mapsBtn.onclick = null;
     mapsBtn.removeAttribute("data-wildu-maps-url");
+
+    const oldOverlay = document.getElementById("wildu-map-confirm-overlay");
+    if (oldOverlay) oldOverlay.remove();
+
+    mapContainer.style.position = "relative";
+    mapIframe.style.pointerEvents = "none";
     mapIframe.removeAttribute("src");
     mapContainer.style.display = "none";
 
@@ -11124,30 +11130,80 @@ function renderUnifiedDetailMap(payload) {
             : "NO_LINK_QUERY_FALLBACK";
     }
 
+    function openWilduMapsAfterConfirm(evt) {
+        if (evt && evt.preventDefault) evt.preventDefault();
+        if (evt && evt.stopPropagation) evt.stopPropagation();
+
+        const url = String(buttonUrl || "").trim();
+        if (!url) return false;
+
+        const ok = window.confirm(
+            "Aprire il punto di ritrovo su Google Maps?\n\n" +
+            "Uscirai temporaneamente da Wild-U per visualizzare le indicazioni."
+        );
+
+        if (!ok) return false;
+
+        window.open(url, "_blank", "noopener");
+        return false;
+    }
+
     if (buttonUrl) {
         mapsBtn.href = "#";
         mapsBtn.setAttribute("data-wildu-maps-url", buttonUrl);
         mapsBtn.style.display = "block";
-
-        mapsBtn.onclick = function (evt) {
-            evt.preventDefault();
-            evt.stopPropagation();
-
-            const ok = window.confirm(
-                "Aprire il punto di ritrovo su Google Maps?\n\n" +
-                "Uscirai temporaneamente da Wild-U per visualizzare le indicazioni."
-            );
-
-            if (!ok) return false;
-
-            window.open(buttonUrl, "_blank", "noopener");
-            return false;
-        };
+        mapsBtn.onclick = openWilduMapsAfterConfirm;
     }
 
     if (iframeUrl) {
         mapIframe.src = iframeUrl;
+        mapIframe.style.pointerEvents = "none";
         mapContainer.style.display = "block";
+
+        if (buttonUrl) {
+            const overlay = document.createElement("button");
+            overlay.type = "button";
+            overlay.id = "wildu-map-confirm-overlay";
+            overlay.setAttribute("aria-label", "Apri punto di ritrovo su Google Maps");
+            overlay.onclick = openWilduMapsAfterConfirm;
+
+            overlay.style.cssText = [
+                "position:absolute",
+                "inset:0",
+                "z-index:2",
+                "border:0",
+                "padding:0",
+                "margin:0",
+                "width:100%",
+                "height:100%",
+                "background:linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.16))",
+                "cursor:pointer",
+                "display:flex",
+                "align-items:flex-end",
+                "justify-content:center",
+                "box-sizing:border-box",
+                "-webkit-tap-highlight-color:transparent"
+            ].join(";");
+
+            overlay.innerHTML = `
+                <span style="
+                    margin:0 0 10px 0;
+                    padding:7px 12px;
+                    border-radius:999px;
+                    background:rgba(0,0,0,0.74);
+                    color:#fff;
+                    border:1px solid rgba(212,175,55,0.42);
+                    font-size:11px;
+                    font-weight:900;
+                    text-transform:uppercase;
+                    letter-spacing:.35px;
+                    box-shadow:0 4px 14px rgba(0,0,0,0.42);
+                    pointer-events:none;
+                ">Tocca per aprire su Maps</span>
+            `;
+
+            mapContainer.appendChild(overlay);
+        }
     }
 
     if (typeof pageDebug === "function") {
@@ -11163,6 +11219,7 @@ function renderUnifiedDetailMap(payload) {
             query,
             buttonVisible: !!buttonUrl,
             iframeVisible: !!iframeUrl,
+            overlayEnabled: !!(iframeUrl && buttonUrl),
             buttonUrl,
             iframeUrl
         });
