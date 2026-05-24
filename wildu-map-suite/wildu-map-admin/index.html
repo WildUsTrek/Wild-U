@@ -2358,43 +2358,216 @@ function sumSegmentDistanceMeters(points) {
   return distanceM;
 }
 
-function analyzeElevationGainLossForPointList(points) {
-  const elePoints = (Array.isArray(points) ? points : [])
-    .filter(p => isValidElevationValue(p && p.ele))
-    .map(p => Number(p.ele));
+function getMedianNumber(values) {
+  const clean = (Array.isArray(values) ? values : [])
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
 
-  if (elePoints.length < 2) {
+  if (!clean.length) return 0;
+
+  const mid = Math.floor(clean.length / 2);
+  return clean.length % 2 ? clean[mid] : (clean[mid - 1] + clean[mid]) / 2;
+}
+
+function cleanElevationPointsForAnalysis(points) {
+  return (Array.isArray(points) ? points : [])
+    .filter(p =>
+      p &&
+      Number.isFinite(Number(p.lat)) &&
+      Number.isFinite(Number(p.lng)) &&
+      isValidElevationValue(p.ele)
+    )
+    .map((p, index) => ({
+      lat: Number(p.lat),
+      lng: Number(p.lng),
+      ele: Number(p.ele),
+      originalIndex: index
+    }));
+}
+
+function removeSevereIsolatedElevationSpikes(points) {
+  const cleaned = (Array.isArray(points) ? points : []).map(p => ({ ...p }));
+  let spikeCount = 0;
+
+  if (cleaned.length < 3) {
+    return { points: cleaned, spikeCount };
+  }
+
+  for (let i = 1; i < cleaned.length - 1; i++) {
+    const prev = cleaned[i - 1];
+    const cur = cleaned[i];
+    const next = cleaned[i + 1];
+
+    const dUp = cur.ele - prev.ele;
+    const dDown = next.ele - cur.ele;
+
+    // Spike isolato = picco o buca singola: prima sale poi scende, oppure prima scende poi sale.
+    // Non tocchiamo mai una vetta se la salita/discesa occupa distanza reale: il guard è volutamente severo.
+    if (dUp * dDown >= 0) continue;
+
+    const prevDist = Math.max(0, haversineMeters(prev, cur));
+    const nextDist = Math.max(0, haversineMeters(cur, next));
+    const totalDist = prevDist + nextDist;
+
+    if (!Number.isFinite(totalDist) || totalDist <= 0) continue;
+
+    const t = prevDist / totalDist;
+    const expected = prev.ele + ((next.ele - prev.ele) * t);
+    const amplitude = Math.abs(cur.ele - expected);
+    const slopeA = Math.abs(dUp) / Math.max(prevDist, 1);
+    const slopeB = Math.abs(dDown) / Math.max(nextDist, 1);
+
+    // Soglie conservative:
+    // - rimuove solo salti verticali assurdi e brevissimi;
+    // - non rimuove cime/valichi veri se i punti sono radi o la distanza è significativa.
+    const impossibleIsolatedSpike =
+      amplitude >= 80 &&
+      Math.abs(dUp) >= 70 &&
+      Math.abs(dDown) >= 70 &&
+      totalDist <= 180 &&
+      slopeA >= 0.45 &&
+      slopeB >= 0.45;
+
+    if (impossibleIsolatedSpike) {
+      cur.ele = expected;
+      spikeCount++;
+    }
+  }
+
+  return { points: cleaned, spikeCount };
+}
+
+function chooseElevationSmoothingRadius(points) {
+  const pts = Array.isArray(points) ? points : [];
+
+  if (pts.length < 8) return 0;
+
+  const distances = [];
+
+  for (let i = 1; i < pts.length; i++) {
+    const d = haversineMeters(pts[i - 1], pts[i]);
+    if (Number.isFinite(d) && d > 0) distances.push(d);
+  }
+
+  const medianDistanceM = getMedianNumber(distances);
+
+  // Se i punti sono fitti, media mobile piccola: conserva la salita distribuita in molti micro-step.
+  // Se i punti sono radi, smoothing minimo: non vogliamo cancellare una vetta reale registrata con pochi punti.
+  if (medianDistanceM > 0 && medianDistanceM <= 30) return 2;
+  if (medianDistanceM > 0 && medianDistanceM <= 90) return 1;
+  return 0;
+}
+
+function movingAverageElevationValues(values, radius) {
+  const arr = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+  const r = Math.max(0, Number(radius || 0));
+
+  if (!arr.length || r <= 0) return arr;
+
+  return arr.map((value, index) => {
+    const start = Math.max(0, index - r);
+    const end = Math.min(arr.length, index + r + 1);
+    let sum = 0;
+    let count = 0;
+
+    for (let i = start; i < end; i++) {
+      sum += arr[i];
+      count++;
+    }
+
+    return count ? sum / count : value;
+  });
+}
+
+function computeElevationGainLossWithHysteresis(values, deadbandM) {
+  const arr = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+
+  if (arr.length < 2) {
     return { gain: 0, loss: 0 };
   }
 
-  // Filtro anti-rumore più robusto per GPX reali:
-  // - ignora quote mancanti/null;
-  // - non trasforma mai quota assente in 0;
-  // - ignora micro oscillazioni sotto soglia invece di accumularle a blocchi.
-  // Questo evita casi tipo “Via Degli Dei” dove piccoli zig-zag altimetrici
-  // e punti senza <ele> gonfiavano il dislivello fino a decine di migliaia di metri.
-  const MIN_DELTA_M = 2;
-
+  const threshold = Math.max(0, Number(deadbandM || 0));
   let gain = 0;
   let loss = 0;
-  let last = elePoints[0];
+  let mode = 0; // 0 = non deciso, 1 = salita, -1 = discesa
+  let anchor = arr[0];
+  let high = arr[0];
+  let low = arr[0];
 
-  for (let i = 1; i < elePoints.length; i++) {
-    const current = elePoints[i];
-    const delta = current - last;
+  for (let i = 1; i < arr.length; i++) {
+    const current = arr[i];
 
-    if (Math.abs(delta) >= MIN_DELTA_M) {
-      if (delta > 0) {
-        gain += delta;
-      } else {
-        loss += Math.abs(delta);
+    if (mode === 0) {
+      if (current > high) high = current;
+      if (current < low) low = current;
+
+      if (high - low >= threshold) {
+        if (current >= high) {
+          mode = 1;
+          anchor = low;
+          high = current;
+        } else if (current <= low) {
+          mode = -1;
+          anchor = high;
+          low = current;
+        }
+      }
+    } else if (mode === 1) {
+      if (current > high) {
+        high = current;
+      } else if (high - current >= threshold) {
+        gain += Math.max(0, high - anchor);
+        mode = -1;
+        anchor = high;
+        low = current;
+      }
+    } else if (mode === -1) {
+      if (current < low) {
+        low = current;
+      } else if (current - low >= threshold) {
+        loss += Math.max(0, anchor - low);
+        mode = 1;
+        anchor = low;
+        high = current;
       }
     }
+  }
 
-    last = current;
+  if (mode === 1) {
+    gain += Math.max(0, high - anchor);
+  } else if (mode === -1) {
+    loss += Math.max(0, anchor - low);
   }
 
   return { gain, loss };
+}
+
+function analyzeElevationGainLossForPointList(points) {
+  const cleanPoints = cleanElevationPointsForAnalysis(points);
+
+  if (cleanPoints.length < 2) {
+    return { gain: 0, loss: 0, spikeCount: 0, smoothingRadius: 0 };
+  }
+
+  const spikeResult = removeSevereIsolatedElevationSpikes(cleanPoints);
+  const elevationPoints = spikeResult.points;
+  const smoothingRadius = chooseElevationSmoothingRadius(elevationPoints);
+  const smoothedElevations = movingAverageElevationValues(
+    elevationPoints.map(p => p.ele),
+    smoothingRadius
+  );
+
+  // Deadband basso e cumulativo, non soglia secca punto-per-punto:
+  // preserva salite vere composte da molti delta piccoli, ma riduce tremolio altimetrico.
+  const stats = computeElevationGainLossWithHysteresis(smoothedElevations, 0.5);
+
+  return {
+    gain: stats.gain,
+    loss: stats.loss,
+    spikeCount: spikeResult.spikeCount,
+    smoothingRadius
+  };
 }
 
 function analyzeElevationGainLossBySegments(segments) {
@@ -2474,7 +2647,7 @@ function analyzeGpxStructure(structure) {
     elevationSource: hasElevationData ? "GPX_ELE" : "MISSING_ELE",
     elevationProvider: hasElevationData ? "gpx_ele" : "none",
     elevationWarning: hasElevationData ? "" : "GPX senza quote <ele>; dislivello non presente nel file.",
-    analysisSource: "client_gpx_domparser_segmented_distance_valid_ele_v6",
+    analysisSource: "client_gpx_domparser_segmented_distance_adaptive_ele_v7",
     analyzedAtIso: new Date().toISOString()
   };
 }
