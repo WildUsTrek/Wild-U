@@ -481,7 +481,11 @@ const state = {
 
   // DEM/elevazione: usato solo in admin e solo quando il GPX non contiene <ele>.
   pendingTrackGpxPoints: [],
-  pendingTrackGpxSegments: []
+  pendingTrackGpxSegments: [],
+
+  // In modifica GPX già caricato: permette di stimare il DEM anche senza riselezionare il file locale.
+  pendingTrackExistingFileUrl: "",
+  pendingTrackExistingId: ""
 };
 
 const WILDU_ITALY_REGIONS_SIMPLIFIED = [
@@ -2008,14 +2012,42 @@ function fillTrackForm(t) {
   state.pendingTrackGpxAnalysis = null;
   state.pendingTrackGpxPoints = [];
   state.pendingTrackGpxSegments = [];
+  state.pendingTrackExistingFileUrl = safeUrl(t.fileUrl || "");
+  state.pendingTrackExistingId = String(t.id || "");
   state.pendingTrackAreaMatches = Array.isArray(t.areaMatches) ? t.areaMatches : [];
   renderTrackAreaSuggestion(state.pendingTrackAreaMatches);
-  renderTrackElevationWarning(null);
+
+  const existingNeedsDem = !!state.pendingTrackExistingFileUrl && (
+    t.hasElevationData === false ||
+    String(t.elevationSource || "").toUpperCase() === "MISSING_ELE" ||
+    (
+      !t.elevationEstimated &&
+      Number(t.elevationPointCount || 0) === 0 &&
+      Number(t.elevationGainM || 0) === 0 &&
+      Number(t.elevationLossM || 0) === 0
+    )
+  );
+
+  if (existingNeedsDem) {
+    renderTrackElevationWarning({
+      hasElevationData: false,
+      elevationEstimated: t.elevationEstimated === true,
+      elevationWarning: t.elevationWarning || "GPX già caricato senza quote <ele>; puoi analizzare il file pubblico e stimare il dislivello da DEM.",
+      isMultiTrackGpx: t.isMultiTrackGpx === true,
+      gpxTrackCount: t.gpxTrackCount || 0,
+      gpxSegmentCount: t.gpxSegmentCount || 0,
+      canLoadExistingFileForDem: true
+    });
+  } else {
+    renderTrackElevationWarning(null);
+  }
 
   setStatus(
-    t.objectKey
-      ? `Traccia in modifica. File R2 attuale: ${t.objectKey}`
-      : "Traccia in modifica. Nessun objectKey R2 salvato su questa traccia."
+    existingNeedsDem
+      ? "Traccia in modifica: GPX senza quote rilevate. Puoi usare il pulsante DEM senza ricaricare il file."
+      : (t.objectKey
+          ? `Traccia in modifica. File R2 attuale: ${t.objectKey}`
+          : "Traccia in modifica. Nessun objectKey R2 salvato su questa traccia.")
   );
 }
 
@@ -2025,6 +2057,8 @@ function clearTrackForm() {
   state.pendingTrackGpxAnalysis = null;
   state.pendingTrackGpxPoints = [];
   state.pendingTrackGpxSegments = [];
+  state.pendingTrackExistingFileUrl = "";
+  state.pendingTrackExistingId = "";
   state.pendingTrackAreaMatches = [];
   renderTrackAreaSuggestion([]);
   renderTrackElevationWarning(null);
@@ -2422,7 +2456,7 @@ function analyzeGpxStructure(structure) {
     elevationSource: hasElevationData ? "GPX_ELE" : "MISSING_ELE",
     elevationProvider: hasElevationData ? "gpx_ele" : "none",
     elevationWarning: hasElevationData ? "" : "GPX senza quote <ele>; dislivello non presente nel file.",
-    analysisSource: "client_gpx_domparser_segmented_distance_v4",
+    analysisSource: "client_gpx_domparser_segmented_distance_v5",
     analyzedAtIso: new Date().toISOString()
   };
 }
@@ -2627,6 +2661,8 @@ async function analyzeSelectedTrackFileForAreaSuggestion() {
   state.pendingTrackGpxAnalysis = null;
   state.pendingTrackGpxPoints = [];
   state.pendingTrackGpxSegments = [];
+  state.pendingTrackExistingFileUrl = "";
+  state.pendingTrackExistingId = "";
   state.pendingTrackAreaMatches = [];
   renderTrackAreaSuggestion([]);
   renderTrackElevationWarning(null);
@@ -2643,20 +2679,64 @@ async function analyzeSelectedTrackFileForAreaSuggestion() {
   }
 }
 
-async function analyzeGpxFile(file) {
-  if (!file) return null;
-  if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
-  const xmlText = await readFileAsText(file);
+function buildGpxAnalysisFromText(xmlText, meta = {}) {
   const structure = parseGpxStructure(xmlText);
   const analysis = analyzeGpxStructure(structure);
 
   analysis.sampledPoints = sampleGpxPointsForAreaMatch(structure.points);
   analysis.demSampledPoints = sampleGpxPointsForElevation(structure.points, 100);
-  analysis.originalFileName = file.name || "";
-  analysis.originalFileSize = Number(file.size || 0);
+  analysis.originalFileName = meta.fileName || "";
+  analysis.originalFileSize = Number(meta.fileSize || 0);
+  analysis.sourceMode = meta.sourceMode || "local_file";
+  analysis.sourceUrl = meta.sourceUrl || "";
 
   state.pendingTrackGpxPoints = structure.points;
   state.pendingTrackGpxSegments = structure.segments;
+
+  return analysis;
+}
+
+async function analyzeGpxFile(file) {
+  if (!file) return null;
+  if (!/\.gpx$/i.test(file.name)) throw new Error("Carica un file .gpx.");
+  const xmlText = await readFileAsText(file);
+  return buildGpxAnalysisFromText(xmlText, {
+    fileName: file.name || "",
+    fileSize: Number(file.size || 0),
+    sourceMode: "local_file"
+  });
+}
+
+async function analyzeExistingTrackGpxFromUrl(fileUrl) {
+  const cleanUrl = safeUrl(fileUrl || state.pendingTrackExistingFileUrl || "");
+
+  if (!cleanUrl) {
+    throw new Error("Questa traccia non ha un fileUrl pubblico GPX leggibile per stimare il DEM.");
+  }
+
+  setStatus("Leggo il GPX già caricato per preparare la stima DEM...");
+
+  const res = await fetch(cleanUrl, {
+    method: "GET",
+    cache: "no-store",
+    headers: { "Accept": "application/gpx+xml,text/xml,application/xml,text/plain,*/*" }
+  });
+
+  if (!res.ok) {
+    throw new Error(`Non riesco a leggere il GPX già caricato. Status: ${res.status}`);
+  }
+
+  const xmlText = await res.text();
+  const analysis = buildGpxAnalysisFromText(xmlText, {
+    fileName: cleanUrl.split("/").pop() || "gpx-esistente.gpx",
+    fileSize: xmlText.length,
+    sourceMode: "existing_file_url",
+    sourceUrl: cleanUrl
+  });
+
+  state.pendingTrackGpxAnalysis = analysis;
+  applyGpxAnalysisToForm(analysis);
+  applyTrackAreaSuggestion(analysis, { autoSelect: false });
 
   return analysis;
 }
@@ -2694,7 +2774,28 @@ function renderTrackElevationWarning(analysis) {
     box.innerHTML = warnings.map(w => `<div>⚠️ ${escapeHtml(w)}</div>`).join("");
   }
 
-  actions.style.display = analysis && !analysis.hasElevationData && Array.isArray(analysis.demSampledPoints) && analysis.demSampledPoints.length >= 2
+  const canEstimateFromSamples = !!(
+    analysis &&
+    !analysis.hasElevationData &&
+    Array.isArray(analysis.demSampledPoints) &&
+    analysis.demSampledPoints.length >= 2
+  );
+
+  const canEstimateFromExistingFile = !!(
+    analysis &&
+    !analysis.hasElevationData &&
+    analysis.canLoadExistingFileForDem === true &&
+    safeUrl(state.pendingTrackExistingFileUrl || "")
+  );
+
+  const estimateBtn = $("btn-estimate-dem-elevation");
+  if (estimateBtn) {
+    estimateBtn.textContent = canEstimateFromExistingFile && !canEstimateFromSamples
+      ? "Analizza GPX esistente + stima DEM"
+      : "Stima dislivello da DEM";
+  }
+
+  actions.style.display = canEstimateFromSamples || canEstimateFromExistingFile
     ? "flex"
     : "none";
 }
@@ -2767,14 +2868,26 @@ async function fetchOpenMeteoElevationForPoints(points) {
 }
 
 async function estimateMissingElevationFromDem() {
-  const analysis = state.pendingTrackGpxAnalysis;
+  // Guard esplicito: anche se chiamata da console, la stima DEM parte solo
+  // dopo login + verifica admin già passata tramite Firestore Rules.
+  requireUser();
+
+  let analysis = state.pendingTrackGpxAnalysis;
+
+  if (!analysis && state.pendingTrackExistingFileUrl) {
+    analysis = await analyzeExistingTrackGpxFromUrl(state.pendingTrackExistingFileUrl);
+  }
 
   if (!analysis) {
-    throw new Error("Carica o seleziona prima un GPX da analizzare.");
+    throw new Error("Carica un GPX oppure apri in modifica una traccia con fileUrl pubblico GPX.");
   }
 
   if (analysis.hasElevationData) {
     throw new Error("Questo GPX contiene già quote <ele>: non serve stimare il dislivello da DEM.");
+  }
+
+  if ((!analysis.demSampledPoints || analysis.demSampledPoints.length < 2) && state.pendingTrackExistingFileUrl) {
+    analysis = await analyzeExistingTrackGpxFromUrl(state.pendingTrackExistingFileUrl);
   }
 
   const samples = Array.isArray(analysis.demSampledPoints) && analysis.demSampledPoints.length
@@ -2803,7 +2916,7 @@ async function estimateMissingElevationFromDem() {
   analysis.elevationProvider = "open-meteo-elevation-copernicus-glo90";
   analysis.elevationSampleCount = elevatedPoints.length;
   analysis.elevationWarning = "GPX senza quote <ele>; dislivello stimato da modello altimetrico DEM. Verifica prima della pubblicazione.";
-  analysis.analysisSource = "client_gpx_segmented_distance_openmeteo_dem_v4";
+  analysis.analysisSource = "client_gpx_segmented_distance_openmeteo_dem_v5";
   analysis.analyzedAtIso = new Date().toISOString();
 
   $("track-elevation-gain-m").value = analysis.elevationGainM;
@@ -2986,6 +3099,12 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
     };
   }
 
+  // Se sto modificando una traccia già caricata e ho appena stimato/rianalizzato il GPX esistente,
+  // usa quell'analisi per salvare audit DEM/multi-traccia senza obbligare l'admin a ricaricare il file.
+  if (!gpxAnalysis && id && state.pendingTrackGpxAnalysis && state.pendingTrackExistingId === id) {
+    gpxAnalysis = state.pendingTrackGpxAnalysis;
+  }
+
   areaSlug = val("track-area");
   if (!areaSlug) throw new Error("Area obbligatoria.");
 
@@ -3058,12 +3177,25 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
   // Se sto modificando senza nuovo GPX analizzato, non cancellare analisi esistente.
   // Se invece ho selezionato un GPX, anche senza upload R2, l’analisi va aggiornata.
   if (id && !gpxAnalysis) {
+    // Modifica metadata/manuale senza nuova analisi GPX:
+    // non cancellare e non sovrascrivere audit tecnico già salvato sul documento.
     delete payload.bounds;
     delete payload.centerLat;
     delete payload.centerLng;
     delete payload.minElevationM;
     delete payload.maxElevationM;
     delete payload.pointCount;
+    delete payload.gpxTrackCount;
+    delete payload.gpxRouteCount;
+    delete payload.gpxSegmentCount;
+    delete payload.elevationPointCount;
+    delete payload.hasElevationData;
+    delete payload.elevationEstimated;
+    delete payload.elevationSource;
+    delete payload.elevationProvider;
+    delete payload.elevationWarning;
+    delete payload.elevationSampleCount;
+    delete payload.isMultiTrackGpx;
     delete payload.analysisSource;
     delete payload.analyzedAtIso;
   }
