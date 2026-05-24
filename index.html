@@ -11876,18 +11876,109 @@ function showTripDetails(id) {
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
-    document.getElementById('od-modal-gear-title').innerText = "🎒 Nello Zaino";
 
-    // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
-    // --- 🔄 INVERSIONE LAYOUT: SERVIZI PRIMA DELLA DESCRIZIONE ---
+    // --- ✅ SERVIZI INCLUSI OFFICIAL TRIPS ---
+    // Gli official_events ricevono già ev.servizi dal backend.
+    // Qui li renderizziamo nel modal condiviso senza toccare Open Day / Pay Day.
     const container = document.getElementById('od-modal-desc').parentNode;
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     const gearListEl = document.getElementById('od-modal-gear');
-    
+
+    function escapeOfficialServiceHtml(value) {
+        return String(value == null ? "" : value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    const serviziInclusi = Array.isArray(ev.servizi)
+        ? ev.servizi
+            .map(s => String(s || "").trim())
+            .filter(Boolean)
+        : [];
+
+    gearTitleEl.innerText = "✅ Servizi inclusi nel pacchetto";
+    gearTitleEl.style.color = "var(--w-gold)";
+
+    if (serviziInclusi.length > 0) {
+        gearListEl.innerHTML = `
+            <li style="list-style:none; margin:0 0 18px 0;">
+                <details open style="
+                    border:1px solid rgba(212,175,55,0.28);
+                    border-radius:16px;
+                    background:rgba(212,175,55,0.07);
+                    overflow:hidden;
+                ">
+                    <summary style="
+                        cursor:pointer;
+                        padding:13px 14px;
+                        color:var(--w-gold);
+                        font-weight:900;
+                        font-size:14px;
+                        text-transform:uppercase;
+                        letter-spacing:.4px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:space-between;
+                        gap:10px;
+                    ">
+                        <span>Mostra / nascondi servizi</span>
+                        <span style="
+                            color:#000;
+                            background:var(--w-gold);
+                            border-radius:999px;
+                            padding:4px 9px;
+                            font-size:11px;
+                            white-space:nowrap;
+                        ">${serviziInclusi.length} inclusi</span>
+                    </summary>
+
+                    <ul style="
+                        list-style:none;
+                        margin:0;
+                        padding:2px 14px 14px 14px;
+                        color:#ddd;
+                        font-size:15px;
+                    ">
+                        ${serviziInclusi.map(servizio => `
+                            <li style="
+                                margin:10px 0;
+                                display:flex;
+                                align-items:flex-start;
+                                gap:9px;
+                                line-height:1.42;
+                            ">
+                                <span style="flex-shrink:0; color:#7ee087;">✓</span>
+                                <span style="flex:1;">${escapeOfficialServiceHtml(servizio)}</span>
+                            </li>
+                        `).join("")}
+                    </ul>
+                </details>
+            </li>
+        `;
+    } else {
+        gearListEl.innerHTML = `
+            <li style="
+                margin-bottom:18px;
+                color:#aaa;
+                font-size:14px;
+                line-height:1.45;
+                background:rgba(255,255,255,0.045);
+                border:1px solid rgba(255,255,255,0.08);
+                border-radius:14px;
+                padding:12px 13px;
+            ">
+                Servizi inclusi non specificati per questo viaggio.
+            </li>
+        `;
+    }
+
+    // Official trips: servizi prima della descrizione.
     container.insertBefore(gearTitleEl, descEl);
     container.insertBefore(gearListEl, descEl);
-    // 👆 FINE BLOCCO INVERSIONE 👆
 
     // Popolamento testi base
     document.getElementById('od-modal-title').innerText = titolo;
