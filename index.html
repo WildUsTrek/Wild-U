@@ -12002,25 +12002,16 @@ function showTripDetails(id) {
             </li>
         `;
     } else {
-        gearListEl.innerHTML = `
-            <li style="
-                margin-bottom:18px;
-                color:#aaa;
-                font-size:14px;
-                line-height:1.45;
-                background:rgba(255,255,255,0.045);
-                border:1px solid rgba(255,255,255,0.08);
-                border-radius:14px;
-                padding:12px 13px;
-            ">
-                Servizi inclusi non specificati per questo viaggio.
-            </li>
-        `;
+        // Nessun servizio nel payload corrente:
+        // non mostriamo fallback vuoti. Se la cache era vecchia,
+        // il fetch remoto/refresh successivo li farà comparire quando disponibili.
+        gearListEl.innerHTML = "";
     }
 
-    // Official trips: servizi prima della descrizione.
-    container.insertBefore(gearListEl, descEl);
-    container.insertBefore(gearListEl, descEl);
+    // Official trips: mostra la sezione servizi solo se ci sono servizi reali.
+    if (serviziInclusi.length > 0) {
+        container.insertBefore(gearListEl, descEl);
+    }
 
     // Popolamento testi base
     document.getElementById('od-modal-title').innerText = titolo;
