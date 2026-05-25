@@ -12258,6 +12258,168 @@ function renderWilduModalXpChip(xpValue, color) {
     });
 }
 
+function getWilduSharedDetailParts() {
+    const descEl = document.getElementById('od-modal-desc');
+    const container = descEl ? descEl.parentNode : null;
+
+    return {
+        container,
+        descEl,
+        priceBox: document.getElementById('trip-modal-price-box'),
+        gearTitleEl: document.getElementById('od-modal-gear-title'),
+        gearListEl: document.getElementById('od-modal-gear'),
+        chipBox: document.getElementById('trip-modal-price-chips'),
+        gearDetails: document.getElementById('od-modal-gear-details')
+    };
+}
+
+function ensureWilduOfficialPriceServicesStack() {
+    const p = getWilduSharedDetailParts();
+    if (!p.container || !p.priceBox) return null;
+
+    let stack = document.getElementById('trip-modal-price-services-stack');
+    if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'trip-modal-price-services-stack';
+    }
+
+    stack.style.cssText = [
+        'position:relative',
+        'overflow:visible',
+        'margin:0 0 24px 0',
+        'padding:0',
+        'isolation:isolate'
+    ].join(';');
+
+    if (stack.parentNode !== p.container) {
+        p.container.insertBefore(stack, p.priceBox);
+    }
+
+    if (p.priceBox.parentNode !== stack) {
+        stack.appendChild(p.priceBox);
+    }
+
+    p.priceBox.style.marginBottom = '0';
+    p.priceBox.style.position = 'relative';
+    p.priceBox.style.overflow = 'visible';
+
+    if (p.gearDetails) {
+        p.gearDetails.style.display = 'none';
+        p.gearDetails.open = false;
+    }
+
+    if (p.gearTitleEl) {
+        p.gearTitleEl.innerText = '';
+        p.gearTitleEl.style.display = 'none';
+    }
+
+    return stack;
+}
+
+function resetWilduSharedDetailLayoutForSimpleEvent() {
+    const p = getWilduSharedDetailParts();
+    if (!p.container || !p.descEl || !p.priceBox) return;
+
+    const stack = document.getElementById('trip-modal-price-services-stack');
+
+    if (p.gearListEl && p.gearListEl.parentNode !== p.container) {
+        p.container.insertBefore(p.gearListEl, p.descEl.nextSibling);
+    }
+
+    if (p.priceBox.parentNode !== p.container) {
+        p.container.insertBefore(p.priceBox, p.descEl);
+    } else {
+        p.container.insertBefore(p.priceBox, p.descEl);
+    }
+
+    p.priceBox.style.marginBottom = '15px';
+    p.priceBox.style.position = 'relative';
+    p.priceBox.style.overflow = 'visible';
+
+    if (p.chipBox) {
+        p.chipBox.innerHTML = '';
+        p.chipBox.style.display = 'none';
+    }
+
+    if (p.gearTitleEl) {
+        p.gearTitleEl.innerText = '';
+        p.gearTitleEl.style.display = 'none';
+    }
+
+    if (stack && !stack.contains(p.priceBox) && !stack.contains(p.gearListEl)) {
+        stack.remove();
+    }
+}
+
+function renderWilduSimpleEventGearAccordion(gearHtml, toneColor) {
+    const p = getWilduSharedDetailParts();
+    if (!p.container || !p.descEl || !p.gearListEl) return;
+
+    const tone = toneColor || 'var(--w-gold)';
+    let details = document.getElementById('od-modal-gear-details');
+
+    if (!details) {
+        details = document.createElement('details');
+        details.id = 'od-modal-gear-details';
+    }
+
+    details.style.cssText = [
+        'border:1px solid rgba(255,255,255,0.13)',
+        'border-radius:18px',
+        'background:linear-gradient(135deg, rgba(255,255,255,0.055), rgba(0,0,0,0.20))',
+        'box-shadow:0 10px 26px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07)',
+        'overflow:hidden',
+        'margin:0 0 18px 0',
+        'display:block'
+    ].join(';');
+
+    details.open = false;
+
+    let summary = details.querySelector('#od-modal-gear-summary');
+    if (!summary) {
+        summary = document.createElement('summary');
+        summary.id = 'od-modal-gear-summary';
+        details.insertBefore(summary, details.firstChild);
+    }
+
+    summary.style.cssText = [
+        'cursor:pointer',
+        'padding:14px 15px',
+        'color:' + tone,
+        'font-weight:950',
+        'font-size:14px',
+        'text-transform:uppercase',
+        'letter-spacing:.45px',
+        'display:flex',
+        'align-items:center',
+        'justify-content:space-between',
+        'gap:10px',
+        'list-style:none'
+    ].join(';');
+
+    summary.innerHTML = '<span>🎒 Da portare nello zaino</span><span style="color:#000; background:' + tone + '; border-radius:999px; padding:4px 9px; font-size:10px; font-weight:950; white-space:nowrap;">apri</span>';
+
+    p.gearListEl.innerHTML = gearHtml || '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>';
+    p.gearListEl.style.cssText = [
+        'list-style:none',
+        'margin:0',
+        'padding:2px 15px 15px 15px',
+        'color:#ddd',
+        'font-size:15px'
+    ].join(';');
+
+    if (p.gearListEl.parentNode !== details) {
+        details.appendChild(p.gearListEl);
+    }
+
+    if (p.gearTitleEl) {
+        p.gearTitleEl.innerText = '';
+        p.gearTitleEl.style.display = 'none';
+    }
+
+    p.descEl.insertAdjacentElement('afterend', details);
+}
+
 // ==========================================
 // NUOVA FUNZIONE: DETTAGLI VIAGGI (MODAL)
 // ==========================================
@@ -12309,6 +12471,7 @@ function showTripDetails(id, detailContext = null) {
     const descEl = document.getElementById('od-modal-desc');
     const gearTitleEl = document.getElementById('od-modal-gear-title');
     const gearListEl = document.getElementById('od-modal-gear');
+    const priceServicesStack = ensureWilduOfficialPriceServicesStack();
 
     function escapeOfficialServiceHtml(value) {
         return String(value == null ? "" : value)
@@ -12429,9 +12592,11 @@ function showTripDetails(id, detailContext = null) {
         gearListEl.innerHTML = "";
     }
 
-    // Official trips: mostra il box servizi se ci sono servizi reali o il link ufficiale.
+    // Official trips: servizi/link dentro lo stesso stack del prezzo.
+    // Così il chip del tipo prezzo può centrarsi davvero tra box prezzi e box servizi.
     if (serviziInclusi.length > 0 || modalLinkSito) {
-        container.insertBefore(gearListEl, descEl);
+        if (priceServicesStack) priceServicesStack.appendChild(gearListEl);
+        else container.insertBefore(gearListEl, descEl);
     }
 
     // Popolamento testi base
@@ -12607,9 +12772,18 @@ function showTripDetails(id, detailContext = null) {
 
     let chipBox = document.getElementById('trip-modal-price-chips');
     const finalPriceEl = document.getElementById('trip-modal-p-prime');
-    if (!chipBox && finalPriceEl && finalPriceEl.parentNode) {
+    const chipStack = document.getElementById('trip-modal-price-services-stack');
+    const chipGearList = document.getElementById('od-modal-gear');
+
+    if (!chipBox) {
         chipBox = document.createElement('div');
         chipBox.id = 'trip-modal-price-chips';
+    }
+
+    if (chipStack) {
+        if (chipGearList && chipGearList.parentNode === chipStack) chipStack.insertBefore(chipBox, chipGearList);
+        else chipStack.appendChild(chipBox);
+    } else if (finalPriceEl && finalPriceEl.parentNode && chipBox.parentNode !== finalPriceEl.parentNode) {
         finalPriceEl.parentNode.appendChild(chipBox);
     }
 
@@ -12622,16 +12796,19 @@ function showTripDetails(id, detailContext = null) {
 
     if (chipBox) {
         chipBox.style.display = chips.length ? 'flex' : 'none';
-        chipBox.style.position = 'absolute';
-        chipBox.style.left = '12px';
+        chipBox.style.position = chipStack ? 'relative' : 'absolute';
+        chipBox.style.left = chipStack ? '12px' : '12px';
         chipBox.style.right = 'auto';
-        chipBox.style.bottom = '-12px';
-        chipBox.style.zIndex = '4';
+        chipBox.style.top = 'auto';
+        chipBox.style.bottom = chipStack ? 'auto' : '-12px';
+        chipBox.style.zIndex = '5';
         chipBox.style.flexWrap = 'wrap';
         chipBox.style.justifyContent = 'flex-start';
         chipBox.style.gap = '6px';
-        chipBox.style.marginTop = '0';
+        chipBox.style.marginTop = chipStack ? '-12px' : '0';
+        chipBox.style.marginBottom = chipStack ? '-12px' : '0';
         chipBox.style.maxWidth = 'calc(100% - 24px)';
+        chipBox.style.pointerEvents = 'none';
         chipBox.innerHTML = chips.map(chip => `
             <span style="display:inline-flex; align-items:center; border:1px solid ${chip.border}; background:${chip.bg}; color:${chip.color}; border-radius:999px; padding:4px 8px; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.35px; white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,.28); backdrop-filter:blur(6px);">${chip.text}</span>
         `).join('');
@@ -17778,17 +17955,7 @@ function showOpenDayDetails(id) {
     if (priceChipsPayDay) { priceChipsPayDay.innerHTML = ''; priceChipsPayDay.style.display = 'none'; }
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('trip-modal-link-sito-discreto').style.display = 'none'; // Aggiunto reset nuovo link
-    document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
-
-    // 👇 INCOLLA QUESTO NUOVO BLOCCO QUI 👇
-    // --- 🔄 RIPRISTINO LAYOUT: DESCRIZIONE PRIMA DELLO ZAINO ---
-    const container = document.getElementById('od-modal-desc').parentNode;
-    const descEl = document.getElementById('od-modal-desc');
-    const gearTitleEl = document.getElementById('od-modal-gear-title');
-    
-    // Riportiamo la descrizione sopra il titolo dello Zaino
-    container.insertBefore(descEl, gearTitleEl);
-    // 👆 FINE BLOCCO RIPRISTINO 👆
+    resetWilduSharedDetailLayoutForSimpleEvent();
 
     // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Open Day) ---
     const modalImgOD = od["immagine"] || od["fotoUrl"] || ""; 
@@ -17864,7 +18031,7 @@ function showOpenDayDetails(id) {
     } catch (e) {
         gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>';
     }
-    document.getElementById('od-modal-gear').innerHTML = gearHtml;
+    renderWilduSimpleEventGearAccordion(gearHtml, '#00aaff');
 
 // --- 🗺️ MAPPA UNIFICATA ---
 renderUnifiedDetailMapFromItem(od);
@@ -17978,17 +18145,7 @@ function showPayDayDetails(id) {
     if (priceChipsPayDayReset) { priceChipsPayDayReset.innerHTML = ''; priceChipsPayDayReset.style.display = 'none'; }
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('trip-modal-link-sito-discreto').style.display = 'none';
-    document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
-    
-    // ... e poi continua col resto ...
-
-    // --- 🔄 RIPRISTINO LAYOUT: DESCRIZIONE PRIMA DELLO ZAINO ---
-    const container = document.getElementById('od-modal-desc').parentNode;
-    const descEl = document.getElementById('od-modal-desc');
-    const gearTitleEl = document.getElementById('od-modal-gear-title');
-    
-    // Riportiamo la descrizione sopra il titolo dello Zaino
-    container.insertBefore(descEl, gearTitleEl);
+    resetWilduSharedDetailLayoutForSimpleEvent();
 
     // --- 📸 ACCENSIONE IMMAGINE NEL MODAL (Pay Day) ---
     const modalImgPD = pd["immagine"] || pd["fotoUrl"] || ""; 
@@ -18060,7 +18217,7 @@ function showPayDayDetails(id) {
             }
         } else { gearHtml = '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>'; }
     } catch(e) { gearHtml = '<li>🎒 Dettagli attrezzatura liberi.</li>'; }
-    document.getElementById('od-modal-gear').innerHTML = gearHtml;
+    renderWilduSimpleEventGearAccordion(gearHtml, '#d4af37');
 
 // --- 🗺️ MAPPA UNIFICATA ---
 renderUnifiedDetailMapFromItem(pd);
@@ -19900,7 +20057,7 @@ window.addEventListener('pageshow', () => {
 </script>
 
 <div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
-    <div style="background:#1a1a1a; width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:15px; border:2px solid #00aaff; padding:25px; box-sizing:border-box; position:relative; box-shadow: 0 0 20px rgba(0, 170, 255, 0.2);">
+    <div style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
         <button onclick="document.getElementById('od-details-modal').style.display='none'" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
         
         <div id="trip-modal-img-container" style="position:relative; width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
@@ -19920,7 +20077,7 @@ window.addEventListener('pageshow', () => {
             <span id="od-modal-dsl" style="background:#333; padding:6px 12px; border-radius:6px; font-size:14px; font-weight:bold;"></span>
         </div>
         
-<div id="trip-modal-price-box" style="display:none; background:#222; padding:14px 15px 16px 15px; border-radius:10px; margin-bottom:15px; border:1px solid #444;">
+<div id="trip-modal-price-box" style="display:none; background:linear-gradient(135deg, rgba(255,255,255,0.055), rgba(25,25,25,0.98)); padding:15px 15px 17px 15px; border-radius:18px; margin-bottom:15px; border:1px solid rgba(255,255,255,0.14); box-shadow:0 10px 28px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);">
             <div id="trip-modal-std-row" style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:9px;">
                 <span style="color:#888; font-size:11px; font-weight:850; letter-spacing:.45px; text-transform:uppercase;">PREZZO STANDARD</span>
                 <span id="trip-modal-p-std" style="font-size:16px; line-height:1; font-weight:850; color:#fff; text-align:right; white-space:nowrap;"></span>
