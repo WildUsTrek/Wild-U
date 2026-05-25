@@ -12168,6 +12168,12 @@ function showTripDetails(id) {
         return;
     }
 
+    // V7 Sconti: contesto prezzo speciale usato una sola volta.
+    // Serve a far arrivare il prezzo 100+ giorni SOLO se il dettaglio è stato aperto dal modulo Sconti.
+    const wilduDiscountContext = (window.WilduDiscountsRuntime && typeof window.WilduDiscountsRuntime.takeDetailsContext === 'function')
+        ? window.WilduDiscountsRuntime.takeDetailsContext(id, false)
+        : null;
+
     const titolo = ev.Titolo || ev.titolo || "Viaggio Wild-U";
     const dataInizio = ev["Data inizio"] || ev.dataInizio || "";
     const dataFine = ev["Data fine"] || ev.dataFine || "";
@@ -12186,6 +12192,8 @@ function showTripDetails(id) {
     if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
+    const extraPriceRowsOpenDay = document.getElementById('trip-modal-extra-price-rows');
+    if (extraPriceRowsOpenDay) { extraPriceRowsOpenDay.innerHTML = ''; extraPriceRowsOpenDay.style.display = 'none'; }
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
 
     // --- ✅ SERVIZI INCLUSI OFFICIAL TRIPS ---
@@ -12310,20 +12318,73 @@ function showTripDetails(id) {
         document.getElementById('trip-modal-img-container').style.display = 'block';
     }
 
-// Prezzi e XP nel Modal
+// Prezzi e XP nel Modal — V7 contestuale Sconti
+    // Regola conservativa:
+    // - la bacheca normale NON applica mai lo sconto 100+ giorni;
+    // - il prezzo 100+ giorni vale solo se il dettaglio viene aperto dal modulo Sconti;
+    // - Offerta Attiva resta speciale ovunque, ma viene etichettata correttamente.
     const hasOfferta = ev["Offerta Attiva"] === true;
-    const prezzoBase = ev["Prezzo Prime"] || ev.prezzo_std || "0";
+    const standardRaw = firstNonEmptyValue(ev["Prezzo (€)"], ev.Prezzo, ev["Prezzo Standard"], ev.prezzo_standard, ev["Prezzo Listino"], ev.prezzo_listino);
+    const primeRaw = firstNonEmptyValue(ev["Prezzo Prime"], ev.prezzo_std);
+    const prezzoBase = primeRaw || ev.prezzo_std || ev.Prezzo || "0";
     const prezzoEarly = ev["Prezzo Early"] || prezzoBase;
-    const prezzoStandard = ev["Prezzo (€)"] || ev.Prezzo || prezzoBase;
-    const prezzoFinale = hasOfferta ? prezzoEarly : prezzoBase;
-    const xpReward = ev.xp_reward || Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
+    const prezzoStandard = standardRaw || prezzoBase;
+    const hasStandardPrice = standardRaw !== undefined && standardRaw !== null && String(standardRaw).trim() !== "" && Number(String(standardRaw).replace(',', '.').replace(/[^0-9.\-]/g, '')) > 0;
+    const hasPrimePrice = primeRaw !== undefined && primeRaw !== null && String(primeRaw).trim() !== "" && Number(String(primeRaw).replace(',', '.').replace(/[^0-9.\-]/g, '')) > 0;
 
-    document.getElementById('trip-modal-price-box').style.display = 'block';
-    document.getElementById('trip-modal-std-row').style.display = 'flex'; // Mostra riga standard
-    document.getElementById('trip-modal-prime-label').innerText = 'ESCLUSIVO PRIME';
-    document.getElementById('trip-modal-p-std').innerText = `${prezzoStandard}€`;
+    const discountPriceValid = wilduDiscountContext
+        && wilduDiscountContext.source === 'wildu-sconti'
+        && wilduDiscountContext.mode === 'longLead'
+        && Number(wilduDiscountContext.activePrice) > 0;
+
+    const normalFinal = hasOfferta ? prezzoEarly : prezzoBase;
+    const prezzoFinale = discountPriceValid
+        ? (wilduDiscountContext.displayActivePrice || String(wilduDiscountContext.activePrice))
+        : normalFinal;
+    const prezzoFinaleNumber = discountPriceValid
+        ? Number(wilduDiscountContext.activePrice)
+        : Number(String(prezzoFinale).replace(',', '.').replace(/[^0-9.\-]/g, ''));
+    const xpReward = ev.xp_reward || Math.floor((Number.isFinite(prezzoFinaleNumber) ? prezzoFinaleNumber : parseInt(prezzoFinale)) / (config.euro_punto_ratio || 5)) || 0;
+
+    const priceBox = document.getElementById('trip-modal-price-box');
+    const stdRow = document.getElementById('trip-modal-std-row');
+    let extraRows = document.getElementById('trip-modal-extra-price-rows');
+    if (!extraRows && stdRow && stdRow.parentNode) {
+        extraRows = document.createElement('div');
+        extraRows.id = 'trip-modal-extra-price-rows';
+        stdRow.parentNode.insertBefore(extraRows, stdRow.nextSibling);
+    }
+
+    const specialLabel = discountPriceValid
+        ? 'VANTAGGIO ANTICIPO'
+        : (hasOfferta ? 'OFFERTA SPECIALE' : 'ESCLUSIVO PRIME');
+    const specialColor = discountPriceValid ? '#9ed6ff' : (hasOfferta ? '#ffaa00' : 'var(--w-gold)');
+    const specialBorder = discountPriceValid ? 'rgba(120,190,255,0.45)' : (hasOfferta ? 'rgba(255,170,0,0.45)' : '#444');
+
+    priceBox.style.display = 'block';
+    priceBox.style.borderColor = specialBorder;
+    priceBox.style.background = discountPriceValid
+        ? 'linear-gradient(135deg, rgba(120,190,255,0.10), rgba(34,34,34,1))'
+        : (hasOfferta ? 'linear-gradient(135deg, rgba(255,170,0,0.10), rgba(34,34,34,1))' : '#222');
+
+    stdRow.style.display = hasStandardPrice ? 'flex' : 'none';
+    document.getElementById('trip-modal-p-std').innerText = hasStandardPrice ? `${prezzoStandard}€` : '';
+
+    if (extraRows) {
+        const shouldShowPrimeReference = (hasOfferta || discountPriceValid) && hasPrimePrice && String(prezzoBase) !== String(prezzoFinale);
+        extraRows.style.display = shouldShowPrimeReference ? 'block' : 'none';
+        extraRows.innerHTML = shouldShowPrimeReference ? `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0 10px 0; border-top:1px solid rgba(255,255,255,0.07); color:#aaa; font-size:13px;">
+                <span>PREZZO PRIME</span>
+                <span style="font-weight:800; color:#ddd;">${prezzoBase}€</span>
+            </div>
+        ` : '';
+    }
+
+    document.getElementById('trip-modal-prime-label').innerText = specialLabel;
+    document.getElementById('trip-modal-prime-label').style.color = specialColor;
     document.getElementById('trip-modal-p-prime').innerText = `${prezzoFinale}€`;
-    document.getElementById('trip-modal-p-prime').style.color = 'var(--w-gold)';
+    document.getElementById('trip-modal-p-prime').style.color = specialColor;
     document.getElementById('trip-modal-xp-container').style.display = 'block';
     document.getElementById('trip-modal-xp').innerText = `+${xpReward} XP`;
 
@@ -17463,6 +17524,8 @@ function showOpenDayDetails(id) {
     if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
+    const extraPriceRowsPayDay = document.getElementById('trip-modal-extra-price-rows');
+    if (extraPriceRowsPayDay) { extraPriceRowsPayDay.innerHTML = ''; extraPriceRowsPayDay.style.display = 'none'; }
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('trip-modal-link-sito-discreto').style.display = 'none'; // Aggiunto reset nuovo link
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
@@ -18779,6 +18842,7 @@ function showTripDetailsFromCarousel(id, isHike) {
 // ==========================================
 (function installWilduDiscountsRuntimeBridge() {
     const DAY_MS = 24 * 60 * 60 * 1000;
+    let wdActiveDetailsContext = null;
 
     // V5: niente seconda lettura Firestore.
     // Il bridge legge SOLO il config già arrivato dalla lettura iniziale getInitData/cache pubblica.
@@ -19044,9 +19108,10 @@ function showTripDetailsFromCarousel(id, isHike) {
 
     function wdGetMergedEvents() {
         const trips = Array.isArray(allTrips) ? allTrips : [];
-        const payDays = Array.isArray(allPayDays) ? allPayDays : [];
-        return trips.map(function (ev) { return { ev: ev, isHike: false }; })
-            .concat(payDays.map(function (ev) { return { ev: ev, isHike: true }; }));
+
+        // V8: gli Sconti Community lavorano solo sui viaggi ufficiali.
+        // OpenDay e PayDay hanno prezzo fisso/rigido già ricevuto dal backend e non entrano mai qui.
+        return trips.map(function (ev) { return { ev: ev, isHike: false }; });
     }
 
     function wdSortByDate(a, b) {
@@ -19103,16 +19168,81 @@ function showTripDetailsFromCarousel(id, isHike) {
         };
     }
 
-    function wdOpenDetails(id, isHike) {
-        if (!id) return;
-        if (isHike && typeof showPayDayDetails === 'function') {
-            showPayDayDetails(id);
+    function wdFindDiscountItem(id, isHike, mode) {
+        const cleanId = String(id || '');
+        const wantedMode = String(mode || '').trim();
+        const data = wdGetDiscountData();
+        const pools = wantedMode === 'offer'
+            ? [data.activeOffers || []]
+            : wantedMode === 'longLead'
+                ? [data.longLead || []]
+                : [data.activeOffers || [], data.longLead || []];
+
+        for (const list of pools) {
+            const found = (list || []).find(function (item) {
+                return String(item.id || '') === cleanId && !!item.isHike === !!isHike;
+            });
+            if (found) return found;
+        }
+        return null;
+    }
+
+    function wdPrimeDetailsContext(item) {
+        if (!item || !item.id) {
+            wdActiveDetailsContext = null;
             return;
         }
-        if (!isHike && typeof showTripDetails === 'function') {
+
+        wdActiveDetailsContext = {
+            source: 'wildu-sconti',
+            id: String(item.id || ''),
+            key: String(item.key || ''),
+            isHike: !!item.isHike,
+            mode: item.mode === 'offer' ? 'offer' : 'longLead',
+            title: item.title || '',
+            activePrice: Number(item.activePrice || 0),
+            standardPrice: Number(item.standardPrice || 0),
+            primePrice: Number(item.primePrice || 0),
+            displayActivePrice: item.displayActivePrice || '',
+            displayStandardPrice: item.displayStandardPrice || '',
+            displayPrimePrice: item.displayPrimePrice || '',
+            earlyBookingPercent: Number(item.earlyBookingPercent || 0),
+            longLeadPercent: Number(item.longLeadPercent || 0),
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 15000
+        };
+    }
+
+    function wdTakeDetailsContext(id, isHike) {
+        const ctx = wdActiveDetailsContext;
+        wdActiveDetailsContext = null;
+
+        if (!ctx || ctx.source !== 'wildu-sconti') return null;
+        if (Date.now() > Number(ctx.expiresAt || 0)) return null;
+        if (String(ctx.id || '') !== String(id || '')) return null;
+        if (!!ctx.isHike !== !!isHike) return null;
+        return ctx;
+    }
+
+    function wdOpenDetails(id, isHike, mode) {
+        if (!id) return;
+
+        const item = wdFindDiscountItem(id, isHike, mode);
+        wdPrimeDetailsContext(item);
+
+        // V8: gli sconti non aprono mai PayDay/OpenDay.
+        // Se arriva un vecchio click con isHike=true lo blocchiamo, senza toccare il prezzo rigido dei PayDay.
+        if (isHike) {
+            wdActiveDetailsContext = null;
+            if (typeof showToast === 'function') showToast('⚠️ Questo contenuto non usa sconti automatici.');
+            return;
+        }
+
+        if (typeof showTripDetails === 'function') {
             showTripDetails(id);
             return;
         }
+        wdActiveDetailsContext = null;
         if (typeof showToast === 'function') showToast('⚠️ Dettagli non disponibili.');
     }
 
@@ -19142,6 +19272,7 @@ function showTripDetailsFromCarousel(id, isHike) {
         refreshDiscountConfig: wdRefreshDiscountConfig,
         getConfigDiagnostics: wdGetConfigDiagnostics,
         openDetails: wdOpenDetails,
+        takeDetailsContext: wdTakeDetailsContext,
         getLongLeadDays: wdGetLongLeadDays,
         getLongLeadPercent: wdGetLongLeadPercent,
         getEarlyBookingPercent: wdGetEarlyBookingPercent
