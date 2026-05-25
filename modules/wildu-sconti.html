@@ -393,21 +393,21 @@
             position: relative;
             overflow: hidden;
             display: grid;
-            grid-template-columns: 92px minmax(0, 1fr);
-            gap: 13px;
+            grid-template-columns: 84px minmax(0, 1fr);
+            gap: 11px;
             align-items: stretch;
-            border-radius: 24px;
+            border-radius: 22px;
             border: 1px solid rgba(255,255,255,0.115);
             background:
                 radial-gradient(circle at 0% 0%, rgba(212,175,55,0.14), transparent 38%),
                 linear-gradient(145deg, rgba(255,255,255,0.062), rgba(255,255,255,0.024));
             box-shadow: 0 12px 28px rgba(0,0,0,0.38);
-            padding: 11px;
+            padding: 10px;
         }
 
         .wd-long-img {
-            min-height: 118px;
-            border-radius: 18px;
+            min-height: 96px;
+            border-radius: 16px;
             overflow: hidden;
             background:
                 radial-gradient(circle at 20% 0%, rgba(212,175,55,0.22), transparent 44%),
@@ -417,7 +417,7 @@
         .wd-long-img img {
             width: 100%;
             height: 100%;
-            min-height: 118px;
+            min-height: 96px;
             object-fit: cover;
             display: block;
             opacity: .9;
@@ -427,16 +427,16 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            gap: 8px;
+            justify-content: center;
+            gap: 6px;
         }
 
         .wd-long-topline {
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
+            gap: 5px;
+            margin-bottom: 5px;
         }
 
         .wd-mini-badge {
@@ -444,7 +444,7 @@
             align-items: center;
             width: fit-content;
             border-radius: 999px;
-            padding: 5px 7px;
+            padding: 4px 7px;
             background: rgba(212,175,55,0.12);
             border: 1px solid rgba(212,175,55,0.24);
             color: var(--wd-gold);
@@ -466,25 +466,34 @@
             font-size: 15px;
             line-height: 1.12;
             font-weight: 1000;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .wd-long-meta-price-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: end;
+            gap: 9px;
+            margin-top: 4px;
         }
 
         .wd-long-meta {
+            min-width: 0;
             color: rgba(255,255,255,0.66);
-            font-size: 11.5px;
-            line-height: 1.30;
-            margin-top: 5px;
+            font-size: 11px;
+            line-height: 1.24;
         }
 
-        .wd-long-bottom {
-            display: flex;
-            align-items: flex-end;
-            justify-content: space-between;
-            gap: 8px;
+        .wd-long-price-wrap {
+            text-align: right;
+            min-width: 62px;
         }
 
         .wd-long-price {
             color: #ffe18a;
-            font-size: 21px;
+            font-size: 20px;
             line-height: 1;
             font-weight: 1000;
             white-space: nowrap;
@@ -492,10 +501,11 @@
 
         .wd-long-old {
             color: rgba(255,255,255,0.38);
-            font-size: 10.5px;
+            font-size: 9.5px;
             font-weight: 850;
             text-decoration: line-through;
             margin-top: 3px;
+            white-space: nowrap;
         }
 
 
@@ -534,7 +544,7 @@
     <header class="wd-hero">
         <div class="wd-kicker">Riservato Community</div>
         <h1 class="wd-title">Sconti Wild-U</h1>
-        <p class="wd-subtitle">Una vetrina riservata alla community, con prezzi speciali e partenze da cogliere al momento giusto.</p>
+        <p class="wd-subtitle">Prezzi da cogliere al momento giusto.</p>
         <div class="wd-stats" id="wd-stats"></div>
     </header>
 
@@ -616,22 +626,20 @@
                     ? '-' + esc(item.longLeadPercent) + '% anticipo'
                     : 'prezzo prime';
                 var oldPrice = item.longLeadPercent > 0 && item.saving > 0
-                    ? '<div class="wd-long-old">Prime ' + esc(item.displayPrimePrice) + '€ · Standard ' + esc(item.displayStandardPrice) + '€</div>'
-                    : '<div class="wd-long-old">Prime Community</div>';
+                    ? '<div class="wd-long-old">Prime ' + esc(item.displayPrimePrice) + '€</div>'
+                    : '<div class="wd-long-old">Community</div>';
                 return '' +
                     '<article class="wd-long-card" role="button" tabindex="0" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="0" data-mode="longLead" aria-label="Apri dettagli ' + esc(item.title) + '">' +
                         imageHtml(item, 'wd-long-img') +
                         '<div class="wd-long-body">' +
-                            '<div>' +
-                                '<div class="wd-long-topline">' +
-                                    '<span class="wd-mini-badge">' + discountLabel + '</span>' +
-                                    '<span class="wd-mini-badge wd-days-badge">' + esc(item.daysToStart || '') + ' giorni</span>' +
-                                '</div>' +
-                                '<h3 class="wd-long-title">' + esc(item.title) + '</h3>' +
-                                '<div class="wd-long-meta">' + placeLine(item) + '</div>' +
+                            '<div class="wd-long-topline">' +
+                                '<span class="wd-mini-badge">' + discountLabel + '</span>' +
+                                '<span class="wd-mini-badge wd-days-badge">' + esc(item.daysToStart || '') + ' giorni</span>' +
                             '</div>' +
-                            '<div class="wd-long-bottom">' +
-                                '<div>' +
+                            '<h3 class="wd-long-title">' + esc(item.title) + '</h3>' +
+                            '<div class="wd-long-meta-price-row">' +
+                                '<div class="wd-long-meta">' + placeLine(item) + '</div>' +
+                                '<div class="wd-long-price-wrap">' +
                                     '<div class="wd-long-price">' + esc(item.displayActivePrice) + '€</div>' +
                                     oldPrice +
                                 '</div>' +
@@ -671,12 +679,11 @@
 
                 document.getElementById('wd-stats').innerHTML = '' +
                     '<span class="wd-stat-pill gold">' + offers.length + ' ' + plural(offers.length, 'offerta', 'offerte') + '</span>' +
-                    '<span class="wd-stat-pill">' + longLead.length + ' ' + plural(longLead.length, 'partenza lontana', 'partenze lontane') + '</span>' +
-                    '<span class="wd-stat-pill">Oltre ' + esc(settings.longLeadDays || 100) + ' giorni</span>';
+                    '<span class="wd-stat-pill">' + longLead.length + ' ' + plural(longLead.length, 'partenza lontana', 'partenze lontane') + '</span>';
 
                 document.getElementById('wd-offer-count').textContent = offers.length + ' ' + plural(offers.length, 'offerta', 'offerte');
                 document.getElementById('wd-long-count').textContent = longLead.length + ' ' + plural(longLead.length, 'partenza', 'partenze');
-                document.getElementById('wd-long-copy').textContent = 'Partenze a più di ' + (settings.longLeadDays || 100) + ' giorni, pensate per chi ama organizzarsi prima e partire meglio.';
+                document.getElementById('wd-long-copy').textContent = 'Partenze da bloccare con calma, quando il momento è favorevole.';
                 document.getElementById('wd-generated-label').textContent = 'Aggiornato ora';
 
                 document.getElementById('wd-offers-carousel').innerHTML = offers.length
