@@ -1,0 +1,708 @@
+<!-- modules/wildu-sconti.html — WILDU SCONTI COMMUNITY V1 -->
+<section id="wildu-discounts-module" class="wildu-discounts-shell">
+    <style>
+        #wildu-discounts-module,
+        #wildu-discounts-module * {
+            box-sizing: border-box;
+        }
+
+        #wildu-discounts-module {
+            --wd-gold: var(--w-gold, #d4af37);
+            --wd-green: var(--w-green, #2d5a27);
+            --wd-bg: var(--w-dark, #121212);
+            --wd-card: rgba(255,255,255,0.055);
+            --wd-soft: rgba(255,255,255,0.10);
+            --wd-text: #f5f0df;
+            --wd-muted: rgba(245,240,223,0.72);
+            position: relative;
+            padding: 8px 0 34px 0;
+            color: var(--wd-text);
+            isolation: isolate;
+        }
+
+        #wildu-discounts-module::before {
+            content: "";
+            position: absolute;
+            inset: -24px -20px auto -20px;
+            height: 230px;
+            background:
+                radial-gradient(circle at 18% 0%, rgba(212,175,55,0.20), transparent 44%),
+                radial-gradient(circle at 92% 18%, rgba(45,90,39,0.28), transparent 38%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .wd-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0 0 14px 0;
+        }
+
+        .wd-back-btn {
+            border: 1px solid rgba(212,175,55,0.30);
+            background: rgba(0,0,0,0.24);
+            color: var(--wd-gold);
+            border-radius: 999px;
+            padding: 10px 13px;
+            font-size: 11px;
+            font-weight: 950;
+            letter-spacing: .05em;
+            text-transform: uppercase;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .wd-back-btn:active,
+        .wd-open-btn:active,
+        .wd-chip-btn:active {
+            transform: scale(0.98);
+        }
+
+        .wd-hero {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(212,175,55,0.34);
+            border-radius: 28px;
+            padding: 21px 18px 19px 18px;
+            margin: 0 0 20px 0;
+            background:
+                linear-gradient(118deg, rgba(255,255,255,0.09), rgba(255,255,255,0.025) 44%, rgba(0,0,0,0.22)),
+                radial-gradient(circle at 12% 0%, rgba(212,175,55,0.26), transparent 42%),
+                radial-gradient(circle at 100% 24%, rgba(45,90,39,0.40), transparent 42%);
+            box-shadow:
+                0 18px 42px rgba(0,0,0,0.52),
+                inset 0 1px 0 rgba(255,255,255,0.10);
+        }
+
+        .wd-hero::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(115deg, rgba(255,255,255,0.13), transparent 26%, transparent 78%, rgba(212,175,55,0.10));
+            pointer-events: none;
+        }
+
+        .wd-kicker {
+            position: relative;
+            z-index: 1;
+            color: var(--wd-gold);
+            font-size: 10px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            margin-bottom: 8px;
+        }
+
+        .wd-title {
+            position: relative;
+            z-index: 1;
+            margin: 0;
+            color: #fff;
+            font-size: clamp(27px, 7vw, 40px);
+            line-height: 0.98;
+            font-weight: 1000;
+            letter-spacing: -0.4px;
+            text-shadow: 0 4px 24px rgba(0,0,0,0.68);
+        }
+
+        .wd-subtitle {
+            position: relative;
+            z-index: 1;
+            margin: 10px 0 0 0;
+            max-width: 640px;
+            color: rgba(255,255,255,0.80);
+            font-size: 13px;
+            line-height: 1.42;
+            font-weight: 750;
+        }
+
+        .wd-stats {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .wd-stat-pill {
+            border: 1px solid rgba(255,255,255,0.14);
+            background: rgba(0,0,0,0.24);
+            color: #fff;
+            border-radius: 999px;
+            padding: 8px 10px;
+            font-size: 11px;
+            font-weight: 950;
+            white-space: nowrap;
+        }
+
+        .wd-stat-pill.gold {
+            color: #111;
+            background: linear-gradient(135deg, rgba(212,175,55,0.96), rgba(255,225,132,0.94));
+            border-color: rgba(255,255,255,0.30);
+        }
+
+        .wd-section-head {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 14px;
+            margin: 22px 0 13px 0;
+        }
+
+        .wd-section-label {
+            color: var(--wd-gold);
+            font-size: 11px;
+            font-weight: 1000;
+            letter-spacing: 1.1px;
+            text-transform: uppercase;
+            line-height: 1.1;
+        }
+
+        .wd-section-copy {
+            color: var(--wd-muted);
+            font-size: 12px;
+            line-height: 1.32;
+            margin-top: 5px;
+        }
+
+        .wd-section-count {
+            flex: 0 0 auto;
+            color: rgba(255,255,255,0.62);
+            font-size: 10px;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .wd-carousel-wrap {
+            margin-left: -20px;
+            margin-right: -20px;
+            position: relative;
+        }
+
+        .wd-carousel-wrap::before,
+        .wd-carousel-wrap::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 28px;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .wd-carousel-wrap::before {
+            left: 0;
+            background: linear-gradient(90deg, var(--wd-bg), rgba(18,18,18,0));
+        }
+
+        .wd-carousel-wrap::after {
+            right: 0;
+            background: linear-gradient(270deg, var(--wd-bg), rgba(18,18,18,0));
+        }
+
+        .wd-carousel {
+            display: flex;
+            gap: 14px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 3px 20px 17px 20px;
+            scroll-snap-type: x mandatory;
+            scroll-padding-left: 20px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            overscroll-behavior-x: contain;
+        }
+
+        .wd-carousel::-webkit-scrollbar,
+        .wd-grid::-webkit-scrollbar {
+            display: none;
+        }
+
+        .wd-offer-card {
+            flex: 0 0 clamp(258px, 82vw, 350px);
+            width: clamp(258px, 82vw, 350px);
+            min-height: 390px;
+            scroll-snap-align: start;
+            border-radius: 28px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid rgba(212,175,55,0.35);
+            background:
+                radial-gradient(circle at top left, rgba(212,175,55,0.22), transparent 48%),
+                linear-gradient(145deg, rgba(255,255,255,0.080), rgba(255,255,255,0.026) 50%, rgba(0,0,0,0.20));
+            box-shadow:
+                0 18px 38px rgba(0,0,0,0.52),
+                inset 0 1px 0 rgba(255,255,255,0.10);
+        }
+
+        .wd-card-img {
+            height: 170px;
+            width: 100%;
+            background:
+                radial-gradient(circle at 26% 10%, rgba(212,175,55,0.30), transparent 38%),
+                linear-gradient(135deg, rgba(45,90,39,0.9), rgba(0,0,0,0.86));
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wd-card-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            opacity: .92;
+            transform: scale(1.015);
+        }
+
+        .wd-card-img::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(0deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.26) 46%, rgba(0,0,0,.08) 100%);
+        }
+
+        .wd-floating-badge {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 2;
+            border-radius: 999px;
+            padding: 7px 10px;
+            background: rgba(0,0,0,0.62);
+            border: 1px solid rgba(212,175,55,0.48);
+            color: var(--wd-gold);
+            font-size: 10px;
+            font-weight: 1000;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            backdrop-filter: blur(8px);
+        }
+
+        .wd-tag-badge {
+            position: absolute;
+            right: 12px;
+            top: 12px;
+            z-index: 2;
+            border-radius: 999px;
+            padding: 7px 9px;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.16);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 950;
+            backdrop-filter: blur(8px);
+        }
+
+        .wd-card-body {
+            padding: 15px 15px 16px 15px;
+        }
+
+        .wd-card-title {
+            margin: 0 0 8px 0;
+            color: #fff;
+            font-size: 18px;
+            line-height: 1.12;
+            font-weight: 1000;
+            letter-spacing: -0.15px;
+        }
+
+        .wd-card-meta {
+            color: rgba(255,255,255,0.72);
+            font-size: 12px;
+            line-height: 1.35;
+            min-height: 34px;
+        }
+
+        .wd-price-row {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 15px;
+            padding-top: 13px;
+            border-top: 1px solid rgba(255,255,255,0.10);
+        }
+
+        .wd-price-kicker {
+            color: var(--wd-gold);
+            font-size: 9.5px;
+            font-weight: 1000;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            margin-bottom: 4px;
+        }
+
+        .wd-main-price {
+            color: #ffe18a;
+            font-size: 29px;
+            line-height: 1;
+            font-weight: 1000;
+            text-shadow: 0 0 18px rgba(212,175,55,0.22);
+            white-space: nowrap;
+        }
+
+        .wd-old-price {
+            color: rgba(255,255,255,0.42);
+            font-size: 12px;
+            font-weight: 850;
+            text-decoration: line-through;
+            margin-top: 4px;
+        }
+
+        .wd-saving {
+            text-align: right;
+            color: #bff7cd;
+            font-size: 11px;
+            font-weight: 950;
+            line-height: 1.2;
+        }
+
+        .wd-open-btn {
+            width: 100%;
+            margin-top: 14px;
+            min-height: 42px;
+            border: 1px solid rgba(212,175,55,0.50);
+            border-radius: 15px;
+            background: linear-gradient(135deg, rgba(212,175,55,0.96), rgba(255,226,135,0.95));
+            color: #101010;
+            font-weight: 1000;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            cursor: pointer;
+            box-shadow: 0 8px 22px rgba(212,175,55,0.15);
+        }
+
+        .wd-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 13px;
+        }
+
+        .wd-long-card {
+            position: relative;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 92px minmax(0, 1fr);
+            gap: 13px;
+            align-items: stretch;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.115);
+            background:
+                radial-gradient(circle at 0% 0%, rgba(212,175,55,0.14), transparent 38%),
+                linear-gradient(145deg, rgba(255,255,255,0.062), rgba(255,255,255,0.024));
+            box-shadow: 0 12px 28px rgba(0,0,0,0.38);
+            padding: 11px;
+        }
+
+        .wd-long-img {
+            min-height: 118px;
+            border-radius: 18px;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 20% 0%, rgba(212,175,55,0.22), transparent 44%),
+                linear-gradient(135deg, rgba(45,90,39,0.78), rgba(0,0,0,0.80));
+        }
+
+        .wd-long-img img {
+            width: 100%;
+            height: 100%;
+            min-height: 118px;
+            object-fit: cover;
+            display: block;
+            opacity: .9;
+        }
+
+        .wd-long-body {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .wd-long-topline {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .wd-mini-badge {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            border-radius: 999px;
+            padding: 5px 7px;
+            background: rgba(212,175,55,0.12);
+            border: 1px solid rgba(212,175,55,0.24);
+            color: var(--wd-gold);
+            font-size: 9px;
+            font-weight: 1000;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .wd-days-badge {
+            color: #9ed6ff;
+            border-color: rgba(120,190,255,0.24);
+            background: rgba(120,190,255,0.10);
+        }
+
+        .wd-long-title {
+            color: #fff;
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.12;
+            font-weight: 1000;
+        }
+
+        .wd-long-meta {
+            color: rgba(255,255,255,0.66);
+            font-size: 11.5px;
+            line-height: 1.30;
+            margin-top: 5px;
+        }
+
+        .wd-long-bottom {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .wd-long-price {
+            color: #ffe18a;
+            font-size: 21px;
+            line-height: 1;
+            font-weight: 1000;
+            white-space: nowrap;
+        }
+
+        .wd-long-old {
+            color: rgba(255,255,255,0.38);
+            font-size: 10.5px;
+            font-weight: 850;
+            text-decoration: line-through;
+            margin-top: 3px;
+        }
+
+        .wd-chip-btn {
+            flex: 0 0 auto;
+            border: 1px solid rgba(212,175,55,0.38);
+            border-radius: 999px;
+            background: rgba(212,175,55,0.11);
+            color: var(--wd-gold);
+            font-size: 10px;
+            font-weight: 1000;
+            text-transform: uppercase;
+            padding: 9px 10px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .wd-empty {
+            border: 1px dashed rgba(255,255,255,0.16);
+            border-radius: 22px;
+            background: rgba(255,255,255,0.035);
+            color: rgba(255,255,255,0.66);
+            text-align: center;
+            padding: 24px 16px;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        @media (min-width: 720px) {
+            #wildu-discounts-module {
+                padding-left: 4px;
+                padding-right: 4px;
+            }
+
+            .wd-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .wd-long-card {
+                grid-template-columns: 112px minmax(0, 1fr);
+            }
+        }
+    </style>
+
+    <div class="wd-topbar">
+        <button type="button" class="wd-back-btn" onclick="if (typeof closeModule === 'function') closeModule();">← Bussola</button>
+        <div class="wd-section-count" id="wd-generated-label">Community deals</div>
+    </div>
+
+    <header class="wd-hero">
+        <div class="wd-kicker">Riservato Community</div>
+        <h1 class="wd-title">Sconti Wild-U</h1>
+        <p class="wd-subtitle">Offerte attive, early booking e partenze lontane raccolte in una vetrina privata, elegante e senza toccare le card originali dei viaggi.</p>
+        <div class="wd-stats" id="wd-stats"></div>
+    </header>
+
+    <div class="wd-section-head">
+        <div>
+            <div class="wd-section-label">🔥 Offerte attive</div>
+            <div class="wd-section-copy">Card con offerta attiva, presentate come occasioni premium.</div>
+        </div>
+        <div class="wd-section-count" id="wd-offer-count">0 offerte</div>
+    </div>
+    <div class="wd-carousel-wrap">
+        <div class="wd-carousel" id="wd-offers-carousel"></div>
+    </div>
+
+    <div class="wd-section-head">
+        <div>
+            <div class="wd-section-label">⏳ Prenota prima, spendi meno</div>
+            <div class="wd-section-copy" id="wd-long-copy">Partenze oltre soglia configurata dal client.</div>
+        </div>
+        <div class="wd-section-count" id="wd-long-count">0 viaggi</div>
+    </div>
+    <div class="wd-grid" id="wd-long-grid"></div>
+
+    <script>
+        (function renderWilduDiscountsModule() {
+            var attempts = 0;
+
+            function esc(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+
+            function imageHtml(item, cls) {
+                if (!item || !item.imageUrl) return '<div class="' + cls + '"></div>';
+                return '<div class="' + cls + '"><img src="' + esc(item.imageUrl) + '" alt="' + esc(item.title) + '"></div>';
+            }
+
+            function placeLine(item) {
+                var parts = [];
+                if (item.dateText) parts.push('📅 ' + esc(item.dateText));
+                if (item.place) parts.push('📍 ' + esc(item.place));
+                return parts.join('<br>');
+            }
+
+            function offerCard(item) {
+                var saving = item.saving > 0 ? '<div class="wd-saving">Risparmi<br>' + esc(item.displaySaving) + '€</div>' : '<div class="wd-saving">Prezzo<br>speciale</div>';
+                return '' +
+                    '<article class="wd-offer-card">' +
+                        '<div class="wd-card-img">' +
+                            (item.imageUrl ? '<img src="' + esc(item.imageUrl) + '" alt="' + esc(item.title) + '">' : '') +
+                            '<div class="wd-floating-badge">🔥 Early Booking</div>' +
+                            '<div class="wd-tag-badge">' + esc(item.tag) + '</div>' +
+                        '</div>' +
+                        '<div class="wd-card-body">' +
+                            '<h2 class="wd-card-title">' + esc(item.title) + '</h2>' +
+                            '<div class="wd-card-meta">' + placeLine(item) + '</div>' +
+                            '<div class="wd-price-row">' +
+                                '<div>' +
+                                    '<div class="wd-price-kicker">Prezzo community</div>' +
+                                    '<div class="wd-main-price">' + esc(item.displayActivePrice) + '€</div>' +
+                                    '<div class="wd-old-price">Prime ' + esc(item.displayBasePrice) + '€</div>' +
+                                '</div>' +
+                                saving +
+                            '</div>' +
+                            '<button type="button" class="wd-open-btn" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="' + (item.isHike ? '1' : '0') + '">Apri dettagli</button>' +
+                        '</div>' +
+                    '</article>';
+            }
+
+            function longCard(item) {
+                var discountLabel = item.longLeadPercent > 0
+                    ? '-' + esc(item.longLeadPercent) + '% early'
+                    : 'prezzo prime';
+                var oldPrice = item.longLeadPercent > 0 && item.saving > 0
+                    ? '<div class="wd-long-old">Prime ' + esc(item.displayBasePrice) + '€</div>'
+                    : '';
+                return '' +
+                    '<article class="wd-long-card">' +
+                        imageHtml(item, 'wd-long-img') +
+                        '<div class="wd-long-body">' +
+                            '<div>' +
+                                '<div class="wd-long-topline">' +
+                                    '<span class="wd-mini-badge">' + discountLabel + '</span>' +
+                                    '<span class="wd-mini-badge wd-days-badge">' + esc(item.daysToStart || '') + ' giorni</span>' +
+                                    '<span class="wd-mini-badge">' + esc(item.tag) + '</span>' +
+                                '</div>' +
+                                '<h3 class="wd-long-title">' + esc(item.title) + '</h3>' +
+                                '<div class="wd-long-meta">' + placeLine(item) + '</div>' +
+                            '</div>' +
+                            '<div class="wd-long-bottom">' +
+                                '<div>' +
+                                    '<div class="wd-long-price">' + esc(item.displayActivePrice) + '€</div>' +
+                                    oldPrice +
+                                '</div>' +
+                                '<button type="button" class="wd-chip-btn" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="' + (item.isHike ? '1' : '0') + '">Dettagli</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</article>';
+            }
+
+            function emptyBox(message) {
+                return '<div class="wd-empty">' + esc(message) + '</div>';
+            }
+
+            function plural(n, one, many) {
+                return Number(n) === 1 ? one : many;
+            }
+
+            function render() {
+                var rt = window.WilduDiscountsRuntime;
+                if (!rt || typeof rt.getDiscountData !== 'function') {
+                    attempts += 1;
+                    if (attempts < 20) {
+                        setTimeout(render, 120);
+                        return;
+                    }
+                    document.getElementById('wd-offers-carousel').innerHTML = emptyBox('Modulo sconti non pronto: ponte runtime non trovato nel client.');
+                    document.getElementById('wd-long-grid').innerHTML = '';
+                    return;
+                }
+
+                var data = rt.getDiscountData();
+                var settings = data.settings || {};
+                var offers = data.activeOffers || [];
+                var longLead = data.longLead || [];
+
+                document.getElementById('wd-stats').innerHTML = '' +
+                    '<span class="wd-stat-pill gold">' + offers.length + ' ' + plural(offers.length, 'offerta', 'offerte') + '</span>' +
+                    '<span class="wd-stat-pill">Soglia: oltre ' + esc(settings.longLeadDays || 100) + ' giorni</span>' +
+                    '<span class="wd-stat-pill">Sconto anticipo: ' + esc(settings.longLeadPercent || 0) + '%</span>';
+
+                document.getElementById('wd-offer-count').textContent = offers.length + ' ' + plural(offers.length, 'offerta', 'offerte');
+                document.getElementById('wd-long-count').textContent = longLead.length + ' ' + plural(longLead.length, 'partenza', 'partenze');
+                document.getElementById('wd-long-copy').textContent = 'Partenze oltre ' + (settings.longLeadDays || 100) + ' giorni. Percentuale letta da client_config: ' + (settings.longLeadPercent || 0) + '%.';
+                document.getElementById('wd-generated-label').textContent = 'Aggiornato ora';
+
+                document.getElementById('wd-offers-carousel').innerHTML = offers.length
+                    ? offers.map(offerCard).join('')
+                    : emptyBox('Nessuna offerta attiva al momento. Quando una card avrà “Offerta Attiva = true”, apparirà qui.');
+
+                document.getElementById('wd-long-grid').innerHTML = longLead.length
+                    ? longLead.map(longCard).join('')
+                    : emptyBox('Nessuna partenza oltre la soglia configurata in questo momento.');
+            }
+
+            var root = document.getElementById('wildu-discounts-module');
+            if (root) {
+                root.addEventListener('click', function (evt) {
+                    var btn = evt.target && evt.target.closest ? evt.target.closest('[data-wildu-discount-open]') : null;
+                    if (!btn) return;
+                    var rt = window.WilduDiscountsRuntime;
+                    if (!rt || typeof rt.openDetails !== 'function') return;
+                    rt.openDetails(btn.getAttribute('data-id'), btn.getAttribute('data-is-hike') === '1');
+                });
+            }
+
+            render();
+        })();
+    </script>
+</section>
