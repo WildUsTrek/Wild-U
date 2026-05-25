@@ -18780,6 +18780,48 @@ function showTripDetailsFromCarousel(id, isHike) {
 (function installWilduDiscountsRuntimeBridge() {
     const DAY_MS = 24 * 60 * 60 * 1000;
 
+    // V3: overlay letto direttamente da Firestore se getInitData/config non porta
+    // ancora tutti i campi sconto. Non cambia la fonte sacra: resta
+    // PARAMETERS_PARTNER/client_config, ma evita blocchi dovuti a cache/gateway/mapping.
+    let wdConfigOverlay = null;
+    let wdConfigRefreshPromise = null;
+
+    function wdCanonicalKey(key) {
+        return String(key == null ? '' : key)
+            .normalize('NFKC')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .trim();
+    }
+
+    function wdGetConfigSources() {
+        const sources = [];
+        if (wdConfigOverlay && typeof wdConfigOverlay === 'object') sources.push(wdConfigOverlay);
+        if (config && typeof config === 'object') sources.push(config);
+        return sources;
+    }
+
+    function wdReadConfigRaw(keys) {
+        const wanted = (keys || []).map(wdCanonicalKey);
+        const sources = wdGetConfigSources();
+
+        for (const cfg of sources) {
+            for (const key of wanted) {
+                if (Object.prototype.hasOwnProperty.call(cfg, key)) return cfg[key];
+            }
+        }
+
+        // Secondo giro: tollera spazi invisibili o finali nei nomi campo Firestore.
+        for (const cfg of sources) {
+            const sourceKeys = Object.keys(cfg || {});
+            for (const rawKey of sourceKeys) {
+                const cleanKey = wdCanonicalKey(rawKey);
+                if (wanted.indexOf(cleanKey) >= 0) return cfg[rawKey];
+            }
+        }
+
+        return undefined;
+    }
+
     function wdFirstNonEmpty() {
         for (let i = 0; i < arguments.length; i++) {
             const v = arguments[i];
@@ -18811,12 +18853,10 @@ function showTripDetailsFromCarousel(id, isHike) {
     }
 
     function wdReadConfigNumber(keys, fallback) {
-        const cfg = config && typeof config === 'object' ? config : {};
-        for (const key of keys) {
-            if (Object.prototype.hasOwnProperty.call(cfg, key)) {
-                const n = wdParseNumber(cfg[key], NaN);
-                if (Number.isFinite(n)) return n;
-            }
+        const raw = wdReadConfigRaw(keys);
+        if (raw !== undefined) {
+            const n = wdParseNumber(raw, NaN);
+            if (Number.isFinite(n)) return n;
         }
         return fallback;
     }
@@ -19080,8 +19120,43 @@ function showTripDetailsFromCarousel(id, isHike) {
         if (typeof showToast === 'function') showToast('⚠️ Dettagli non disponibili.');
     }
 
+    async function wdRefreshDiscountConfig() {
+        if (wdConfigRefreshPromise) return wdConfigRefreshPromise;
+
+        wdConfigRefreshPromise = (async function () {
+            if (!window.db || typeof db.collection !== 'function') {
+                return wdGetDiscountData();
+            }
+
+            try {
+                const snap = await db
+                    .collection('PARAMETERS_PARTNER')
+                    .doc('client_config')
+                    .get({ source: 'server' });
+
+                wdConfigOverlay = snap && snap.exists ? (snap.data() || {}) : {};
+
+                if (typeof pageDebug === 'function') {
+                    pageDebug('WILDU_DISCOUNTS_CONFIG_REFRESH', {
+                        hasPercent100: wdReadConfigRaw(['percentuale_100_giorni']) !== undefined,
+                        longLeadPercent: wdGetLongLeadPercent(),
+                        earlyBookingPercent: wdGetEarlyBookingPercent(),
+                        longLeadDays: wdGetLongLeadDays()
+                    });
+                }
+            } catch (e) {
+                console.warn('[WILDU SCONTI] Lettura diretta client_config non riuscita, uso config già disponibile.', e);
+            }
+
+            return wdGetDiscountData();
+        })();
+
+        return wdConfigRefreshPromise;
+    }
+
     window.WilduDiscountsRuntime = {
         getDiscountData: wdGetDiscountData,
+        refreshDiscountConfig: wdRefreshDiscountConfig,
         openDetails: wdOpenDetails,
         getLongLeadDays: wdGetLongLeadDays,
         getLongLeadPercent: wdGetLongLeadPercent,
