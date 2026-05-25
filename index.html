@@ -627,7 +627,51 @@ body::before {
 .alert-revoca { color: #ff4444; font-weight: 900; font-size: 14px; text-transform: uppercase; margin-top: 20px; border: 1px dashed #ff4444; padding: 10px; border-radius: 10px; background: rgba(255, 68, 68, 0.1); }
         .hidden { display: none !important; } 
         input { width: 100%; padding: 18px; border-radius: 12px; border: 1px solid #444; background: #252525; color: #fff; margin-bottom: 15px; box-sizing: border-box; text-align: center; font-size: 18px; -webkit-user-select: text; user-select: text; }
-        #reward-overlay, #levelup-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.98); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:5000; text-align:center; padding: 25px; }
+        #reward-overlay, #levelup-overlay {
+            position: fixed;
+            inset: 0;
+            width: auto;
+            height: auto;
+            box-sizing: border-box;
+            background: rgba(0,0,0,0.98);
+            display:none;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            z-index:5000;
+            text-align:center;
+            padding: calc(24px + env(safe-area-inset-top, 0px)) calc(20px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) calc(20px + env(safe-area-inset-left, 0px));
+            overflow:auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        #penalty-overlay {
+            position: fixed !important;
+            inset: 0 !important;
+            width: auto !important;
+            height: auto !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+            padding: calc(24px + env(safe-area-inset-top, 0px)) calc(20px + env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) calc(20px + env(safe-area-inset-left, 0px)) !important;
+            overflow:auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        #reward-overlay > *, #levelup-overlay > *, #penalty-overlay > * {
+            max-width: min(100%, 380px);
+            box-sizing: border-box;
+        }
+        #penalty-overlay > div:last-of-type {
+            width: 100%;
+            max-width: 340px !important;
+            white-space: normal !important;
+            line-height: 1.25;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+        #penalty-msg {
+            max-width: 100%;
+            overflow-wrap: anywhere;
+        }
         
         /* ECCO IL CSS DEI MODALI CHE ERA ANDATO PERSO! 👇 */
         .modal-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); display:none; align-items:center; justify-content:center; z-index:3000; } .modal-card { background: var(--w-card); padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; box-sizing: border-box; text-align: center; border: 2px solid var(--w-green); } .levelup-img { width: 100%; max-width: 300px; height: auto; aspect-ratio: 4/3; border-radius: 20px; margin-bottom: 25px; object-fit: cover; border: 3px solid var(--w-gold); box-shadow: 0 0 50px var(--w-gold); }
@@ -12960,13 +13004,15 @@ function showTripDetails(id, detailContext = null) {
     priceBox.style.position = 'relative';
     priceBox.style.overflow = 'visible';
     priceBox.style.borderColor = specialBorder;
+    // V21: il box servizi resta visivamente sottoposto, ma il box prezzi deve essere opaco.
+    // Evita che la striscia del box servizi traspaia attraverso il prezzo su mobile/iOS.
     priceBox.style.background = useBookedPriceAsMain
-        ? 'linear-gradient(135deg, rgba(120,190,255,0.10), rgba(34,34,34,1))'
+        ? 'linear-gradient(135deg, rgba(22,34,46,0.99), rgba(18,18,18,1))'
         : (priceMode === 'longLead'
-            ? 'linear-gradient(135deg, rgba(120,190,255,0.10), rgba(34,34,34,1))'
+            ? 'linear-gradient(135deg, rgba(22,34,46,0.99), rgba(18,18,18,1))'
             : (priceMode === 'offer'
-                ? 'linear-gradient(135deg, rgba(255,170,0,0.10), rgba(34,34,34,1))'
-                : 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(34,34,34,1))'));
+                ? 'linear-gradient(135deg, rgba(48,34,18,0.99), rgba(18,18,18,1))'
+                : 'linear-gradient(135deg, rgba(42,34,18,0.99), rgba(18,18,18,1))'));
 
     stdRow.style.display = hasStandardPrice ? 'flex' : 'none';
     document.getElementById('trip-modal-p-std').innerText = hasStandardPrice ? `${formatModalMoney(standardNumber)}€` : '';
@@ -20301,7 +20347,7 @@ window.addEventListener('pageshow', () => {
             <span id="od-modal-dsl" style="background:#333; padding:6px 12px; border-radius:6px; font-size:14px; font-weight:bold;"></span>
         </div>
         
-<div id="trip-modal-price-box" style="display:none; background:linear-gradient(135deg, rgba(255,255,255,0.055), rgba(25,25,25,0.98)); padding:15px 15px 17px 15px; border-radius:18px; margin-bottom:15px; border:1px solid rgba(255,255,255,0.14); box-shadow:0 10px 28px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);">
+<div id="trip-modal-price-box" style="display:none; background:linear-gradient(135deg, rgba(34,34,34,0.995), rgba(18,18,18,1)); padding:15px 15px 17px 15px; border-radius:18px; margin-bottom:15px; border:1px solid rgba(255,255,255,0.14); box-shadow:0 10px 28px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);">
             <div id="trip-modal-std-row" style="display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:9px;">
                 <span style="color:#888; font-size:11px; font-weight:850; letter-spacing:.45px; text-transform:uppercase;">PREZZO STANDARD</span>
                 <span id="trip-modal-p-std" style="font-size:16px; line-height:1; font-weight:850; color:#fff; text-align:right; white-space:nowrap;"></span>
