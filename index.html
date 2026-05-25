@@ -12319,16 +12319,53 @@ function showTripDetails(id, detailContext = null) {
             .replace(/'/g, "&#039;");
     }
 
+    const modalLinkSito = normalizeWilduCommercialUrl(firstNonEmptyValue(ev.Link, ev.link));
+
     const serviziInclusi = Array.isArray(ev.servizi)
         ? ev.servizi
             .map(s => String(s || "").trim())
             .filter(Boolean)
         : [];
 
+    const officialServiceLinkHtml = modalLinkSito
+        ? `
+            <li style="
+                list-style:none;
+                margin:14px 0 2px 0;
+                padding-top:13px;
+                border-top:1px solid rgba(212,175,55,0.18);
+            ">
+                <a href="${escapeOfficialServiceHtml(modalLinkSito)}" target="_blank" rel="noopener" style="
+                    display:flex;
+                    align-items:center;
+                    justify-content:space-between;
+                    gap:12px;
+                    color:var(--w-gold);
+                    text-decoration:none;
+                    font-size:13px;
+                    font-weight:950;
+                    text-transform:uppercase;
+                    letter-spacing:.7px;
+                    padding:12px 13px;
+                    border-radius:14px;
+                    border:1px solid rgba(212,175,55,0.30);
+                    background:linear-gradient(135deg, rgba(212,175,55,0.13), rgba(0,0,0,0.16));
+                    box-shadow:0 6px 16px rgba(0,0,0,0.24);
+                ">
+                    <span>Vedi al sito ufficiale</span>
+                    <i class="fas fa-external-link-alt" style="font-size:11px; opacity:.92;"></i>
+                </a>
+            </li>
+        `
+        : '';
+
     // Titolo esterno disattivato: il titolo vive solo nel tasto espandibile.
     gearTitleEl.innerText = "";
 
-    if (serviziInclusi.length > 0) {
+    if (serviziInclusi.length > 0 || modalLinkSito) {
+        const serviziSummaryLabel = modalLinkSito ? 'Servizi e sito ufficiale' : 'Mostra / nascondi servizi inclusi';
+        const serviziSummaryBadge = serviziInclusi.length > 0 ? (serviziInclusi.length + ' inclusi') : 'link';
+
         gearListEl.innerHTML = `
             <li style="list-style:none; margin:0 0 18px 0;">
                  <details style="
@@ -12350,7 +12387,7 @@ function showTripDetails(id, detailContext = null) {
                         justify-content:space-between;
                         gap:10px;
                     ">
-                        <span>Mostra / nascondi servizi inclusi</span>
+                        <span>${serviziSummaryLabel}</span>
                         <span style="
                             color:#000;
                             background:var(--w-gold);
@@ -12358,7 +12395,7 @@ function showTripDetails(id, detailContext = null) {
                             padding:4px 9px;
                             font-size:11px;
                             white-space:nowrap;
-                        ">${serviziInclusi.length} inclusi</span>
+                        ">${serviziSummaryBadge}</span>
                     </summary>
 
                     <ul style="
@@ -12380,6 +12417,7 @@ function showTripDetails(id, detailContext = null) {
                                 <span style="flex:1;">${escapeOfficialServiceHtml(servizio)}</span>
                             </li>
                         `).join("")}
+                        ${officialServiceLinkHtml}
                     </ul>
                 </details>
             </li>
@@ -12391,8 +12429,8 @@ function showTripDetails(id, detailContext = null) {
         gearListEl.innerHTML = "";
     }
 
-    // Official trips: mostra la sezione servizi solo se ci sono servizi reali.
-    if (serviziInclusi.length > 0) {
+    // Official trips: mostra il box servizi se ci sono servizi reali o il link ufficiale.
+    if (serviziInclusi.length > 0 || modalLinkSito) {
         container.insertBefore(gearListEl, descEl);
     }
 
@@ -12585,11 +12623,12 @@ function showTripDetails(id, detailContext = null) {
     if (chipBox) {
         chipBox.style.display = chips.length ? 'flex' : 'none';
         chipBox.style.position = 'absolute';
-        chipBox.style.right = '12px';
+        chipBox.style.left = '12px';
+        chipBox.style.right = 'auto';
         chipBox.style.bottom = '-12px';
         chipBox.style.zIndex = '4';
         chipBox.style.flexWrap = 'wrap';
-        chipBox.style.justifyContent = 'flex-end';
+        chipBox.style.justifyContent = 'flex-start';
         chipBox.style.gap = '6px';
         chipBox.style.marginTop = '0';
         chipBox.style.maxWidth = 'calc(100% - 24px)';
@@ -12601,17 +12640,12 @@ function showTripDetails(id, detailContext = null) {
     renderWilduModalXpChip(xpReward, specialColor);
 
 // 🎯 Link commerciale ufficiale del viaggio.
-// Questo è il link vendita/ecommerce, separato dal motore Maps.
-const linkSito = normalizeWilduCommercialUrl(firstNonEmptyValue(ev.Link, ev.link));
+// V15: il link vive nel box espandibile servizi, non come blocco separato.
 const discreteLink = document.getElementById('trip-modal-link-sito-discreto');
-
-if (linkSito) {
-    discreteLink.href = linkSito;
-    discreteLink.rel = "noopener";
-    discreteLink.style.display = 'block';
-} else {
-    discreteLink.href = "#";
-    discreteLink.removeAttribute("rel");
+if (discreteLink) {
+    discreteLink.href = modalLinkSito || "#";
+    if (modalLinkSito) discreteLink.rel = "noopener";
+    else discreteLink.removeAttribute("rel");
     discreteLink.style.display = 'none';
 }
 // --- 🗺️ MAPPA UNIFICATA ---
