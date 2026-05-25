@@ -1860,6 +1860,37 @@ body::before {
     border-top-color: rgba(73,150,80,.58) !important;
     box-shadow: 0 12px 34px rgba(0,0,0,.50), 0 0 22px rgba(45,90,39,.10), inset 0 1px 0 rgba(255,255,255,.05) !important;
 }
+
+/* V12 — Le card viaggi ufficiali con Offerta Attiva restano strutturalmente
+   identiche alle altre, ma hanno una tinta premium più calda e riconoscibile. */
+.wildu-adventure-card-official.wildu-adventure-card-offer {
+    border-top-color: rgba(255,170,0,.88) !important;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(255,170,0,.24), transparent 40%),
+        radial-gradient(circle at 100% 14%, rgba(255,88,52,.18), transparent 34%),
+        linear-gradient(180deg, rgba(58,36,15,.94), rgba(26,23,18,.985)) !important;
+    box-shadow:
+        0 14px 38px rgba(0,0,0,.56),
+        0 0 24px rgba(255,170,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.07) !important;
+}
+
+.wildu-adventure-card-official.wildu-adventure-card-offer::before {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,.060), transparent 28%),
+        linear-gradient(90deg, rgba(255,170,0,.12), transparent 52%) !important;
+    opacity: .96 !important;
+}
+
+.wildu-adventure-card-official.wildu-adventure-card-offer .price-box {
+    border-top-color: rgba(255,170,0,.28) !important;
+}
+
+.wildu-adventure-card-official.wildu-adventure-card-offer .wildu-adventure-details-btn {
+    color: #ffaa00 !important;
+    border-color: rgba(255,170,0,.78) !important;
+    background: rgba(255,170,0,.105) !important;
+}
 .wildu-adventure-card-hike {
     border-top-color: rgba(212,175,55,.58) !important;
     box-shadow: 0 12px 34px rgba(0,0,0,.50), 0 0 24px rgba(212,175,55,.10), inset 0 1px 0 rgba(255,255,255,.05) !important;
@@ -2292,7 +2323,7 @@ body::before {
         <div id="wildu-od-filter-shell" class="wildu-trip-filter-shell wildu-od-filter-shell">
             <div class="wildu-trip-filter-top">
                 <div style="min-width:0;">
-                    <div id="openday-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento Open Day...</div>
+                    <div id="openday-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento viaggi gratis...</div>
                     <div id="wildu-od-filter-status" class="wildu-trip-filter-status">mese e regione consigliati</div>
                 </div>
 
@@ -11739,7 +11770,10 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
     }
 
     function setTripTitleFilter(value) {
-        activeFilters.title = String(value || '').trim();
+        // Non usare trim qui: mentre l'utente digita una frase, lo spazio finale
+        // serve per continuare la ricerca con una seconda parola. Il filtro normalizza
+        // già il testo più avanti, quindi teniamo il valore raw nell'input.
+        activeFilters.title = String(value || '');
         filterTrips();
     }
 
@@ -12087,6 +12121,9 @@ function renderTrips(trips, targetId) {
         const prezzoFinale = hasOfferta ? prezzoEarly : prezzoBase;
         const prezzoStandard = ev["Prezzo (€)"] || ev.Prezzo || prezzoBase;
         const xpReward = ev.xp_reward || Math.floor(parseInt(prezzoFinale) / (config.euro_punto_ratio || 5)) || 0;
+        const xpFloatingBadge = xpReward > 0
+            ? `<div style="position:absolute; right:10px; bottom:10px; z-index:3; display:inline-flex; align-items:center; justify-content:center; border-radius:999px; padding:5px 9px; background:rgba(18,18,18,0.86); border:1px solid rgba(212,175,55,0.50); color:var(--w-gold); font-size:10px; font-weight:950; letter-spacing:.35px; text-transform:uppercase; box-shadow:0 5px 14px rgba(0,0,0,.55); backdrop-filter:blur(6px); pointer-events:none;">+(${xpReward}) WILD XP</div>`
+            : "";
 
         const eventDocId = ev.eventDocId || ev.id || "";
         const safeId = String(eventDocId).replace(/'/g, "\\'");
@@ -12112,8 +12149,8 @@ function renderTrips(trips, targetId) {
         // --- IMMAGINE ---
         const imgUrl = ev.immagine || ev.fotoUrl || "";
         let imgHtml = imgUrl && imgUrl.trim() !== ""
-            ? `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`
-            : `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
+            ? `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}${xpFloatingBadge}</div>`
+            : `<div style="margin-bottom:15px; position:relative; min-height:38px;">${badgeHtml}${xpFloatingBadge}</div>`;
 
         // --- RENDER IBRIDO ---
         if (isHike) {
@@ -12151,7 +12188,7 @@ function renderTrips(trips, targetId) {
                    <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
                 : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
 
-            return `<div class="card wildu-adventure-card wildu-adventure-card-official">
+            return `<div class="card wildu-adventure-card wildu-adventure-card-official${hasOfferta ? ' wildu-adventure-card-offer' : ''}">
                 ${imgHtml}
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px;">
                     <span class="card-title wildu-adventure-title" style="margin-bottom:0; min-width:0; flex:1 1 auto;">${titolo}</span>
@@ -12170,7 +12207,6 @@ function renderTrips(trips, targetId) {
                         <div class="price-standard">Standard: ${prezzoStandard}€</div>
                     </div>
                     <div class="price-prime-wrapper">
-                        <span class="xp-reward-label">+(${xpReward}) WILD XP</span>
                         ${priceHtml}
                     </div>
                 </div>
@@ -12179,6 +12215,47 @@ function renderTrips(trips, targetId) {
             </div>`;
         }
     }).join('');
+}
+
+
+function renderWilduModalXpChip(xpValue, color) {
+    const priceBox = document.getElementById('trip-modal-price-box');
+    const xpContainer = document.getElementById('trip-modal-xp-container');
+    const xpEl = document.getElementById('trip-modal-xp');
+
+    if (!priceBox || !xpContainer || !xpEl) return;
+
+    const cleanXp = String(xpValue || 0).trim();
+    const tone = color || 'var(--w-gold)';
+
+    priceBox.style.position = 'relative';
+    priceBox.style.overflow = 'visible';
+
+    xpContainer.style.cssText = [
+        'position:absolute',
+        'top:-13px',
+        'right:12px',
+        'display:inline-flex',
+        'align-items:center',
+        'justify-content:center',
+        'gap:5px',
+        'z-index:4',
+        'text-align:center',
+        'background:rgba(18,18,18,0.96)',
+        'border:1px solid rgba(212,175,55,0.42)',
+        'box-shadow:0 5px 14px rgba(0,0,0,0.42)',
+        'border-radius:999px',
+        'padding:5px 9px',
+        'white-space:nowrap',
+        'pointer-events:none'
+    ].join(';');
+
+    xpEl.innerText = '+' + cleanXp + ' WILD XP';
+    xpEl.style.cssText = 'font-size:10px; font-weight:950; color:' + tone + '; letter-spacing:.35px; text-transform:uppercase; line-height:1;';
+
+    Array.prototype.slice.call(xpContainer.children).forEach(function (child) {
+        if (child.id !== 'trip-modal-xp') child.style.display = 'none';
+    });
 }
 
 // ==========================================
@@ -12424,14 +12501,22 @@ function showTripDetails(id, detailContext = null) {
     const prezzoFinaleNumber = parseModalMoney(prezzoFinale, finalNumber || 0);
     const xpReward = ev.xp_reward || Math.floor((Number.isFinite(prezzoFinaleNumber) ? prezzoFinaleNumber : parseInt(prezzoFinale, 10)) / (config.euro_punto_ratio || 5)) || 0;
 
-    const savingFromStandard = (hasStandardPrice && prezzoFinaleNumber > 0)
-        ? Math.max(0, Math.round((standardNumber - prezzoFinaleNumber) * 100) / 100)
-        : 0;
-
     const myBookedPriceRaw = zainoDetailContext
         ? firstNonEmptyValue(zainoDetailContext.myPrice, zainoDetailContext.prezzoPrenotato, zainoDetailContext.prezzoPagato, zainoDetailContext.prezzo)
         : '';
     const myBookedPriceDisplay = formatModalPriceWithEuro(myBookedPriceRaw);
+    const myBookedPriceNumber = parseModalMoney(myBookedPriceRaw, 0);
+    const useBookedPriceAsMain = !!(zainoDetailContext && myBookedPriceNumber > 0);
+    const displayFinalNumber = useBookedPriceAsMain
+        ? myBookedPriceNumber
+        : (Number.isFinite(prezzoFinaleNumber) ? prezzoFinaleNumber : (finalNumber || 0));
+    const displayFinalPrice = useBookedPriceAsMain
+        ? (formatModalMoney(myBookedPriceNumber) || String(myBookedPriceRaw || '').replace(/€/g, '').trim() || prezzoFinale)
+        : prezzoFinale;
+
+    const savingFromStandard = (hasStandardPrice && displayFinalNumber > 0)
+        ? Math.max(0, Math.round((standardNumber - displayFinalNumber) * 100) / 100)
+        : 0;
 
     const priceBox = document.getElementById('trip-modal-price-box');
     const stdRow = document.getElementById('trip-modal-std-row');
@@ -12442,31 +12527,26 @@ function showTripDetails(id, detailContext = null) {
         stdRow.parentNode.insertBefore(extraRows, stdRow.nextSibling);
     }
 
-    const finalLabel = 'PREZZO FINALE';
-    const specialColor = priceMode === 'longLead' ? '#9ed6ff' : (priceMode === 'offer' ? '#ffaa00' : 'var(--w-gold)');
-    const specialBorder = priceMode === 'longLead' ? 'rgba(120,190,255,0.45)' : (priceMode === 'offer' ? 'rgba(255,170,0,0.45)' : 'rgba(212,175,55,0.34)');
+    const finalLabel = useBookedPriceAsMain ? 'IL MIO PREZZO' : 'PREZZO FINALE';
+    const specialColor = useBookedPriceAsMain ? '#9ed6ff' : (priceMode === 'longLead' ? '#9ed6ff' : (priceMode === 'offer' ? '#ffaa00' : 'var(--w-gold)'));
+    const specialBorder = useBookedPriceAsMain ? 'rgba(120,190,255,0.45)' : (priceMode === 'longLead' ? 'rgba(120,190,255,0.45)' : (priceMode === 'offer' ? 'rgba(255,170,0,0.45)' : 'rgba(212,175,55,0.34)'));
 
     priceBox.style.display = 'block';
+    priceBox.style.position = 'relative';
+    priceBox.style.overflow = 'visible';
     priceBox.style.borderColor = specialBorder;
-    priceBox.style.background = priceMode === 'longLead'
+    priceBox.style.background = useBookedPriceAsMain
         ? 'linear-gradient(135deg, rgba(120,190,255,0.10), rgba(34,34,34,1))'
-        : (priceMode === 'offer'
-            ? 'linear-gradient(135deg, rgba(255,170,0,0.10), rgba(34,34,34,1))'
-            : 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(34,34,34,1))');
+        : (priceMode === 'longLead'
+            ? 'linear-gradient(135deg, rgba(120,190,255,0.10), rgba(34,34,34,1))'
+            : (priceMode === 'offer'
+                ? 'linear-gradient(135deg, rgba(255,170,0,0.10), rgba(34,34,34,1))'
+                : 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(34,34,34,1))'));
 
     stdRow.style.display = hasStandardPrice ? 'flex' : 'none';
     document.getElementById('trip-modal-p-std').innerText = hasStandardPrice ? `${formatModalMoney(standardNumber)}€` : '';
 
     const extraRowsHtml = [];
-
-    if (myBookedPriceDisplay) {
-        extraRowsHtml.push(`
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08); color:#fff; font-size:13px;">
-                <span style="color:#9ed6ff; font-weight:950; letter-spacing:.4px;">IL MIO PREZZO</span>
-                <span style="font-weight:950; color:#9ed6ff; font-size:17px;">${myBookedPriceDisplay}</span>
-            </div>
-        `);
-    }
 
     if (savingFromStandard > 0) {
         extraRowsHtml.push(`
@@ -12484,7 +12564,7 @@ function showTripDetails(id, detailContext = null) {
 
     document.getElementById('trip-modal-prime-label').innerText = finalLabel;
     document.getElementById('trip-modal-prime-label').style.color = '#d6d6d6';
-    document.getElementById('trip-modal-p-prime').innerText = `${prezzoFinale}€`;
+    document.getElementById('trip-modal-p-prime').innerText = `${displayFinalPrice}€`;
     document.getElementById('trip-modal-p-prime').style.color = specialColor;
 
     let chipBox = document.getElementById('trip-modal-price-chips');
@@ -12496,24 +12576,29 @@ function showTripDetails(id, detailContext = null) {
     }
 
     const chips = [];
-    if (priceMode === 'offer') chips.push({ text: '🔥 Offerta speciale', color: '#ffaa00', bg: 'rgba(255,170,0,0.12)', border: 'rgba(255,170,0,0.34)' });
-    else if (priceMode === 'longLead') chips.push({ text: '⏳ Vantaggio anticipo', color: '#9ed6ff', bg: 'rgba(120,190,255,0.12)', border: 'rgba(120,190,255,0.34)' });
-    else chips.push({ text: '🌲 Prime community', color: 'var(--w-gold)', bg: 'rgba(212,175,55,0.11)', border: 'rgba(212,175,55,0.30)' });
-
-    if (myBookedPriceDisplay) chips.push({ text: '🎒 Già nello zaino', color: '#7ee087', bg: 'rgba(126,224,135,0.11)', border: 'rgba(126,224,135,0.28)' });
+    if (!useBookedPriceAsMain) {
+        if (priceMode === 'offer') chips.push({ text: '🔥 Offerta speciale', color: '#ffaa00', bg: 'rgba(255,170,0,0.12)', border: 'rgba(255,170,0,0.34)' });
+        else if (priceMode === 'longLead') chips.push({ text: '⏳ Vantaggio anticipo', color: '#9ed6ff', bg: 'rgba(120,190,255,0.12)', border: 'rgba(120,190,255,0.34)' });
+        else chips.push({ text: '🌲 Prezzo community', color: 'var(--w-gold)', bg: 'rgba(212,175,55,0.11)', border: 'rgba(212,175,55,0.30)' });
+    }
 
     if (chipBox) {
-        chipBox.style.display = 'flex';
+        chipBox.style.display = chips.length ? 'flex' : 'none';
+        chipBox.style.position = 'absolute';
+        chipBox.style.right = '12px';
+        chipBox.style.bottom = '-12px';
+        chipBox.style.zIndex = '4';
         chipBox.style.flexWrap = 'wrap';
+        chipBox.style.justifyContent = 'flex-end';
         chipBox.style.gap = '6px';
-        chipBox.style.marginTop = '7px';
+        chipBox.style.marginTop = '0';
+        chipBox.style.maxWidth = 'calc(100% - 24px)';
         chipBox.innerHTML = chips.map(chip => `
-            <span style="display:inline-flex; align-items:center; border:1px solid ${chip.border}; background:${chip.bg}; color:${chip.color}; border-radius:999px; padding:4px 8px; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.35px; white-space:nowrap;">${chip.text}</span>
+            <span style="display:inline-flex; align-items:center; border:1px solid ${chip.border}; background:${chip.bg}; color:${chip.color}; border-radius:999px; padding:4px 8px; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.35px; white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,.28); backdrop-filter:blur(6px);">${chip.text}</span>
         `).join('');
     }
 
-    document.getElementById('trip-modal-xp-container').style.display = 'block';
-    document.getElementById('trip-modal-xp').innerText = `+${xpReward} XP`;
+    renderWilduModalXpChip(xpReward, specialColor);
 
 // 🎯 Link commerciale ufficiale del viaggio.
 // Questo è il link vendita/ecommerce, separato dal motore Maps.
@@ -12690,7 +12775,9 @@ renderUnifiedDetailMapFromItem(ev);
     }
 
     function setODTitleFilter(value) {
-        activeODFilters.title = String(value || '').trim();
+        // Non usare trim qui: permette di digitare ricerche multi-parola senza
+        // perdere lo spazio finale appena inserito. La normalizzazione avviene nel filtro.
+        activeODFilters.title = String(value || '');
         renderOpenDays();
     }
 
@@ -12831,7 +12918,7 @@ renderUnifiedDetailMapFromItem(ev);
 
         const activeCount = countODActiveFilters();
         if(badge) {
-            badge.innerText = processedList.length + " Open Day";
+            badge.innerText = processedList.length + " viaggi gratis";
         }
 
         renderODFilterSummary(processedList.length);
@@ -12842,7 +12929,7 @@ renderUnifiedDetailMapFromItem(ev);
             return;
         }
 
-        if(badge) badge.innerText = processedList.length + " Open Day";
+        if(badge) badge.innerText = processedList.length + " viaggi gratis";
 
         let html = '';
         for(let od of processedList) {
@@ -17704,13 +17791,15 @@ function showOpenDayDetails(id) {
     const max = parseInt(config.od_xp_max) || 12;
     const randomXP = Math.floor(Math.random() * (max - min + 1)) + min;
     
-    document.getElementById('trip-modal-price-box').style.display = 'block';
+    const openDayPriceBox = document.getElementById('trip-modal-price-box');
+    openDayPriceBox.style.display = 'block';
+    openDayPriceBox.style.borderColor = 'rgba(0,170,255,0.45)';
+    openDayPriceBox.style.background = 'linear-gradient(135deg, rgba(0,170,255,0.10), rgba(34,34,34,1))';
     document.getElementById('trip-modal-std-row').style.display = 'none'; // Nascondiamo lo standard
     document.getElementById('trip-modal-prime-label').innerText = 'STATUS EVENTO';
     document.getElementById('trip-modal-p-prime').innerText = 'GRATIS';
     document.getElementById('trip-modal-p-prime').style.color = '#00aaff'; // Colore Open Day
-    document.getElementById('trip-modal-xp-container').style.display = 'block';
-    document.getElementById('trip-modal-xp').innerText = `+${randomXP} XP`;
+    renderWilduModalXpChip(randomXP, '#00aaff');
 
     let desc = od["Descrizione"] || "Nessuna descrizione disponibile.";
     const rawDesc = desc.replace(/\n/g, '<br>');
@@ -17900,13 +17989,15 @@ function showPayDayDetails(id) {
     const prezzo = pd["Prezzo"] || "0";
     const earnedXP = Math.floor(parseInt(prezzo || "0") / (config.euro_punto_ratio || 5)) || 0;
     
-    document.getElementById('trip-modal-price-box').style.display = 'block';
+    const payDayPriceBox = document.getElementById('trip-modal-price-box');
+    payDayPriceBox.style.display = 'block';
+    payDayPriceBox.style.borderColor = 'rgba(212,175,55,0.34)';
+    payDayPriceBox.style.background = 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(34,34,34,1))';
     document.getElementById('trip-modal-std-row').style.display = 'none'; // Nascondiamo la riga "Standard"
     document.getElementById('trip-modal-prime-label').innerText = 'QUOTA PARTECIPAZIONE';
     document.getElementById('trip-modal-p-prime').innerText = `${prezzo}€`;
     document.getElementById('trip-modal-p-prime').style.color = 'var(--w-gold)';
-    document.getElementById('trip-modal-xp-container').style.display = 'block';
-    document.getElementById('trip-modal-xp').innerText = `+${earnedXP} XP`;
+    renderWilduModalXpChip(earnedXP, 'var(--w-gold)');
 
     // --- DESCRIZIONE ---
     let desc = pd["Descrizione"] || "Nessuna descrizione disponibile.";
