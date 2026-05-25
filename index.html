@@ -2610,6 +2610,110 @@ body::before {
     }
 }
 
+
+
+/* =========================================================
+   WILDU V33 — DESKTOP PASSAPORTO CHIUSO PREMIUM
+   ---------------------------------------------------------
+   Solo desktop/tablet largo. Mobile invariato.
+   Quando il passaporto è chiuso mostra solo:
+   icona + nome completo + grado + azione Apri info.
+   ========================================================= */
+@media (min-width: 900px) {
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) {
+        border-color: rgba(212,175,55,0.42);
+        background:
+            radial-gradient(circle at 8% 0%, rgba(212,175,55,0.20), transparent 34%),
+            radial-gradient(circle at 88% 18%, rgba(45,90,39,0.16), transparent 34%),
+            linear-gradient(135deg, rgba(255,255,255,0.060), rgba(255,255,255,0.025));
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) .wildu-passport-toggle {
+        grid-template-columns: 56px minmax(0, 1fr) auto auto !important;
+        gap: 14px !important;
+        padding: 18px 18px !important;
+        align-items: center !important;
+    }
+
+    /* Nasconde le informazioni superflue SOLO nella vista chiusa desktop. */
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) .wildu-passport-toggle > div:nth-child(2) > div:first-child,
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) #wildu-passport-compact-phone,
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) #wildu-passport-mini-xp-label,
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) .wildu-passport-mini-xp {
+        display: none !important;
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) #prof-main-icon {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 18px;
+        background: rgba(0,0,0,0.24);
+        border: 1px solid rgba(212,175,55,0.22);
+        box-shadow: inset 0 0 18px rgba(212,175,55,0.08), 0 8px 18px rgba(0,0,0,0.30);
+        font-size: 34px !important;
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) #wildu-passport-compact-name {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        color: #fff !important;
+        font-size: 20px !important;
+        line-height: 1.12 !important;
+        letter-spacing: 0.01em;
+        text-transform: none !important;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) .wildu-passport-toggle > div:nth-child(3) {
+        min-width: 0 !important;
+        text-align: left !important;
+        justify-self: start !important;
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) #prof-grado {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        max-width: 190px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(212,175,55,0.36);
+        background: rgba(212,175,55,0.10);
+        color: #f6d889 !important;
+        font-size: 14px !important;
+        line-height: 1 !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-shadow: inset 0 0 14px rgba(212,175,55,0.06);
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) .wildu-desktop-toggle-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 9px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(212,175,55,0.42);
+        background: rgba(0,0,0,0.26);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+    }
+
+    #profile-data:not(.hidden) #wildu-passport-shell:not(.passport-open) .wildu-desktop-toggle-label {
+        min-width: max-content !important;
+        font-size: 11px !important;
+        font-weight: 950 !important;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #f6d889;
+    }
+}
+
 </style>
     
 </head>
@@ -7712,7 +7816,7 @@ function setWilduPassportDetailsOpen(isOpen, reason) {
 
     const passportToggleLabel = document.getElementById('wildu-passport-toggle-label');
     if (passportToggleLabel) {
-        passportToggleLabel.textContent = isOpen ? 'Chiudi' : 'Apri';
+        passportToggleLabel.textContent = isOpen ? 'Chiudi info' : 'Apri info';
     }
 
     if (details) {
