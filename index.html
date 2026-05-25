@@ -2228,6 +2228,149 @@ body::before {
         max-width: 390px;
     }
 }
+
+
+/* =========================================================
+   WILDU V29 — DESKTOP LAYOUT SUITE (REVERSIBILE)
+   ---------------------------------------------------------
+   Solo desktop/tablet largo. Mobile invariato.
+   - CTA card ancorata in fondo senza ingrandimenti forzati.
+   - Risultati Ruota da tab Viaggi in griglia desktop.
+   - Premi: Ruota + Community affiancate.
+   - Profilo: layout desktop a due colonne.
+   ========================================================= */
+@media (min-width: 900px) {
+    /* Card viaggi: uniformità verticale senza gonfiare il bottone. */
+    #event-list .wildu-adventure-details-btn,
+    #openday-list .wildu-adventure-details-btn,
+    #payday-list .wildu-adventure-details-btn,
+    #wheel-result-container .wildu-adventure-details-btn {
+        margin-top: auto !important;
+        padding: 11px 12px !important;
+        min-height: 0 !important;
+        height: auto !important;
+        font-size: 13px !important;
+        line-height: 1.05 !important;
+        border-radius: 10px !important;
+        letter-spacing: .22px !important;
+    }
+
+    #event-list .price-box {
+        margin-bottom: 14px !important;
+    }
+
+    #openday-list .wildu-adventure-place + div,
+    #payday-list .wildu-adventure-place + div,
+    #event-list .wildu-adventure-card-hike .wildu-adventure-place + div {
+        margin-bottom: 14px !important;
+    }
+
+    /* Ruota invocata dalla tab Viaggi: stesso trattamento desktop delle card ufficiali. */
+    #wheel-result-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(318px, 380px));
+        gap: 18px;
+        align-items: stretch;
+        justify-content: center;
+        margin-top: 14px;
+    }
+
+    #wheel-result-container > .card,
+    #wheel-result-container > .wildu-adventure-card {
+        width: 100%;
+        min-width: 0;
+        max-width: 380px;
+        margin-bottom: 0 !important;
+        height: 100%;
+        box-sizing: border-box;
+        justify-self: stretch;
+        display: flex;
+        flex-direction: column;
+        text-align: left;
+    }
+
+    #wheel-result-container > p,
+    #wheel-result-container > .empty-state {
+        grid-column: 1 / -1;
+    }
+
+    /* Premi e Giochi: Ruota + Community affiancate solo desktop. */
+    .wildu-rewards-quick-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        align-items: start;
+        margin: 0 0 18px 0;
+    }
+
+    .wildu-rewards-quick-cell {
+        min-width: 0;
+    }
+
+    .wildu-rewards-quick-grid .wildu-rewards-section-label,
+    .wildu-rewards-quick-grid .wildu-rewards-divider {
+        margin-top: 0 !important;
+    }
+
+    .wildu-rewards-quick-grid .guide-accordion {
+        height: auto;
+        margin-bottom: 0 !important;
+    }
+
+    .wildu-rewards-quick-grid .guide-summary {
+        min-height: 74px;
+        box-sizing: border-box;
+    }
+
+    /* Profilo: due colonne desktop, mobile intatto. */
+    #profile-data:not(.hidden) {
+        display: grid !important;
+        grid-template-columns: minmax(300px, 370px) minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+    }
+
+    #wildu-passport-shell,
+    #wildu-grade-legend-card,
+    #profile-data > .wildu-profile-help-card,
+    #profile-data > .wildu-profile-community-divider,
+    #profile-data > .wildu-profile-social-card,
+    #profile-data > .wildu-profile-commercial-disclosure {
+        grid-column: 1;
+        min-width: 0;
+    }
+
+    #profile-data > .wildu-bookings-card {
+        grid-column: 2;
+        grid-row: 1 / span 8;
+        margin-top: 0 !important;
+        min-width: 0;
+        align-self: start;
+    }
+
+    #my-bookings-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 12px;
+    }
+
+    #my-bookings-list > div {
+        margin-bottom: 0 !important;
+        box-sizing: border-box;
+    }
+}
+
+@media (min-width: 1280px) {
+    #wheel-result-container {
+        grid-template-columns: repeat(auto-fit, minmax(330px, 390px));
+    }
+
+    #wheel-result-container > .card,
+    #wheel-result-container > .wildu-adventure-card {
+        max-width: 390px;
+    }
+}
+
 </style>
     
 </head>
@@ -2540,8 +2683,10 @@ body::before {
         <div class="wildu-rewards-section-label"><span>Le tue risorse</span></div>
         <div id="dynamic-resources-list"></div>
 
-        <div class="wildu-rewards-section-label"><span>Ruota del Destino</span></div>
-        <details id="wildu-rewards-wheel-accordion" class="guide-accordion" style="margin-top:0; border-left-color: var(--w-gold);">
+        <div class="wildu-rewards-quick-grid">
+            <div class="wildu-rewards-quick-cell wildu-rewards-wheel-cell">
+                <div class="wildu-rewards-section-label"><span>Ruota del Destino</span></div>
+                <details id="wildu-rewards-wheel-accordion" class="guide-accordion" style="margin-top:0; border-left-color: var(--w-gold);">
     <summary class="guide-summary" style="border-left-color: var(--w-gold);">
         <div style="display:flex; flex-direction:column;">
             <span style="font-weight:900; font-size:16px; color:#fff;">🎡 Ruota del Destino</span>
@@ -2576,10 +2721,10 @@ body::before {
         </div>
     </div>
 </details>
-
-        <div class="wildu-rewards-bottom">
-            <div class="wildu-rewards-divider"><span>Community Wild-U</span></div>
-            <details id="wildu-rewards-community" class="guide-accordion" style="margin-top:0; border-left-color: #0088cc;">
+            </div>
+            <div class="wildu-rewards-quick-cell wildu-rewards-community-cell">
+                <div class="wildu-rewards-divider"><span>Community Wild-U</span></div>
+                <details id="wildu-rewards-community" class="guide-accordion" style="margin-top:0; border-left-color: #0088cc;">
                 <summary class="guide-summary" style="border-left-color: #0088cc;">
                     <div style="display:flex; flex-direction:column;">
                         <span style="font-weight:900; font-size:16px; color:#fff;">🌐 Community Wild-U</span>
@@ -2604,7 +2749,10 @@ body::before {
                     </button>
                 </div>
             </details>
+            </div>
+        </div>
 
+        <div class="wildu-rewards-bottom">
             <div class="wildu-rewards-divider wildu-rewards-news-divider"><span>Comunicazioni Wild-U</span></div>
             <div id="wildu-rewards-real-news"></div>
 
@@ -2742,7 +2890,7 @@ body::before {
         <div id="my-bookings-list"></div>
     </div>
 
-    <div class="card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
+    <div class="card wildu-profile-help-card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
         <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
         <p style="font-size:14px; color:#aaa; margin-bottom:20px; line-height:1.42;">Scrivici su WhatsApp per qualsiasi dubbio.</p>
         <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
@@ -2762,7 +2910,7 @@ body::before {
     </div>
     
     <!-- INIZIO DISCLOSURE TATTICA LATO CLIENTE -->
-    <div style="text-align: center; opacity: 0.5; margin-top: 30px; padding-top: 20px; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 20px;">
+    <div class="wildu-profile-commercial-disclosure" style="text-align: center; opacity: 0.5; margin-top: 30px; padding-top: 20px; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 20px;">
         <b style="color:var(--w-gold);">TRASPARENZA COMMERCIALE</b><br>
         Sosteniamo la community consigliando l'attrezzatura che amiamo.<br>
         In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
