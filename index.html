@@ -2111,12 +2111,29 @@ body::before {
 
 
 
+
 /* =========================================================
-   WILDU V25 — DESKTOP CARD GRID (REVERSIBILE)
+   WILDU V27 — DIVISORE LUOGO CARD ESTERNE ANCHE MOBILE
    ---------------------------------------------------------
-   Solo desktop/tablet largo: non stringe l'app in una phone shell.
-   Mantiene footer Amazon, navbar e logiche originali.
-   Le card si dispongono su più colonne invece di allargarsi troppo.
+   Solo rifinitura visiva: rende coerente il separatore dopo
+   il luogo su official / OpenDay / PayDay anche su smartphone.
+   Non forza altezze né griglie mobile.
+   ========================================================= */
+#event-list .wildu-adventure-place,
+#openday-list .wildu-adventure-place,
+#payday-list .wildu-adventure-place {
+    padding-bottom: 12px !important;
+    margin-bottom: 12px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+
+/* =========================================================
+   WILDU V26 — DESKTOP CARD GRID REFINEMENT (REVERSIBILE)
+   ---------------------------------------------------------
+   Solo desktop/tablet largo: niente phone-frame e niente JS drag.
+   Le card mantengono una larghezza premium anche se ce n'è una sola.
+   Mobile invariato.
    ========================================================= */
 @media (min-width: 900px) {
     #event-list,
@@ -2124,9 +2141,10 @@ body::before {
     #payday-list,
     #dynamic-resources-list {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(318px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(318px, 380px));
         gap: 18px;
         align-items: stretch;
+        justify-content: center;
     }
 
     #event-list > .card,
@@ -2136,12 +2154,29 @@ body::before {
     #payday-list > .card,
     #payday-list > .wildu-adventure-card,
     #dynamic-resources-list > .resource-item {
-        width: auto;
+        width: 100%;
         min-width: 0;
-        max-width: none;
+        max-width: 380px;
         margin-bottom: 0;
         height: 100%;
         box-sizing: border-box;
+        justify-self: stretch;
+    }
+
+    #event-list > .card,
+    #event-list > .wildu-adventure-card,
+    #openday-list > .card,
+    #openday-list > .wildu-adventure-card,
+    #payday-list > .card,
+    #payday-list > .wildu-adventure-card {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #event-list .wildu-adventure-details-btn,
+    #openday-list .wildu-adventure-details-btn,
+    #payday-list .wildu-adventure-details-btn {
+        margin-top: auto !important;
     }
 
     #event-list > p,
@@ -2174,7 +2209,17 @@ body::before {
     #openday-list,
     #payday-list,
     #dynamic-resources-list {
-        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(330px, 390px));
+    }
+
+    #event-list > .card,
+    #event-list > .wildu-adventure-card,
+    #openday-list > .card,
+    #openday-list > .wildu-adventure-card,
+    #payday-list > .card,
+    #payday-list > .wildu-adventure-card,
+    #dynamic-resources-list > .resource-item {
+        max-width: 390px;
     }
 }
 </style>
@@ -12323,6 +12368,31 @@ function filterTrips() {
         renderTrips(filtered, 'event-list');
     }
 
+function normalizeWilduExternalCardTimeLabel(value) {
+    const raw = String(value || '').trim();
+    const clean = raw
+        .replace(/^\s*-\s*/, '')
+        .replace(/\s*-\s*$/, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    if (!clean || clean === '-' || clean.toLowerCase() === 'variabile, chiedi info') {
+        return 'Apri dettagli';
+    }
+
+    return clean;
+}
+
+function formatWilduExternalCardTimeRange(start, end) {
+    const a = String(start || '').trim();
+    const b = String(end || '').trim();
+
+    if (a && b) return a === b ? a : (a + ' - ' + b);
+    if (a) return a;
+    if (b) return b;
+    return 'Apri dettagli';
+}
+
 function renderTrips(trips, targetId) {
     document.getElementById(targetId).innerHTML = trips.map(ev => {
         const isHike = ev.isHike;
@@ -12360,7 +12430,8 @@ function renderTrips(trips, targetId) {
             : "";
 
         // --- 2. ORARIO E LUOGO ---
-        const orario = ev["Orario Inizio"] || (ev.ritrovo ? ev.ritrovo.ora : "") || "";
+        const orarioRaw = ev["Orario Inizio"] || (ev.ritrovo ? ev.ritrovo.ora : "") || "";
+        const orario = normalizeWilduExternalCardTimeLabel(orarioRaw);
         const reg = ev.Regione || ev.regione || "";
         const nomeRegione = reg ? `${reg} - ` : "";
         
@@ -12421,7 +12492,7 @@ function renderTrips(trips, targetId) {
                 </div>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
                     <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
-                    ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
+                    <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
                 
@@ -12454,7 +12525,7 @@ function renderTrips(trips, targetId) {
                 </div>
                 <div style="font-size:15px; color:#aaa; margin-bottom: 12px; line-height: 1.4;">
                     <div style="color:#fff; margin-bottom:4px;">📅 <b>${displayDate}</b></div>
-                    ${orario && orario !== "variabile, chiedi info" ? `<div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>` : ''}
+                    <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
 
@@ -13487,7 +13558,7 @@ renderUnifiedDetailMapFromItem(ev);
         const dInizio = od["Data Inizio"] || "";
         const dFine = od["Data Fine"] || "";
         const displayDate = (dFine && dFine !== dInizio) ? `${dInizio} - ${dFine}` : dInizio;
-        const orario = (od["Orario Inizio"] || "") + " - " + (od["Orario Fine"] || "");
+        const orario = formatWilduExternalCardTimeRange(od["Orario Inizio"], od["Orario Fine"]);
 
 // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E BADGE ---
             const occ = calculateDisplayOccupancy(id, dInizio, od.qnt || 0, od.postiMax);
@@ -13600,7 +13671,12 @@ function renderPayDays() {
             const dataInizio = pd["Data Inizio"] || "";
             const dataFine = pd["Data Fine"] || "";
             const displayDate = (dataFine && dataFine !== dataInizio) ? `${dataInizio} - ${dataFine}` : dataInizio;
-            const orario = (pd["Orario Inizio"] || "") + " - " + (pd["Orario Fine"] || "");
+            const orario = formatWilduExternalCardTimeRange(pd["Orario Inizio"], pd["Orario Fine"]);
+            const pdYear = dataInizio && String(dataInizio).split('/')[2] ? parseInt(String(dataInizio).split('/')[2], 10) : NaN;
+            const pdCurrentYear = new Date().getFullYear();
+            const futureYearBadge = (!isNaN(pdYear) && pdYear > pdCurrentYear)
+                ? `<span style="display:inline-flex; align-items:center; justify-content:center; padding:4px 10px; border-radius:999px; background:linear-gradient(135deg, #4aa8ff, #2e7df6); color:#fff; font-size:11px; font-weight:900; letter-spacing:0.4px; text-transform:uppercase; white-space:nowrap; box-shadow:0 4px 14px rgba(46,125,246,0.28); flex:0 0 auto;">${pdYear}!</span>`
+                : "";
         const prezzo = pd["Prezzo"] || "0";
         const nomeRegione = pd["Regione"] ? `${pd["Regione"]} - ` : "";
         const luogo = pd["Luogo Nome"] || "Luogo da definire";
