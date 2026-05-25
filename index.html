@@ -18768,7 +18768,7 @@ function showTripDetailsFromCarousel(id, isHike) {
 }    
 
 // ==========================================
-// WILDU SCONTI RUNTIME BRIDGE V2
+// WILDU SCONTI RUNTIME BRIDGE V5
 // Ponte minimo per modules/wildu-sconti.html.
 // Non modifica il render originale viaggi/Open Day/PayDay: espone solo dati derivati.
 // Regole prezzo:
@@ -18780,11 +18780,10 @@ function showTripDetailsFromCarousel(id, isHike) {
 (function installWilduDiscountsRuntimeBridge() {
     const DAY_MS = 24 * 60 * 60 * 1000;
 
-    // V3: overlay letto direttamente da Firestore se getInitData/config non porta
-    // ancora tutti i campi sconto. Non cambia la fonte sacra: resta
-    // PARAMETERS_PARTNER/client_config, ma evita blocchi dovuti a cache/gateway/mapping.
-    let wdConfigOverlay = null;
-    let wdConfigRefreshPromise = null;
+    // V5: niente seconda lettura Firestore.
+    // Il bridge legge SOLO il config già arrivato dalla lettura iniziale getInitData/cache pubblica.
+    // La correzione vera va fatta a monte: getInitData deve includere nel suo data.config
+    // anche percentuale_100_giorni e giorni_100_giorni, senza rimuovere nessun campo esistente.
 
     function wdCanonicalKey(key) {
         return String(key == null ? '' : key)
@@ -18794,10 +18793,7 @@ function showTripDetailsFromCarousel(id, isHike) {
     }
 
     function wdGetConfigSources() {
-        const sources = [];
-        if (wdConfigOverlay && typeof wdConfigOverlay === 'object') sources.push(wdConfigOverlay);
-        if (config && typeof config === 'object') sources.push(config);
-        return sources;
+        return (config && typeof config === 'object') ? [config] : [];
     }
 
     function wdReadConfigRaw(keys) {
@@ -19120,43 +19116,31 @@ function showTripDetailsFromCarousel(id, isHike) {
         if (typeof showToast === 'function') showToast('⚠️ Dettagli non disponibili.');
     }
 
-    async function wdRefreshDiscountConfig() {
-        if (wdConfigRefreshPromise) return wdConfigRefreshPromise;
+    function wdGetConfigDiagnostics() {
+        return {
+            hasConfig: !!(config && typeof config === 'object'),
+            hasPercent100: wdReadConfigRaw(['percentuale_100_giorni']) !== undefined,
+            hasEarlyBooking: wdReadConfigRaw(['percentuale_early_booking']) !== undefined,
+            hasLongLeadDays: wdReadConfigRaw(['giorni_100_giorni']) !== undefined,
+            longLeadPercent: wdGetLongLeadPercent(),
+            earlyBookingPercent: wdGetEarlyBookingPercent(),
+            longLeadDays: wdGetLongLeadDays()
+        };
+    }
 
-        wdConfigRefreshPromise = (async function () {
-            if (!window.db || typeof db.collection !== 'function') {
-                return wdGetDiscountData();
-            }
-
-            try {
-                const snap = await db
-                    .collection('PARAMETERS_PARTNER')
-                    .doc('client_config')
-                    .get({ source: 'server' });
-
-                wdConfigOverlay = snap && snap.exists ? (snap.data() || {}) : {};
-
-                if (typeof pageDebug === 'function') {
-                    pageDebug('WILDU_DISCOUNTS_CONFIG_REFRESH', {
-                        hasPercent100: wdReadConfigRaw(['percentuale_100_giorni']) !== undefined,
-                        longLeadPercent: wdGetLongLeadPercent(),
-                        earlyBookingPercent: wdGetEarlyBookingPercent(),
-                        longLeadDays: wdGetLongLeadDays()
-                    });
-                }
-            } catch (e) {
-                console.warn('[WILDU SCONTI] Lettura diretta client_config non riuscita, uso config già disponibile.', e);
-            }
-
-            return wdGetDiscountData();
-        })();
-
-        return wdConfigRefreshPromise;
+    function wdRefreshDiscountConfig() {
+        // Compatibilità con eventuali moduli già caricati: in V5 non fa nessuna lettura extra.
+        // Restituisce una Promise per non rompere chiamate esistenti, ma usa solo il config iniziale.
+        if (typeof pageDebug === 'function') {
+            pageDebug('WILDU_DISCOUNTS_CONFIG_FROM_INITDATA_ONLY', wdGetConfigDiagnostics());
+        }
+        return Promise.resolve(wdGetDiscountData());
     }
 
     window.WilduDiscountsRuntime = {
         getDiscountData: wdGetDiscountData,
         refreshDiscountConfig: wdRefreshDiscountConfig,
+        getConfigDiagnostics: wdGetConfigDiagnostics,
         openDetails: wdOpenDetails,
         getLongLeadDays: wdGetLongLeadDays,
         getLongLeadPercent: wdGetLongLeadPercent,
