@@ -10591,6 +10591,149 @@ if (tripOrig) {
     // --- VARIABILE PER SALVARE IL LINK WHATSAPP DURANTE LA PENALE ---
 let pendingWaLink = "";
 
+function showWilduCancelPenaltyModal(options) {
+    options = options || {};
+
+    return new Promise((resolve) => {
+        let overlay = document.getElementById('wildu-cancel-confirm-overlay');
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'wildu-cancel-confirm-overlay';
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+            overlay.style.cssText = [
+                'position:fixed',
+                'inset:0',
+                'z-index:26000',
+                'display:none',
+                'align-items:center',
+                'justify-content:center',
+                'padding:calc(18px + env(safe-area-inset-top,0px)) 18px calc(18px + env(safe-area-inset-bottom,0px)) 18px',
+                'box-sizing:border-box',
+                'background:rgba(0,0,0,0.78)',
+                'backdrop-filter:blur(10px)'
+            ].join(';');
+
+            overlay.innerHTML = `
+                <div id="wildu-cancel-confirm-card" style="
+                    width:min(92vw,430px);
+                    border-radius:24px;
+                    border:1px solid rgba(255,120,120,0.34);
+                    background:radial-gradient(circle at 12% 0%, rgba(255,80,80,0.20), transparent 38%), linear-gradient(145deg, #1f1717, #101010);
+                    box-shadow:0 24px 70px rgba(0,0,0,0.80), inset 0 1px 0 rgba(255,255,255,0.08);
+                    padding:22px;
+                    box-sizing:border-box;
+                    text-align:left;
+                    color:#f2f2f2;
+                ">
+                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:13px;">
+                        <div style="width:42px; height:42px; min-width:42px; border-radius:16px; display:flex; align-items:center; justify-content:center; background:rgba(255,68,68,0.16); border:1px solid rgba(255,120,120,0.28); font-size:22px;">⚠️</div>
+                        <div style="min-width:0;">
+                            <div style="color:#ffb3b3; font-size:11px; font-weight:950; letter-spacing:.8px; text-transform:uppercase;">Conferma annullamento</div>
+                            <div style="color:#fff; font-size:18px; font-weight:950; line-height:1.15; margin-top:3px;">Penale XP prevista</div>
+                        </div>
+                    </div>
+
+                    <div id="wildu-cancel-confirm-trip" style="
+                        color:#fff;
+                        font-size:15px;
+                        font-weight:900;
+                        line-height:1.35;
+                        margin-bottom:11px;
+                    "></div>
+
+                    <div id="wildu-cancel-confirm-text" style="
+                        color:#d6d6d6;
+                        font-size:14px;
+                        line-height:1.48;
+                        margin-bottom:16px;
+                    "></div>
+
+                    <div style="
+                        display:flex;
+                        gap:10px;
+                        justify-content:flex-end;
+                        align-items:center;
+                        flex-wrap:wrap;
+                        padding-top:14px;
+                        border-top:1px solid rgba(255,255,255,0.10);
+                    ">
+                        <button type="button" id="wildu-cancel-confirm-no" style="
+                            flex:1 1 130px;
+                            min-height:42px;
+                            border:1px solid rgba(255,255,255,0.16);
+                            border-radius:999px;
+                            background:rgba(255,255,255,0.07);
+                            color:#eee;
+                            font-weight:950;
+                            text-transform:uppercase;
+                            font-size:12px;
+                            cursor:pointer;
+                        ">Tieni prenotazione</button>
+                        <button type="button" id="wildu-cancel-confirm-yes" style="
+                            flex:1 1 160px;
+                            min-height:42px;
+                            border:1px solid rgba(255,120,120,0.55);
+                            border-radius:999px;
+                            background:linear-gradient(135deg, #ff5a5a, #b51f1f);
+                            color:#fff;
+                            font-weight:950;
+                            text-transform:uppercase;
+                            font-size:12px;
+                            cursor:pointer;
+                            box-shadow:0 8px 22px rgba(255,68,68,0.20);
+                        ">Conferma</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+        }
+
+        const tripEl = document.getElementById('wildu-cancel-confirm-trip');
+        const textEl = document.getElementById('wildu-cancel-confirm-text');
+        const noBtn = document.getElementById('wildu-cancel-confirm-no');
+        const yesBtn = document.getElementById('wildu-cancel-confirm-yes');
+
+        const safeTitle = String(options.titolo || 'questa prenotazione').trim();
+        const safeDate = String(options.data || '').trim();
+        const percent = Number(options.percentualePenale || 0);
+        const penalty = Number(options.penalty || 0);
+
+        tripEl.textContent = safeDate ? (safeTitle + ' · ' + safeDate) : safeTitle;
+        textEl.innerHTML = 'Se procedi, verrà applicata una penale del <b style="color:#ffb3b3;">' + percent + '%</b> sui tuoi XP totali' +
+            (penalty > 0 ? ' (<b style="color:#ffb3b3;">-' + penalty + ' XP</b>).' : '.') +
+            '<br><span style="color:#aaa;">Questa azione rimuoverà il viaggio dal tuo zaino.</span>';
+
+        function cleanup(value) {
+            overlay.style.display = 'none';
+            document.documentElement.style.overflow = '';
+            document.body.style.overflow = '';
+            noBtn.onclick = null;
+            yesBtn.onclick = null;
+            overlay.onclick = null;
+            document.removeEventListener('keydown', onKeyDown);
+            resolve(value === true);
+        }
+
+        function onKeyDown(evt) {
+            if (evt.key === 'Escape') cleanup(false);
+        }
+
+        noBtn.onclick = () => cleanup(false);
+        yesBtn.onclick = () => cleanup(true);
+        overlay.onclick = (evt) => { if (evt.target === overlay) cleanup(false); };
+        document.addEventListener('keydown', onKeyDown);
+
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
+        overlay.style.display = 'flex';
+
+        try { noBtn.focus({ preventScroll: true }); } catch (e) {}
+    });
+}
+
 // IL MANGANELLO CON SCUDO E OVERLAY DRAMMATICO
 async function requestCancel(encodedBookingPayload, btnElement) {
     if (!requireLoggedAccess('CANCEL_ATTEMPT')) return;
@@ -10622,11 +10765,14 @@ async function requestCancel(encodedBookingPayload, btnElement) {
     const percentualePenale = parseInt(config.penale_annullamento) || 40;
     const penalty = Math.max(0, Math.floor(currentXP * (percentualePenale / 100)));
 
-    const confirmMsg = data
-        ? `⚠️ ATTENZIONE:\nSe annulli "${titolo}" del ${data} subirai una penale del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere?`
-        : `⚠️ ATTENZIONE:\nSe annulli "${titolo}" subirai una penale del ${percentualePenale}% sui tuoi XP totali (-${penalty} XP).\n\nProcedere?`;
+    const confirmOk = await showWilduCancelPenaltyModal({
+        titolo,
+        data,
+        percentualePenale,
+        penalty
+    });
 
-    if (!confirm(confirmMsg)) return;
+    if (!confirmOk) return;
 
     isCancellingInProgress = true;
 
@@ -12288,7 +12434,9 @@ function ensureWilduOfficialPriceServicesStack() {
         'overflow:visible',
         'margin:0 0 24px 0',
         'padding:0',
-        'isolation:isolate'
+        'isolation:isolate',
+        'width:100%',
+        'box-sizing:border-box'
     ].join(';');
 
     if (stack.parentNode !== p.container) {
@@ -12315,6 +12463,33 @@ function ensureWilduOfficialPriceServicesStack() {
     }
 
     return stack;
+}
+
+function positionWilduOfficialPriceTypeChip() {
+    const stack = document.getElementById('trip-modal-price-services-stack');
+    const priceBox = document.getElementById('trip-modal-price-box');
+    const chipBox = document.getElementById('trip-modal-price-chips');
+    const servicesDetails = stack ? stack.querySelector('#trip-modal-services-details') : null;
+
+    if (!stack || !priceBox || !chipBox || chipBox.style.display === 'none') return;
+
+    chipBox.style.position = 'absolute';
+    chipBox.style.left = '12px';
+    chipBox.style.right = 'auto';
+    chipBox.style.marginTop = '0';
+    chipBox.style.marginBottom = '0';
+    chipBox.style.transform = 'translateY(-50%)';
+    chipBox.style.zIndex = '8';
+    chipBox.style.pointerEvents = 'none';
+
+    const priceBottom = priceBox.offsetTop + priceBox.offsetHeight;
+    const servicesTop = servicesDetails ? servicesDetails.offsetTop : priceBottom;
+    const top = servicesDetails && servicesTop > priceBottom
+        ? Math.round((priceBottom + servicesTop) / 2)
+        : priceBottom;
+
+    chipBox.style.top = top + 'px';
+    chipBox.style.bottom = 'auto';
 }
 
 function resetWilduSharedDetailLayoutForSimpleEvent() {
@@ -12408,7 +12583,7 @@ function renderWilduSimpleEventGearAccordion(gearHtml, toneColor) {
         'list-style:none'
     ].join(';');
 
-    summary.innerHTML = '<span>🎒 Da portare nello zaino</span><span style="color:#000; background:' + tone + '; border-radius:999px; padding:4px 9px; font-size:10px; font-weight:950; white-space:nowrap;">apri</span>';
+    summary.innerHTML = '<span>🎒 Da portare nello zaino</span><span id="od-modal-gear-summary-state" style="color:#000; background:' + tone + '; border-radius:999px; padding:4px 9px; font-size:10px; font-weight:950; white-space:nowrap;">apri</span>';
 
     p.gearListEl.innerHTML = gearHtml || '<li>🎒 Nessuna attrezzatura specifica richiesta.</li>';
     p.gearListEl.style.cssText = [
@@ -12426,6 +12601,13 @@ function renderWilduSimpleEventGearAccordion(gearHtml, toneColor) {
     if (p.gearTitleEl) {
         p.gearTitleEl.innerText = '';
         p.gearTitleEl.style.display = 'none';
+    }
+
+    const statePill = details.querySelector('#od-modal-gear-summary-state');
+    if (statePill) {
+        const syncGearSummaryState = () => { statePill.textContent = details.open ? 'chiudi' : 'apri'; };
+        details.ontoggle = syncGearSummaryState;
+        syncGearSummaryState();
     }
 
     p.descEl.insertAdjacentElement('afterend', details);
@@ -12539,6 +12721,18 @@ function showTripDetails(id, detailContext = null) {
     if (serviziInclusi.length > 0 || modalLinkSito) {
         const serviziSummaryBadge = serviziInclusi.length > 0 ? (serviziInclusi.length + ' inclusi') : 'link';
 
+        gearListEl.style.cssText = [
+            'list-style:none',
+            'margin:0 10px 0 14px',
+            'padding:0',
+            'color:#ddd',
+            'font-size:15px',
+            'position:relative',
+            'z-index:1',
+            'box-sizing:border-box',
+            'overflow:visible'
+        ].join(';');
+
         gearListEl.innerHTML = `
             <li style="list-style:none; margin:-13px 0 18px 0; position:relative; z-index:1;">
                  <details id="trip-modal-services-details" style="
@@ -12608,6 +12802,7 @@ function showTripDetails(id, detailContext = null) {
         if (servicesDetailsEl && servicesSummaryLabelEl) {
             const syncServicesSummaryLabel = () => {
                 servicesSummaryLabelEl.textContent = servicesDetailsEl.open ? 'Chiudi servizi' : 'Mostra servizi';
+                requestAnimationFrame(positionWilduOfficialPriceTypeChip);
             };
             servicesDetailsEl.addEventListener('toggle', syncServicesSummaryLabel, { passive: true });
             syncServicesSummaryLabel();
@@ -12823,17 +13018,18 @@ function showTripDetails(id, detailContext = null) {
 
     if (chipBox) {
         chipBox.style.display = chips.length ? 'flex' : 'none';
-        chipBox.style.position = chipStack ? 'relative' : 'absolute';
-        chipBox.style.left = chipStack ? '12px' : '12px';
+        chipBox.style.position = chipStack ? 'absolute' : 'absolute';
+        chipBox.style.left = '12px';
         chipBox.style.right = 'auto';
         chipBox.style.top = 'auto';
         chipBox.style.bottom = chipStack ? 'auto' : '-12px';
-        chipBox.style.zIndex = '5';
+        chipBox.style.transform = chipStack ? 'translateY(-50%)' : 'none';
+        chipBox.style.zIndex = '8';
         chipBox.style.flexWrap = 'wrap';
         chipBox.style.justifyContent = 'flex-start';
         chipBox.style.gap = '6px';
-        chipBox.style.marginTop = chipStack ? '-12px' : '0';
-        chipBox.style.marginBottom = chipStack ? '-12px' : '0';
+        chipBox.style.marginTop = '0';
+        chipBox.style.marginBottom = '0';
         chipBox.style.maxWidth = 'calc(100% - 24px)';
         chipBox.style.pointerEvents = 'none';
         chipBox.innerHTML = chips.map(chip => `
@@ -12921,6 +13117,7 @@ renderUnifiedDetailMapFromItem(ev);
     }
 
     document.getElementById('od-details-modal').style.display = 'block';
+    requestAnimationFrame(positionWilduOfficialPriceTypeChip);
 }
 
 
