@@ -2371,6 +2371,102 @@ body::before {
     }
 }
 
+
+
+/* =========================================================
+   WILDU V30 — DESKTOP CTA + PROFILO FIX (REVERSIBILE)
+   ---------------------------------------------------------
+   Solo desktop/tablet largo. Mobile invariato.
+   - CTA card: dimensione compatta, niente flex-grow, ancoraggio in fondo.
+   - Ruota da tab Viaggi: stesso distacco prezzo/CTA delle card viaggio.
+   - Profilo desktop: prenotazioni in colonna singola.
+   - Passaporto/Legenda: label Apri/Chiudi solo desktop.
+   ========================================================= */
+.wildu-desktop-toggle-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 7px;
+    min-width: 18px;
+}
+
+.wildu-desktop-toggle-label {
+    display: none;
+}
+
+@media (min-width: 900px) {
+    #event-list .wildu-adventure-card,
+    #openday-list .wildu-adventure-card,
+    #payday-list .wildu-adventure-card,
+    #wheel-result-container .wildu-adventure-card {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    #event-list .wildu-adventure-details-btn,
+    #openday-list .wildu-adventure-details-btn,
+    #payday-list .wildu-adventure-details-btn,
+    #wheel-result-container .wildu-adventure-details-btn {
+        flex: 0 0 auto !important;
+        margin-top: auto !important;
+        padding: 11px 12px !important;
+        min-height: 0 !important;
+        height: auto !important;
+        max-height: none !important;
+        font-size: 13px !important;
+        line-height: 1.05 !important;
+        border-radius: 10px !important;
+        letter-spacing: .22px !important;
+        align-self: stretch !important;
+    }
+
+    #event-list .price-box,
+    #wheel-result-container .price-box {
+        margin-bottom: 14px !important;
+    }
+
+    #wheel-result-container .wildu-adventure-place + div,
+    #wheel-result-container .wildu-adventure-card-hike .wildu-adventure-place + div,
+    #wheel-result-container .wildu-adventure-card-openday .wildu-adventure-place + div {
+        margin-bottom: 14px !important;
+    }
+
+    #my-bookings-list {
+        display: flex !important;
+        flex-direction: column !important;
+        grid-template-columns: none !important;
+        gap: 12px !important;
+    }
+
+    #my-bookings-list > div {
+        width: 100% !important;
+        max-width: none !important;
+        margin-bottom: 0 !important;
+        box-sizing: border-box;
+    }
+
+    .wildu-desktop-toggle-wrap {
+        min-width: 76px;
+    }
+
+    .wildu-desktop-toggle-label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 42px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(212,175,55,.10);
+        border: 1px solid rgba(212,175,55,.22);
+        color: #f6d889;
+        font-size: 10px;
+        font-weight: 950;
+        line-height: 1;
+        text-transform: uppercase;
+        letter-spacing: .55px;
+    }
+}
+
 </style>
     
 </head>
@@ -2825,7 +2921,7 @@ body::before {
                 <div id="wildu-passport-mini-xp-label" style="color:#c9b88c; font-size:11px; font-weight:900; margin-top:5px;">0%</div>
             </div>
 
-            <span id="wildu-passport-chevron">⌄</span>
+            <span class="wildu-desktop-toggle-wrap"><span id="wildu-passport-toggle-label" class="wildu-desktop-toggle-label">Apri</span><span id="wildu-passport-chevron">⌄</span></span>
         </div>
 
         <div class="wildu-passport-mini-xp" aria-hidden="true">
@@ -2871,7 +2967,7 @@ body::before {
                 <div style="color:#fff; font-weight:950; font-size:16px;">🏅 Legenda gradi Wild-U</div>
                 <div style="color:#aaa; font-size:12px; margin-top:4px;">Livelli sbloccati, prossimo traguardo e gradi futuri</div>
             </div>
-            <span id="wildu-grade-legend-chevron" style="color:var(--w-gold); font-size:18px; font-weight:950;">⌄</span>
+            <span class="wildu-desktop-toggle-wrap"><span id="wildu-grade-legend-toggle-label" class="wildu-desktop-toggle-label">Apri</span><span id="wildu-grade-legend-chevron" style="color:var(--w-gold); font-size:18px; font-weight:950;">⌄</span></span>
         </div>
         <div id="wildu-grade-legend-body" class="wildu-grade-legend-body">
             <div id="legenda-container" style="display:grid; grid-template-columns: 1fr; gap: 10px;"></div>
@@ -7471,6 +7567,11 @@ function setWilduPassportDetailsOpen(isOpen, reason) {
         toggle.title = isOpen ? 'Chiudi dettagli passaporto' : 'Apri dettagli passaporto';
     }
 
+    const passportToggleLabel = document.getElementById('wildu-passport-toggle-label');
+    if (passportToggleLabel) {
+        passportToggleLabel.textContent = isOpen ? 'Chiudi' : 'Apri';
+    }
+
     if (details) {
         details.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
     }
@@ -7505,6 +7606,11 @@ function setWilduGradeLegendOpen(isOpen) {
     if (toggle) toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     if (body) body.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
     if (chev) chev.style.transform = isOpen ? 'rotate(180deg)' : '';
+
+    const legendToggleLabel = document.getElementById('wildu-grade-legend-toggle-label');
+    if (legendToggleLabel) {
+        legendToggleLabel.textContent = isOpen ? 'Chiudi' : 'Apri';
+    }
 }
 
 function toggleWilduGradeLegend() {
@@ -20717,4 +20823,4 @@ window.addEventListener('pageshow', () => {
     <!-- FINE AGGIUNTA AMAZON STATIC LINKS -->
 
 </body>
-</html> 
+</html>
