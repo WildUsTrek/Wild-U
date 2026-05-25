@@ -1,4 +1,4 @@
-<!-- modules/wildu-sconti.html — WILDU SCONTI COMMUNITY V2 / EARLY PERCENT -->
+<!-- modules/wildu-sconti.html — WILDU SCONTI COMMUNITY V6 / CLEAN CLIENT COPY -->
 <section id="wildu-discounts-module" class="wildu-discounts-shell">
     <style>
         #wildu-discounts-module,
@@ -54,9 +54,7 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        .wd-back-btn:active,
-        .wd-open-btn:active,
-        .wd-chip-btn:active {
+        .wd-back-btn:active {
             transform: scale(0.98);
         }
 
@@ -225,7 +223,7 @@
         .wd-offer-card {
             flex: 0 0 clamp(258px, 82vw, 350px);
             width: clamp(258px, 82vw, 350px);
-            min-height: 390px;
+            min-height: 342px;
             scroll-snap-align: start;
             border-radius: 28px;
             overflow: hidden;
@@ -237,6 +235,17 @@
             box-shadow:
                 0 18px 38px rgba(0,0,0,0.52),
                 inset 0 1px 0 rgba(255,255,255,0.10);
+        }
+
+        .wd-offer-card,
+        .wd-long-card {
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .wd-offer-card:active,
+        .wd-long-card:active {
+            transform: scale(0.988);
         }
 
         .wd-card-img {
@@ -282,20 +291,6 @@
             backdrop-filter: blur(8px);
         }
 
-        .wd-tag-badge {
-            position: absolute;
-            right: 12px;
-            top: 12px;
-            z-index: 2;
-            border-radius: 999px;
-            padding: 7px 9px;
-            background: rgba(255,255,255,0.12);
-            border: 1px solid rgba(255,255,255,0.16);
-            color: #fff;
-            font-size: 10px;
-            font-weight: 950;
-            backdrop-filter: blur(8px);
-        }
 
         .wd-card-body {
             padding: 15px 15px 16px 15px;
@@ -387,21 +382,6 @@
             line-height: 1.2;
         }
 
-        .wd-open-btn {
-            width: 100%;
-            margin-top: 14px;
-            min-height: 42px;
-            border: 1px solid rgba(212,175,55,0.50);
-            border-radius: 15px;
-            background: linear-gradient(135deg, rgba(212,175,55,0.96), rgba(255,226,135,0.95));
-            color: #101010;
-            font-weight: 1000;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: .05em;
-            cursor: pointer;
-            box-shadow: 0 8px 22px rgba(212,175,55,0.15);
-        }
 
         .wd-grid {
             display: grid;
@@ -518,19 +498,6 @@
             margin-top: 3px;
         }
 
-        .wd-chip-btn {
-            flex: 0 0 auto;
-            border: 1px solid rgba(212,175,55,0.38);
-            border-radius: 999px;
-            background: rgba(212,175,55,0.11);
-            color: var(--wd-gold);
-            font-size: 10px;
-            font-weight: 1000;
-            text-transform: uppercase;
-            padding: 9px 10px;
-            cursor: pointer;
-            white-space: nowrap;
-        }
 
         .wd-empty {
             border: 1px dashed rgba(255,255,255,0.16);
@@ -567,14 +534,14 @@
     <header class="wd-hero">
         <div class="wd-kicker">Riservato Community</div>
         <h1 class="wd-title">Sconti Wild-U</h1>
-        <p class="wd-subtitle">Offerte attive, prezzi speciali e partenze lontane raccolte in una vetrina privata, elegante e senza toccare le card originali dei viaggi.</p>
+        <p class="wd-subtitle">Una vetrina riservata alla community, con prezzi speciali e partenze da cogliere al momento giusto.</p>
         <div class="wd-stats" id="wd-stats"></div>
     </header>
 
     <div class="wd-section-head">
         <div>
             <div class="wd-section-label">🔥 Offerte attive</div>
-            <div class="wd-section-copy">Card con Offerta Attiva: il prezzo speciale è calcolato da percentuale_early_booking.</div>
+            <div class="wd-section-copy">Le occasioni più forti del momento, raccolte in alto per essere trovate subito.</div>
         </div>
         <div class="wd-section-count" id="wd-offer-count">0 offerte</div>
     </div>
@@ -585,7 +552,7 @@
     <div class="wd-section-head">
         <div>
             <div class="wd-section-label">⏳ Prenota prima, spendi meno</div>
-            <div class="wd-section-copy" id="wd-long-copy">Partenze oltre soglia configurata dal client.</div>
+            <div class="wd-section-copy" id="wd-long-copy">Partenze più lontane, pensate per chi programma in anticipo e vuole bloccare condizioni migliori.</div>
         </div>
         <div class="wd-section-count" id="wd-long-count">0 viaggi</div>
     </div>
@@ -624,11 +591,10 @@
                     ? '-' + esc(item.earlyBookingPercent) + '%'
                     : 'speciale';
                 return '' +
-                    '<article class="wd-offer-card">' +
+                    '<article class="wd-offer-card" role="button" tabindex="0" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="' + (item.isHike ? '1' : '0') + '" aria-label="Apri dettagli ' + esc(item.title) + '">' +
                         '<div class="wd-card-img">' +
                             (item.imageUrl ? '<img src="' + esc(item.imageUrl) + '" alt="' + esc(item.title) + '">' : '') +
                             '<div class="wd-floating-badge">🔥 Prezzo speciale ' + percentLabel + '</div>' +
-                            '<div class="wd-tag-badge">' + esc(item.tag) + '</div>' +
                         '</div>' +
                         '<div class="wd-card-body">' +
                             '<h2 class="wd-card-title">' + esc(item.title) + '</h2>' +
@@ -641,7 +607,6 @@
                                 '</div>' +
                                 saving +
                             '</div>' +
-                            '<button type="button" class="wd-open-btn" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="' + (item.isHike ? '1' : '0') + '">Apri dettagli</button>' +
                         '</div>' +
                     '</article>';
             }
@@ -654,14 +619,13 @@
                     ? '<div class="wd-long-old">Prime ' + esc(item.displayPrimePrice) + '€ · Standard ' + esc(item.displayStandardPrice) + '€</div>'
                     : '<div class="wd-long-old">Prime Community</div>';
                 return '' +
-                    '<article class="wd-long-card">' +
+                    '<article class="wd-long-card" role="button" tabindex="0" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="' + (item.isHike ? '1' : '0') + '" aria-label="Apri dettagli ' + esc(item.title) + '">' +
                         imageHtml(item, 'wd-long-img') +
                         '<div class="wd-long-body">' +
                             '<div>' +
                                 '<div class="wd-long-topline">' +
                                     '<span class="wd-mini-badge">' + discountLabel + '</span>' +
                                     '<span class="wd-mini-badge wd-days-badge">' + esc(item.daysToStart || '') + ' giorni</span>' +
-                                    '<span class="wd-mini-badge">' + esc(item.tag) + '</span>' +
                                 '</div>' +
                                 '<h3 class="wd-long-title">' + esc(item.title) + '</h3>' +
                                 '<div class="wd-long-meta">' + placeLine(item) + '</div>' +
@@ -671,7 +635,6 @@
                                     '<div class="wd-long-price">' + esc(item.displayActivePrice) + '€</div>' +
                                     oldPrice +
                                 '</div>' +
-                                '<button type="button" class="wd-chip-btn" data-wildu-discount-open="1" data-id="' + esc(item.id) + '" data-is-hike="' + (item.isHike ? '1' : '0') + '">Dettagli</button>' +
                             '</div>' +
                         '</div>' +
                     '</article>';
@@ -708,32 +671,44 @@
 
                 document.getElementById('wd-stats').innerHTML = '' +
                     '<span class="wd-stat-pill gold">' + offers.length + ' ' + plural(offers.length, 'offerta', 'offerte') + '</span>' +
-                    '<span class="wd-stat-pill">Offerta attiva: ' + esc(settings.earlyBookingPercent || 0) + '%</span>' +
-                    '<span class="wd-stat-pill">Soglia: oltre ' + esc(settings.longLeadDays || 100) + ' giorni</span>' +
-                    '<span class="wd-stat-pill">Anticipo: ' + esc(settings.longLeadPercent || 0) + '%</span>';
+                    '<span class="wd-stat-pill">' + longLead.length + ' ' + plural(longLead.length, 'partenza lontana', 'partenze lontane') + '</span>' +
+                    '<span class="wd-stat-pill">Oltre ' + esc(settings.longLeadDays || 100) + ' giorni</span>';
 
                 document.getElementById('wd-offer-count').textContent = offers.length + ' ' + plural(offers.length, 'offerta', 'offerte');
                 document.getElementById('wd-long-count').textContent = longLead.length + ' ' + plural(longLead.length, 'partenza', 'partenze');
-                document.getElementById('wd-long-copy').textContent = 'Partenze oltre ' + (settings.longLeadDays || 100) + ' giorni. Offerta Attiva usa percentuale_early_booking; questa sezione usa percentuale_100_giorni.';
+                document.getElementById('wd-long-copy').textContent = 'Partenze a più di ' + (settings.longLeadDays || 100) + ' giorni, pensate per chi ama organizzarsi prima e partire meglio.';
                 document.getElementById('wd-generated-label').textContent = 'Aggiornato ora';
 
                 document.getElementById('wd-offers-carousel').innerHTML = offers.length
                     ? offers.map(offerCard).join('')
-                    : emptyBox('Nessuna offerta attiva al momento. Quando una card avrà “Offerta Attiva = true”, apparirà qui.');
+                    : emptyBox('Nessuna offerta speciale attiva in questo momento. Le prossime occasioni appariranno qui.');
 
                 document.getElementById('wd-long-grid').innerHTML = longLead.length
                     ? longLead.map(longCard).join('')
-                    : emptyBox('Nessuna partenza oltre la soglia configurata in questo momento.');
+                    : emptyBox('Al momento non ci sono partenze lontane in vantaggio speciale.');
             }
 
             var root = document.getElementById('wildu-discounts-module');
             if (root) {
-                root.addEventListener('click', function (evt) {
-                    var btn = evt.target && evt.target.closest ? evt.target.closest('[data-wildu-discount-open]') : null;
-                    if (!btn) return;
+                function openDiscountCard(el) {
+                    if (!el) return;
                     var rt = window.WilduDiscountsRuntime;
                     if (!rt || typeof rt.openDetails !== 'function') return;
-                    rt.openDetails(btn.getAttribute('data-id'), btn.getAttribute('data-is-hike') === '1');
+                    rt.openDetails(el.getAttribute('data-id'), el.getAttribute('data-is-hike') === '1');
+                }
+
+                root.addEventListener('click', function (evt) {
+                    var card = evt.target && evt.target.closest ? evt.target.closest('[data-wildu-discount-open]') : null;
+                    if (!card) return;
+                    openDiscountCard(card);
+                });
+
+                root.addEventListener('keydown', function (evt) {
+                    if (evt.key !== 'Enter' && evt.key !== ' ') return;
+                    var card = evt.target && evt.target.closest ? evt.target.closest('[data-wildu-discount-open]') : null;
+                    if (!card) return;
+                    evt.preventDefault();
+                    openDiscountCard(card);
                 });
             }
 
