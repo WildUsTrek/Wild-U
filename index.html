@@ -10435,6 +10435,24 @@ function evaluateBookings() {
 
         let infoBtn = "";
         let siteBtn = ""; // <--- INIZIALIZZIAMO IL NUOVO TASTO SITO
+
+        const bookedPriceRaw = firstNonEmptyValue(
+            b.prezzoPrenotato,
+            b.prezzoPagato,
+            b.prezzo,
+            b["Prezzo Prenotato"],
+            b["Prezzo Pagato"]
+        );
+        const bookedPriceDisplay = bookedPriceRaw
+            ? (String(bookedPriceRaw).indexOf('€') >= 0 ? String(bookedPriceRaw).trim() : String(bookedPriceRaw).trim() + '€')
+            : "";
+        const bookedDetailContextEncoded = encodeURIComponent(JSON.stringify({
+            source: 'zaino',
+            myPrice: bookedPriceDisplay,
+            bookingId: b.bookingId || '',
+            collection: b.collection || '',
+            eventDocId: b.eventDocId || ''
+        }));
         
         const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
         const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
@@ -10443,7 +10461,7 @@ function evaluateBookings() {
         // --- COSTRUZIONE TASTO INFO ---
         if (tripOrig) {
             const tId = tripOrig.eventDocId || tripOrig.id;
-            infoBtn = `<button onclick="showTripDetails('${tId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+            infoBtn = `<button onclick="showTripDetails('${tId}', JSON.parse(decodeURIComponent('${bookedDetailContextEncoded}')))" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         } else if (odOrig) {
             infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         } else if (hikeOrig) {
@@ -10469,6 +10487,7 @@ if (tripOrig) {
             <div style="margin-bottom: 12px;">
                 <div style="font-weight: bold; color: #fff; font-size: 14px; text-transform: uppercase;">${title}</div>
                 <div style="font-size: 12px; color: var(--w-gold); margin-top: 4px;">📅 Partenza: ${dateStr || 'Vedere Dettagli'}</div>
+                ${bookedPriceDisplay ? `<div style="font-size: 12px; color:#9ed6ff; margin-top: 6px; font-weight:900;">💰 Prezzo prenotato: ${bookedPriceDisplay}</div>` : ''}
             </div>
             <div style="display: flex; justify-content: flex-end;">
                 ${siteBtn}
@@ -12121,9 +12140,12 @@ function renderTrips(trips, targetId) {
             </div>`;
         } else {
             // 🌲 ESTETICA OFFICIAL
+            const offerSpecialPill = hasOfferta
+                ? `<div style="display:inline-flex; align-items:center; gap:5px; color:#ffaa00; background:rgba(255,170,0,0.10); border:1px solid rgba(255,170,0,0.30); border-radius:999px; padding:4px 8px; font-size:10px; font-weight:950; margin-bottom:6px; text-transform:uppercase; letter-spacing:.35px;">🔥 Offerta speciale</div>`
+                : "";
+
             let priceHtml = hasOfferta 
-                ? `<div style="color: #ffaa00; font-size: 11px; font-weight: 900; margin-bottom: 4px;">🔥 EARLY BOOKING</div>
-                   <div class="price-prime" style="border-color: #ffaa00;">
+                ? `<div class="price-prime" style="border-color: #ffaa00;">
                        <span class="prime-val" style="color: #ffaa00;">${prezzoEarly}€</span>
                    </div>
                    <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
@@ -12143,6 +12165,7 @@ function renderTrips(trips, targetId) {
 
                 <div class="price-box">
                     <div>
+                        ${offerSpecialPill}
                         ${miniLinkBtn}
                         <div class="price-standard">Standard: ${prezzoStandard}€</div>
                     </div>
@@ -12161,18 +12184,24 @@ function renderTrips(trips, targetId) {
 // ==========================================
 // NUOVA FUNZIONE: DETTAGLI VIAGGI (MODAL)
 // ==========================================
-function showTripDetails(id) {
+function showTripDetails(id, detailContext = null) {
     const ev = allTrips.find(e => (e.eventDocId || e.id) === id);
     if (!ev) {
         showToast("⚠️ Dettagli non trovati.");
         return;
     }
 
-    // V7 Sconti: contesto prezzo speciale usato una sola volta.
-    // Serve a far arrivare il prezzo 100+ giorni SOLO se il dettaglio è stato aperto dal modulo Sconti.
-    const wilduDiscountContext = (window.WilduDiscountsRuntime && typeof window.WilduDiscountsRuntime.takeDetailsContext === 'function')
-        ? window.WilduDiscountsRuntime.takeDetailsContext(id, false)
-        : null;
+    // V9: contesti prudenziali e non globali.
+    // - Sconti: prezzo 100+ giorni valido solo se il dettaglio arriva dal modulo Sconti.
+    // - Zaino: mostra il prezzo storico realmente prenotato senza ricalcolarlo.
+    const zainoDetailContext = (detailContext && detailContext.source === 'zaino') ? detailContext : null;
+    const wilduDiscountContext = zainoDetailContext
+        ? null
+        : ((detailContext && detailContext.discountContext && detailContext.discountContext.source === 'wildu-sconti')
+            ? detailContext.discountContext
+            : ((window.WilduDiscountsRuntime && typeof window.WilduDiscountsRuntime.takeDetailsContext === 'function')
+                ? window.WilduDiscountsRuntime.takeDetailsContext(id, false)
+                : null));
 
     const titolo = ev.Titolo || ev.titolo || "Viaggio Wild-U";
     const dataInizio = ev["Data inizio"] || ev.dataInizio || "";
@@ -12318,33 +12347,91 @@ function showTripDetails(id) {
         document.getElementById('trip-modal-img-container').style.display = 'block';
     }
 
-// Prezzi e XP nel Modal — V7 contestuale Sconti
+// Prezzi e XP nel Modal — V9 contestuale e pulito
     // Regola conservativa:
     // - la bacheca normale NON applica mai lo sconto 100+ giorni;
     // - il prezzo 100+ giorni vale solo se il dettaglio viene aperto dal modulo Sconti;
-    // - Offerta Attiva resta speciale ovunque, ma viene etichettata correttamente.
+    // - lo zaino mostra il prezzo storico prenotato senza ricalcolare dal viaggio corrente.
     const hasOfferta = ev["Offerta Attiva"] === true;
+
+    function parseModalMoney(value, fallback) {
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (value === undefined || value === null) return fallback;
+
+        let s = String(value).trim();
+        if (!s) return fallback;
+
+        s = s.replace(/%/g, '').replace(/€/g, '').replace(/\s+/g, '');
+        if (s.indexOf(',') >= 0) {
+            s = s.replace(/\./g, '').replace(',', '.');
+        } else {
+            s = s.replace(/[^0-9.\-]/g, '');
+        }
+
+        const n = Number(s);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function formatModalMoney(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return '';
+        const rounded = Math.round(n * 100) / 100;
+        return Number.isInteger(rounded)
+            ? String(rounded)
+            : String(rounded).replace('.', ',');
+    }
+
+    function formatModalPriceWithEuro(value) {
+        const clean = String(value || '').trim();
+        if (!clean) return '';
+        return clean.indexOf('€') >= 0 ? clean : clean + '€';
+    }
+
     const standardRaw = firstNonEmptyValue(ev["Prezzo (€)"], ev.Prezzo, ev["Prezzo Standard"], ev.prezzo_standard, ev["Prezzo Listino"], ev.prezzo_listino);
     const primeRaw = firstNonEmptyValue(ev["Prezzo Prime"], ev.prezzo_std);
-    const prezzoBase = primeRaw || ev.prezzo_std || ev.Prezzo || "0";
-    const prezzoEarly = ev["Prezzo Early"] || prezzoBase;
-    const prezzoStandard = standardRaw || prezzoBase;
-    const hasStandardPrice = standardRaw !== undefined && standardRaw !== null && String(standardRaw).trim() !== "" && Number(String(standardRaw).replace(',', '.').replace(/[^0-9.\-]/g, '')) > 0;
-    const hasPrimePrice = primeRaw !== undefined && primeRaw !== null && String(primeRaw).trim() !== "" && Number(String(primeRaw).replace(',', '.').replace(/[^0-9.\-]/g, '')) > 0;
 
-    const discountPriceValid = wilduDiscountContext
+    const standardNumber = parseModalMoney(standardRaw, 0);
+    const primeNumber = parseModalMoney(primeRaw, standardNumber || 0);
+    const earlyNumber = parseModalMoney(ev["Prezzo Early"], primeNumber || standardNumber || 0);
+
+    const hasStandardPrice = String(standardRaw || '').trim() !== '' && standardNumber > 0;
+    const hasPrimePrice = String(primeRaw || '').trim() !== '' && primeNumber > 0;
+
+    const scontiContextValid = wilduDiscountContext
         && wilduDiscountContext.source === 'wildu-sconti'
-        && wilduDiscountContext.mode === 'longLead'
         && Number(wilduDiscountContext.activePrice) > 0;
 
-    const normalFinal = hasOfferta ? prezzoEarly : prezzoBase;
-    const prezzoFinale = discountPriceValid
-        ? (wilduDiscountContext.displayActivePrice || String(wilduDiscountContext.activePrice))
-        : normalFinal;
-    const prezzoFinaleNumber = discountPriceValid
-        ? Number(wilduDiscountContext.activePrice)
-        : Number(String(prezzoFinale).replace(',', '.').replace(/[^0-9.\-]/g, ''));
-    const xpReward = ev.xp_reward || Math.floor((Number.isFinite(prezzoFinaleNumber) ? prezzoFinaleNumber : parseInt(prezzoFinale)) / (config.euro_punto_ratio || 5)) || 0;
+    const longLeadContextValid = scontiContextValid
+        && wilduDiscountContext.mode === 'longLead'
+        && !hasOfferta;
+
+    const offerContextValid = scontiContextValid
+        && wilduDiscountContext.mode === 'offer'
+        && hasOfferta;
+
+    let priceMode = 'prime';
+    let finalNumber = primeNumber || standardNumber || 0;
+
+    if (hasOfferta) {
+        priceMode = 'offer';
+        finalNumber = offerContextValid ? Number(wilduDiscountContext.activePrice) : (earlyNumber || primeNumber || standardNumber || 0);
+    } else if (longLeadContextValid) {
+        priceMode = 'longLead';
+        finalNumber = Number(wilduDiscountContext.activePrice);
+    }
+
+    const prezzoFinale = formatModalMoney(finalNumber) || String(finalNumber || '').trim() || '0';
+    const prezzoFinaleNumber = parseModalMoney(prezzoFinale, finalNumber || 0);
+    const xpReward = ev.xp_reward || Math.floor((Number.isFinite(prezzoFinaleNumber) ? prezzoFinaleNumber : parseInt(prezzoFinale, 10)) / (config.euro_punto_ratio || 5)) || 0;
+
+    const savingFromStandard = (hasStandardPrice && prezzoFinaleNumber > 0)
+        ? Math.max(0, Math.round((standardNumber - prezzoFinaleNumber) * 100) / 100)
+        : 0;
+
+    const myBookedPriceRaw = zainoDetailContext
+        ? firstNonEmptyValue(zainoDetailContext.myPrice, zainoDetailContext.prezzoPrenotato, zainoDetailContext.prezzoPagato, zainoDetailContext.prezzo)
+        : '';
+    const myBookedPriceDisplay = formatModalPriceWithEuro(myBookedPriceRaw);
 
     const priceBox = document.getElementById('trip-modal-price-box');
     const stdRow = document.getElementById('trip-modal-std-row');
@@ -12355,36 +12442,76 @@ function showTripDetails(id) {
         stdRow.parentNode.insertBefore(extraRows, stdRow.nextSibling);
     }
 
-    const specialLabel = discountPriceValid
-        ? 'VANTAGGIO ANTICIPO'
-        : (hasOfferta ? 'OFFERTA SPECIALE' : 'ESCLUSIVO PRIME');
-    const specialColor = discountPriceValid ? '#9ed6ff' : (hasOfferta ? '#ffaa00' : 'var(--w-gold)');
-    const specialBorder = discountPriceValid ? 'rgba(120,190,255,0.45)' : (hasOfferta ? 'rgba(255,170,0,0.45)' : '#444');
+    const finalLabel = 'PREZZO FINALE';
+    const specialColor = priceMode === 'longLead' ? '#9ed6ff' : (priceMode === 'offer' ? '#ffaa00' : 'var(--w-gold)');
+    const specialBorder = priceMode === 'longLead' ? 'rgba(120,190,255,0.45)' : (priceMode === 'offer' ? 'rgba(255,170,0,0.45)' : 'rgba(212,175,55,0.34)');
 
     priceBox.style.display = 'block';
     priceBox.style.borderColor = specialBorder;
-    priceBox.style.background = discountPriceValid
+    priceBox.style.background = priceMode === 'longLead'
         ? 'linear-gradient(135deg, rgba(120,190,255,0.10), rgba(34,34,34,1))'
-        : (hasOfferta ? 'linear-gradient(135deg, rgba(255,170,0,0.10), rgba(34,34,34,1))' : '#222');
+        : (priceMode === 'offer'
+            ? 'linear-gradient(135deg, rgba(255,170,0,0.10), rgba(34,34,34,1))'
+            : 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(34,34,34,1))');
 
     stdRow.style.display = hasStandardPrice ? 'flex' : 'none';
-    document.getElementById('trip-modal-p-std').innerText = hasStandardPrice ? `${prezzoStandard}€` : '';
+    document.getElementById('trip-modal-p-std').innerText = hasStandardPrice ? `${formatModalMoney(standardNumber)}€` : '';
 
-    if (extraRows) {
-        const shouldShowPrimeReference = (hasOfferta || discountPriceValid) && hasPrimePrice && String(prezzoBase) !== String(prezzoFinale);
-        extraRows.style.display = shouldShowPrimeReference ? 'block' : 'none';
-        extraRows.innerHTML = shouldShowPrimeReference ? `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0 10px 0; border-top:1px solid rgba(255,255,255,0.07); color:#aaa; font-size:13px;">
-                <span>PREZZO PRIME</span>
-                <span style="font-weight:800; color:#ddd;">${prezzoBase}€</span>
+    const extraRowsHtml = [];
+
+    if (myBookedPriceDisplay) {
+        extraRowsHtml.push(`
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08); color:#fff; font-size:13px;">
+                <span style="color:#9ed6ff; font-weight:950; letter-spacing:.4px;">IL MIO PREZZO</span>
+                <span style="font-weight:950; color:#9ed6ff; font-size:17px;">${myBookedPriceDisplay}</span>
             </div>
-        ` : '';
+        `);
     }
 
-    document.getElementById('trip-modal-prime-label').innerText = specialLabel;
-    document.getElementById('trip-modal-prime-label').style.color = specialColor;
+    if (savingFromStandard > 0) {
+        extraRowsHtml.push(`
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid rgba(255,255,255,0.08); color:#aaa; font-size:13px;">
+                <span>RISPARMI</span>
+                <span style="font-weight:900; color:#7ee087;">${formatModalMoney(savingFromStandard)}€</span>
+            </div>
+        `);
+    }
+
+    if (extraRows) {
+        extraRows.style.display = extraRowsHtml.length ? 'block' : 'none';
+        extraRows.innerHTML = extraRowsHtml.join('');
+    }
+
+    document.getElementById('trip-modal-prime-label').innerText = finalLabel;
+    document.getElementById('trip-modal-prime-label').style.color = '#d6d6d6';
     document.getElementById('trip-modal-p-prime').innerText = `${prezzoFinale}€`;
     document.getElementById('trip-modal-p-prime').style.color = specialColor;
+
+    let chipBox = document.getElementById('trip-modal-price-chips');
+    const finalPriceEl = document.getElementById('trip-modal-p-prime');
+    if (!chipBox && finalPriceEl && finalPriceEl.parentNode) {
+        chipBox = document.createElement('div');
+        chipBox.id = 'trip-modal-price-chips';
+        finalPriceEl.parentNode.appendChild(chipBox);
+    }
+
+    const chips = [];
+    if (priceMode === 'offer') chips.push({ text: '🔥 Offerta speciale', color: '#ffaa00', bg: 'rgba(255,170,0,0.12)', border: 'rgba(255,170,0,0.34)' });
+    else if (priceMode === 'longLead') chips.push({ text: '⏳ Vantaggio anticipo', color: '#9ed6ff', bg: 'rgba(120,190,255,0.12)', border: 'rgba(120,190,255,0.34)' });
+    else chips.push({ text: '🌲 Prime community', color: 'var(--w-gold)', bg: 'rgba(212,175,55,0.11)', border: 'rgba(212,175,55,0.30)' });
+
+    if (myBookedPriceDisplay) chips.push({ text: '🎒 Già nello zaino', color: '#7ee087', bg: 'rgba(126,224,135,0.11)', border: 'rgba(126,224,135,0.28)' });
+
+    if (chipBox) {
+        chipBox.style.display = 'flex';
+        chipBox.style.flexWrap = 'wrap';
+        chipBox.style.gap = '6px';
+        chipBox.style.marginTop = '7px';
+        chipBox.innerHTML = chips.map(chip => `
+            <span style="display:inline-flex; align-items:center; border:1px solid ${chip.border}; background:${chip.bg}; color:${chip.color}; border-radius:999px; padding:4px 8px; font-size:10px; font-weight:950; text-transform:uppercase; letter-spacing:.35px; white-space:nowrap;">${chip.text}</span>
+        `).join('');
+    }
+
     document.getElementById('trip-modal-xp-container').style.display = 'block';
     document.getElementById('trip-modal-xp').innerText = `+${xpReward} XP`;
 
@@ -17526,6 +17653,8 @@ function showOpenDayDetails(id) {
     document.getElementById('trip-modal-price-box').style.display = 'none';
     const extraPriceRowsPayDay = document.getElementById('trip-modal-extra-price-rows');
     if (extraPriceRowsPayDay) { extraPriceRowsPayDay.innerHTML = ''; extraPriceRowsPayDay.style.display = 'none'; }
+    const priceChipsPayDay = document.getElementById('trip-modal-price-chips');
+    if (priceChipsPayDay) { priceChipsPayDay.innerHTML = ''; priceChipsPayDay.style.display = 'none'; }
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('trip-modal-link-sito-discreto').style.display = 'none'; // Aggiunto reset nuovo link
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
@@ -17722,6 +17851,8 @@ function showPayDayDetails(id) {
     if(oldPrice) oldPrice.style.display = 'none';
     document.getElementById('trip-modal-img-container').style.display = 'none';
     document.getElementById('trip-modal-price-box').style.display = 'none';
+    const priceChipsPayDayReset = document.getElementById('trip-modal-price-chips');
+    if (priceChipsPayDayReset) { priceChipsPayDayReset.innerHTML = ''; priceChipsPayDayReset.style.display = 'none'; }
     document.getElementById('trip-modal-link-ufficiale').style.display = 'none';
     document.getElementById('trip-modal-link-sito-discreto').style.display = 'none';
     document.getElementById('od-modal-gear-title').innerText = "🎒 Da portare nello Zaino";
