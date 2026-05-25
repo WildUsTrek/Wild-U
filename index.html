@@ -12302,6 +12302,7 @@ function ensureWilduOfficialPriceServicesStack() {
     p.priceBox.style.marginBottom = '0';
     p.priceBox.style.position = 'relative';
     p.priceBox.style.overflow = 'visible';
+    p.priceBox.style.zIndex = '3';
 
     if (p.gearDetails) {
         p.gearDetails.style.display = 'none';
@@ -12335,6 +12336,16 @@ function resetWilduSharedDetailLayoutForSimpleEvent() {
     p.priceBox.style.marginBottom = '15px';
     p.priceBox.style.position = 'relative';
     p.priceBox.style.overflow = 'visible';
+    p.priceBox.style.zIndex = 'auto';
+
+    const extraRows = document.getElementById('trip-modal-extra-price-rows');
+    if (extraRows) {
+        extraRows.innerHTML = '';
+        extraRows.style.display = 'none';
+    }
+
+    const stdPriceEl = document.getElementById('trip-modal-p-std');
+    if (stdPriceEl) stdPriceEl.innerText = '';
 
     if (p.chipBox) {
         p.chipBox.innerHTML = '';
@@ -12526,16 +12537,18 @@ function showTripDetails(id, detailContext = null) {
     gearTitleEl.innerText = "";
 
     if (serviziInclusi.length > 0 || modalLinkSito) {
-        const serviziSummaryLabel = 'Mostra / nascondi servizi inclusi';
         const serviziSummaryBadge = serviziInclusi.length > 0 ? (serviziInclusi.length + ' inclusi') : 'link';
 
         gearListEl.innerHTML = `
-            <li style="list-style:none; margin:0 0 18px 0;">
-                 <details style="
-                    border:1px solid rgba(212,175,55,0.28);
-                    border-radius:16px;
-                    background:rgba(212,175,55,0.07);
+            <li style="list-style:none; margin:-13px 0 18px 0; position:relative; z-index:1;">
+                 <details id="trip-modal-services-details" style="
+                    border:1px solid rgba(212,175,55,0.26);
+                    border-top-color:rgba(212,175,55,0.14);
+                    border-radius:0 0 19px 19px;
+                    background:linear-gradient(180deg, rgba(212,175,55,0.105), rgba(18,18,18,0.96));
+                    box-shadow:0 12px 30px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.045);
                     overflow:hidden;
+                    padding-top:19px;
                 ">
                     <summary style="
                         cursor:pointer;
@@ -12549,8 +12562,10 @@ function showTripDetails(id, detailContext = null) {
                         align-items:center;
                         justify-content:space-between;
                         gap:10px;
+                        position:relative;
+                        z-index:2;
                     ">
-                        <span>${serviziSummaryLabel}</span>
+                        <span id="trip-modal-services-summary-label">Mostra servizi</span>
                         <span style="
                             color:#000;
                             background:var(--w-gold);
@@ -12567,6 +12582,8 @@ function showTripDetails(id, detailContext = null) {
                         padding:2px 14px 14px 14px;
                         color:#ddd;
                         font-size:15px;
+                        position:relative;
+                        z-index:2;
                     ">
                         ${serviziInclusi.map(servizio => `
                             <li style="
@@ -12585,6 +12602,16 @@ function showTripDetails(id, detailContext = null) {
                 </details>
             </li>
         `;
+
+        const servicesDetailsEl = gearListEl.querySelector('#trip-modal-services-details');
+        const servicesSummaryLabelEl = gearListEl.querySelector('#trip-modal-services-summary-label');
+        if (servicesDetailsEl && servicesSummaryLabelEl) {
+            const syncServicesSummaryLabel = () => {
+                servicesSummaryLabelEl.textContent = servicesDetailsEl.open ? 'Chiudi servizi' : 'Mostra servizi';
+            };
+            servicesDetailsEl.addEventListener('toggle', syncServicesSummaryLabel, { passive: true });
+            syncServicesSummaryLabel();
+        }
     } else {
         // Nessun servizio nel payload corrente:
         // non mostriamo fallback vuoti. Se la cache era vecchia,
