@@ -1,4 +1,4 @@
-<!-- modules/wildu-sconti.html — WILDU SCONTI COMMUNITY V1 -->
+<!-- modules/wildu-sconti.html — WILDU SCONTI COMMUNITY V2 / EARLY PERCENT -->
 <section id="wildu-discounts-module" class="wildu-discounts-shell">
     <style>
         #wildu-discounts-module,
@@ -327,6 +327,32 @@
             border-top: 1px solid rgba(255,255,255,0.10);
         }
 
+        .wd-offer-price-box {
+            position: relative;
+            padding: 10px 12px 9px 12px;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 170, 0, 0.52);
+            background:
+                radial-gradient(circle at top left, rgba(255,170,0,0.25), transparent 52%),
+                linear-gradient(135deg, rgba(212,175,55,0.18), rgba(0,0,0,0.16));
+            box-shadow:
+                0 0 24px rgba(255,170,0,0.12),
+                inset 0 1px 0 rgba(255,255,255,0.10);
+        }
+
+        .wd-offer-ref-line {
+            margin-top: 6px;
+            color: rgba(255,255,255,0.52);
+            font-size: 11px;
+            line-height: 1.26;
+            font-weight: 850;
+        }
+
+        .wd-offer-ref-line strong {
+            color: rgba(255,255,255,0.76);
+            font-weight: 950;
+        }
+
         .wd-price-kicker {
             color: var(--wd-gold);
             font-size: 9.5px;
@@ -541,14 +567,14 @@
     <header class="wd-hero">
         <div class="wd-kicker">Riservato Community</div>
         <h1 class="wd-title">Sconti Wild-U</h1>
-        <p class="wd-subtitle">Offerte attive, early booking e partenze lontane raccolte in una vetrina privata, elegante e senza toccare le card originali dei viaggi.</p>
+        <p class="wd-subtitle">Offerte attive, prezzi speciali e partenze lontane raccolte in una vetrina privata, elegante e senza toccare le card originali dei viaggi.</p>
         <div class="wd-stats" id="wd-stats"></div>
     </header>
 
     <div class="wd-section-head">
         <div>
             <div class="wd-section-label">🔥 Offerte attive</div>
-            <div class="wd-section-copy">Card con offerta attiva, presentate come occasioni premium.</div>
+            <div class="wd-section-copy">Card con Offerta Attiva: il prezzo speciale è calcolato da percentuale_early_booking.</div>
         </div>
         <div class="wd-section-count" id="wd-offer-count">0 offerte</div>
     </div>
@@ -591,22 +617,27 @@
             }
 
             function offerCard(item) {
-                var saving = item.saving > 0 ? '<div class="wd-saving">Risparmi<br>' + esc(item.displaySaving) + '€</div>' : '<div class="wd-saving">Prezzo<br>speciale</div>';
+                var saving = item.saving > 0
+                    ? '<div class="wd-saving">Risparmi<br>' + esc(item.displaySaving) + '€</div>'
+                    : '<div class="wd-saving">Prezzo<br>speciale</div>';
+                var percentLabel = Number(item.earlyBookingPercent || 0) > 0
+                    ? '-' + esc(item.earlyBookingPercent) + '%'
+                    : 'speciale';
                 return '' +
                     '<article class="wd-offer-card">' +
                         '<div class="wd-card-img">' +
                             (item.imageUrl ? '<img src="' + esc(item.imageUrl) + '" alt="' + esc(item.title) + '">' : '') +
-                            '<div class="wd-floating-badge">🔥 Early Booking</div>' +
+                            '<div class="wd-floating-badge">🔥 Prezzo speciale ' + percentLabel + '</div>' +
                             '<div class="wd-tag-badge">' + esc(item.tag) + '</div>' +
                         '</div>' +
                         '<div class="wd-card-body">' +
                             '<h2 class="wd-card-title">' + esc(item.title) + '</h2>' +
                             '<div class="wd-card-meta">' + placeLine(item) + '</div>' +
                             '<div class="wd-price-row">' +
-                                '<div>' +
-                                    '<div class="wd-price-kicker">Prezzo community</div>' +
+                                '<div class="wd-offer-price-box">' +
+                                    '<div class="wd-price-kicker">Offerta attiva</div>' +
                                     '<div class="wd-main-price">' + esc(item.displayActivePrice) + '€</div>' +
-                                    '<div class="wd-old-price">Prime ' + esc(item.displayBasePrice) + '€</div>' +
+                                    '<div class="wd-offer-ref-line">Prime <strong>' + esc(item.displayPrimePrice) + '€</strong> · Standard <strong>' + esc(item.displayStandardPrice) + '€</strong></div>' +
                                 '</div>' +
                                 saving +
                             '</div>' +
@@ -617,11 +648,11 @@
 
             function longCard(item) {
                 var discountLabel = item.longLeadPercent > 0
-                    ? '-' + esc(item.longLeadPercent) + '% early'
+                    ? '-' + esc(item.longLeadPercent) + '% anticipo'
                     : 'prezzo prime';
                 var oldPrice = item.longLeadPercent > 0 && item.saving > 0
-                    ? '<div class="wd-long-old">Prime ' + esc(item.displayBasePrice) + '€</div>'
-                    : '';
+                    ? '<div class="wd-long-old">Prime ' + esc(item.displayPrimePrice) + '€ · Standard ' + esc(item.displayStandardPrice) + '€</div>'
+                    : '<div class="wd-long-old">Prime Community</div>';
                 return '' +
                     '<article class="wd-long-card">' +
                         imageHtml(item, 'wd-long-img') +
@@ -674,12 +705,13 @@
 
                 document.getElementById('wd-stats').innerHTML = '' +
                     '<span class="wd-stat-pill gold">' + offers.length + ' ' + plural(offers.length, 'offerta', 'offerte') + '</span>' +
+                    '<span class="wd-stat-pill">Offerta attiva: ' + esc(settings.earlyBookingPercent || 0) + '%</span>' +
                     '<span class="wd-stat-pill">Soglia: oltre ' + esc(settings.longLeadDays || 100) + ' giorni</span>' +
-                    '<span class="wd-stat-pill">Sconto anticipo: ' + esc(settings.longLeadPercent || 0) + '%</span>';
+                    '<span class="wd-stat-pill">Anticipo: ' + esc(settings.longLeadPercent || 0) + '%</span>';
 
                 document.getElementById('wd-offer-count').textContent = offers.length + ' ' + plural(offers.length, 'offerta', 'offerte');
                 document.getElementById('wd-long-count').textContent = longLead.length + ' ' + plural(longLead.length, 'partenza', 'partenze');
-                document.getElementById('wd-long-copy').textContent = 'Partenze oltre ' + (settings.longLeadDays || 100) + ' giorni. Percentuale letta da client_config: ' + (settings.longLeadPercent || 0) + '%.';
+                document.getElementById('wd-long-copy').textContent = 'Partenze oltre ' + (settings.longLeadDays || 100) + ' giorni. Offerta Attiva usa percentuale_early_booking; questa sezione usa percentuale_100_giorni.';
                 document.getElementById('wd-generated-label').textContent = 'Aggiornato ora';
 
                 document.getElementById('wd-offers-carousel').innerHTML = offers.length
