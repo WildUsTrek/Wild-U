@@ -685,6 +685,8 @@
                 return Number(n) === 1 ? one : many;
             }
 
+            var configRefreshTried = false;
+
             function render() {
                 var rt = window.WilduDiscountsRuntime;
                 if (!rt || typeof rt.getDiscountData !== 'function') {
@@ -695,6 +697,18 @@
                     }
                     document.getElementById('wd-offers-carousel').innerHTML = emptyBox('Modulo sconti non pronto: ponte runtime non trovato nel client.');
                     document.getElementById('wd-long-grid').innerHTML = '';
+                    return;
+                }
+
+                // V3: prima del render leggiamo una volta client_config da Firestore/server
+                // tramite il ponte runtime. Serve quando getInitData/config non propaga
+                // ancora campi nuovi come percentuale_100_giorni.
+                if (!configRefreshTried && typeof rt.refreshDiscountConfig === 'function') {
+                    configRefreshTried = true;
+                    document.getElementById('wd-generated-label').textContent = 'Aggiorno sconti...';
+                    rt.refreshDiscountConfig()
+                        .then(function () { render(); })
+                        .catch(function () { render(); });
                     return;
                 }
 
