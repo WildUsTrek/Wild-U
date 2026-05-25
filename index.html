@@ -12562,10 +12562,37 @@ function showTripDetails(id, detailContext = null) {
         extraRows.innerHTML = extraRowsHtml.join('');
     }
 
-    document.getElementById('trip-modal-prime-label').innerText = finalLabel;
-    document.getElementById('trip-modal-prime-label').style.color = '#d6d6d6';
-    document.getElementById('trip-modal-p-prime').innerText = `${displayFinalPrice}€`;
-    document.getElementById('trip-modal-p-prime').style.color = specialColor;
+    const finalRow = document.getElementById('trip-modal-final-row');
+    const finalLabelEl = document.getElementById('trip-modal-prime-label');
+    const finalPriceElNode = document.getElementById('trip-modal-p-prime');
+
+    if (finalRow) {
+        finalRow.style.display = 'flex';
+        finalRow.style.justifyContent = 'space-between';
+        finalRow.style.alignItems = 'flex-end';
+        finalRow.style.gap = '14px';
+        finalRow.style.position = 'relative';
+    }
+
+    if (finalLabelEl) {
+        finalLabelEl.innerText = finalLabel;
+        finalLabelEl.style.color = '#d6d6d6';
+        finalLabelEl.style.fontSize = '10px';
+        finalLabelEl.style.fontWeight = '950';
+        finalLabelEl.style.letterSpacing = '1px';
+        finalLabelEl.style.textTransform = 'uppercase';
+    }
+
+    if (finalPriceElNode) {
+        finalPriceElNode.innerText = `${displayFinalPrice}€`;
+        finalPriceElNode.style.color = specialColor;
+        finalPriceElNode.style.fontSize = '25px';
+        finalPriceElNode.style.lineHeight = '1';
+        finalPriceElNode.style.fontWeight = '950';
+        finalPriceElNode.style.textAlign = 'right';
+        finalPriceElNode.style.whiteSpace = 'nowrap';
+        finalPriceElNode.style.marginLeft = 'auto';
+    }
 
     let chipBox = document.getElementById('trip-modal-price-chips');
     const finalPriceEl = document.getElementById('trip-modal-p-prime');
@@ -19891,11 +19918,11 @@ window.addEventListener('pageshow', () => {
                 <span style="color:#888; font-size:13px;">PREZZO STANDARD</span>
                 <span id="trip-modal-p-std" style="font-weight:bold; color:#fff;"></span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px solid #333;">
-                <div>
-                    <div id="trip-modal-prime-label" style="color:var(--w-gold); font-size:10px; font-weight:bold; letter-spacing:1px;">ESCLUSIVO PRIME</div>
-                    <div id="trip-modal-p-prime" style="font-size:22px; font-weight:900; color:var(--w-gold);"></div>
+            <div id="trip-modal-final-row" style="position:relative; display:flex; justify-content:space-between; align-items:flex-end; gap:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.10);">
+                <div id="trip-modal-final-label-wrap" style="min-width:0; flex:1 1 auto;">
+                    <div id="trip-modal-prime-label" style="color:var(--w-gold); font-size:10px; font-weight:bold; letter-spacing:1px; text-transform:uppercase;">ESCLUSIVO PRIME</div>
                 </div>
+                <div id="trip-modal-p-prime" style="font-size:25px; line-height:1; font-weight:950; color:var(--w-gold); text-align:right; white-space:nowrap; margin-left:auto;"></div>
                 <div id="trip-modal-xp-container" style="text-align:right;">
                     <div id="trip-modal-xp" style="font-size:14px; font-weight:bold; color:var(--w-gold);"></div>
                     <div style="font-size:9px; color:#666;">WILD XP GUADAGNATI</div>
