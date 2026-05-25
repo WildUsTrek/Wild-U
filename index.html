@@ -2109,6 +2109,68 @@ body::before {
     }
 }
 
+
+
+/* =========================================================
+   WILDU DESKTOP PHONE FRAME — V23
+   Solo desktop: mantiene la UI con proporzioni smartphone
+   senza toccare render, dati, prezzi, moduli o logiche JS.
+   ========================================================= */
+@media (min-width: 900px) {
+    :root {
+        --wildu-desktop-phone-w: 430px;
+    }
+
+    html {
+        min-height: 100%;
+        background:
+            radial-gradient(circle at 50% 0%, rgba(45, 90, 39, 0.22), transparent 36%),
+            radial-gradient(circle at 50% 100%, rgba(212, 175, 55, 0.10), transparent 30%),
+            #050705;
+    }
+
+    body {
+        width: var(--wildu-desktop-phone-w);
+        max-width: 100vw;
+        min-height: 100vh;
+        margin: 0 auto;
+        background-color: var(--w-dark);
+        box-shadow:
+            0 0 0 1px rgba(255,255,255,0.06),
+            0 0 48px rgba(0,0,0,0.78),
+            0 0 95px rgba(45,90,39,0.15);
+        position: relative;
+    }
+
+    .hero-header,
+    .nav,
+    .container {
+        max-width: var(--wildu-desktop-phone-w);
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    /* Il footer Amazon è fixed: va centrato sul frame, non sulla viewport. */
+    #amazon-footer-wrapper {
+        width: var(--wildu-desktop-phone-w);
+        max-width: 100vw;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+    }
+
+    #amazon-footer-wrapper .amazon-slider {
+        width: calc(var(--wildu-desktop-phone-w) + (var(--amazon-bleed) * 2));
+        max-width: none;
+    }
+
+    #toast-msg {
+        max-width: calc(var(--wildu-desktop-phone-w) - 36px);
+        white-space: normal;
+        text-align: center;
+    }
+}
+
 </style>
     
 </head>
@@ -20303,11 +20365,122 @@ function bindWilduStickyNavSafeArea() {
     requestStickyUpdate();
 }
 
+
+// ==========================================
+// 🖱️ WILDU DESKTOP DRAG/WHEEL SCROLL
+// ==========================================
+function bindWilduDesktopHorizontalScroll() {
+    const canUseDesktopScroll = window.matchMedia &&
+        window.matchMedia('(hover: hover) and (pointer: fine)').matches &&
+        window.matchMedia('(min-width: 900px)').matches;
+
+    if (!canUseDesktopScroll) return;
+
+    const selectors = [
+        '.nav',
+        '.amazon-slider',
+        '.wd-carousel'
+    ];
+
+    function hasHorizontalOverflow(el) {
+        return !!el && (el.scrollWidth - el.clientWidth) > 6;
+    }
+
+    function bindOne(el) {
+        if (!el || el.dataset.wilduDesktopScrollBound === '1') return;
+        el.dataset.wilduDesktopScrollBound = '1';
+        el.style.cursor = el.style.cursor || 'grab';
+
+        let dragging = false;
+        let moved = false;
+        let startX = 0;
+        let startLeft = 0;
+
+        el.addEventListener('wheel', function (e) {
+            if (!hasHorizontalOverflow(el) || e.ctrlKey) return;
+
+            const rawDelta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+            if (!rawDelta) return;
+
+            const before = el.scrollLeft;
+            const maxLeft = el.scrollWidth - el.clientWidth;
+            const next = Math.max(0, Math.min(maxLeft, before + rawDelta));
+
+            if (next === before) return;
+
+            el.scrollLeft = next;
+            e.preventDefault();
+        }, { passive: false });
+
+        el.addEventListener('mousedown', function (e) {
+            if (e.button !== 0 || !hasHorizontalOverflow(el)) return;
+
+            dragging = true;
+            moved = false;
+            startX = e.clientX;
+            startLeft = el.scrollLeft;
+            el.style.cursor = 'grabbing';
+            el.style.userSelect = 'none';
+        });
+
+        window.addEventListener('mousemove', function (e) {
+            if (!dragging) return;
+
+            const dx = e.clientX - startX;
+            if (Math.abs(dx) > 4) moved = true;
+
+            el.scrollLeft = startLeft - dx;
+            e.preventDefault();
+        });
+
+        window.addEventListener('mouseup', function () {
+            if (!dragging) return;
+
+            dragging = false;
+            el.style.cursor = 'grab';
+            el.style.userSelect = '';
+
+            if (moved) {
+                el.dataset.wilduDesktopScrollMoved = '1';
+                window.setTimeout(function () {
+                    delete el.dataset.wilduDesktopScrollMoved;
+                }, 0);
+            }
+        });
+
+        el.addEventListener('click', function (e) {
+            if (el.dataset.wilduDesktopScrollMoved === '1') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
+    }
+
+    function bindAll() {
+        selectors.forEach(function (selector) {
+            document.querySelectorAll(selector).forEach(bindOne);
+        });
+    }
+
+    bindAll();
+
+    if (!window.__wilduDesktopScrollObserver && typeof MutationObserver === 'function') {
+        window.__wilduDesktopScrollObserver = new MutationObserver(function () {
+            bindAll();
+        });
+        window.__wilduDesktopScrollObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     scheduleWilduBootVeilFailOpen('DOMContentLoaded');
     syncAmazonFooterViewportOffset();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
+    bindWilduDesktopHorizontalScroll();
 
     // Anti-stato marcio dopo reload da modulo STOP:
     // se il modulo non è realmente aperto, l'audio torna in default.
