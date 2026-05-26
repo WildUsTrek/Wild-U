@@ -3054,63 +3054,133 @@ body::before {
     color: var(--w-gold);
 }
 
-/* WILDU V40 — Chiusura alta dei popup suggeriti/date.
-   Mobile + desktop. Solo UI: nessuna modifica a filtri, prezzi, prenotazioni o dati. */
+/* WILDU V41 — Popup soft + chiusura dettagli mobile-friendly.
+   Mobile + desktop. Solo UI/UX: nessuna modifica a filtri, prezzi, prenotazioni o dati. */
+.wildu-soft-modal-card {
+    padding-top: 22px;
+}
+
 .wildu-soft-modal-close {
     position: absolute;
     top: 12px;
     right: 12px;
-    z-index: 3;
+    z-index: 4;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    min-height: 34px;
-    max-width: calc(100% - 24px);
-    padding: 8px 11px;
     border-radius: 999px;
-    border: 1px solid rgba(255,90,90,.42);
-    background: linear-gradient(135deg, rgba(116,18,18,.96), rgba(70,10,10,.96));
+    border: 1px solid rgba(255,92,92,.46);
+    background: linear-gradient(135deg, rgba(142,22,22,.98), rgba(74,8,8,.98));
     color: #fff;
-    box-shadow: 0 8px 22px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.045) inset;
-    font-size: 11px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.48), 0 0 0 1px rgba(255,255,255,.05) inset;
+    font-size: 18px;
     line-height: 1;
     font-weight: 950;
-    letter-spacing: .45px;
-    text-transform: uppercase;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
 }
 
 .wildu-soft-modal-close:active {
-    transform: scale(.96);
+    transform: scale(.94);
 }
 
 @media (hover:hover) {
     .wildu-soft-modal-close:hover {
-        border-color: rgba(255,120,120,.62);
-        background: linear-gradient(135deg, rgba(150,25,25,.98), rgba(86,12,12,.98));
+        border-color: rgba(255,130,130,.72);
+        background: linear-gradient(135deg, rgba(164,28,28,.99), rgba(92,11,11,.99));
     }
 }
 
 .wildu-soft-modal-card .wildu-soft-modal-kicker,
 .wildu-soft-modal-card .wildu-soft-modal-title,
 .wildu-soft-modal-card .wildu-soft-modal-subtitle {
-    padding-right: 84px;
+    padding-right: 48px;
+}
+
+.wildu-soft-modal-bottom-bar {
+    position: sticky;
+    bottom: -18px;
+    z-index: 5;
+    margin: 14px -18px -18px;
+    padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(10,11,10,0), rgba(10,11,10,.92) 26%, rgba(10,11,10,.99));
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+}
+
+.wildu-soft-bottom-close-btn {
+    pointer-events: auto;
+    width: min(100%, 320px);
+    min-height: 44px;
+    border: 1px solid rgba(255,100,100,.38);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(110,18,18,.96), rgba(60,10,10,.96));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 950;
+    letter-spacing: .55px;
+    text-transform: uppercase;
+    box-shadow: 0 12px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wildu-soft-bottom-close-btn:active {
+    transform: scale(.985);
+}
+
+.wildu-detail-drag-handle {
+    width: 52px;
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.20);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
+    margin: -5px auto 16px;
+    cursor: grab;
+    touch-action: pan-y;
+}
+
+.wildu-detail-bottom-close {
+    background: rgba(255,255,255,.075) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    color: #e8e8e8 !important;
+    text-align: center !important;
+    padding: 13px !important;
+    border-radius: 12px !important;
+    font-weight: 900 !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    text-transform: uppercase !important;
+    letter-spacing: .5px !important;
+}
+
+@media (hover:hover) {
+    .wildu-detail-bottom-close:hover {
+        border-color: rgba(212,175,55,.34) !important;
+        color: var(--w-gold) !important;
+    }
 }
 
 @media (max-width: 420px) {
     .wildu-soft-modal-close {
         top: 10px;
         right: 10px;
-        padding: 8px 10px;
-        font-size: 10px;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
     }
 
     .wildu-soft-modal-card .wildu-soft-modal-kicker,
     .wildu-soft-modal-card .wildu-soft-modal-title,
     .wildu-soft-modal-card .wildu-soft-modal-subtitle {
-        padding-right: 76px;
+        padding-right: 42px;
     }
 }
 
@@ -13616,7 +13686,9 @@ function closeWilduRelatedModal(closeDetail) {
     }
 }
 
-function handleWilduDetailClose() {
+function handleWilduDetailClose(source) {
+    // Ingresso unico per X, backdrop, swipe-down e bottone finale.
+    // Se previsto, mantiene la logica “Potrebbe interessarti”.
     if (WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS) {
         WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
@@ -13635,6 +13707,73 @@ function handleWilduDetailClose() {
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
         wilduCloseDetailModalOnly();
     }
+}
+
+function handleWilduDetailBackdropClick(evt) {
+    if (!evt || evt.target !== evt.currentTarget) return;
+    handleWilduDetailClose('backdrop');
+}
+
+function installWilduDetailDismissGestures() {
+    const modal = document.getElementById('od-details-modal');
+    const card = document.getElementById('od-details-card');
+    if (!modal || !card || card.dataset.wilduDismissGestures === '1') return;
+    card.dataset.wilduDismissGestures = '1';
+
+    let startX = 0;
+    let startY = 0;
+    let startScroll = 0;
+    let tracking = false;
+    let shouldClose = false;
+
+    function isInteractiveTarget(target) {
+        return !!(target && target.closest && target.closest('button,a,input,textarea,select,iframe,[role="button"],.wildu-card-date-action'));
+    }
+
+    card.addEventListener('touchstart', function (evt) {
+        const touch = evt.touches && evt.touches[0];
+        if (!touch || modal.style.display === 'none') return;
+        if (isInteractiveTarget(evt.target)) return;
+
+        const fromHandle = !!(evt.target && evt.target.closest && evt.target.closest('#od-details-drag-handle'));
+        startScroll = modal.scrollTop || 0;
+
+        // Evita di confondere il normale scroll del contenuto con una gesture di chiusura.
+        // Lo swipe chiude solo da handle o quando il modal è già in cima.
+        if (!fromHandle && startScroll > 4) return;
+
+        tracking = true;
+        shouldClose = false;
+        startX = touch.clientX;
+        startY = touch.clientY;
+    }, { passive: true });
+
+    card.addEventListener('touchmove', function (evt) {
+        if (!tracking) return;
+        const touch = evt.touches && evt.touches[0];
+        if (!touch) return;
+
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+
+        if (dy > 86 && Math.abs(dx) < 58 && startScroll <= 4) {
+            shouldClose = true;
+        }
+    }, { passive: true });
+
+    card.addEventListener('touchend', function () {
+        if (tracking && shouldClose) {
+            handleWilduDetailClose('gesture');
+        }
+        tracking = false;
+        shouldClose = false;
+    }, { passive: true });
+
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key !== 'Escape') return;
+        if (modal.style.display === 'none') return;
+        handleWilduDetailClose('escape');
+    });
 }
 
 function wilduGetSameTitleDateRefs(type, item) {
@@ -21778,6 +21917,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Anti-stato marcio dopo reload da modulo STOP:
     // se il modulo non è realmente aperto, l'audio torna in default.
     reconcileWilduModuleAudioModeFromDom("domcontentloaded");
+    installWilduDetailDismissGestures();
 
     init();
     initAmazonSponsors();
@@ -21793,9 +21933,10 @@ window.addEventListener('pageshow', () => {
                 
 </script>
 
-<div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
-    <div style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
-        <button onclick="handleWilduDetailClose()" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
+<div id="od-details-modal" onclick="handleWilduDetailBackdropClick(event)" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
+    <div id="od-details-card" style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
+        <button onclick="handleWilduDetailClose('x')" aria-label="Chiudi scheda" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
+        <div id="od-details-drag-handle" class="wildu-detail-drag-handle" aria-hidden="true"></div>
         
         <div id="trip-modal-img-container" style="position:relative; width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
             <img id="trip-modal-img" src="" style="width:100%; height:100%; object-fit:cover;">
@@ -21852,6 +21993,7 @@ window.addEventListener('pageshow', () => {
             <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 START POINT SU MAPS</a>
             <a id="trip-modal-link-ufficiale" href="#" target="_blank" style="display:none; background:#333; border:1px solid #444; color:#fff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">🔗 LINK SITO UFFICIALE</a>
             <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
+            <button type="button" id="od-modal-close-bottom" class="wildu-detail-bottom-close" onclick="handleWilduDetailClose('bottom')">Chiudi scheda</button>
         </div>
     </div>
 </div>
@@ -21859,21 +22001,27 @@ window.addEventListener('pageshow', () => {
 <!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
 <div id="wildu-related-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Potrebbe interessarti">
     <div class="wildu-soft-modal-card">
-        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduRelatedModal(true)" aria-label="Chiudi suggerimenti">No grazie</button>
-        <div class="wildu-soft-modal-kicker">🌲 Bussola intelligente</div>
+        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduRelatedModal(true)" aria-label="Chiudi suggerimenti">×</button>
+        <div class="wildu-soft-modal-kicker">🧭 Radar</div>
         <h3 class="wildu-soft-modal-title">Potrebbe interessarti</h3>
         <p class="wildu-soft-modal-subtitle">Avventure simili a quella che stavi guardando, scelte fra le prossime date disponibili.</p>
         <div id="wildu-related-list" class="wildu-soft-list"></div>
+        <div class="wildu-soft-modal-bottom-bar">
+            <button type="button" class="wildu-soft-bottom-close-btn" onclick="closeWilduRelatedModal(true)">No grazie</button>
+        </div>
     </div>
 </div>
 
 <div id="wildu-date-options-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Date disponibili">
     <div class="wildu-soft-modal-card">
-        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduDateOptionsModal()" aria-label="Chiudi date disponibili">Chiudi</button>
+        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduDateOptionsModal()" aria-label="Chiudi date disponibili">×</button>
         <div class="wildu-soft-modal-kicker">📅 Date disponibili</div>
         <h3 id="wildu-date-options-title" class="wildu-soft-modal-title">Scegli una data</h3>
         <p class="wildu-soft-modal-subtitle">Stessa avventura, date diverse. Tocca una card per aprire i dettagli.</p>
         <div id="wildu-date-options-list" class="wildu-soft-list"></div>
+        <div class="wildu-soft-modal-bottom-bar">
+            <button type="button" class="wildu-soft-bottom-close-btn" onclick="closeWilduDateOptionsModal()">Chiudi</button>
+        </div>
     </div>
 </div>
 <!-- FINE WILDU V38 -->
