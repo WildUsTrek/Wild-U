@@ -3054,6 +3054,66 @@ body::before {
     color: var(--w-gold);
 }
 
+/* WILDU V40 — Chiusura alta dei popup suggeriti/date.
+   Mobile + desktop. Solo UI: nessuna modifica a filtri, prezzi, prenotazioni o dati. */
+.wildu-soft-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
+    max-width: calc(100% - 24px);
+    padding: 8px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,90,90,.42);
+    background: linear-gradient(135deg, rgba(116,18,18,.96), rgba(70,10,10,.96));
+    color: #fff;
+    box-shadow: 0 8px 22px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.045) inset;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: .45px;
+    text-transform: uppercase;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wildu-soft-modal-close:active {
+    transform: scale(.96);
+}
+
+@media (hover:hover) {
+    .wildu-soft-modal-close:hover {
+        border-color: rgba(255,120,120,.62);
+        background: linear-gradient(135deg, rgba(150,25,25,.98), rgba(86,12,12,.98));
+    }
+}
+
+.wildu-soft-modal-card .wildu-soft-modal-kicker,
+.wildu-soft-modal-card .wildu-soft-modal-title,
+.wildu-soft-modal-card .wildu-soft-modal-subtitle {
+    padding-right: 84px;
+}
+
+@media (max-width: 420px) {
+    .wildu-soft-modal-close {
+        top: 10px;
+        right: 10px;
+        padding: 8px 10px;
+        font-size: 10px;
+    }
+
+    .wildu-soft-modal-card .wildu-soft-modal-kicker,
+    .wildu-soft-modal-card .wildu-soft-modal-title,
+    .wildu-soft-modal-card .wildu-soft-modal-subtitle {
+        padding-right: 76px;
+    }
+}
+
 .wildu-card-date-action {
     cursor: pointer;
     border-radius: 10px;
@@ -21799,25 +21859,21 @@ window.addEventListener('pageshow', () => {
 <!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
 <div id="wildu-related-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Potrebbe interessarti">
     <div class="wildu-soft-modal-card">
+        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduRelatedModal(true)" aria-label="Chiudi suggerimenti">No grazie</button>
         <div class="wildu-soft-modal-kicker">🌲 Bussola intelligente</div>
         <h3 class="wildu-soft-modal-title">Potrebbe interessarti</h3>
         <p class="wildu-soft-modal-subtitle">Avventure simili a quella che stavi guardando, scelte fra le prossime date disponibili.</p>
         <div id="wildu-related-list" class="wildu-soft-list"></div>
-        <div class="wildu-soft-actions">
-            <button type="button" class="wildu-soft-btn" onclick="closeWilduRelatedModal(true)">No grazie</button>
-        </div>
     </div>
 </div>
 
 <div id="wildu-date-options-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Date disponibili">
     <div class="wildu-soft-modal-card">
+        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduDateOptionsModal()" aria-label="Chiudi date disponibili">Chiudi</button>
         <div class="wildu-soft-modal-kicker">📅 Date disponibili</div>
         <h3 id="wildu-date-options-title" class="wildu-soft-modal-title">Scegli una data</h3>
         <p class="wildu-soft-modal-subtitle">Stessa avventura, date diverse. Tocca una card per aprire i dettagli.</p>
         <div id="wildu-date-options-list" class="wildu-soft-list"></div>
-        <div class="wildu-soft-actions">
-            <button type="button" class="wildu-soft-btn" onclick="closeWilduDateOptionsModal()">Chiudi</button>
-        </div>
     </div>
 </div>
 <!-- FINE WILDU V38 -->
