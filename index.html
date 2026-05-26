@@ -2794,6 +2794,63 @@ body::before {
         background: rgba(0,0,0,.10) !important;
     }
 }
+
+
+/* =========================================================
+   WILDU V37 — DESKTOP PASSPORT WIDTH + LEGEND PILL FIX
+   ---------------------------------------------------------
+   Solo desktop/tablet largo. Mobile invariato.
+   - La pill Apri/Chiudi del passaporto non contamina la legenda.
+   - Nome passaporto non troncato: può andare a capo in modo premium.
+   - Colonna sinistra profilo leggermente più ampia su desktop.
+   ========================================================= */
+@media (min-width: 900px) {
+    #profile-data:not(.hidden) {
+        grid-template-columns: minmax(360px, 470px) minmax(0, 1fr) !important;
+    }
+
+    /* Il passaporto può prendersi più spazio; le prenotazioni restano comode a destra. */
+    #profile-data #wildu-passport-toggle {
+        grid-template-columns: 58px minmax(0, 1fr) auto !important;
+        column-gap: 15px !important;
+    }
+
+    /* Nome intero: niente ellissi sul desktop. */
+    #profile-data #wildu-passport-compact-name {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        word-break: normal !important;
+        overflow-wrap: anywhere !important;
+        max-width: none !important;
+    }
+
+    /* La pill esterna speciale vale SOLO per il passaporto, non per la legenda. */
+    #profile-data #wildu-passport-toggle > .wildu-desktop-toggle-wrap {
+        border: 1px solid rgba(212,175,55,.28) !important;
+        background: rgba(212,175,55,.105) !important;
+        border-radius: 999px !important;
+        padding: 7px 10px !important;
+        box-shadow: 0 8px 20px rgba(0,0,0,.18) !important;
+    }
+
+    /* La legenda torna ad avere una sola pillola pulita: quella della label interna. */
+    #profile-data #wildu-grade-legend-toggle > .wildu-desktop-toggle-wrap {
+        border: 0 !important;
+        background: transparent !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+    }
+
+    #profile-data #wildu-grade-legend-toggle #wildu-grade-legend-toggle-label {
+        border: 1px solid rgba(212,175,55,.22) !important;
+        background: rgba(212,175,55,.10) !important;
+        border-radius: 999px !important;
+        padding: 4px 8px !important;
+    }
+}
+
 </style>
     
 </head>
