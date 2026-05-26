@@ -2851,6 +2851,237 @@ body::before {
     }
 }
 
+/* =========================================================
+   WILDU V38 — DETAIL SUGGESTIONS + DATE OPTIONS
+   ---------------------------------------------------------
+   Client-only. Mobile + desktop. Nessun impatto su prezzi,
+   prenotazioni, zaino, backend o cache.
+   ========================================================= */
+.wildu-soft-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: calc(20px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    background: rgba(0,0,0,.78);
+    backdrop-filter: blur(8px);
+    z-index: 2600;
+}
+
+.wildu-soft-modal.is-visible {
+    display: flex;
+}
+
+.wildu-soft-modal-card {
+    width: min(560px, 100%);
+    max-height: min(78vh, 720px);
+    overflow: auto;
+    box-sizing: border-box;
+    border-radius: 24px;
+    padding: 20px 18px 18px;
+    position: relative;
+    border: 1px solid rgba(212,175,55,.30);
+    background:
+        radial-gradient(circle at 12% 0%, rgba(212,175,55,.20), transparent 34%),
+        radial-gradient(circle at 100% 100%, rgba(45,90,39,.20), transparent 38%),
+        linear-gradient(145deg, rgba(25,25,25,.98), rgba(9,11,10,.99));
+    box-shadow: 0 24px 72px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+.wildu-soft-modal-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(212,175,55,.12);
+    border: 1px solid rgba(212,175,55,.30);
+    color: var(--w-gold);
+    font-size: 10px;
+    font-weight: 950;
+    letter-spacing: .75px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.wildu-soft-modal-title {
+    color: #fff;
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.12;
+    font-weight: 950;
+    letter-spacing: .2px;
+}
+
+.wildu-soft-modal-subtitle {
+    color: #b8c2b8;
+    margin: 8px 0 14px;
+    font-size: 13px;
+    line-height: 1.42;
+}
+
+.wildu-soft-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wildu-soft-card {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.045);
+    border-radius: 18px;
+    padding: 9px;
+    box-sizing: border-box;
+    color: inherit;
+    cursor: pointer;
+    transition: transform .14s ease, border-color .14s ease, background .14s ease;
+}
+
+.wildu-soft-card:active {
+    transform: scale(.985);
+}
+
+@media (hover:hover) {
+    .wildu-soft-card:hover {
+        border-color: rgba(212,175,55,.36);
+        background: rgba(212,175,55,.075);
+    }
+}
+
+.wildu-soft-card-img {
+    width: 76px;
+    height: 58px;
+    border-radius: 13px;
+    object-fit: cover;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.08);
+}
+
+.wildu-soft-card-fallback {
+    width: 76px;
+    height: 58px;
+    border-radius: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(212,175,55,.10);
+    border: 1px solid rgba(212,175,55,.18);
+    font-size: 24px;
+}
+
+.wildu-soft-card-title {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.18;
+    margin: 0 0 5px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.wildu-soft-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    color: #b8b8b8;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.wildu-soft-type-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(212,175,55,.12);
+    border: 1px solid rgba(212,175,55,.26);
+    color: var(--w-gold);
+    font-size: 9px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .45px;
+}
+
+.wildu-soft-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.wildu-soft-btn {
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.075);
+    color: #f0f0f0;
+    border-radius: 999px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: .45px;
+}
+
+.wildu-soft-btn.gold {
+    border-color: rgba(212,175,55,.34);
+    background: rgba(212,175,55,.13);
+    color: var(--w-gold);
+}
+
+.wildu-card-date-action {
+    cursor: pointer;
+    border-radius: 10px;
+    padding: 2px 4px;
+    margin-left: -4px;
+    transition: background .14s ease;
+}
+
+@media (hover:hover) {
+    .wildu-card-date-action:hover {
+        background: rgba(212,175,55,.10);
+    }
+}
+
+.wildu-card-date-hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 7px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.055);
+    color: rgba(255,255,255,.72);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .35px;
+    text-transform: uppercase;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+@media (min-width: 900px) {
+    .wildu-soft-modal-card {
+        padding: 22px 22px 20px;
+    }
+
+    .wildu-soft-list {
+        gap: 12px;
+    }
+}
+
 </style>
     
 </head>
@@ -13037,6 +13268,369 @@ function formatWilduExternalCardTimeRange(start, end) {
     return 'Apri dettagli';
 }
 
+
+// =========================================================
+// WILDU V38 — Dettagli suggeriti + Date disponibili
+// ---------------------------------------------------------
+// Client-only. Non altera prezzi/prenotazioni/zaino/backend.
+// =========================================================
+let WILDU_ACTIVE_DETAIL_CONTEXT = null;
+let WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
+
+function wilduCleanTitleForMatching(value) {
+    return String(value || '')
+        .split(' - ')[0]
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function wilduNormalizeTitleKey(value) {
+    return normalizeTripFilterText(wilduCleanTitleForMatching(value));
+}
+
+function wilduGetDetailTypeLabel(type) {
+    if (type === 'openday') return 'Gratis';
+    if (type === 'payday') return 'Hike';
+    return 'Viaggio';
+}
+
+function wilduGetDetailTypeIcon(type) {
+    if (type === 'openday') return '🎁';
+    if (type === 'payday') return '🥾';
+    return '🌲';
+}
+
+function wilduGetDetailSourceList(type) {
+    if (type === 'openday') return Array.isArray(allOpenDays) ? allOpenDays : [];
+    if (type === 'payday') return Array.isArray(allPayDays) ? allPayDays : [];
+    return Array.isArray(allTrips) ? allTrips : [];
+}
+
+function wilduGetDetailItemId(type, item) {
+    item = item || {};
+    if (type === 'trip') return String(item.eventDocId || item.id || '').trim();
+    return String(item['ID Evento (Super-Key)'] || item['ID Evento'] || item.eventDocId || item.id || '').trim();
+}
+
+function wilduGetDetailItemTitle(type, item) {
+    item = item || {};
+    return String(item.Titolo || item.titolo || item.title || 'Avventura Wild-U').trim();
+}
+
+function wilduGetDetailItemDate(type, item) {
+    item = item || {};
+    const start = String(item['Data inizio'] || item['Data Inizio'] || item.dataInizio || '').trim();
+    const end = String(item['Data fine'] || item['Data Fine'] || item.dataFine || '').trim();
+    return end && end !== start ? (start + ' - ' + end) : start;
+}
+
+function wilduGetDetailItemStartDate(type, item) {
+    item = item || {};
+    return String(item['Data inizio'] || item['Data Inizio'] || item.dataInizio || '').trim();
+}
+
+function wilduGetDetailItemRegion(type, item) {
+    item = item || {};
+    return String(item.Regione || item.regione || (item.ritrovo ? item.ritrovo.regione : '') || '').trim();
+}
+
+function wilduGetDetailItemPlace(type, item) {
+    item = item || {};
+    const raw = String((item.ritrovo && item.ritrovo.luogo) || item['Luogo Nome'] || item.luogo || item.START || '').trim();
+    return raw.replace(/(?:,?\s*-?\s*)\b(orario|ore|ora)\b\s*:?\s*.*/i, '').trim();
+}
+
+function wilduGetDetailItemImage(type, item) {
+    item = item || {};
+    return String(item.immagine || item.fotoUrl || item['fotoUrl'] || '').trim();
+}
+
+function wilduGetDetailNumeric(value) {
+    const raw = String(value || '').replace(',', '.').replace(/[^0-9.\-]/g, '');
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+}
+
+function wilduBuildDetailRef(type, item) {
+    return {
+        type: type,
+        id: wilduGetDetailItemId(type, item),
+        title: wilduGetDetailItemTitle(type, item),
+        titleKey: wilduNormalizeTitleKey(wilduGetDetailItemTitle(type, item)),
+        date: wilduGetDetailItemDate(type, item),
+        startDate: wilduGetDetailItemStartDate(type, item),
+        region: wilduGetDetailItemRegion(type, item),
+        place: wilduGetDetailItemPlace(type, item),
+        image: wilduGetDetailItemImage(type, item),
+        km: wilduGetDetailNumeric(item && item.KM),
+        dsl: wilduGetDetailNumeric(item && item.Dislivello),
+        raw: item || {}
+    };
+}
+
+function wilduFindDetailItem(type, id) {
+    const targetId = String(id || '').trim();
+    return wilduGetDetailSourceList(type).find(function (item) {
+        return wilduGetDetailItemId(type, item) === targetId;
+    }) || null;
+}
+
+function wilduSetActiveDetailContext(type, item, id) {
+    const actual = item || wilduFindDetailItem(type, id);
+    if (!actual) {
+        WILDU_ACTIVE_DETAIL_CONTEXT = null;
+        return;
+    }
+    WILDU_ACTIVE_DETAIL_CONTEXT = wilduBuildDetailRef(type, actual);
+}
+
+function wilduCloseDetailModalOnly() {
+    const modal = document.getElementById('od-details-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function wilduOpenDetailByRef(ref, options) {
+    if (!ref || !ref.type || !ref.id) return;
+    options = options || {};
+    if (options.skipSuggestions === true) {
+        WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
+    }
+    if (ref.type === 'openday') showOpenDayDetails(ref.id);
+    else if (ref.type === 'payday') showPayDayDetails(ref.id);
+    else showTripDetails(ref.id);
+}
+
+function wilduCollectDetailRefs() {
+    const out = [];
+    (Array.isArray(allTrips) ? allTrips : []).forEach(function (item) {
+        const ref = wilduBuildDetailRef('trip', item);
+        if (ref.id && ref.titleKey) out.push(ref);
+    });
+    (Array.isArray(allOpenDays) ? allOpenDays : []).forEach(function (item) {
+        const ref = wilduBuildDetailRef('openday', item);
+        if (ref.id && ref.titleKey) out.push(ref);
+    });
+    (Array.isArray(allPayDays) ? allPayDays : []).forEach(function (item) {
+        const ref = wilduBuildDetailRef('payday', item);
+        if (ref.id && ref.titleKey) out.push(ref);
+    });
+    return out;
+}
+
+function wilduTokenSet(value) {
+    return new Set(normalizeTripFilterText(value).split(/\s+/).filter(function (token) {
+        return token && token.length >= 3;
+    }));
+}
+
+function wilduTokenOverlapScore(a, b, weight) {
+    const aa = wilduTokenSet(a);
+    const bb = wilduTokenSet(b);
+    let score = 0;
+    aa.forEach(function (token) {
+        if (bb.has(token)) score += weight;
+    });
+    return score;
+}
+
+function wilduScoreRelatedDetail(current, candidate) {
+    if (!current || !candidate) return 0;
+    if (current.type === candidate.type && current.id === candidate.id) return 0;
+
+    let score = 0;
+    score += wilduTokenOverlapScore(current.title, candidate.title, 6);
+    score += wilduTokenOverlapScore(current.place, candidate.place, 2);
+
+    if (current.region && candidate.region && normalizeTripFilterText(current.region) === normalizeTripFilterText(candidate.region)) {
+        score += 4;
+    }
+
+    if (current.km !== null && candidate.km !== null && Math.abs(current.km - candidate.km) <= 3) {
+        score += 1;
+    }
+
+    if (current.dsl !== null && candidate.dsl !== null && Math.abs(current.dsl - candidate.dsl) <= 250) {
+        score += 1;
+    }
+
+    if (current.titleKey && candidate.titleKey && current.titleKey === candidate.titleKey) {
+        score += 10;
+    }
+
+    return score;
+}
+
+function wilduBuildRelatedDetails(current) {
+    const pool = wilduCollectDetailRefs();
+    const seen = new Set();
+
+    return pool
+        .map(function (candidate) {
+            return { ref: candidate, score: wilduScoreRelatedDetail(current, candidate) };
+        })
+        .filter(function (entry) {
+            if (!entry || !entry.ref || entry.score < 5) return false;
+            const key = entry.ref.type + ':' + entry.ref.id;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .sort(function (a, b) {
+            if (b.score !== a.score) return b.score - a.score;
+            return parseItalianDate(a.ref.startDate) - parseItalianDate(b.ref.startDate);
+        })
+        .slice(0, 5)
+        .map(function (entry) { return entry.ref; });
+}
+
+function wilduBuildSoftCardHtml(ref, extraMeta) {
+    const img = ref.image ? formatAssetLink(ref.image) : '';
+    const media = img
+        ? '<img class="wildu-soft-card-img" src="' + escapeWilduHtml(img) + '" loading="lazy" alt="">'
+        : '<div class="wildu-soft-card-fallback" aria-hidden="true">' + wilduGetDetailTypeIcon(ref.type) + '</div>';
+    const type = wilduGetDetailTypeLabel(ref.type);
+    const date = ref.date || 'Data da definire';
+    const place = ref.region || ref.place || '';
+    const meta = [
+        '<span class="wildu-soft-type-pill">' + escapeWilduHtml(type) + '</span>',
+        '<span>📅 ' + escapeWilduHtml(date) + '</span>',
+        place ? '<span>· ' + escapeWilduHtml(place) + '</span>' : '',
+        extraMeta ? '<span>· ' + escapeWilduHtml(extraMeta) + '</span>' : ''
+    ].filter(Boolean).join('');
+
+    return '' +
+        '<button type="button" class="wildu-soft-card" onclick="openWilduSoftCardDetail(\'' + escapeWilduJsString(ref.type) + '\',\'' + escapeWilduJsString(ref.id) + '\')">' +
+            media +
+            '<span style="min-width:0; display:block;">' +
+                '<span class="wildu-soft-card-title">' + escapeWilduHtml(ref.title) + '</span>' +
+                '<span class="wildu-soft-card-meta">' + meta + '</span>' +
+            '</span>' +
+        '</button>';
+}
+
+function openWilduSoftCardDetail(type, id) {
+    closeWilduRelatedModal(false);
+    closeWilduDateOptionsModal(false);
+    wilduCloseDetailModalOnly();
+    const item = wilduFindDetailItem(type, id);
+    if (!item) {
+        showToast('⚠️ Dettagli non trovati.');
+        return;
+    }
+    wilduOpenDetailByRef(wilduBuildDetailRef(type, item), { skipSuggestions: true });
+}
+
+function showWilduRelatedModal(items) {
+    const modal = document.getElementById('wildu-related-modal');
+    const list = document.getElementById('wildu-related-list');
+    if (!modal || !list || !Array.isArray(items) || !items.length) return false;
+    list.innerHTML = items.map(function (ref) { return wilduBuildSoftCardHtml(ref); }).join('');
+    modal.classList.add('is-visible');
+    modal.setAttribute('aria-hidden', 'false');
+    return true;
+}
+
+function closeWilduRelatedModal(closeDetail) {
+    const modal = document.getElementById('wildu-related-modal');
+    if (modal) {
+        modal.classList.remove('is-visible');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    if (closeDetail !== false) {
+        wilduCloseDetailModalOnly();
+        WILDU_ACTIVE_DETAIL_CONTEXT = null;
+    }
+}
+
+function handleWilduDetailClose() {
+    if (WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS) {
+        WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
+        WILDU_ACTIVE_DETAIL_CONTEXT = null;
+        wilduCloseDetailModalOnly();
+        return;
+    }
+
+    const current = WILDU_ACTIVE_DETAIL_CONTEXT;
+    if (!current) {
+        wilduCloseDetailModalOnly();
+        return;
+    }
+
+    const related = wilduBuildRelatedDetails(current);
+    if (!related.length || !showWilduRelatedModal(related)) {
+        WILDU_ACTIVE_DETAIL_CONTEXT = null;
+        wilduCloseDetailModalOnly();
+    }
+}
+
+function wilduGetSameTitleDateRefs(type, item) {
+    const key = wilduNormalizeTitleKey(wilduGetDetailItemTitle(type, item));
+    if (!key) return [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return wilduGetDetailSourceList(type)
+        .map(function (candidate) { return wilduBuildDetailRef(type, candidate); })
+        .filter(function (ref) {
+            if (!ref.id || ref.titleKey !== key) return false;
+            if (!ref.startDate) return true;
+            return parseItalianDate(ref.startDate) >= today;
+        })
+        .sort(function (a, b) {
+            return parseItalianDate(a.startDate) - parseItalianDate(b.startDate);
+        });
+}
+
+function wilduHasMultipleDates(type, item) {
+    return wilduGetSameTitleDateRefs(type, item).length > 1;
+}
+
+function wilduBuildExternalDateHtml(type, item, id, displayDate) {
+    const safeDate = escapeWilduHtml(displayDate || 'Data da definire');
+    if (!wilduHasMultipleDates(type, item)) {
+        return '📅 ' + safeDate;
+    }
+
+    return '<span class="wildu-card-date-action" role="button" tabindex="0" ' +
+        'onclick="openWilduDateOptions(\'' + escapeWilduJsString(type) + '\',\'' + escapeWilduJsString(id) + '\', event)" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){openWilduDateOptions(\'' + escapeWilduJsString(type) + '\',\'' + escapeWilduJsString(id) + '\', event);}">' +
+            '📅 ' + safeDate + '<span class="wildu-card-date-hint">vedi date</span>' +
+        '</span>';
+}
+
+function openWilduDateOptions(type, id, evt) {
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+    if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+
+    const item = wilduFindDetailItem(type, id);
+    if (!item) return;
+
+    const refs = wilduGetSameTitleDateRefs(type, item);
+    if (refs.length < 2) return;
+
+    const modal = document.getElementById('wildu-date-options-modal');
+    const list = document.getElementById('wildu-date-options-list');
+    const title = document.getElementById('wildu-date-options-title');
+    if (!modal || !list || !title) return;
+
+    title.innerText = wilduCleanTitleForMatching(wilduGetDetailItemTitle(type, item));
+    const currentId = String(id || '').trim();
+    list.innerHTML = refs.map(function (ref) {
+        const extra = ref.id === currentId ? 'questa data' : '';
+        return wilduBuildSoftCardHtml(ref, extra);
+    }).join('');
+    modal.classList.add('is-visible');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeWilduDateOptionsModal() {
+    const modal = document.getElementById('wildu-date-options-modal');
+    if (modal) {
+        modal.classList.remove('is-visible');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+}
+
 function renderTrips(trips, targetId) {
     document.getElementById(targetId).innerHTML = trips.map(ev => {
         const isHike = ev.isHike;
@@ -13100,6 +13694,8 @@ function renderTrips(trips, targetId) {
 
         const eventDocId = ev.eventDocId || ev.id || "";
         const safeId = String(eventDocId).replace(/'/g, "\\'");
+        const dateLineType = isHike ? 'payday' : 'trip';
+        const dateLineHtml = wilduBuildExternalDateHtml(dateLineType, ev, safeId, displayDate);
 
         // 🎯 FASE 2: PULSANTE LINK SITO UFFICIALE
         // Link commerciale ufficiale del viaggio.
@@ -13135,7 +13731,7 @@ function renderTrips(trips, targetId) {
                     ${futureYearBadge}
                 </div>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
-                    <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
+                    <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">${dateLineHtml}</div>
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
@@ -13449,6 +14045,8 @@ function showTripDetails(id, detailContext = null) {
         showToast("⚠️ Dettagli non trovati.");
         return;
     }
+
+    wilduSetActiveDetailContext('trip', ev, id);
 
     // V9: contesti prudenziali e non globali.
     // - Sconti: prezzo 100+ giorni valido solo se il dettaglio arriva dal modulo Sconti.
@@ -14226,13 +14824,14 @@ renderUnifiedDetailMapFromItem(ev);
             const luogoCompleto = `${nomeRegione}${luogo}`;
             const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
             const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
+            const dateLineHtml = wilduBuildExternalDateHtml('openday', od, id, displayDate);
 
             html += `
             <div class="wildu-adventure-card wildu-adventure-card-openday">
                 ${imgHtml}
                 <h3 class="wildu-adventure-title" style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
-                    <div style="color: #00aaff; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
+                    <div style="color: #00aaff; font-weight: bold; font-size: 15px; margin-bottom:4px;">${dateLineHtml}</div>
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
@@ -14327,6 +14926,7 @@ function renderPayDays() {
         const luogoCompleto = `${nomeRegione}${luogo}`;
         const km = pd["KM"] ? `🥾 ${pd["KM"]} km` : "";
         const dsl = pd["Dislivello"] ? `⛰️ ${pd["Dislivello"]} m` : "";
+        const dateLineHtml = wilduBuildExternalDateHtml('payday', pd, id, displayDate);
 
 // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E BADGE ---
             const occ = calculateDisplayOccupancy(id, dataInizio, pd.qnt || 0, pd.postiMax);
@@ -14352,7 +14952,7 @@ function renderPayDays() {
                     ${futureYearBadge}
                 </div>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
-                    <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">📅 ${displayDate}</div>
+                    <div style="color: #d4af37; font-weight: bold; font-size: 15px; margin-bottom:4px;">${dateLineHtml}</div>
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
@@ -19003,6 +19603,8 @@ function showOpenDayDetails(id) {
         return;
     }
 
+    wilduSetActiveDetailContext('openday', od, id);
+
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
     const oldPrice = document.getElementById('pd-dynamic-price');
     if(oldPrice) oldPrice.style.display = 'none';
@@ -19194,6 +19796,8 @@ function showPayDayDetails(id) {
         showToast("⚠️ Dettagli non trovati nel calendario.");
         return;
     }
+
+    wilduSetActiveDetailContext('payday', pd, id);
 
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
     const oldPrice = document.getElementById('pd-dynamic-price');
@@ -21117,7 +21721,7 @@ window.addEventListener('pageshow', () => {
 
 <div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
     <div style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
-        <button onclick="document.getElementById('od-details-modal').style.display='none'" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
+        <button onclick="handleWilduDetailClose()" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
         
         <div id="trip-modal-img-container" style="position:relative; width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
             <img id="trip-modal-img" src="" style="width:100%; height:100%; object-fit:cover;">
@@ -21177,6 +21781,32 @@ window.addEventListener('pageshow', () => {
         </div>
     </div>
 </div>
+
+<!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
+<div id="wildu-related-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Potrebbe interessarti">
+    <div class="wildu-soft-modal-card">
+        <div class="wildu-soft-modal-kicker">🌲 Bussola intelligente</div>
+        <h3 class="wildu-soft-modal-title">Potrebbe interessarti</h3>
+        <p class="wildu-soft-modal-subtitle">Avventure simili a quella che stavi guardando, scelte fra le prossime date disponibili.</p>
+        <div id="wildu-related-list" class="wildu-soft-list"></div>
+        <div class="wildu-soft-actions">
+            <button type="button" class="wildu-soft-btn" onclick="closeWilduRelatedModal(true)">No grazie</button>
+        </div>
+    </div>
+</div>
+
+<div id="wildu-date-options-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Date disponibili">
+    <div class="wildu-soft-modal-card">
+        <div class="wildu-soft-modal-kicker">📅 Date disponibili</div>
+        <h3 id="wildu-date-options-title" class="wildu-soft-modal-title">Scegli una data</h3>
+        <p class="wildu-soft-modal-subtitle">Stessa avventura, date diverse. Tocca una card per aprire i dettagli.</p>
+        <div id="wildu-date-options-list" class="wildu-soft-list"></div>
+        <div class="wildu-soft-actions">
+            <button type="button" class="wildu-soft-btn" onclick="closeWilduDateOptionsModal()">Chiudi</button>
+        </div>
+    </div>
+</div>
+<!-- FINE WILDU V38 -->
 
 <div id="amazon-detail-overlay" class="amazon-overlay-hidden">
         <div class="amazon-detail-card">
