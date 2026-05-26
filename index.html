@@ -3228,13 +3228,15 @@ body::before {
 
 
 
-/* WILDU V42 — chiusura orizzontale + scrollbar soft nascoste.
-   Mobile + desktop. Solo UX: niente modifiche a prezzi, prenotazioni, filtri o dati. */
+/* WILDU V43 — swipe fisico + scroll lock popup.
+   Mobile + desktop. Solo UX/modal: niente modifiche a prezzi, prenotazioni, filtri o dati. */
 .wildu-soft-modal-card {
     scrollbar-width: none;
     -ms-overflow-style: none;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+    will-change: transform, opacity;
+    transition: transform .20s cubic-bezier(.2,.85,.2,1), opacity .20s ease;
 }
 
 .wildu-soft-modal-card::-webkit-scrollbar {
@@ -3246,6 +3248,7 @@ body::before {
 .wildu-soft-list {
     scrollbar-width: none;
     -ms-overflow-style: none;
+    overscroll-behavior: contain;
 }
 
 .wildu-soft-list::-webkit-scrollbar {
@@ -3254,8 +3257,41 @@ body::before {
     display: none;
 }
 
+/* Il vecchio segnalino era coerente con lo swipe verticale; con lo swipe orizzontale diventa fuorviante. */
 .wildu-detail-drag-handle {
-    opacity: .55;
+    display: none !important;
+}
+
+#od-details-card {
+    will-change: transform, opacity;
+    transition: transform .20s cubic-bezier(.2,.85,.2,1), opacity .20s ease;
+}
+
+.wildu-swipe-hint {
+    position: fixed;
+    left: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%) translateY(10px);
+    z-index: 3100;
+    opacity: 0;
+    pointer-events: none;
+    padding: 8px 13px;
+    border-radius: 999px;
+    border: 1px solid rgba(212,175,55,.32);
+    background: rgba(8,10,9,.92);
+    color: #f2e5b8;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: .45px;
+    text-transform: uppercase;
+    box-shadow: 0 12px 32px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.06);
+    transition: opacity .14s ease, transform .14s ease;
+    white-space: nowrap;
+}
+
+.wildu-swipe-hint.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
 
 @media (max-width: 520px) {
@@ -13566,8 +13602,214 @@ function wilduSetActiveDetailContext(type, item, id) {
     WILDU_ACTIVE_DETAIL_CONTEXT = wilduBuildDetailRef(type, actual);
 }
 
+const WILDU_SOFT_SCROLL_LOCK = {
+    locked: false,
+    scrollY: 0,
+    bodyPosition: '',
+    bodyTop: '',
+    bodyLeft: '',
+    bodyRight: '',
+    bodyWidth: '',
+    htmlOverflow: ''
+};
+
+function wilduAnySoftModalVisible() {
+    return !!document.querySelector('.wildu-soft-modal.is-visible');
+}
+
+function lockWilduOverlayScroll() {
+    if (WILDU_SOFT_SCROLL_LOCK.locked) return;
+
+    WILDU_SOFT_SCROLL_LOCK.locked = true;
+    WILDU_SOFT_SCROLL_LOCK.scrollY = window.scrollY || window.pageYOffset || 0;
+    WILDU_SOFT_SCROLL_LOCK.bodyPosition = document.body.style.position || '';
+    WILDU_SOFT_SCROLL_LOCK.bodyTop = document.body.style.top || '';
+    WILDU_SOFT_SCROLL_LOCK.bodyLeft = document.body.style.left || '';
+    WILDU_SOFT_SCROLL_LOCK.bodyRight = document.body.style.right || '';
+    WILDU_SOFT_SCROLL_LOCK.bodyWidth = document.body.style.width || '';
+    WILDU_SOFT_SCROLL_LOCK.htmlOverflow = document.documentElement.style.overflow || '';
+
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = '-' + WILDU_SOFT_SCROLL_LOCK.scrollY + 'px';
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+}
+
+function unlockWilduOverlayScrollIfIdle() {
+    if (wilduAnySoftModalVisible()) return;
+    if (!WILDU_SOFT_SCROLL_LOCK.locked) return;
+
+    const y = WILDU_SOFT_SCROLL_LOCK.scrollY || 0;
+    document.documentElement.style.overflow = WILDU_SOFT_SCROLL_LOCK.htmlOverflow;
+    document.body.style.position = WILDU_SOFT_SCROLL_LOCK.bodyPosition;
+    document.body.style.top = WILDU_SOFT_SCROLL_LOCK.bodyTop;
+    document.body.style.left = WILDU_SOFT_SCROLL_LOCK.bodyLeft;
+    document.body.style.right = WILDU_SOFT_SCROLL_LOCK.bodyRight;
+    document.body.style.width = WILDU_SOFT_SCROLL_LOCK.bodyWidth;
+
+    WILDU_SOFT_SCROLL_LOCK.locked = false;
+    WILDU_SOFT_SCROLL_LOCK.scrollY = 0;
+    window.scrollTo(0, y);
+}
+
+function getWilduSwipeHintEl() {
+    return document.getElementById('wildu-swipe-hint');
+}
+
+function showWilduSwipeHint(text) {
+    const hint = getWilduSwipeHintEl();
+    if (!hint) return;
+    hint.textContent = text || 'Trascina per chiudere';
+    hint.classList.add('is-visible');
+}
+
+function hideWilduSwipeHint() {
+    const hint = getWilduSwipeHintEl();
+    if (!hint) return;
+    hint.classList.remove('is-visible');
+}
+
+function wilduResetSwipeTarget(el) {
+    if (!el) return;
+    el.style.transition = 'transform .20s cubic-bezier(.2,.85,.2,1), opacity .20s ease';
+    el.style.transform = '';
+    el.style.opacity = '';
+}
+
+function wilduAnimateSwipeClose(el, dx, done) {
+    if (!el) {
+        if (typeof done === 'function') done();
+        return;
+    }
+
+    const sign = dx >= 0 ? 1 : -1;
+    el.style.transition = 'transform .18s ease, opacity .18s ease';
+    el.style.transform = 'translateX(' + (sign * 115) + '%) rotate(' + (sign * 5) + 'deg)';
+    el.style.opacity = '.18';
+    hideWilduSwipeHint();
+
+    window.setTimeout(function () {
+        if (typeof done === 'function') done();
+        wilduResetSwipeTarget(el);
+    }, 185);
+}
+
+function wilduInstallPhysicalSwipe(card, options) {
+    if (!card || card.dataset.wilduPhysicalSwipe === '1') return;
+    card.dataset.wilduPhysicalSwipe = '1';
+    options = options || {};
+
+    let startX = 0;
+    let startY = 0;
+    let lastDx = 0;
+    let tracking = false;
+    let horizontal = false;
+    let hasMoved = false;
+
+    const threshold = Number(options.threshold || 108);
+    const ratio = Number(options.ratio || 1.25);
+    const maxRotate = Number(options.maxRotate || 5);
+
+    function isBlockedTarget(target) {
+        if (typeof options.isBlockedTarget === 'function') {
+            return options.isBlockedTarget(target) === true;
+        }
+        return false;
+    }
+
+    function resetWithAnimation() {
+        card.style.transition = 'transform .22s cubic-bezier(.2,.85,.2,1), opacity .18s ease';
+        card.style.transform = '';
+        card.style.opacity = '';
+        hideWilduSwipeHint();
+    }
+
+    card.addEventListener('touchstart', function (evt) {
+        const touch = evt.touches && evt.touches[0];
+        if (!touch) return;
+        if (typeof options.canStart === 'function' && !options.canStart()) return;
+        if (isBlockedTarget(evt.target)) return;
+
+        tracking = true;
+        horizontal = false;
+        hasMoved = false;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        lastDx = 0;
+        card.style.transition = 'none';
+    }, { passive: true });
+
+    card.addEventListener('touchmove', function (evt) {
+        if (!tracking) return;
+        const touch = evt.touches && evt.touches[0];
+        if (!touch) return;
+
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+
+        if (!horizontal) {
+            if (absX < 12 && absY < 12) return;
+            if (absX > 18 && absX > absY * ratio) {
+                horizontal = true;
+            } else if (absY > absX * 1.05) {
+                tracking = false;
+                hideWilduSwipeHint();
+                return;
+            } else {
+                return;
+            }
+        }
+
+        if (!horizontal) return;
+        if (typeof evt.preventDefault === 'function') evt.preventDefault();
+
+        hasMoved = true;
+        lastDx = dx;
+        const damped = dx * .86;
+        const rotate = Math.max(-maxRotate, Math.min(maxRotate, dx / 42));
+        const opacity = Math.max(.64, 1 - (absX / 520));
+        card.style.transform = 'translateX(' + damped + 'px) rotate(' + rotate + 'deg)';
+        card.style.opacity = String(opacity);
+        showWilduSwipeHint(absX >= threshold ? 'Rilascia per chiudere' : 'Trascina per chiudere');
+    }, { passive: false });
+
+    card.addEventListener('touchend', function () {
+        if (!tracking) return;
+        const shouldClose = horizontal && hasMoved && Math.abs(lastDx) >= threshold;
+        const finalDx = lastDx;
+
+        tracking = false;
+        horizontal = false;
+        hasMoved = false;
+        lastDx = 0;
+
+        if (shouldClose) {
+            wilduAnimateSwipeClose(card, finalDx, function () {
+                if (typeof options.onClose === 'function') options.onClose('horizontal-swipe');
+            });
+        } else {
+            resetWithAnimation();
+        }
+    }, { passive: true });
+
+    card.addEventListener('touchcancel', function () {
+        tracking = false;
+        horizontal = false;
+        hasMoved = false;
+        lastDx = 0;
+        resetWithAnimation();
+    }, { passive: true });
+}
+
 function wilduCloseDetailModalOnly() {
     const modal = document.getElementById('od-details-modal');
+    const card = document.getElementById('od-details-card');
+    if (card) wilduResetSwipeTarget(card);
+    hideWilduSwipeHint();
     if (modal) modal.style.display = 'none';
 }
 
@@ -13709,15 +13951,20 @@ function showWilduRelatedModal(items) {
     list.innerHTML = items.map(function (ref) { return wilduBuildSoftCardHtml(ref); }).join('');
     modal.classList.add('is-visible');
     modal.setAttribute('aria-hidden', 'false');
+    lockWilduOverlayScroll();
     return true;
 }
 
 function closeWilduRelatedModal(closeDetail) {
     const modal = document.getElementById('wildu-related-modal');
+    const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
+    if (card) wilduResetSwipeTarget(card);
+    hideWilduSwipeHint();
     if (modal) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
+    unlockWilduOverlayScrollIfIdle();
     if (closeDetail !== false) {
         wilduCloseDetailModalOnly();
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
@@ -13725,7 +13972,7 @@ function closeWilduRelatedModal(closeDetail) {
 }
 
 function handleWilduDetailClose(source) {
-    // Ingresso unico per X, backdrop, swipe-down e bottone finale.
+    // Ingresso unico per X, swipe orizzontale, Escape e bottone finale.
     // Se previsto, mantiene la logica “Potrebbe interessarti”.
     if (WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS) {
         WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
@@ -13748,8 +13995,7 @@ function handleWilduDetailClose(source) {
 }
 
 function handleWilduDetailBackdropClick(evt) {
-    // V42: il tap sullo sfondo non chiude più la scheda dettagli.
-    // Le card occupano quasi tutto lo schermo: chiusura solo da X, bottone finale, Escape o swipe orizzontale.
+    // V43: niente chiusura da tap fuori scheda. È confondente perché le card occupano quasi tutto lo schermo.
     return;
 }
 
@@ -13759,52 +14005,20 @@ function installWilduDetailDismissGestures() {
     if (!modal || !card || card.dataset.wilduDismissGestures === '1') return;
     card.dataset.wilduDismissGestures = '1';
 
-    let startX = 0;
-    let startY = 0;
-    let tracking = false;
-    let shouldClose = false;
-
-    function isInteractiveTarget(target) {
-        // La gesture orizzontale deve essere disponibile quasi ovunque nella scheda,
-        // ma non deve partire da controlli reali, link, iframe o campi input.
-        return !!(target && target.closest && target.closest('button,a,input,textarea,select,iframe,[role="button"],.wildu-card-date-action'));
-    }
-
-    card.addEventListener('touchstart', function (evt) {
-        const touch = evt.touches && evt.touches[0];
-        if (!touch || modal.style.display === 'none') return;
-        if (isInteractiveTarget(evt.target)) return;
-
-        tracking = true;
-        shouldClose = false;
-        startX = touch.clientX;
-        startY = touch.clientY;
-    }, { passive: true });
-
-    card.addEventListener('touchmove', function (evt) {
-        if (!tracking) return;
-        const touch = evt.touches && evt.touches[0];
-        if (!touch) return;
-
-        const dx = touch.clientX - startX;
-        const dy = touch.clientY - startY;
-        const absX = Math.abs(dx);
-        const absY = Math.abs(dy);
-
-        // V42: chiusura con swipe orizzontale, da sinistra a destra o da destra a sinistra.
-        // Soglia alta + prevalenza orizzontale per non confondere il normale scroll verticale.
-        if (absX > 92 && absX > absY * 1.45) {
-            shouldClose = true;
-        }
-    }, { passive: true });
-
-    card.addEventListener('touchend', function () {
-        if (tracking && shouldClose) {
+    wilduInstallPhysicalSwipe(card, {
+        threshold: 110,
+        ratio: 1.28,
+        maxRotate: 4.5,
+        canStart: function () {
+            return modal.style.display !== 'none';
+        },
+        isBlockedTarget: function (target) {
+            return !!(target && target.closest && target.closest('button,a,input,textarea,select,iframe,[role="button"],.wildu-card-date-action'));
+        },
+        onClose: function () {
             handleWilduDetailClose('horizontal-swipe');
         }
-        tracking = false;
-        shouldClose = false;
-    }, { passive: true });
+    });
 
     document.addEventListener('keydown', function (evt) {
         if (evt.key !== 'Escape') return;
@@ -13833,53 +14047,22 @@ function installWilduSoftModalHorizontalDismiss() {
         const card = modal.querySelector('.wildu-soft-modal-card');
         if (!card) return;
 
-        let startX = 0;
-        let startY = 0;
-        let tracking = false;
-        let shouldClose = false;
-
-        function isControlTarget(target) {
-            // Non intercettiamo gesture avviate su pulsanti di chiusura o link/iframe.
-            // Le mini-card restano tappabili; se l'utente fa swipe orizzontale sopra una mini-card, chiude.
-            return !!(target && target.closest && target.closest('.wildu-soft-modal-close,.wildu-soft-bottom-close-btn,a,input,textarea,select,iframe'));
-        }
-
-        card.addEventListener('touchstart', function (evt) {
-            const touch = evt.touches && evt.touches[0];
-            if (!touch || !modal.classList.contains('is-visible')) return;
-            if (isControlTarget(evt.target)) return;
-
-            tracking = true;
-            shouldClose = false;
-            startX = touch.clientX;
-            startY = touch.clientY;
-        }, { passive: true });
-
-        card.addEventListener('touchmove', function (evt) {
-            if (!tracking) return;
-            const touch = evt.touches && evt.touches[0];
-            if (!touch) return;
-
-            const dx = touch.clientX - startX;
-            const dy = touch.clientY - startY;
-            const absX = Math.abs(dx);
-            const absY = Math.abs(dy);
-
-            if (absX > 88 && absX > absY * 1.45) {
-                shouldClose = true;
-            }
-        }, { passive: true });
-
-        card.addEventListener('touchend', function () {
-            if (tracking && shouldClose) {
+        wilduInstallPhysicalSwipe(card, {
+            threshold: 96,
+            ratio: 1.25,
+            maxRotate: 4,
+            canStart: function () {
+                return modal.classList.contains('is-visible');
+            },
+            isBlockedTarget: function (target) {
+                return !!(target && target.closest && target.closest('.wildu-soft-modal-close,.wildu-soft-bottom-close-btn,a,input,textarea,select,iframe'));
+            },
+            onClose: function () {
                 cfg.close();
             }
-            tracking = false;
-            shouldClose = false;
-        }, { passive: true });
+        });
     });
 }
-
 function wilduGetSameTitleDateRefs(type, item) {
     const key = wilduNormalizeTitleKey(wilduGetDetailItemTitle(type, item));
     if (!key) return [];
@@ -13938,14 +14121,19 @@ function openWilduDateOptions(type, id, evt) {
     }).join('');
     modal.classList.add('is-visible');
     modal.setAttribute('aria-hidden', 'false');
+    lockWilduOverlayScroll();
 }
 
 function closeWilduDateOptionsModal() {
     const modal = document.getElementById('wildu-date-options-modal');
+    const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
+    if (card) wilduResetSwipeTarget(card);
+    hideWilduSwipeHint();
     if (modal) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
+    unlockWilduOverlayScrollIfIdle();
 }
 
 function renderTrips(trips, targetId) {
@@ -22041,7 +22229,6 @@ window.addEventListener('pageshow', () => {
 <div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
     <div id="od-details-card" style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
         <button onclick="handleWilduDetailClose('x')" aria-label="Chiudi scheda" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
-        <div id="od-details-drag-handle" class="wildu-detail-drag-handle" aria-hidden="true"></div>
         
         <div id="trip-modal-img-container" style="position:relative; width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
             <img id="trip-modal-img" src="" style="width:100%; height:100%; object-fit:cover;">
@@ -22102,6 +22289,9 @@ window.addEventListener('pageshow', () => {
         </div>
     </div>
 </div>
+
+<!-- WILDU V43 — hint swipe condiviso -->
+<div id="wildu-swipe-hint" class="wildu-swipe-hint" aria-hidden="true">Trascina per chiudere</div>
 
 <!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
 <div id="wildu-related-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Potrebbe interessarti">
