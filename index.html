@@ -3226,6 +3226,44 @@ body::before {
     }
 }
 
+
+
+/* WILDU V42 — chiusura orizzontale + scrollbar soft nascoste.
+   Mobile + desktop. Solo UX: niente modifiche a prezzi, prenotazioni, filtri o dati. */
+.wildu-soft-modal-card {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.wildu-soft-modal-card::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+.wildu-soft-list {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.wildu-soft-list::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+.wildu-detail-drag-handle {
+    opacity: .55;
+}
+
+@media (max-width: 520px) {
+    .wildu-soft-modal-card {
+        max-height: min(82vh, 720px);
+    }
+}
+
 </style>
     
 </head>
@@ -13710,8 +13748,9 @@ function handleWilduDetailClose(source) {
 }
 
 function handleWilduDetailBackdropClick(evt) {
-    if (!evt || evt.target !== evt.currentTarget) return;
-    handleWilduDetailClose('backdrop');
+    // V42: il tap sullo sfondo non chiude più la scheda dettagli.
+    // Le card occupano quasi tutto lo schermo: chiusura solo da X, bottone finale, Escape o swipe orizzontale.
+    return;
 }
 
 function installWilduDetailDismissGestures() {
@@ -13722,11 +13761,12 @@ function installWilduDetailDismissGestures() {
 
     let startX = 0;
     let startY = 0;
-    let startScroll = 0;
     let tracking = false;
     let shouldClose = false;
 
     function isInteractiveTarget(target) {
+        // La gesture orizzontale deve essere disponibile quasi ovunque nella scheda,
+        // ma non deve partire da controlli reali, link, iframe o campi input.
         return !!(target && target.closest && target.closest('button,a,input,textarea,select,iframe,[role="button"],.wildu-card-date-action'));
     }
 
@@ -13734,13 +13774,6 @@ function installWilduDetailDismissGestures() {
         const touch = evt.touches && evt.touches[0];
         if (!touch || modal.style.display === 'none') return;
         if (isInteractiveTarget(evt.target)) return;
-
-        const fromHandle = !!(evt.target && evt.target.closest && evt.target.closest('#od-details-drag-handle'));
-        startScroll = modal.scrollTop || 0;
-
-        // Evita di confondere il normale scroll del contenuto con una gesture di chiusura.
-        // Lo swipe chiude solo da handle o quando il modal è già in cima.
-        if (!fromHandle && startScroll > 4) return;
 
         tracking = true;
         shouldClose = false;
@@ -13755,15 +13788,19 @@ function installWilduDetailDismissGestures() {
 
         const dx = touch.clientX - startX;
         const dy = touch.clientY - startY;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
 
-        if (dy > 86 && Math.abs(dx) < 58 && startScroll <= 4) {
+        // V42: chiusura con swipe orizzontale, da sinistra a destra o da destra a sinistra.
+        // Soglia alta + prevalenza orizzontale per non confondere il normale scroll verticale.
+        if (absX > 92 && absX > absY * 1.45) {
             shouldClose = true;
         }
     }, { passive: true });
 
     card.addEventListener('touchend', function () {
         if (tracking && shouldClose) {
-            handleWilduDetailClose('gesture');
+            handleWilduDetailClose('horizontal-swipe');
         }
         tracking = false;
         shouldClose = false;
@@ -13773,6 +13810,73 @@ function installWilduDetailDismissGestures() {
         if (evt.key !== 'Escape') return;
         if (modal.style.display === 'none') return;
         handleWilduDetailClose('escape');
+    });
+}
+
+function installWilduSoftModalHorizontalDismiss() {
+    const configs = [
+        {
+            id: 'wildu-related-modal',
+            close: function () { closeWilduRelatedModal(true); }
+        },
+        {
+            id: 'wildu-date-options-modal',
+            close: function () { closeWilduDateOptionsModal(); }
+        }
+    ];
+
+    configs.forEach(function (cfg) {
+        const modal = document.getElementById(cfg.id);
+        if (!modal || modal.dataset.wilduHorizontalDismiss === '1') return;
+        modal.dataset.wilduHorizontalDismiss = '1';
+
+        const card = modal.querySelector('.wildu-soft-modal-card');
+        if (!card) return;
+
+        let startX = 0;
+        let startY = 0;
+        let tracking = false;
+        let shouldClose = false;
+
+        function isControlTarget(target) {
+            // Non intercettiamo gesture avviate su pulsanti di chiusura o link/iframe.
+            // Le mini-card restano tappabili; se l'utente fa swipe orizzontale sopra una mini-card, chiude.
+            return !!(target && target.closest && target.closest('.wildu-soft-modal-close,.wildu-soft-bottom-close-btn,a,input,textarea,select,iframe'));
+        }
+
+        card.addEventListener('touchstart', function (evt) {
+            const touch = evt.touches && evt.touches[0];
+            if (!touch || !modal.classList.contains('is-visible')) return;
+            if (isControlTarget(evt.target)) return;
+
+            tracking = true;
+            shouldClose = false;
+            startX = touch.clientX;
+            startY = touch.clientY;
+        }, { passive: true });
+
+        card.addEventListener('touchmove', function (evt) {
+            if (!tracking) return;
+            const touch = evt.touches && evt.touches[0];
+            if (!touch) return;
+
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+
+            if (absX > 88 && absX > absY * 1.45) {
+                shouldClose = true;
+            }
+        }, { passive: true });
+
+        card.addEventListener('touchend', function () {
+            if (tracking && shouldClose) {
+                cfg.close();
+            }
+            tracking = false;
+            shouldClose = false;
+        }, { passive: true });
     });
 }
 
@@ -21918,6 +22022,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // se il modulo non è realmente aperto, l'audio torna in default.
     reconcileWilduModuleAudioModeFromDom("domcontentloaded");
     installWilduDetailDismissGestures();
+installWilduSoftModalHorizontalDismiss();
 
     init();
     initAmazonSponsors();
@@ -21933,7 +22038,7 @@ window.addEventListener('pageshow', () => {
                 
 </script>
 
-<div id="od-details-modal" onclick="handleWilduDetailBackdropClick(event)" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
+<div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
     <div id="od-details-card" style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
         <button onclick="handleWilduDetailClose('x')" aria-label="Chiudi scheda" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
         <div id="od-details-drag-handle" class="wildu-detail-drag-handle" aria-hidden="true"></div>
