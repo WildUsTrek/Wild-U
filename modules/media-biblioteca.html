@@ -1,7 +1,9 @@
 <div id="wildu-biblioteca-module" style="padding-bottom:30px;">
-<style id="wildu-biblioteca-desktop-polish-v1">
-/* WILDU BIBLIOTECA — desktop polish only.
-   Mobile untouched. No JS/renderTag/cache changes. */
+<style id="wildu-biblioteca-desktop-polish-v2">
+/* WILDU BIBLIOTECA — desktop polish V2.
+   Mobile untouched. No JS/renderTag/cache changes.
+   V2 fix: no aggressive card margin reset; spacing is guaranteed even when
+   the client renderer adds wrappers or panels with unexpected slugs. */
 @media (min-width: 900px) {
     #wildu-biblioteca-module {
         max-width: 1180px;
@@ -39,28 +41,39 @@
         max-width: 720px;
         margin-left: auto !important;
         margin-right: auto !important;
-        margin-bottom: 18px !important;
+        margin-bottom: 22px !important;
     }
 
-    /* I pannelli nascosti mantengono display:none inline.
-       Quelli visibili diventano griglia desktop senza cambiare il renderer. */
-    #wildu-biblioteca-list [data-wildu-media-panel="manuali_guide"],
-    #wildu-biblioteca-list [data-wildu-media-panel="libri"] {
-        grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-        gap: 16px;
+    /* Pannelli generati dal renderer: se sono visibili diventano griglia.
+       Se il renderer usa display:none inline, questo CSS non lo forza aperto. */
+    #wildu-biblioteca-list [data-wildu-media-panel] {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
+        gap: 18px;
         align-items: stretch;
     }
 
-    #wildu-biblioteca-list [data-wildu-media-panel="manuali_guide"]:not([style*="display:none"]),
-    #wildu-biblioteca-list [data-wildu-media-panel="libri"]:not([style*="display:none"]) {
+    #wildu-biblioteca-list [data-wildu-media-panel]:not([style*="display:none"]):not([style*="display: none"]) {
         display: grid;
     }
 
-    #wildu-biblioteca-list [data-wildu-media-panel] > .card {
-        margin-bottom: 0 !important;
+    /* Spaziatura difensiva: se la griglia non intercetta il wrapper reale,
+       le card mantengono comunque aria e non restano appiccicate. */
+    #wildu-biblioteca-list .card {
         min-width: 0;
-        height: 100%;
         box-sizing: border-box;
+        margin-bottom: 18px;
+    }
+
+    /* Solo quando la card è figlia diretta di un pannello reso a griglia,
+       il gap della griglia basta e il margin può sparire senza rischi. */
+    #wildu-biblioteca-list [data-wildu-media-panel]:not([style*="display:none"]):not([style*="display: none"]) > .card {
+        margin-bottom: 0;
+        height: 100%;
+    }
+
+    /* Fallback per renderer che inseriscono wrapper fra pannello e card. */
+    #wildu-biblioteca-list [data-wildu-media-panel]:not([style*="display:none"]):not([style*="display: none"]) > * {
+        min-width: 0;
     }
 
     /* News resta editoriale: non la forziamo in griglia. */
@@ -69,6 +82,7 @@
         max-width: 940px;
         margin-left: auto !important;
         margin-right: auto !important;
+        margin-bottom: 22px !important;
     }
 }
 </style>
