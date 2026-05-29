@@ -76,17 +76,24 @@
     .stamp-lines { display:grid; gap:2px; font-size:11px; line-height:1.28; color:rgba(244,247,240,.68); }
     .stamp-lines div { overflow-wrap:anywhere; }
     .legal-note {
-      margin:12px 2px 0;
+      margin:16px 2px 0;
       padding:11px 12px;
       border-radius:16px;
       border:1px solid rgba(255,255,255,.09);
       background:rgba(255,255,255,.045);
       color:rgba(244,247,240,.72);
-      font-size:11px;
-      line-height:1.42;
+      font-size:10.5px;
+      line-height:1.5;
     }
     .legal-note strong { color:#f3df9a; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
     .muted { color:var(--w-muted); font-size:13px; line-height:1.45; }
+    .muted.short { max-width:56ch; margin-top:0; margin-bottom:12px; }
+    .form-card.airy { padding:18px 17px 20px; }
+    .form-card.airy label { margin-top:16px; }
+    .form-card.airy .grid { margin-top:8px; }
+    .spacer { height:10px; }
+    .fiscal-grid { margin-top:12px; }
+
     .grid { display:grid; gap:10px; }
     .grid > * { min-width:0; }
     .kv { display:grid; gap:3px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.08); }
@@ -108,7 +115,7 @@
     .choice button.active { background:linear-gradient(135deg, rgba(216,183,94,.95), rgba(241,211,122,.98)); color:#111; border-color:rgba(216,183,94,.98); box-shadow:0 8px 22px rgba(216,183,94,.16); }
     .textarea-wrap { display:none; margin-top:9px; }
     .textarea-wrap.active { display:block; }
-    .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px; }
+    .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:20px; }
     .actions.single { grid-template-columns:1fr; }
     .btn { width:100%; border:0; border-radius:17px; padding:15px 14px; font-weight:950; font-size:15px; cursor:pointer; color:#fff; background:#28362d; }
     .btn.primary { background:linear-gradient(135deg, var(--w-green), #3f7d39); box-shadow:0 12px 28px rgba(45,90,39,.22); }
@@ -131,7 +138,7 @@
   <main class="shell">
     <section class="hero">
       <div class="hero-top">
-        <button id="logoutBtn" class="logout" type="button">Esci</button>
+        <button id="logoutBtn" class="logout" type="button" title="Disconnettere Google?">Logout</button>
         <div class="logo-pill">🌲 Wild-U cliente</div>
       </div>
     </section>
@@ -161,62 +168,74 @@
 
     <section id="step0" class="step">
       <div class="card gold">
-        <h2>Benvenuto a bordo</h2>
-        <p class="muted">Controlla il riepilogo e completa i dati richiesti. Da mobile puoi usare i pulsanti rapidi: scrivi solo quando devi specificare qualcosa.</p>
+        <h2>Benvenuto</h2>
+        <p class="muted short">Controlla il riepilogo e completa i dati essenziali.</p>
       </div>
       <div id="companyBox" class="company-stamp"></div>
       <div id="requestBox" class="card blue" style="display:none"></div>
       <div id="legalNote" class="legal-note">
         <strong>Privacy e presa visione</strong><br>
-        Proseguendo confermi di aver preso visione del modulo e autorizzi l'uso dei dati inseriti per gestione pratica, fatturazione, organizzazione del viaggio, sistemazioni e comunicazioni operative. Il responsabile operativo del trattamento è <span id="legalCompanyName">Wildu Srl</span>.
+        I dati saranno usati da <span id="legalCompanyName">Wildu Srl</span> per pratica, fattura, hotel e comunicazioni. Proseguendo confermi che siano corretti e aggiornati.
       </div>
       <div class="actions single"><button class="btn primary" type="button" data-next>Inizia compilazione</button></div>
     </section>
 
     <section id="step1" class="step">
-      <div class="card">
-        <h2>Dati personali</h2>
-        <p class="muted">Compila con dati corretti e aggiornati. Il telefono resta modificabile perché serve per comunicazioni importanti.</p>
+      <div class="card form-card airy">
+        <h2>Contatti e residenza</h2>
+        <p class="muted short">Dati base. Il telefono può essere corretto ora.</p>
+
+        <label for="phone">Numero di telefono *</label>
+        <span class="hint">Usa un numero corretto per comunicazioni viaggio.</span>
+        <input id="phone" inputmode="tel" autocomplete="tel" placeholder="+39 ...">
+
+        <div class="spacer"></div>
+
         <div class="grid two">
           <div>
-            <label for="birthPlace">Nato/a a? <small>(Comune - Provincia)</small> *</label>
+            <label for="birthPlace">Nato/a a <small>(Comune - Provincia)</small> *</label>
             <input id="birthPlace" autocomplete="address-level2" placeholder="Es. San Miniato (PI)">
           </div>
           <div>
-            <label for="birthDate">Il giorno? *</label>
+            <label for="birthDate">Data di nascita *</label>
             <input id="birthDate" type="text" inputmode="numeric" autocomplete="bday" maxlength="10" placeholder="GG/MM/AAAA">
           </div>
         </div>
-        <label for="address">Indirizzo residenza attuale *</label>
+
+        <label for="address">Residenza attuale *</label>
         <input id="address" autocomplete="street-address" placeholder="Via, numero, CAP, città">
+      </div>
+      <div class="actions"><button class="btn ghost" type="button" data-prev>Indietro</button><button class="btn primary" type="button" data-next>Avanti</button></div>
+    </section>
+
+    <section id="stepFiscal" class="step">
+      <div class="card form-card airy">
+        <h2>Dati fiscali e documento</h2>
+        <p class="muted short">Servono per fattura, hotel e pratica viaggio.</p>
 
         <label for="cf">Codice Fiscale *</label>
-        <span class="hint">Deve essere formalmente corretto.</span>
+        <span class="hint">Controllo automatico.</span>
         <input id="cf" inputmode="text" autocomplete="off" autocapitalize="characters" maxlength="16" placeholder="RSSMRA80A01H501U">
         <div id="cfError" class="field-error">Codice fiscale non valido.</div>
 
-        <div class="grid two">
+        <div class="grid two fiscal-grid">
           <div>
             <label for="idNumber">Numero carta identità *</label>
             <input id="idNumber" autocomplete="off" placeholder="Numero documento">
           </div>
           <div>
-            <label for="idIssuePlace">Luogo rilascio carta identità *</label>
-            <input id="idIssuePlace" placeholder="Comune / ente rilascio">
+            <label for="idIssuePlace">Luogo rilascio *</label>
+            <input id="idIssuePlace" placeholder="Comune / ente">
           </div>
         </div>
-
-        <label for="phone">Numero di telefono *</label>
-        <span class="hint">Inserisci un numero corretto: lo useremo per comunicazioni importanti sul viaggio.</span>
-        <input id="phone" inputmode="tel" autocomplete="tel" placeholder="+39 ...">
       </div>
       <div class="actions"><button class="btn ghost" type="button" data-prev>Indietro</button><button class="btn primary" type="button" data-next>Avanti</button></div>
     </section>
 
     <section id="stepPartner" class="step hidden">
       <div class="card">
-        <h2>Dati fiscali partner</h2>
-        <p class="muted">Questi campi sono facoltativi. Compilali solo se utili alla fatturazione.</p>
+        <h2>Fatturazione partner</h2>
+        <p class="muted short">Facoltativi. Compila solo se utili.</p>
         <label for="vatNumber">Partita IVA / Codice fiscale attività</label>
         <input id="vatNumber" inputmode="text" autocomplete="off" placeholder="Facoltativo">
         <label for="sdiCode">Codice elettronico fatturazione</label>
@@ -227,8 +246,8 @@
 
     <section id="step2" class="step">
       <div class="card">
-        <h2>Le tue esigenze</h2>
-        <p class="muted">Meno scrittura, più chiarezza: scegli “Nessuna/Nessuno” oppure specifica solo se c’è qualcosa da segnalare.</p>
+        <h2>Esigenze</h2>
+        <p class="muted short">Tocca “Nessuna/Nessuno”. Scrivi solo se serve.</p>
 
         <div data-choice-block="dietary">
           <label>Esigenze alimentari *</label>
@@ -260,7 +279,7 @@
     <section id="step3" class="step">
       <div class="card gold">
         <h2>Riepilogo</h2>
-        <p class="muted">Controlla prima di inviare. I campi vuoti non verranno usati per cancellare dati già presenti.</p>
+        <p class="muted short">Controlla tutto prima di inviare.</p>
         <div id="reviewBox"></div>
       </div>
       <div class="actions"><button class="btn ghost" type="button" data-prev>Modifica</button><button id="submitBtn" class="btn gold" type="button">Invia dati</button></div>
@@ -270,11 +289,11 @@
       <div class="blocked">
         <div class="big-icon">✅</div>
         <h2>Benvenuti a bordo</h2>
-        <p class="muted">Dati ricevuti correttamente.</p>
+        <p class="muted short">Dati ricevuti.</p>
       </div>
     </section>
 
-    <div class="footer-note">Wild-U · modulo sicuro con login obbligatorio</div>
+    <div class="footer-note">Wild-U · login obbligatorio</div>
   </main>
 
   <script>
@@ -317,7 +336,7 @@
       settings:null,
       step:0,
       choices:{},
-      steps: APP_TYPE === 'partner' ? ['step0','step1','stepPartner','step2','step3'] : ['step0','step1','step2','step3']
+      steps: APP_TYPE === 'partner' ? ['step0','step1','stepFiscal','stepPartner','step2','step3'] : ['step0','step1','stepFiscal','step2','step3']
     };
 
     function esc(v){
@@ -454,12 +473,12 @@
       if (!r) { $('requestBox').style.display='none'; return; }
       $('requestBox').style.display='block';
       $('requestBox').innerHTML = [
-        '<h3>Info prenotazione</h3>',
+        '<h3>Prenotazione</h3>',
         '<div class="grid">',
-        kv('Viaggio / pratica', r.eventTitle || r.title || r.titolo || 'Pratica collegata'),
+        kv('Viaggio', r.eventTitle || r.title || r.titolo || 'Pratica collegata'),
         kv('Data', r.eventDateLabel || r.dataInizio || r.dateLabel || '—'),
         kv('Partecipante', r.nome || r.clientName || r.partnerName || state.user?.displayName || '—'),
-        kv('Riferimento', r.bookingKey || r.participantKey || r.eventDocId || requestId || '—'),
+        kv('Ref.', r.bookingKey || r.participantKey || r.eventDocId || requestId || '—'),
         '</div>'
       ].join('');
     }
@@ -517,23 +536,31 @@
     function validateCurrentStep(){
       const id = state.steps[state.step];
       if (id === 'step1') return validatePersonal();
+      if (id === 'stepFiscal') return validateFiscal();
       if (id === 'step2') return validateNeeds();
       return true;
     }
     function validatePersonal(){
       const required = [
-        ['birthPlace','Nato/a a'], ['birthDate','Data di nascita'], ['address','Indirizzo'], ['cf','Codice Fiscale'], ['idNumber','Numero carta identità'], ['idIssuePlace','Luogo rilascio'], ['phone','Telefono']
+        ['phone','Telefono'], ['birthPlace','Nato/a a'], ['birthDate','Data di nascita'], ['address','Indirizzo']
       ];
       for (const [id,label] of required){ if (!clean($(id).value)) { alert('Campo obbligatorio: '+label); $(id).focus(); return false; } }
+      if (compactPhone($('phone').value).length < 8) { alert('Numero di telefono non valido o troppo corto.'); $('phone').focus(); return false; }
       const parsedBirthDate = parseBirthDate($('birthDate').value);
       if (!parsedBirthDate) { alert('Data di nascita non valida. Usa il formato GG/MM/AAAA.'); $('birthDate').focus(); return false; }
       $('birthDate').value = parsedBirthDate.label;
+      return true;
+    }
+    function validateFiscal(){
+      const required = [
+        ['cf','Codice Fiscale'], ['idNumber','Numero carta identità'], ['idIssuePlace','Luogo rilascio']
+      ];
+      for (const [id,label] of required){ if (!clean($(id).value)) { alert('Campo obbligatorio: '+label); $(id).focus(); return false; } }
       const cf = normalizeCf($('cf').value);
       $('cf').value = cf;
       const cfOk = validateCodiceFiscale(cf);
       $('cfError').style.display = cfOk ? 'none' : 'block';
       if (!cfOk) { $('cf').focus(); return false; }
-      if (compactPhone($('phone').value).length < 8) { alert('Numero di telefono non valido o troppo corto.'); $('phone').focus(); return false; }
       return true;
     }
     function validateNeeds(){
@@ -674,7 +701,16 @@
     $('submitBtn').addEventListener('click', submit);
     $('loginBtn').addEventListener('click', loginPopup);
     $('redirectLoginBtn').addEventListener('click', loginRedirect);
-    $('logoutBtn').addEventListener('click', ()=>auth.signOut());
+    $('logoutBtn').addEventListener('click', async ()=>{
+      const ok = window.confirm('Disconnettere Google?');
+      if (!ok) return;
+      try {
+        await auth.signOut();
+        setStatus('Logout eseguito.');
+      } catch (e) {
+        setStatus('Logout non riuscito: ' + (e && e.message ? e.message : e), 'bad');
+      }
+    });
     $('cf').addEventListener('input', ()=>{ $('cf').value = normalizeCf($('cf').value); $('cfError').style.display='none'; });
 
     auth.getRedirectResult().catch(e=>console.warn('redirect result:', e));
