@@ -186,7 +186,7 @@
         <p class="muted short">Dati base. Il telefono può essere corretto ora.</p>
 
         <label for="phone">Numero di telefono *</label>
-        <span class="hint">Usa un numero corretto per comunicazioni viaggio.</span>
+        <span class="hint">Usa un numero corretto per comunicazioni sul viaggio.</span>
         <input id="phone" inputmode="tel" autocomplete="tel" placeholder="+39 ...">
 
         <div class="spacer"></div>
@@ -477,14 +477,38 @@
         '<div class="grid">',
         kv('Viaggio', r.eventTitle || r.title || r.titolo || 'Pratica collegata'),
         kv('Data', r.eventDateLabel || r.dataInizio || r.dateLabel || '—'),
-        kv('Partecipante', r.nome || r.clientName || r.partnerName || state.user?.displayName || '—'),
+        kv('Partecipante', r.nome || r.clientName || state.user?.displayName || '—'),
         kv('Ref.', r.bookingKey || r.participantKey || r.eventDocId || requestId || '—'),
         '</div>'
       ].join('');
     }
     function kv(k,v){ return '<div class="kv"><span>'+esc(k)+'</span><b>'+esc(v || '—')+'</b></div>'; }
 
+    function normalizePublicCompanyInfo(data){
+      data = data || {};
+      const issuer = data.issuer || data || {};
+      return {
+        issuer: {
+          companyName: clean(issuer.companyName || data.companyName || 'Wildu Srl'),
+          address: clean(issuer.address || data.address || ''),
+          vat: clean(issuer.vat || issuer.piva || data.vat || data.piva || ''),
+          supportPhone: clean(issuer.supportPhone || issuer.phone || data.supportPhone || data.phone || ''),
+          email: clean(issuer.email || data.email || ''),
+          logoUrl: clean(issuer.logoUrl || data.logoUrl || '')
+        }
+      };
+    }
     async function loadSettings(){
+      try {
+        const pub = await db.collection('PARAMETERS_PARTNER').doc('public_company_info').get();
+        if (pub.exists) {
+          state.settings = normalizePublicCompanyInfo(pub.data() || {});
+          renderCompany();
+          return;
+        }
+      } catch(e) {
+        console.warn('Info azienda pubbliche non disponibili:', e);
+      }
       try {
         const doc = await db.collection('wildu_admin_settings').doc('main').get();
         state.settings = doc.exists ? (doc.data() || {}) : null;
@@ -495,14 +519,20 @@
     }
     async function loadRequest(){
       if (!requestId) { state.request = null; renderRequest(); return; }
-      const doc = await db.collection(REQUEST_COLLECTION).doc(requestId).get();
-      if (!doc.exists) throw new Error('Richiesta form non trovata.');
-      const data = doc.data() || {};
-      const expectedType = APP_TYPE === 'partner' ? 'partner' : 'client';
-      if (clean(data.targetType || expectedType) !== expectedType) throw new Error('Questo link non appartiene al modulo corretto.');
-      if (clean(data.uid) && clean(data.uid) !== state.user.uid) throw new Error('Questo link appartiene a un altro profilo.');
-      if (clean(data.status).toUpperCase() === 'EXPIRED') throw new Error('Questo link risulta scaduto.');
-      state.request = Object.assign({ id: doc.id }, data);
+      try {
+        const doc = await db.collection(REQUEST_COLLECTION).doc(requestId).get();
+        if (!doc.exists) throw new Error('Richiesta form non trovata.');
+        const data = doc.data() || {};
+        const expectedType = APP_TYPE === 'partner' ? 'partner' : 'client';
+        if (clean(data.targetType || expectedType) !== expectedType) throw new Error('Questo link non appartiene al modulo corretto.');
+        if (clean(data.uid) && clean(data.uid) !== state.user.uid) throw new Error('Questo link appartiene a un altro profilo.');
+        if (clean(data.status).toUpperCase() === 'EXPIRED') throw new Error('Questo link risulta scaduto.');
+        state.request = Object.assign({ id: doc.id }, data);
+      } catch(e) {
+        console.warn('Request form non utilizzabile, procedo come modulo libero:', e);
+        state.request = null;
+        showStatus('Modulo libero: link pratica non leggibile o non necessario.', 'warn');
+      }
       renderRequest();
     }
     async function loadProfile(){
@@ -707,9 +737,9 @@
       if (!ok) return;
       try {
         await auth.signOut();
-        setStatus('Logout eseguito.');
+        showStatus('Logout eseguito.', 'good');
       } catch (e) {
-        setStatus('Logout non riuscito: ' + (e && e.message ? e.message : e), 'bad');
+        showStatus('Logout non riuscito: ' + (e && e.message ? e.message : e), 'bad');
       }
     });
     $('cf').addEventListener('input', ()=>{ $('cf').value = normalizeCf($('cf').value); $('cfError').style.display='none'; });

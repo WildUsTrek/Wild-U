@@ -169,13 +169,13 @@
     <section id="step0" class="step">
       <div class="card gold">
         <h2>Benvenuto</h2>
-        <p class="muted short">Controlla il riepilogo e completa i dati essenziali.</p>
+        <p class="muted short">Completa o aggiorna i dati operativi del profilo partner.</p>
       </div>
       <div id="companyBox" class="company-stamp"></div>
       <div id="requestBox" class="card blue" style="display:none"></div>
       <div id="legalNote" class="legal-note">
         <strong>Privacy e presa visione</strong><br>
-        I dati saranno usati da <span id="legalCompanyName">Wildu Srl</span> per pratica, fattura, hotel e comunicazioni. Proseguendo confermi che siano corretti e aggiornati.
+        I dati saranno usati da <span id="legalCompanyName">Wildu Srl</span> per pratica partner, fatturazione e comunicazioni operative. Proseguendo confermi che siano corretti e aggiornati.
       </div>
       <div class="actions single"><button class="btn primary" type="button" data-next>Inizia compilazione</button></div>
     </section>
@@ -186,7 +186,7 @@
         <p class="muted short">Dati base. Il telefono può essere corretto ora.</p>
 
         <label for="phone">Numero di telefono *</label>
-        <span class="hint">Usa un numero corretto per comunicazioni viaggio.</span>
+        <span class="hint">Usa un numero corretto per comunicazioni operative.</span>
         <input id="phone" inputmode="tel" autocomplete="tel" placeholder="+39 ...">
 
         <div class="spacer"></div>
@@ -211,7 +211,7 @@
     <section id="stepFiscal" class="step">
       <div class="card form-card airy">
         <h2>Dati fiscali e documento</h2>
-        <p class="muted short">Servono per fattura, hotel e pratica viaggio.</p>
+        <p class="muted short">Servono per dati fiscali, contatto e pratica partner.</p>
 
         <label for="cf">Codice Fiscale *</label>
         <span class="hint">Controllo automatico.</span>
@@ -473,18 +473,42 @@
       if (!r) { $('requestBox').style.display='none'; return; }
       $('requestBox').style.display='block';
       $('requestBox').innerHTML = [
-        '<h3>Prenotazione</h3>',
+        '<h3>Richiesta dati partner</h3>',
         '<div class="grid">',
-        kv('Viaggio', r.eventTitle || r.title || r.titolo || 'Pratica collegata'),
-        kv('Data', r.eventDateLabel || r.dataInizio || r.dateLabel || '—'),
-        kv('Partecipante', r.nome || r.clientName || r.partnerName || state.user?.displayName || '—'),
-        kv('Ref.', r.bookingKey || r.participantKey || r.eventDocId || requestId || '—'),
+        kv('Partner', r.partnerName || r.nome || state.user?.displayName || 'Profilo partner'),
+        kv('Email', r.email || r.partnerEmail || state.user?.email || '—'),
+        kv('Telefono', r.phone || r.telefono || r.whatsapp || '—'),
+        kv('Ref.', r.partnerKey || r.uid || requestId || '—'),
         '</div>'
       ].join('');
     }
     function kv(k,v){ return '<div class="kv"><span>'+esc(k)+'</span><b>'+esc(v || '—')+'</b></div>'; }
 
+    function normalizePublicCompanyInfo(data){
+      data = data || {};
+      const issuer = data.issuer || data || {};
+      return {
+        issuer: {
+          companyName: clean(issuer.companyName || data.companyName || 'Wildu Srl'),
+          address: clean(issuer.address || data.address || ''),
+          vat: clean(issuer.vat || issuer.piva || data.vat || data.piva || ''),
+          supportPhone: clean(issuer.supportPhone || issuer.phone || data.supportPhone || data.phone || ''),
+          email: clean(issuer.email || data.email || ''),
+          logoUrl: clean(issuer.logoUrl || data.logoUrl || '')
+        }
+      };
+    }
     async function loadSettings(){
+      try {
+        const pub = await db.collection('PARAMETERS_PARTNER').doc('public_company_info').get();
+        if (pub.exists) {
+          state.settings = normalizePublicCompanyInfo(pub.data() || {});
+          renderCompany();
+          return;
+        }
+      } catch(e) {
+        console.warn('Info azienda pubbliche non disponibili:', e);
+      }
       try {
         const doc = await db.collection('wildu_admin_settings').doc('main').get();
         state.settings = doc.exists ? (doc.data() || {}) : null;
@@ -495,14 +519,20 @@
     }
     async function loadRequest(){
       if (!requestId) { state.request = null; renderRequest(); return; }
-      const doc = await db.collection(REQUEST_COLLECTION).doc(requestId).get();
-      if (!doc.exists) throw new Error('Richiesta form non trovata.');
-      const data = doc.data() || {};
-      const expectedType = APP_TYPE === 'partner' ? 'partner' : 'client';
-      if (clean(data.targetType || expectedType) !== expectedType) throw new Error('Questo link non appartiene al modulo corretto.');
-      if (clean(data.uid) && clean(data.uid) !== state.user.uid) throw new Error('Questo link appartiene a un altro profilo.');
-      if (clean(data.status).toUpperCase() === 'EXPIRED') throw new Error('Questo link risulta scaduto.');
-      state.request = Object.assign({ id: doc.id }, data);
+      try {
+        const doc = await db.collection(REQUEST_COLLECTION).doc(requestId).get();
+        if (!doc.exists) throw new Error('Richiesta form non trovata.');
+        const data = doc.data() || {};
+        const expectedType = APP_TYPE === 'partner' ? 'partner' : 'client';
+        if (clean(data.targetType || expectedType) !== expectedType) throw new Error('Questo link non appartiene al modulo corretto.');
+        if (clean(data.uid) && clean(data.uid) !== state.user.uid) throw new Error('Questo link appartiene a un altro profilo.');
+        if (clean(data.status).toUpperCase() === 'EXPIRED') throw new Error('Questo link risulta scaduto.');
+        state.request = Object.assign({ id: doc.id }, data);
+      } catch(e) {
+        console.warn('Request form non utilizzabile, procedo come modulo libero:', e);
+        state.request = null;
+        showStatus('Modulo libero: link pratica non leggibile o non necessario.', 'warn');
+      }
       renderRequest();
     }
     async function loadProfile(){
@@ -707,9 +737,9 @@
       if (!ok) return;
       try {
         await auth.signOut();
-        setStatus('Logout eseguito.');
+        showStatus('Logout eseguito.', 'good');
       } catch (e) {
-        setStatus('Logout non riuscito: ' + (e && e.message ? e.message : e), 'bad');
+        showStatus('Logout non riuscito: ' + (e && e.message ? e.message : e), 'bad');
       }
     });
     $('cf').addEventListener('input', ()=>{ $('cf').value = normalizeCf($('cf').value); $('cfError').style.display='none'; });
