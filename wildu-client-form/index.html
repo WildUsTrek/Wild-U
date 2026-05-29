@@ -75,6 +75,22 @@
     .stamp-mark { flex:0 0 auto; font-size:10px; font-weight:950; color:rgba(216,183,94,.92); border:1px solid rgba(216,183,94,.28); border-radius:999px; padding:3px 7px; background:rgba(216,183,94,.08); text-transform:uppercase; letter-spacing:.08em; }
     .stamp-lines { display:grid; gap:2px; font-size:11px; line-height:1.28; color:rgba(244,247,240,.68); }
     .stamp-lines div { overflow-wrap:anywhere; }
+    .section-title {
+      margin:16px 4px -4px;
+      color:rgba(216,183,94,.95);
+      font-size:12px;
+      font-weight:950;
+      text-transform:uppercase;
+      letter-spacing:.09em;
+    }
+    .address-grid { display:grid; gap:10px; grid-template-columns:1fr; }
+    .address-grid > * { min-width:0; }
+    @media (min-width:720px) {
+      .address-grid { grid-template-columns:minmax(0,1.65fr) minmax(74px,.52fr) minmax(0,1.1fr) minmax(66px,.45fr); align-items:end; }
+    }
+    .date-input-row { display:grid; grid-template-columns:minmax(0,1fr) 54px; gap:9px; align-items:end; }
+    .date-picker-btn { height:52px; border:1px solid rgba(216,183,94,.34); background:rgba(216,183,94,.12); color:#f3df9a; border-radius:16px; font-size:20px; font-weight:950; cursor:pointer; }
+    .date-picker-native { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
     .legal-note {
       margin:16px 2px 0;
       padding:11px 12px;
@@ -171,6 +187,7 @@
         <h2>Benvenuto</h2>
         <p class="muted short">Controlla il riepilogo e completa i dati essenziali.</p>
       </div>
+      <div class="section-title">Chi siamo</div>
       <div id="companyBox" class="company-stamp"></div>
       <div id="requestBox" class="card blue" style="display:none"></div>
       <div id="legalNote" class="legal-note">
@@ -182,28 +199,59 @@
 
     <section id="step1" class="step">
       <div class="card form-card airy">
-        <h2>Contatti e residenza</h2>
-        <p class="muted short">Dati base. Il telefono può essere corretto ora.</p>
+        <h2>Contatti</h2>
+        <p class="muted short">Un solo dato rapido. Potrai correggerlo adesso.</p>
 
         <label for="phone">Numero di telefono *</label>
         <span class="hint">Usa un numero corretto per comunicazioni sul viaggio.</span>
         <input id="phone" inputmode="tel" autocomplete="tel" placeholder="+39 ...">
+      </div>
+      <div class="actions"><button class="btn ghost" type="button" data-prev>Indietro</button><button class="btn primary" type="button" data-next>Avanti</button></div>
+    </section>
 
-        <div class="spacer"></div>
+    <section id="stepBirth" class="step">
+      <div class="card form-card airy">
+        <h2>Nascita</h2>
+        <p class="muted short">Puoi scrivere la data o usare il calendario.</p>
 
-        <div class="grid two">
+        <label for="birthPlace">Nato/a a <small>(Comune - Provincia)</small> *</label>
+        <input id="birthPlace" autocomplete="address-level2" placeholder="Es. San Miniato (PI)">
+
+        <label for="birthDate">Data di nascita *</label>
+        <span class="hint">Formato GG/MM/AAAA. Il calendario è solo un aiuto: puoi sempre scrivere a mano.</span>
+        <div class="date-input-row">
+          <input id="birthDate" type="text" inputmode="numeric" autocomplete="bday" maxlength="10" placeholder="GG/MM/AAAA">
+          <button id="birthDatePickerBtn" class="date-picker-btn" type="button" title="Scegli dal calendario">📅</button>
+        </div>
+        <input id="birthDateNative" class="date-picker-native" type="date" min="1900-01-01" aria-hidden="true" tabindex="-1">
+      </div>
+      <div class="actions"><button class="btn ghost" type="button" data-prev>Indietro</button><button class="btn primary" type="button" data-next>Avanti</button></div>
+    </section>
+
+    <section id="stepResidence" class="step">
+      <div class="card form-card airy">
+        <h2>Residenza</h2>
+        <p class="muted short">Niente CAP. Compila solo via, civico, comune e provincia.</p>
+
+        <label>Residenza attuale *</label>
+        <div class="address-grid">
           <div>
-            <label for="birthPlace">Nato/a a <small>(Comune - Provincia)</small> *</label>
-            <input id="birthPlace" autocomplete="address-level2" placeholder="Es. San Miniato (PI)">
+            <span class="hint">Via</span>
+            <input id="addressStreet" autocomplete="address-line1" placeholder="Es. Via Roma">
           </div>
           <div>
-            <label for="birthDate">Data di nascita *</label>
-            <input id="birthDate" type="text" inputmode="numeric" autocomplete="bday" maxlength="10" placeholder="GG/MM/AAAA">
+            <span class="hint">N. civico</span>
+            <input id="addressNumber" inputmode="text" autocomplete="address-line2" placeholder="10">
+          </div>
+          <div>
+            <span class="hint">Comune</span>
+            <input id="addressCity" autocomplete="address-level2" placeholder="San Miniato">
+          </div>
+          <div>
+            <span class="hint">Prov.</span>
+            <input id="addressProvince" autocomplete="address-level1" maxlength="2" autocapitalize="characters" placeholder="PI">
           </div>
         </div>
-
-        <label for="address">Residenza attuale *</label>
-        <input id="address" autocomplete="street-address" placeholder="Via, numero, CAP, città">
       </div>
       <div class="actions"><button class="btn ghost" type="button" data-prev>Indietro</button><button class="btn primary" type="button" data-next>Avanti</button></div>
     </section>
@@ -336,7 +384,7 @@
       settings:null,
       step:0,
       choices:{},
-      steps: APP_TYPE === 'partner' ? ['step0','step1','stepFiscal','stepPartner','step2','step3'] : ['step0','step1','stepFiscal','step2','step3']
+      steps: ['step0','step1','stepBirth','stepResidence','stepFiscal','step2','step3']
     };
 
     function esc(v){
@@ -346,6 +394,36 @@
     }
     function clean(v){ return String(v == null ? '' : v).trim(); }
     function compactPhone(v){ return clean(v).replace(/[^0-9+]/g,'').replace(/^00/,'+'); }
+    function normalizeProvince(v){ return clean(v).toUpperCase().replace(/[^A-Z]/g,'').slice(0,2); }
+    function normalizeResidenceAddress(){
+      const street = clean($('addressStreet')?.value || '');
+      const number = clean($('addressNumber')?.value || '');
+      const city = clean($('addressCity')?.value || '');
+      const province = normalizeProvince($('addressProvince')?.value || '');
+      const first = clean([street, number].filter(Boolean).join(' '));
+      const second = city ? (province ? city + ' (' + province + ')' : city) : (province ? '(' + province + ')' : '');
+      return [first, second].filter(Boolean).join(', ');
+    }
+    function parseResidenceAddress(raw){
+      raw = clean(raw);
+      const out = { street:'', number:'', city:'', province:'' };
+      if (!raw) return out;
+      let text = raw;
+      let m = text.match(/\(([A-Za-z]{2})\)\s*$/);
+      if (m) { out.province = normalizeProvince(m[1]); text = clean(text.slice(0, m.index)); }
+      else {
+        m = text.match(/(?:,|\s)([A-Za-z]{2})\s*$/);
+        if (m && m[1] && m[1].toUpperCase() === m[1]) { out.province = normalizeProvince(m[1]); text = clean(text.slice(0, m.index)); }
+      }
+      const parts = text.split(',').map(clean).filter(Boolean);
+      let streetPart = '';
+      if (parts.length >= 2) { streetPart = parts[0]; out.city = parts.slice(1).join(', '); }
+      else { streetPart = text; }
+      const n = streetPart.match(/^(.*?)(?:\s+|,\s*)(\d+[A-Za-z\/\-]*|s\.?n\.?c\.?|snc)$/i);
+      if (n && clean(n[1])) { out.street = clean(n[1]); out.number = clean(n[2]).toUpperCase(); }
+      else { out.street = streetPart; }
+      return out;
+    }
     function formatBirthDateTyping(v){
       const digits = clean(v).replace(/\D/g,'').slice(0,8);
       if (digits.length <= 2) return digits;
@@ -425,7 +503,13 @@
       const block = state.profile && state.profile[PROFILE_BLOCK] || {};
       $('birthPlace').value = clean(block.natoComuneProvincia || '');
       $('birthDate').value = birthDateToDisplay(block.dataNascita || '');
-      $('address').value = clean(block.indirizzoResidenza || '');
+      const existingBirth = parseBirthDate(block.dataNascita || '');
+      if ($('birthDateNative') && existingBirth) $('birthDateNative').value = existingBirth.iso;
+      const residence = parseResidenceAddress(block.indirizzoResidenza || '');
+      $('addressStreet').value = residence.street;
+      $('addressNumber').value = residence.number;
+      $('addressCity').value = residence.city;
+      $('addressProvince').value = residence.province;
       $('cf').value = normalizeCf(block.codiceFiscale || state.profile?.codiceFiscale || state.profile?.cf || '');
       $('idNumber').value = clean(block.cartaIdentitaNumero || '');
       $('idIssuePlace').value = clean(block.cartaIdentitaLuogoRilascio || '');
@@ -566,19 +650,33 @@
     function validateCurrentStep(){
       const id = state.steps[state.step];
       if (id === 'step1') return validatePersonal();
+      if (id === 'stepBirth') return validateBirth();
+      if (id === 'stepResidence') return validateResidence();
       if (id === 'stepFiscal') return validateFiscal();
       if (id === 'step2') return validateNeeds();
       return true;
     }
     function validatePersonal(){
-      const required = [
-        ['phone','Telefono'], ['birthPlace','Nato/a a'], ['birthDate','Data di nascita'], ['address','Indirizzo']
-      ];
-      for (const [id,label] of required){ if (!clean($(id).value)) { alert('Campo obbligatorio: '+label); $(id).focus(); return false; } }
+      if (!clean($('phone').value)) { alert('Campo obbligatorio: Telefono'); $('phone').focus(); return false; }
       if (compactPhone($('phone').value).length < 8) { alert('Numero di telefono non valido o troppo corto.'); $('phone').focus(); return false; }
+      return true;
+    }
+    function validateBirth(){
+      const required = [['birthPlace','Nato/a a'], ['birthDate','Data di nascita']];
+      for (const [id,label] of required){ if (!clean($(id).value)) { alert('Campo obbligatorio: '+label); $(id).focus(); return false; } }
       const parsedBirthDate = parseBirthDate($('birthDate').value);
       if (!parsedBirthDate) { alert('Data di nascita non valida. Usa il formato GG/MM/AAAA.'); $('birthDate').focus(); return false; }
       $('birthDate').value = parsedBirthDate.label;
+      const native = $('birthDateNative');
+      if (native) native.value = parsedBirthDate.iso;
+      return true;
+    }
+    function validateResidence(){
+      const required = [
+        ['addressStreet','Via residenza'], ['addressNumber','Numero civico'], ['addressCity','Comune residenza'], ['addressProvince','Provincia residenza']
+      ];
+      for (const [id,label] of required){ if (!clean($(id).value)) { alert('Campo obbligatorio: '+label); $(id).focus(); return false; } }
+      $('addressProvince').value = normalizeProvince($('addressProvince').value);
       return true;
     }
     function validateFiscal(){
@@ -608,7 +706,7 @@
       const data = {
         natoComuneProvincia: clean($('birthPlace').value),
         dataNascita: birthDateToStorage($('birthDate').value),
-        indirizzoResidenza: clean($('address').value),
+        indirizzoResidenza: normalizeResidenceAddress(),
         codiceFiscale: normalizeCf($('cf').value),
         cartaIdentitaNumero: clean($('idNumber').value),
         cartaIdentitaLuogoRilascio: clean($('idIssuePlace').value),
@@ -658,7 +756,7 @@
     }
 
     async function submit(){
-      if (!validatePersonal() || !validateNeeds()) return;
+      if (!validatePersonal() || !validateBirth() || !validateResidence() || !validateFiscal() || !validateNeeds()) return;
       const btn = $('submitBtn');
       btn.disabled = true;
       showStatus('Invio dati in corso...', 'warn');
@@ -729,6 +827,30 @@
       else setChoice(key, this.dataset.value, false);
     }));
     $('birthDate').addEventListener('input', ()=>{ $('birthDate').value = formatBirthDateTyping($('birthDate').value); });
+    $('birthDatePickerBtn')?.addEventListener('click', ()=>{
+      const native = $('birthDateNative');
+      if (!native) return;
+      const parsed = parseBirthDate($('birthDate').value);
+      native.value = parsed ? parsed.iso : '';
+      try {
+        if (native.showPicker) native.showPicker();
+        else native.click();
+      } catch(e) {
+        try { native.click(); } catch(_) { $('birthDate').focus(); }
+      }
+    });
+    $('birthDateNative')?.addEventListener('change', ()=>{
+      const parsed = parseBirthDate($('birthDateNative').value);
+      if (parsed) $('birthDate').value = parsed.label;
+    });
+    const nativeBirthDateInput = $('birthDateNative');
+    if (nativeBirthDateInput) {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth()+1).padStart(2,'0');
+      const dd = String(today.getDate()).padStart(2,'0');
+      nativeBirthDateInput.max = yyyy+'-'+mm+'-'+dd;
+    }
     $('submitBtn').addEventListener('click', submit);
     $('loginBtn').addEventListener('click', loginPopup);
     $('redirectLoginBtn').addEventListener('click', loginRedirect);
@@ -743,6 +865,7 @@
       }
     });
     $('cf').addEventListener('input', ()=>{ $('cf').value = normalizeCf($('cf').value); $('cfError').style.display='none'; });
+    $('addressProvince').addEventListener('input', ()=>{ $('addressProvince').value = normalizeProvince($('addressProvince').value); });
 
     auth.getRedirectResult().catch(e=>console.warn('redirect result:', e));
     auth.onAuthStateChanged(bootUser);
