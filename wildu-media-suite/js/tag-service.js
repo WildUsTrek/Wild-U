@@ -195,6 +195,118 @@
     return map;
   }
 
+  function sanitizePublicCatalogItem(docId, data, publicVersion) {
+    data = data || {};
+
+    return {
+      id: docId,
+      schemaVersion: Number(data.schemaVersion || 2),
+      title: String(data.title || '').trim(),
+      description: String(data.description || '').trim(),
+      category: root.slugify(data.category || data.kind || ''),
+      kind: root.slugify(data.kind || data.category || ''),
+      subcategory: data.subcategory ? root.slugify(data.subcategory) : null,
+      subcategoryLabel: data.subcategoryLabel || null,
+      tagSlug: root.slugify(data.tagSlug || ''),
+      tagSlugs: Array.isArray(data.tagSlugs) ? data.tagSlugs.map(root.slugify).filter(Boolean) : [],
+      tags: Array.isArray(data.tags) ? data.tags.slice(0, 24).map(String) : [],
+      searchTokens: Array.isArray(data.searchTokens) ? data.searchTokens.slice(0, 40).map(String) : [],
+      status: data.status || 'ACTIVE',
+      visibility: data.visibility || 'PUBLIC',
+      clientRenderable: data.clientRenderable !== false,
+      sortOrder: Number(data.sortOrder || 0),
+      fileUrl: String(data.fileUrl || '').trim(),
+      contentType: String(data.contentType || '').trim(),
+      sizeBytes: Number(data.sizeBytes || 0),
+      durationSeconds: data.durationSeconds || null,
+      pageCount: data.pageCount || null,
+      mediaVersion: Math.max(1, Number(data.mediaVersion || 1)),
+      publicVersion: Number(publicVersion || 0),
+      readerStatus: data.readerStatus || null,
+      readerStorageMode: data.readerStorageMode || null,
+      readerPayloadLocation: data.readerPayloadLocation || null,
+      readerPayloadUrl: data.readerPayloadUrl || data.readerJsonUrl || null,
+      readerPayloadVerifiedAtClient: data.readerPayloadVerifiedAtClient || null,
+      readerPayloadVerifiedBlockCount: Number(data.readerPayloadVerifiedBlockCount || 0),
+      readerVersion: data.readerVersion || null,
+      readerSourceMediaVersion: data.readerSourceMediaVersion || null,
+      readerBlockCount: Number(data.readerBlockCount || 0),
+      readerCharCount: Number(data.readerCharCount || 0),
+      readerImageCount: Number(data.readerImageCount || 0),
+      readerPreview: data.readerPreview || ''
+    };
+  }
+
+  async function loadPublicCatalogItemsForManifest(tagSlug, publicVersion) {
+    var snap = await root.db
+      .collection(WILDU_MEDIA_CONFIG.collections.catalog)
+      .where('tagSlug', '==', tagSlug)
+      .where('status', '==', 'ACTIVE')
+      .where('visibility', '==', 'PUBLIC')
+      .get();
+
+    var items = snap.docs.map(function (doc) {
+      return sanitizePublicCatalogItem(doc.id, doc.data() || {}, publicVersion);
+    });
+
+    items.sort(function (a, b) {
+      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+
+    return items;
+  }
+
+  function buildCatalogManifestObjectKey(tagSlug, publicVersion) {
+    var cleanTag = root.slugify(tagSlug || 'media') || 'media';
+    var cleanVersion = Math.max(0, Number(publicVersion || 0));
+    return 'wildu-media/catalog/' + cleanTag + '/v' + cleanVersion + '/catalog.json';
+  }
+
+  async function tryUploadPublicCatalogManifest(tagSlug, publicVersion, metaEntry) {
+    if (!root.R2WorkerService || typeof root.R2WorkerService.requestUploadUrl !== 'function') {
+      return null;
+    }
+
+    try {
+      var items = await loadPublicCatalogItemsForManifest(tagSlug, publicVersion);
+      var payload = {
+        schemaVersion: 1,
+        tagSlug: tagSlug,
+        publicVersion: Number(publicVersion || 0),
+        generatedAtClient: new Date().toISOString(),
+        meta: metaEntry || {},
+        items: items
+      };
+      var json = JSON.stringify(payload);
+      var blob = new Blob([json], { type: 'application/json' });
+      var objectKey = buildCatalogManifestObjectKey(tagSlug, publicVersion);
+
+      var uploadInfo = await root.R2WorkerService.requestUploadUrl({
+        kind: 'json',
+        tagSlug: tagSlug,
+        subcategory: 'catalog-manifest',
+        fileName: objectKey,
+        contentType: 'application/json',
+        sizeBytes: blob.size
+      });
+
+      await root.R2WorkerService.putFileToR2(uploadInfo.uploadUrl, blob, 'application/json');
+
+      return {
+        catalogManifestUrl: uploadInfo.publicUrl || '',
+        catalogManifestObjectKey: uploadInfo.objectKey || objectKey,
+        catalogManifestVersion: Number(publicVersion || 0),
+        catalogManifestSizeBytes: blob.size,
+        catalogManifestItemCount: items.length,
+        catalogManifestGeneratedAtClient: payload.generatedAtClient
+      };
+    } catch (err) {
+      console.warn('[WILDU MEDIA] Manifest catalogo R2 non pubblicato: il client pubblico mostrera contenuto in aggiornamento finche non viene pubblicato.', err);
+      return null;
+    }
+  }
+
   async function syncRuntimePublicVersions() {
     var tags = await listTags({ onlyActive: false });
     var publicMap = {};
@@ -220,6 +332,21 @@
         meta[tag.tagSlug] = metaEntry;
       }
     });
+
+    for (var i = 0; i < tags.length; i++) {
+      var tag = tags[i];
+      if (!tag || !meta[tag.tagSlug]) continue;
+
+      var manifestInfo = await tryUploadPublicCatalogManifest(
+        tag.tagSlug,
+        publicMap[tag.tagSlug],
+        meta[tag.tagSlug]
+      );
+
+      if (manifestInfo) {
+        meta[tag.tagSlug] = Object.assign({}, meta[tag.tagSlug], manifestInfo);
+      }
+    }
 
     await runtimePublicVersionsRef().set({
       schemaVersion: 1,
