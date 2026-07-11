@@ -2591,7 +2591,9 @@
       readerHtml: null
     };
 
-    return trimPatchToFirestoreLimit(patch);
+    return meta.compactForFirestore === false
+      ? patch
+      : trimPatchToFirestoreLimit(patch);
   }
 
   async function buildReaderPatchFromMedia(media, options) {
@@ -2691,7 +2693,8 @@
       originalPageCount: pageCount,
       pagesProcessed: pagesToProcess,
       nextReaderVersion: nextReaderVersion,
-      imageErrors: imageState.errors
+      imageErrors: imageState.errors,
+      compactForFirestore: options.compactForFirestore !== false
     });
   }
 
@@ -2737,6 +2740,7 @@
     isPdfMedia: isPdfMedia,
     loadPdfJs: loadPdfJs,
     buildReaderPatchFromMedia: buildReaderPatchFromMedia,
+    compactPatchForFirestore: trimPatchToFirestoreLimit,
     buildClearReaderPatch: buildClearReaderPatch,
     buildAdminPreviewHtmlFromBlocks: buildAdminPreviewHtmlFromBlocks,
     analyzeReaderBlocks: analyzeReaderBlocks,
