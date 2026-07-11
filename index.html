@@ -5624,8 +5624,9 @@ async function openWilduSecureIframe(targetUrl, requiredGrade, moduleRev, iframe
 // - NON entra in getInitData
 // - NON gonfia wildCachePublic
 // - legge solo i contenuti del tag richiesto
-// - usa wildu_media_runtime/public_versions come semaforo
+// - usa wildu_media_runtime/public_versions come semaforo leggero
 // - cache locale per tag lato client
+// - il client pubblico non usa fallback Firestore pesanti per cataloghi/reader
 // - file grandi R2 NON vengono cacheati qui: salviamo solo metadati/URL
 
 const WilduMediaClient = (() => {
@@ -5635,6 +5636,9 @@ const WilduMediaClient = (() => {
 
     const CACHE_PREFIX = "wilduMediaClient:v1:";
     const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // cache contenuti tag: vince sempre publicVersion
+
+    const PUBLIC_CLIENT_FIRESTORE_FALLBACK_ENABLED = false;
+    const FIRESTORE_FALLBACK_DEBUG_KEY = CACHE_PREFIX + "allow_firestore_fallback";
 
     // Manifesto versioni pubbliche:
     // evita una lettura Firestore a ogni apertura di Radio/Biblioteca.
@@ -5652,6 +5656,25 @@ const WilduMediaClient = (() => {
 
     function safeString(value) {
         return String(value === undefined || value === null ? "" : value).trim();
+    }
+
+    function getWilduMediaFileUrl(item) {
+        if (!item || typeof item !== "object") return "";
+
+        return safeString(
+            item.fileUrl ||
+            item.file_url ||
+            item.pdfUrl ||
+            item.pdf_url ||
+            item.mediaUrl ||
+            item.media_url ||
+            item.downloadUrl ||
+            item.download_url ||
+            item.r2Url ||
+            item.r2_url ||
+            item.url ||
+            ""
+        );
     }
 
     function escapeHtml(value) {
@@ -5673,12 +5696,60 @@ const WilduMediaClient = (() => {
             const params = new URLSearchParams(window.location.search || "");
             return (
                 params.get("refresh") === "1" ||
+                params.get("mediaRefresh") === "1" ||
+                params.get("mediaCacheRefresh") === "1" ||
                 params.get("nocache") === "1" ||
                 params.get("cache") === "off"
             );
         } catch (e) {
             return false;
         }
+    }
+
+    function isLocalMediaDebugRuntime() {
+        try {
+            const host = safeString(window.location.hostname).toLowerCase();
+            return (
+                window.location.protocol === "file:" ||
+                host === "localhost" ||
+                host === "127.0.0.1" ||
+                host === "::1"
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function allowMediaFirestoreFallback() {
+        if (PUBLIC_CLIENT_FIRESTORE_FALLBACK_ENABLED) return true;
+        if (!isLocalMediaDebugRuntime()) return false;
+
+        try {
+            return (
+                localStorage.getItem(FIRESTORE_FALLBACK_DEBUG_KEY) === "1" ||
+                localStorage.getItem("wilduMediaFirestoreFallback") === "1"
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function buildWilduStaticMediaError(message, detail, code) {
+        const err = new Error(message || "Contenuto ottimizzato non ancora disponibile.");
+        err.code = code || "WILDU_MEDIA_STATIC_REQUIRED";
+        err.wilduStaticMediaError = true;
+        if (detail) err.detail = detail;
+        return err;
+    }
+
+    function isWilduStaticMediaError(err) {
+        return !!(
+            err &&
+            (
+                err.wilduStaticMediaError ||
+                /^WILDU_(MEDIA|READER)_/i.test(safeString(err.code))
+            )
+        );
     }
 
     function getTagCacheKey(tagSlug) {
@@ -5736,6 +5807,17 @@ const WilduMediaClient = (() => {
         } catch (e) {}
     }
 
+    function normalizePublicVersionsEnvelope(value) {
+        const data = value && typeof value === "object" ? value : {};
+        const tags = data.tags && typeof data.tags === "object" ? data.tags : data;
+        const meta = data.meta && typeof data.meta === "object" ? data.meta : {};
+
+        return {
+            tags: tags && typeof tags === "object" ? tags : {},
+            meta
+        };
+    }
+
     function readPublicVersionsCache() {
         try {
             const raw = localStorage.getItem(PUBLIC_VERSIONS_CACHE_KEY);
@@ -5747,19 +5829,20 @@ const WilduMediaClient = (() => {
             const savedAt = normalizeNumber(parsed.savedAt, 0);
             if (!savedAt || now() - savedAt > PUBLIC_VERSIONS_TTL_MS) return null;
 
-            if (!parsed.tags || typeof parsed.tags !== "object") return null;
-
-            return parsed.tags;
+            return normalizePublicVersionsEnvelope(parsed);
         } catch (e) {
             return null;
         }
     }
 
-    function writePublicVersionsCache(tags) {
+    function writePublicVersionsCache(envelope) {
+        const clean = normalizePublicVersionsEnvelope(envelope);
+
         try {
             localStorage.setItem(PUBLIC_VERSIONS_CACHE_KEY, JSON.stringify({
                 savedAt: now(),
-                tags: tags && typeof tags === "object" ? tags : {}
+                tags: clean.tags,
+                meta: clean.meta
             }));
         } catch (e) {
             console.warn("[WilduMediaClient] Cache public_versions non scritta:", e);
@@ -5797,14 +5880,14 @@ const WilduMediaClient = (() => {
             .get();
 
         const data = snap.exists ? (snap.data() || {}) : {};
-        const tags = data.tags && typeof data.tags === "object" ? data.tags : {};
+        const envelope = normalizePublicVersionsEnvelope(data);
 
-        publicVersionsMemory = tags;
+        publicVersionsMemory = envelope;
         publicVersionsLoadedAt = now();
 
-        writePublicVersionsCache(tags);
+        writePublicVersionsCache(envelope);
 
-        return tags;
+        return envelope;
     }
 
     async function fetchTagItemsFromFirestore(tagSlug, options = {}) {
@@ -5847,14 +5930,45 @@ const WilduMediaClient = (() => {
         return items;
     }
 
+    async function fetchTagItemsFromManifest(manifestUrl, tagSlug, publicVersion, options = {}) {
+        const cleanUrl = safeString(manifestUrl);
+        if (!cleanUrl) throw new Error("catalogManifestUrl mancante");
+
+        const res = await fetch(cleanUrl, {
+            method: "GET",
+            credentials: "omit",
+            cache: shouldBypassCache() || options.force === true ? "reload" : "force-cache"
+        });
+
+        if (!res.ok) {
+            throw new Error("Manifest catalogo non disponibile HTTP " + res.status);
+        }
+
+        const payload = await res.json();
+        const items = Array.isArray(payload && payload.items)
+            ? payload.items
+            : (Array.isArray(payload && payload.catalog) ? payload.catalog : []);
+
+        return items
+            .filter(item => item && typeof item === "object")
+            .map(item => ({
+                ...item,
+                tagSlug: safeString(item.tagSlug || tagSlug),
+                publicVersion: normalizeNumber(item.publicVersion, publicVersion)
+            }));
+    }
+
     async function loadTag(tagSlug, options = {}) {
         const cleanTag = safeString(tagSlug);
         if (!cleanTag) throw new Error("tagSlug mancante");
 
-        const versions = await getPublicVersions({
+        const publicVersions = await getPublicVersions({
             force: options.force === true
         });
 
+        const versions = publicVersions && publicVersions.tags ? publicVersions.tags : publicVersions;
+        const meta = publicVersions && publicVersions.meta ? publicVersions.meta : {};
+        const tagMeta = meta && meta[cleanTag] && typeof meta[cleanTag] === "object" ? meta[cleanTag] : {};
         const publicVersion = normalizeNumber(versions[cleanTag], 0);
         const cached = readTagCache(cleanTag);
 
@@ -5872,13 +5986,46 @@ const WilduMediaClient = (() => {
             };
         }
 
-        const items = await fetchTagItemsFromFirestore(cleanTag, options);
+        let items = [];
+        let source = "manifest";
+        const manifestUrl = safeString(tagMeta.catalogManifestUrl || tagMeta.catalog_manifest_url || "");
+        let manifestError = null;
+
+        if (manifestUrl) {
+            try {
+                items = await fetchTagItemsFromManifest(manifestUrl, cleanTag, publicVersion, options);
+                source = "manifest";
+            } catch (manifestErr) {
+                manifestError = manifestErr;
+                source = "manifest-error";
+                console.warn("[WilduMediaClient] Manifest catalogo R2 non disponibile:", manifestErr);
+            }
+        } else {
+            source = "missing-manifest";
+        }
+
+        if (!items.length && source !== "manifest") {
+            if (allowMediaFirestoreFallback()) {
+                console.warn("[WilduMediaClient] Fallback Firestore catalogo attivo solo in debug locale:", cleanTag);
+                items = await fetchTagItemsFromFirestore(cleanTag, options);
+                source = "firestore-debug";
+            } else {
+                throw buildWilduStaticMediaError(
+                    manifestUrl
+                        ? "Catalogo in aggiornamento: manifest Cloudflare non leggibile."
+                        : "Catalogo in aggiornamento: manifest Cloudflare non ancora pubblicato.",
+                    manifestError,
+                    "WILDU_MEDIA_CATALOG_MANIFEST_REQUIRED"
+                );
+            }
+        }
+
         writeTagCache(cleanTag, publicVersion, items);
 
         return {
             tagSlug: cleanTag,
             publicVersion,
-            source: "firestore",
+            source,
             items
         };
     }
@@ -5961,10 +6108,12 @@ const WilduMediaClient = (() => {
 
     function getWilduMediaVersionForReader(item) {
         const raw =
+            item?.readerVersion ??
+            item?.reader_version ??
+            item?.readerSourceMediaVersion ??
             item?.mediaVersion ??
             item?.ver ??
             item?.version ??
-            item?.readerSourceMediaVersion ??
             1;
 
         const n = parseInt(raw, 10);
@@ -6090,11 +6239,38 @@ const WilduMediaClient = (() => {
 
 
     const WILDU_MEDIA_READER_COLLECTION = "wildu_media_reader";
+    const WILDU_READER_PAYLOAD_CACHE_PREFIX = "wilduReaderPayload:v1:";
+    const WILDU_READER_PAYLOAD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+    function getWilduReaderPayloadUrlFromItem(item) {
+        if (!item || typeof item !== "object") return "";
+
+        const direct = safeString(
+            item.readerPayloadUrl ||
+            item.reader_payload_url ||
+            item.readerJsonUrl ||
+            item.reader_json_url ||
+            ""
+        );
+
+        if (direct) return direct;
+
+        const location = safeString(item.readerPayloadLocation || item.reader_payload_location || "");
+        if (/^https?:\/\//i.test(location)) return location;
+        if (/^r2:https?:\/\//i.test(location)) return location.replace(/^r2:/i, "");
+
+        const docPath = safeString(item.readerDocPath || item.reader_doc_path || "");
+        if (/^https?:\/\//i.test(docPath)) return docPath;
+        if (/^r2:https?:\/\//i.test(docPath)) return docPath.replace(/^r2:/i, "");
+
+        return "";
+    }
 
     function hasWilduPreparedReader(item) {
         return !!(
             item &&
             (
+                getWilduReaderPayloadUrlFromItem(item) ||
                 safeString(item.readerDocPath || item.reader_doc_path || "") ||
                 safeString(item.readerStatus || "").toUpperCase() === "READY" ||
                 Number(item.readerBlockCount || 0) > 0 ||
@@ -6118,11 +6294,122 @@ const WilduMediaClient = (() => {
         return safeString(item.id || item.docId || item.catalogId || "");
     }
 
+    function getWilduReaderPayloadCacheKey(item, payloadUrl) {
+        const itemKey = getWilduReaderItemKey(item || { fileUrl: payloadUrl });
+        const readerVersion = Math.max(
+            1,
+            parseInt(
+                item?.readerVersion ??
+                item?.reader_version ??
+                item?.readerSourceMediaVersion ??
+                item?.mediaVersion ??
+                1,
+                10
+            ) || 1
+        );
+
+        return WILDU_READER_PAYLOAD_CACHE_PREFIX + itemKey + ":rv" + readerVersion;
+    }
+
+    function normalizeWilduReaderPayload(raw, item, payloadUrl) {
+        const data = raw && typeof raw === "object" ? { ...raw } : {};
+
+        if (!Array.isArray(data.readerBlocks) && Array.isArray(data.blocks)) {
+            data.readerBlocks = data.blocks;
+        }
+
+        if (!data.id) {
+            data.id = safeString(data.mediaId || item?.id || item?.docId || item?.catalogId || "");
+        }
+
+        if (!data.readerPayloadUrl) data.readerPayloadUrl = safeString(payloadUrl);
+        if (!data.readerStatus && Array.isArray(data.readerBlocks) && data.readerBlocks.length) {
+            data.readerStatus = "READY";
+        }
+
+        return data;
+    }
+
+    function readWilduReaderPayloadCache(item, payloadUrl) {
+        try {
+            const raw = localStorage.getItem(getWilduReaderPayloadCacheKey(item, payloadUrl));
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return null;
+
+            const savedAt = Number(parsed.savedAt || 0);
+            if (!savedAt || Date.now() - savedAt > WILDU_READER_PAYLOAD_TTL_MS) return null;
+
+            return normalizeWilduReaderPayload(parsed.payload, item, payloadUrl);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function writeWilduReaderPayloadCache(item, payloadUrl, payload) {
+        try {
+            localStorage.setItem(getWilduReaderPayloadCacheKey(item, payloadUrl), JSON.stringify({
+                savedAt: Date.now(),
+                payloadUrl: safeString(payloadUrl),
+                payload
+            }));
+        } catch (e) {}
+    }
+
+    async function loadWilduReaderPayloadFromUrl(item, payloadUrl) {
+        const cleanUrl = safeString(payloadUrl);
+        if (!cleanUrl) return null;
+
+        if (!shouldBypassCache()) {
+            const cached = readWilduReaderPayloadCache(item, cleanUrl);
+            if (cached) return cached;
+        }
+
+        const res = await fetch(cleanUrl, {
+            method: "GET",
+            credentials: "omit",
+            cache: shouldBypassCache() ? "reload" : "force-cache"
+        });
+
+        if (!res.ok) {
+            throw new Error("Reader payload non disponibile HTTP " + res.status);
+        }
+
+        const payload = normalizeWilduReaderPayload(await res.json(), item, cleanUrl);
+        writeWilduReaderPayloadCache(item, cleanUrl, payload);
+        return payload;
+    }
+
     async function loadWilduReaderDocumentForItem(item) {
         if (!item || typeof item !== "object") return null;
 
+        const payloadUrl = getWilduReaderPayloadUrlFromItem(item);
+        let payloadError = null;
+        if (payloadUrl) {
+            try {
+                const payload = await loadWilduReaderPayloadFromUrl(item, payloadUrl);
+                if (payload && getWilduReaderBlocksFromItem(payload).length) return payload;
+            } catch (payloadErr) {
+                payloadError = payloadErr;
+                console.warn("[WILDU READER] Payload R2 non disponibile:", payloadErr);
+            }
+        }
+
         const hasSplitReader = safeString(item.readerDocPath || item.reader_doc_path || "");
         if (!hasSplitReader) return null;
+
+        if (!allowMediaFirestoreFallback()) {
+            throw buildWilduStaticMediaError(
+                payloadUrl
+                    ? "Reader in aggiornamento: payload Cloudflare non leggibile."
+                    : "Reader in aggiornamento: payload Cloudflare non ancora pubblicato.",
+                payloadError,
+                "WILDU_READER_PAYLOAD_REQUIRED"
+            );
+        }
+
+        console.warn("[WILDU READER] Fallback Firestore reader attivo solo in debug locale:", hasSplitReader);
 
         const docId = getWilduReaderDocIdFromItem(item);
         if (!docId) return null;
@@ -7676,14 +7963,33 @@ const WilduMediaClient = (() => {
 
         try {
             ui.status.textContent = "Carico lettura ottimizzata...";
-            const readerDoc = await loadWilduReaderDocumentForItem(item);
+            const inlineBlocks = getWilduReaderBlocksFromItem(item);
+
+            if (inlineBlocks.length) {
+                renderWilduReaderArticle(ui, {
+                    title: cleanTitle,
+                    sourceLabel: "Reader editoriale",
+                    note: "Contenuto preparato da Admin Suite.",
+                    blocks: inlineBlocks
+                });
+                return;
+            }
+
+            let readerDoc = null;
+            try {
+                readerDoc = await loadWilduReaderDocumentForItem(item);
+            } catch (readerErr) {
+                if (isWilduStaticMediaError(readerErr)) throw readerErr;
+                console.warn("[WILDU READER] Reader ottimizzato non disponibile, provo fallback PDF.js:", readerErr);
+            }
+
             const preprocessedBlocks = readerDoc ? getWilduReaderBlocksFromItem(readerDoc) : [];
 
             if (preprocessedBlocks.length) {
                 renderWilduReaderArticle(ui, {
                     title: cleanTitle,
                     sourceLabel: "Reader editoriale",
-                    note: "Contenuto preparato da Admin Suite / Firestore.",
+                    note: "Contenuto preparato da Admin Suite.",
                     blocks: preprocessedBlocks
                 });
                 return;
@@ -7693,8 +7999,19 @@ const WilduMediaClient = (() => {
             const fallbackArticle = await extractWilduPdfTextFallback(cleanUrl, cleanTitle, item);
             renderWilduReaderArticle(ui, fallbackArticle);
         } catch (e) {
+            const isStaticMediaError = isWilduStaticMediaError(e);
             ui.status.style.display = "block";
-            ui.status.innerHTML = `
+            ui.status.innerHTML = isStaticMediaError
+                ? `
+                    <div style="color:#f6d889; font-weight:900; margin-bottom:8px;">
+                        Lettura ottimizzata in aggiornamento
+                    </div>
+                    <div style="color:#aaa; font-size:13px; line-height:1.45;">
+                        Questo contenuto deve essere pubblicato nel nuovo formato Cloudflare.
+                        Puoi comunque usare "Apri" o "Scarica PDF".
+                    </div>
+                `
+                : `
                 <div style="color:#ff7777; font-weight:900; margin-bottom:8px;">
                     Lettura in app non disponibile
                 </div>
@@ -7740,7 +8057,7 @@ const WilduMediaClient = (() => {
     function buildAudioCard(item) {
         const title = escapeHtml(item.title || item.Titolo || "Audio Wild-U");
         const description = escapeHtml(item.description || item.Descrizione || "");
-        const fileUrl = safeString(item.fileUrl);
+        const fileUrl = getWilduMediaFileUrl(item);
         const duration = item.durationSeconds ? `${Math.round(Number(item.durationSeconds) / 60)} min` : "";
         const radioVolume = typeof getWilduRadioAudioVolume === "function"
             ? getWilduRadioAudioVolume(item)
@@ -8472,7 +8789,7 @@ const WilduMediaClient = (() => {
         if (newsItem) {
             const itemKey = registerWilduReaderItem(newsItem);
             const newsTitle = safeString(newsItem.title || newsItem.Titolo || "Documento consigliato");
-            const newsUrl = safeString(newsItem.fileUrl);
+            const newsUrl = getWilduMediaFileUrl(newsItem);
             const newsPreview = getWilduReaderPreviewFromItem(newsItem, 1400);
             const hasPreparedReader = hasWilduPreparedReader(newsItem) || !!newsPreview;
 
@@ -8535,7 +8852,7 @@ const WilduMediaClient = (() => {
                                 margin-top:8px;
                             ">
                                 Anteprima editoriale non ancora generata da Admin Suite.
-                                Puoi comunque usare “Leggi in app”: la client app proverà una estrazione testuale provvisoria dal PDF.
+                                Puoi comunque usare "Apri" o "Scarica PDF".
                             </div>`
                     }
 
