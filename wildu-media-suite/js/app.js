@@ -22,6 +22,8 @@
     systemAudio: null,
     systemAudioItems: [],
 
+    readerMigrationAudit: null,
+
     selectedTab: 'dashboard',
 
     // Gate visuale admin: la certificazione vera resta nelle Firestore Rules.
@@ -2647,6 +2649,20 @@
     }) || null;
   }
 
+  async function getMediaForReaderAction(id) {
+    id = String(id || '').trim();
+    if (!id) return null;
+
+    var item = findMediaById(id);
+    if (item) return item;
+
+    if (root.MediaService && typeof root.MediaService.getMedia === 'function') {
+      return root.MediaService.getMedia(id);
+    }
+
+    return null;
+  }
+
   function mediaTagsToInputValue(item) {
     return Array.isArray(item && item.tags)
       ? item.tags.filter(Boolean).join(', ')
@@ -2967,13 +2983,101 @@
     };
   }
 
-  async function uploadReaderPayloadToR2(mediaId, heavy) {
+  function analyzeReaderPayloadMigration(source, payload) {
+    source = source || {};
+    payload = payload || {};
+
+    var legacyBlocks = Array.isArray(source.readerBlocks) ? source.readerBlocks : [];
+    var publicBlocks = Array.isArray(payload.readerBlocks) ? payload.readerBlocks : [];
+    var legacyHtmlBlocks = legacyBlocks.filter(function (block) {
+      return block && String(block.type || '').trim().toLowerCase() === 'html';
+    }).length;
+    var legacyImageBlocks = legacyBlocks.filter(function (block) {
+      var type = block && String(block.type || '').trim().toLowerCase();
+      return type === 'image' || type === 'img';
+    }).length;
+    var publicImageBlocks = publicBlocks.filter(function (block) {
+      return block && block.type === 'image';
+    }).length;
+    var legacyTextChars = legacyBlocks.reduce(function (sum, block) {
+      if (!block || typeof block !== 'object') return sum;
+      return sum + String(block.text || block.content || block.value || '').trim().length;
+    }, 0);
+    var publicTextChars = publicBlocks.reduce(function (sum, block) {
+      return sum + String(block && block.text || '').trim().length;
+    }, 0);
+    var removedBlocks = Math.max(0, legacyBlocks.length - publicBlocks.length);
+    var warnings = [];
+
+    if (!legacyBlocks.length) {
+      warnings.push('Reader legacy senza readerBlocks: serve rigenerare dal PDF.');
+    }
+
+    if (!publicBlocks.length) {
+      warnings.push('Il JSON pubblico finale non contiene blocchi leggibili.');
+    }
+
+    if (legacyHtmlBlocks) {
+      warnings.push(legacyHtmlBlocks + ' blocchi HTML legacy esclusi dal JSON pubblico per sicurezza.');
+    }
+
+    if (removedBlocks) {
+      warnings.push(removedBlocks + ' blocchi legacy non entreranno nel payload pubblico sanitizzato.');
+    }
+
+    if (legacyImageBlocks !== publicImageBlocks) {
+      warnings.push('Immagini legacy/pubbliche non allineate: ' + legacyImageBlocks + ' -> ' + publicImageBlocks + '.');
+    }
+
+    if (legacyTextChars && publicTextChars < Math.floor(legacyTextChars * 0.96)) {
+      warnings.push('Testo pubblico sensibilmente piu corto del legacy: ' + legacyTextChars + ' -> ' + publicTextChars + ' caratteri.');
+    }
+
+    return {
+      legacyBlockCount: legacyBlocks.length,
+      publicBlockCount: publicBlocks.length,
+      removedBlockCount: removedBlocks,
+      legacyHtmlBlockCount: legacyHtmlBlocks,
+      legacyImageCount: legacyImageBlocks,
+      publicImageCount: publicImageBlocks,
+      legacyTextChars: legacyTextChars,
+      publicTextChars: publicTextChars,
+      warnings: warnings
+    };
+  }
+
+  function buildReaderMigrationPreviewPatch(source, payload, analysis) {
+    source = source || {};
+    payload = payload || {};
+    analysis = analysis || analyzeReaderPayloadMigration(source, payload);
+
+    return {
+      readerBlocks: Array.isArray(payload.readerBlocks) ? payload.readerBlocks : [],
+      readerBlockCount: Number(payload.readerBlockCount || 0),
+      readerCharCount: Number(payload.readerCharCount || 0),
+      readerImageCount: Number(payload.readerImageCount || 0),
+      readerPreview: payload.readerPreview || source.readerPreview || '',
+      readerVersion: payload.readerVersion || source.readerVersion || 1,
+      readerQualityScore: source.readerQualityScore !== undefined ? source.readerQualityScore : 100,
+      readerWarnings: analysis.warnings,
+      readerBuildReport: {
+        blockCount: Number(payload.readerBlockCount || 0),
+        imageCount: Number(payload.readerImageCount || 0),
+        sourceCount: 0,
+        confidence: source.readerQualityScore !== undefined ? source.readerQualityScore : 100,
+        warnings: analysis.warnings,
+        migration: analysis
+      }
+    };
+  }
+
+  async function uploadReaderPayloadObjectToR2(mediaId, payload) {
     if (!root.R2WorkerService || typeof root.R2WorkerService.requestUploadUrl !== 'function') {
       throw new Error('R2WorkerService non disponibile per payload reader JSON.');
     }
 
-    var readerVersion = Math.max(1, Number(heavy && heavy.readerVersion || 1));
-    var payload = buildReaderPayloadJson(mediaId, heavy);
+    payload = payload || {};
+    var readerVersion = Math.max(1, Number(payload.readerVersion || 1));
     var json = JSON.stringify(payload);
     var blob = new Blob([json], { type: 'application/json' });
     var objectKey = buildReaderPayloadObjectKey(mediaId, readerVersion);
@@ -2995,6 +3099,10 @@
       sizeBytes: blob.size,
       payload: payload
     };
+  }
+
+  async function uploadReaderPayloadToR2(mediaId, heavy) {
+    return uploadReaderPayloadObjectToR2(mediaId, buildReaderPayloadJson(mediaId, heavy));
   }
 
   function inferReaderPayloadObjectKeyFromUrl(publicUrl) {
@@ -3216,8 +3324,231 @@
         : '');
   }
 
+  function ensureReaderMigrationPanel() {
+    var mediaList = document.getElementById('media-list');
+    if (!mediaList || !mediaList.parentNode) return null;
+
+    var panel = document.getElementById('reader-migration-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'reader-migration-panel';
+      panel.className = 'alert';
+      panel.style.cssText = 'margin:14px 0 16px; background:rgba(228,182,83,.08); border-color:rgba(228,182,83,.28);';
+      mediaList.parentNode.insertBefore(panel, mediaList);
+    }
+
+    return panel;
+  }
+
+  function readerMigrationStatusLabel(status) {
+    return {
+      candidate: 'migrabile',
+      already: 'gia R2 JSON',
+      stale: 'obsoleto',
+      book: 'libro escluso',
+      orphan: 'catalogo mancante',
+      empty: 'senza blocchi',
+      unsupported: 'non supportato'
+    }[status] || status || 'sconosciuto';
+  }
+
+  function readerMigrationStatusTone(status) {
+    if (status === 'candidate') return 'good';
+    if (status === 'already') return 'good';
+    if (status === 'stale' || status === 'book') return 'warn';
+    return 'warn';
+  }
+
+  function renderReaderMigrationPanel() {
+    var panel = ensureReaderMigrationPanel();
+    if (!panel) return;
+
+    var audit = state.readerMigrationAudit;
+    var scanButton = '<button class="small good" type="button" data-scan-reader-migrations>Trova reader legacy da migrare</button>';
+
+    if (!audit) {
+      panel.innerHTML =
+        '<div style="display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;">' +
+          '<div>' +
+            '<strong>Reader PDF legacy</strong>' +
+            '<p class="small-text" style="margin:6px 0 0;">Scansione admin profonda: confronta <code>wildu_media_reader</code> con il catalogo e trova reader Firestore non ancora pubblicati in JSON Cloudflare.</p>' +
+          '</div>' +
+          scanButton +
+        '</div>';
+      return;
+    }
+
+    if (audit.loading) {
+      panel.innerHTML =
+        '<div style="display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;">' +
+          '<div><strong>Scansione reader legacy in corso...</strong><p class="small-text" style="margin:6px 0 0;">Lettura controllata della collection admin <code>wildu_media_reader</code>.</p></div>' +
+          '<button class="small" type="button" disabled>Analisi...</button>' +
+        '</div>';
+      return;
+    }
+
+    var records = Array.isArray(audit.records) ? audit.records : [];
+    var counts = records.reduce(function (acc, record) {
+      acc[record.status] = (acc[record.status] || 0) + 1;
+      return acc;
+    }, {});
+    var candidates = records.filter(function (record) { return record.status === 'candidate'; });
+    var visible = candidates.concat(records.filter(function (record) { return record.status !== 'candidate'; })).slice(0, 40);
+
+    panel.innerHTML =
+      '<div style="display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;">' +
+        '<div>' +
+          '<strong>Reader legacy trovati: ' + root.escapeHtml(String(records.length)) + '</strong>' +
+          '<div class="chip-row" style="margin-top:9px;">' +
+            '<span class="chip good">migrabili ' + root.escapeHtml(String(counts.candidate || 0)) + '</span>' +
+            '<span class="chip good">gia JSON ' + root.escapeHtml(String(counts.already || 0)) + '</span>' +
+            '<span class="chip warn">obsoleti ' + root.escapeHtml(String(counts.stale || 0)) + '</span>' +
+            '<span class="chip warn">libri ' + root.escapeHtml(String(counts.book || 0)) + '</span>' +
+            '<span class="chip warn">orfani/senza blocchi ' + root.escapeHtml(String((counts.orphan || 0) + (counts.empty || 0))) + '</span>' +
+          '</div>' +
+          '<p class="small-text" style="margin:8px 0 0;">Ultima scansione: ' + root.escapeHtml(audit.scannedAt || '') + '. La migrazione resta singola e passa da anteprima JSON finale.</p>' +
+        '</div>' +
+        scanButton +
+      '</div>' +
+      (visible.length ? '<div style="margin-top:12px; display:grid; gap:9px;">' + visible.map(function (record) {
+        var tone = readerMigrationStatusTone(record.status);
+        var action = record.status === 'candidate'
+          ? '<button class="small good" type="button" data-migrate-pdf-reader="' + root.escapeHtml(record.mediaId) + '">Migra con anteprima</button>'
+          : (record.status === 'stale' && record.canRegenerate
+            ? '<button class="small warn" type="button" data-build-pdf-reader="' + root.escapeHtml(record.mediaId) + '">Rigenera JSON</button>'
+            : '');
+
+        return '<div style="display:flex; gap:10px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; padding:10px; border:1px solid rgba(255,255,255,.10); border-radius:13px; background:rgba(0,0,0,.12);">' +
+          '<div style="min-width:0;">' +
+            '<div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center;">' +
+              '<span class="chip ' + tone + '">' + root.escapeHtml(readerMigrationStatusLabel(record.status)) + '</span>' +
+              '<strong>' + root.escapeHtml(record.title || record.mediaId || 'PDF') + '</strong>' +
+            '</div>' +
+            '<div class="small-text" style="margin-top:5px;">' +
+              'legacy ' + root.escapeHtml(String(record.legacyBlockCount || 0)) +
+              ' blocchi -> JSON ' + root.escapeHtml(String(record.publicBlockCount || 0)) +
+              ' blocchi' +
+              (record.note ? ' - ' + root.escapeHtml(record.note) : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex; gap:7px; flex-wrap:wrap;">' + action + '</div>' +
+        '</div>';
+      }).join('') + '</div>' : '<p class="small-text" style="margin:12px 0 0;">Nessun reader migrabile nella scansione corrente.</p>');
+  }
+
+  function buildReaderMigrationAuditRecord(mediaId, media, readerDoc) {
+    readerDoc = readerDoc || {};
+    var source = Object.assign({}, media || { id: mediaId }, readerDoc);
+    source.id = mediaId;
+
+    var payload = buildReaderPayloadJson(mediaId, source);
+    var analysis = analyzeReaderPayloadMigration(source, payload);
+    var title = (media && media.title) || readerDoc.mediaTitle || readerDoc.title || mediaId;
+    var note = '';
+    var status = 'candidate';
+
+    if (!media) {
+      status = 'orphan';
+      note = 'documento reader senza media catalogo corrispondente';
+    } else if (!isPdfMediaForReader(source)) {
+      status = 'unsupported';
+      note = 'media non riconosciuto come PDF';
+    } else if (isBookMediaItem(source)) {
+      status = 'book';
+      note = 'i Libri restano su fallback PDF standard';
+    } else if (!analysis.legacyBlockCount) {
+      status = 'empty';
+      note = 'reader legacy senza blocchi';
+    } else if (readerIsR2Json(source) && !readerIsStale(source)) {
+      status = 'already';
+      note = 'payload JSON gia presente nei metadati';
+    } else if (readerIsStale(source)) {
+      status = 'stale';
+      note = 'reader precedente alla versione media corrente';
+    } else if (!analysis.publicBlockCount) {
+      status = 'empty';
+      note = 'nessun blocco pubblicabile nel JSON finale';
+    } else if (analysis.warnings.length) {
+      note = analysis.warnings[0];
+    } else {
+      note = 'pronto per anteprima JSON finale';
+    }
+
+    return {
+      mediaId: mediaId,
+      title: title,
+      status: status,
+      note: note,
+      legacyBlockCount: analysis.legacyBlockCount,
+      publicBlockCount: analysis.publicBlockCount,
+      removedBlockCount: analysis.removedBlockCount,
+      canRegenerate: !!media && canBuildPdfReaderForMedia(source),
+      media: media || null
+    };
+  }
+
+  async function scanReaderMigrationCandidates() {
+    if (!root.db) return;
+
+    state.readerMigrationAudit = {
+      loading: true,
+      records: [],
+      scannedAt: ''
+    };
+    renderReaderMigrationPanel();
+
+    var snap = await root.db
+      .collection(WILDU_MEDIA_READER_COLLECTION)
+      .limit(500)
+      .get();
+
+    var records = [];
+
+    for (var i = 0; i < snap.docs.length; i++) {
+      var doc = snap.docs[i];
+      var mediaId = String(doc.id || '').trim();
+      var readerDoc = doc.data() || {};
+      readerDoc.id = mediaId;
+
+      var media = null;
+      try {
+        media = await getMediaForReaderAction(mediaId);
+      } catch (mediaErr) {
+        console.warn('[WILDU READER] Media catalogo non letto per audit migrazione:', mediaId, mediaErr);
+      }
+
+      records.push(buildReaderMigrationAuditRecord(mediaId, media, readerDoc));
+    }
+
+    records.sort(function (a, b) {
+      var order = {
+        candidate: 0,
+        stale: 1,
+        already: 2,
+        book: 3,
+        empty: 4,
+        orphan: 5,
+        unsupported: 6
+      };
+      var ao = order[a.status] !== undefined ? order[a.status] : 9;
+      var bo = order[b.status] !== undefined ? order[b.status] : 9;
+      if (ao !== bo) return ao - bo;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+
+    state.readerMigrationAudit = {
+      loading: false,
+      records: records,
+      scannedAt: new Date().toLocaleString()
+    };
+
+    renderReaderMigrationPanel();
+    root.toast('Scansione reader legacy completata: ' + records.filter(function (r) { return r.status === 'candidate'; }).length + ' migrabili.', 'success');
+  }
+
   function renderMedia() {
     var wrap = root.$('#media-list');
+    renderReaderMigrationPanel();
     if (!state.media.length) {
       wrap.innerHTML = '<div class="empty">Nessun media trovato con questi filtri.</div>';
       return;
@@ -4730,14 +5061,14 @@ root.$('#module-description').value = item.description || item.Descrizione || it
           '<div style="padding:16px 18px; border-bottom:1px solid rgba(255,255,255,.12); display:flex; gap:12px; align-items:flex-start; justify-content:space-between;">' +
             '<div style="min-width:0;">' +
               '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">' +
-                badge('Anteprima Reader V6.2', 'good') +
+                badge(options.badgeLabel || 'Anteprima Reader V6.2', 'good') +
                 badge('Confidenza ' + (Number.isFinite(conf) ? conf + '%' : '—'), confTone) +
                 badge('Blocchi ' + root.escapeHtml((patch && patch.readerBlockCount) || (report && report.blockCount) || 0), 'neutral') +
                 badge('Immagini ' + root.escapeHtml((patch && patch.readerImageCount) || (report && report.imageCount) || 0), 'neutral') +
                 badge('Fonti ' + root.escapeHtml((report && report.sourceCount) || 0), 'neutral') +
               '</div>' +
               '<h2 style="margin:0; color:#f6d889; font-size:24px; line-height:1.15;">' + root.escapeHtml((item && item.title) || 'PDF') + '</h2>' +
-              '<div style="margin-top:6px; color:#aebcaf; font-size:13px;">Controlla titoli, fonti e immagini prima di salvare nel catalogo.</div>' +
+              '<div style="margin-top:6px; color:#aebcaf; font-size:13px;">' + root.escapeHtml(options.subtitle || 'Controlla titoli, fonti e immagini prima di salvare nel catalogo.') + '</div>' +
             '</div>' +
             '<button type="button" id="wildu-reader-preview-close" style="border:0; border-radius:999px; padding:10px 14px; background:#d6b25e; color:#1b1509; font-weight:950; cursor:pointer;">Chiudi</button>' +
           '</div>' +
@@ -4751,7 +5082,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
           '<div style="padding:13px 18px; border-top:1px solid rgba(255,255,255,.12); display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">' +
             '<button type="button" id="wildu-reader-preview-download" style="border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:10px 14px; background:rgba(255,255,255,.08); color:#f3f8f4; font-weight:900; cursor:pointer;">Scarica JSON debug</button>' +
             (canSave ? '<button type="button" id="wildu-reader-preview-cancel" style="border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:10px 14px; background:rgba(255,255,255,.08); color:#f3f8f4; font-weight:900; cursor:pointer;">Annulla</button>' : '') +
-            (canSave ? '<button type="button" id="wildu-reader-preview-save" style="border:0; border-radius:999px; padding:10px 15px; background:#6bd58a; color:#092013; font-weight:950; cursor:pointer;">Salva reader</button>' : '') +
+            (canSave ? '<button type="button" id="wildu-reader-preview-save" style="border:0; border-radius:999px; padding:10px 15px; background:#6bd58a; color:#092013; font-weight:950; cursor:pointer;">' + root.escapeHtml(options.saveLabel || 'Salva reader') + '</button>' : '') +
           '</div>' +
         '</div>';
 
@@ -4826,7 +5157,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   async function migratePdfReaderToR2Json(id) {
-    var item = findMediaById(id);
+    var item = await getMediaForReaderAction(id);
 
     if (!item) {
       throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
@@ -4884,13 +5215,28 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       throw new Error('Reader legacy senza blocchi disponibili. Serve rigenerare il reader dal PDF.');
     }
 
-    var ok = confirm(
-      'Migrare a JSON Cloudflare questo reader legacy?\n\n' +
-      (item.title || 'PDF senza titolo') +
-      '\n\nLa suite leggera il vecchio documento Firestore solo ora, carichera un JSON pubblico sanitizzato su R2 e verifichera che sia leggibile dal client. Il vecchio documento Firestore non viene cancellato.'
+    var previewPayload = buildReaderPayloadJson(String(item.id || ''), source);
+    var previewAnalysis = analyzeReaderPayloadMigration(source, previewPayload);
+
+    if (!previewAnalysis.publicBlockCount) {
+      throw new Error('Il reader legacy non produce blocchi pubblicabili nel JSON finale. Serve rigenerare il reader dal PDF.');
+    }
+
+    var approved = await showPdfReaderPreviewModal(
+      Object.assign({}, source, {
+        readerAdminPreviewHtml: null,
+        readerBlocks: previewPayload.readerBlocks,
+        readerPreview: previewPayload.readerPreview
+      }),
+      buildReaderMigrationPreviewPatch(source, previewPayload, previewAnalysis),
+      {
+        badgeLabel: 'Anteprima JSON Cloudflare',
+        subtitle: 'Questa anteprima usa i blocchi pubblici finali che verranno caricati su R2. Il vecchio documento Firestore non viene cancellato.',
+        saveLabel: 'Migra a JSON Cloudflare'
+      }
     );
 
-    if (!ok) return;
+    if (!approved) return;
 
     var payloadUpload = null;
     var verification = null;
@@ -4898,7 +5244,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var verifiedAt = new Date().toISOString();
 
     try {
-      payloadUpload = await uploadReaderPayloadToR2(String(item.id || ''), source);
+      payloadUpload = await uploadReaderPayloadObjectToR2(String(item.id || ''), previewPayload);
       verification = await verifyReaderPayloadUrl(payloadUpload.publicUrl);
 
       var patch = {
@@ -4937,6 +5283,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       root.toast('Reader migrato a JSON Cloudflare e verificato: ' + Number(verification.blockCount || 0) + ' blocchi.', 'success');
       await refreshTags();
       await refreshMedia();
+      if (state.readerMigrationAudit) {
+        await scanReaderMigrationCandidates();
+      }
     } catch (err) {
       if (payloadUpload && payloadUpload.objectKey) {
         await deleteReaderPayloadQuietly({
@@ -4948,7 +5297,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   async function buildPdfReaderForMedia(id) {
-    var item = findMediaById(id);
+    var item = await getMediaForReaderAction(id);
 
     if (!item) {
       throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
@@ -5411,6 +5760,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       var buildReaderBtn = evt.target.closest('[data-build-pdf-reader]');
       if (buildReaderBtn) return run(buildPdfReaderForMedia, buildReaderBtn.dataset.buildPdfReader);
+
+      var scanReaderMigrationsBtn = evt.target.closest('[data-scan-reader-migrations]');
+      if (scanReaderMigrationsBtn) return run(scanReaderMigrationCandidates);
 
       var migrateReaderBtn = evt.target.closest('[data-migrate-pdf-reader]');
       if (migrateReaderBtn) return run(migratePdfReaderToR2Json, migrateReaderBtn.dataset.migratePdfReader);
