@@ -1578,27 +1578,23 @@ body::before {
 
 .wildu-guest-profile-media {
     display: none;
-    grid-template-columns: 1.18fr 0.92fr 0.92fr;
-    gap: 7px;
-    height: 86px;
+    height: 158px;
     margin-top: 12px;
 }
 
 .wildu-guest-profile-media.is-ready {
-    display: grid;
+    display: block;
 }
 
 .wildu-guest-profile-media-slot {
     position: relative;
     overflow: hidden;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.12);
+    width: 100%;
+    height: 100%;
+    border-radius: 16px;
+    border: 1px solid rgba(212,175,55,0.30);
     background: rgba(0,0,0,0.28);
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
-}
-
-.wildu-guest-profile-media-slot:first-child {
-    border-color: rgba(212,175,55,0.30);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.36), inset 0 0 0 1px rgba(255,255,255,0.04);
 }
 
 .wildu-guest-profile-media-slot img {
@@ -1606,7 +1602,7 @@ body::before {
     height: 100%;
     object-fit: cover;
     display: block;
-    transform: scale(1.02);
+    transform: scale(1.025);
     filter: saturate(1.06) contrast(1.04);
 }
 
@@ -1614,18 +1610,18 @@ body::before {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(0deg, rgba(0,0,0,0.52), transparent 58%);
+    background: linear-gradient(0deg, rgba(0,0,0,0.66), rgba(0,0,0,0.10) 58%, transparent);
     pointer-events: none;
 }
 
 .wildu-guest-profile-media-caption {
     position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 7px;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
     color: #fff;
-    font-size: 10px;
-    line-height: 1.1;
+    font-size: 13px;
+    line-height: 1.15;
     font-weight: 950;
     text-shadow: 0 2px 8px rgba(0,0,0,0.9);
     overflow: hidden;
@@ -1694,6 +1690,35 @@ body::before {
     margin-top: 15px;
 }
 
+.wildu-guest-profile-google-wrap {
+    width: 100%;
+}
+
+.wildu-guest-profile-google-btn {
+    width: 100%;
+    min-height: 48px;
+    border: 0;
+    border-radius: 14px;
+    background: #fff;
+    color: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    box-shadow: 0 8px 22px rgba(255,255,255,0.12);
+}
+
+.wildu-guest-profile-google-btn svg {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+}
+
 .wildu-guest-profile-action {
     border: 0;
     border-radius: 14px;
@@ -1706,9 +1731,9 @@ body::before {
 }
 
 .wildu-guest-profile-action.primary {
-    background: linear-gradient(135deg, var(--w-gold), #ffe57a);
-    color: #151515;
-    box-shadow: 0 8px 20px rgba(212,175,55,0.22);
+    background: #fff;
+    color: #111;
+    box-shadow: 0 8px 22px rgba(255,255,255,0.12);
 }
 
 .wildu-guest-profile-action.secondary {
@@ -1740,6 +1765,89 @@ body::before {
 
     .wildu-guest-profile-actions {
         grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (min-width: 900px) {
+    #sec-profile #login-screen {
+        width: 100%;
+        max-width: 980px;
+        margin: 0 auto;
+    }
+
+    .wildu-guest-profile-carousel {
+        max-width: 640px;
+        margin: 24px auto 28px auto;
+        padding: 24px;
+        border-radius: 22px;
+    }
+
+    .wildu-guest-profile-carousel.has-media {
+        max-width: 980px;
+        display: grid;
+        grid-template-columns: minmax(292px, 0.9fr) minmax(390px, 1.1fr);
+        grid-template-areas:
+            "head media"
+            "track media"
+            "controls media"
+            "actions media"
+            "note media";
+        column-gap: 24px;
+        align-items: stretch;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-head {
+        grid-area: head;
+        align-self: end;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-track {
+        grid-area: track;
+        min-height: 154px;
+        margin-top: 16px;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-slide {
+        min-height: 154px;
+        padding: 16px;
+        border-radius: 18px;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-media {
+        grid-area: media;
+        height: auto;
+        min-height: 382px;
+        margin-top: 0;
+        align-self: stretch;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-media-slot {
+        border-radius: 18px;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-media-caption {
+        left: 16px;
+        right: 16px;
+        bottom: 14px;
+        font-size: 16px;
+        line-height: 1.12;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-controls {
+        grid-area: controls;
+        margin-top: 15px;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-actions {
+        grid-area: actions;
+        grid-template-columns: 1fr;
+        margin-top: 16px;
+    }
+
+    .wildu-guest-profile-carousel.has-media .wildu-guest-profile-note {
+        grid-area: note;
+        margin-top: 12px;
+        text-align: left;
     }
 }
 
@@ -4578,8 +4686,6 @@ body::before {
 
                 <div id="wildu-guest-profile-media" class="wildu-guest-profile-media" aria-label="Anteprime viaggi Wild-U">
                     <div class="wildu-guest-profile-media-slot"><img alt="" loading="lazy"><span class="wildu-guest-profile-media-caption"></span></div>
-                    <div class="wildu-guest-profile-media-slot"><img alt="" loading="lazy"><span class="wildu-guest-profile-media-caption"></span></div>
-                    <div class="wildu-guest-profile-media-slot"><img alt="" loading="lazy"><span class="wildu-guest-profile-media-caption"></span></div>
                 </div>
 
                 <div class="wildu-guest-profile-controls">
@@ -4598,31 +4704,24 @@ body::before {
                 </div>
 
                 <div class="wildu-guest-profile-actions">
-                    <button type="button" class="wildu-guest-profile-action primary" onclick="handleWilduGuestProfileLogin()">Accedi e sblocca tutto</button>
+                    <div id="login-method-google" class="wildu-guest-profile-google-wrap hidden">
+                        <button type="button" onclick="loginWithGoogle()" class="wildu-guest-profile-google-btn">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
+                            Accedi con Google
+                        </button>
+
+                        <button id="login-method-google-fallback" class="hidden" onclick="loginWithGoogleRedirect()" style="margin-top: 12px; font-size: 0.8rem; text-decoration: underline; background: none; color: white; border: none; width: 100%; text-align: center; cursor: pointer;">
+                            Non funziona? Prova ad accedere da qui
+                        </button>
+                    </div>
                     <button type="button" class="wildu-guest-profile-action secondary" onclick="show('free')">Guarda prima gli Open Day</button>
                 </div>
                 <div class="wildu-guest-profile-note">Molte funzioni sono gratuite: il profilo tiene insieme la tua esperienza.</div>
-            </section>
-
-            <div class="card" style="border-left-color: #4285F4; text-align: center;">
-                <h3 style="margin-top:0;">Accesso Esploratore</h3>
-                <p style="font-size:14px; color:#aaa; margin-bottom:20px;" id="login-desc">Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.</p>
-                
-                <div id="login-method-google" class="hidden">
-                    <button onclick="loginWithGoogle()" class="btn-book" style="background: #fff; color: #000; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;">
-                        <svg style="width:24px;height:24px" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
-                        ACCEDI CON GOOGLE
-                    </button>
-                    
-                    <button id="login-method-google-fallback" class="hidden" onclick="loginWithGoogleRedirect()" style="margin-top: 15px; font-size: 0.8rem; text-decoration: underline; background: none; color: white; border: none; width: 100%; text-align: center; cursor: pointer;">
-                        Non funziona? Prova ad accedere da qui
-                    </button>
-                </div>
-
                 <div id="login-method-telegram" class="hidden">
                     <p style="color:var(--w-gold); font-weight:bold;">Verifica Identità Telegram in corso... 🌲</p>
                 </div>
-            </div>
+                <p id="login-desc" class="hidden">Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.</p>
+            </section>
         </div>
 
 
@@ -8817,7 +8916,8 @@ function reconcileProfileShellWithClientSession() {
         bound: false,
         touchStartX: 0,
         interactionPausedUntil: 0,
-        mediaSignature: ''
+        mediaSignature: '',
+        mediaItems: []
     };
 
     function getWilduGuestProfileCarouselParts() {
@@ -8890,39 +8990,51 @@ function reconcileProfileShellWithClientSession() {
         return pool.slice(0, limit);
     }
 
+    function setWilduGuestProfileMedia(index) {
+        const parts = getWilduGuestProfileCarouselParts();
+        if (!parts || !parts.media) return;
+        const items = wilduGuestProfileCarouselState.mediaItems || [];
+        if (!items.length) return;
+
+        const slot = parts.media.querySelector('.wildu-guest-profile-media-slot');
+        if (!slot) return;
+
+        const item = items[((index % items.length) + items.length) % items.length];
+        const img = slot.querySelector('img');
+        const caption = slot.querySelector('.wildu-guest-profile-media-caption');
+
+        if (img) {
+            img.src = item.url;
+            img.alt = item.title || 'Viaggio Wild-U';
+        }
+        if (caption) {
+            caption.textContent = item.title || 'Viaggio Wild-U';
+        }
+
+        parts.media.classList.add('is-ready');
+        parts.media.setAttribute('aria-hidden', 'false');
+        parts.root.classList.add('has-media');
+    }
+
     function renderWilduGuestProfileOfficialImages(force) {
         const parts = getWilduGuestProfileCarouselParts();
         if (!parts || !parts.media) return;
 
-        const images = getWilduGuestProfileOfficialImages(3);
+        const images = getWilduGuestProfileOfficialImages(8);
         const signature = images.map(item => item.url).join('|');
         if (!force && signature && signature === wilduGuestProfileCarouselState.mediaSignature) return;
 
         wilduGuestProfileCarouselState.mediaSignature = signature;
+        wilduGuestProfileCarouselState.mediaItems = images;
 
         if (!images.length) {
             parts.media.classList.remove('is-ready');
             parts.media.setAttribute('aria-hidden', 'true');
+            parts.root.classList.remove('has-media');
             return;
         }
 
-        const slots = Array.from(parts.media.querySelectorAll('.wildu-guest-profile-media-slot'));
-        slots.forEach((slot, index) => {
-            const item = images[index % images.length];
-            const img = slot.querySelector('img');
-            const caption = slot.querySelector('.wildu-guest-profile-media-caption');
-
-            if (img) {
-                img.src = item.url;
-                img.alt = item.title || 'Viaggio Wild-U';
-            }
-            if (caption) {
-                caption.textContent = item.title || 'Viaggio Wild-U';
-            }
-        });
-
-        parts.media.classList.add('is-ready');
-        parts.media.setAttribute('aria-hidden', 'false');
+        setWilduGuestProfileMedia(wilduGuestProfileCarouselState.index);
     }
 
     function isWilduGuestProfileCarouselVisible() {
@@ -8935,8 +9047,7 @@ function reconcileProfileShellWithClientSession() {
             loginScreen &&
             root &&
             !profileSection.classList.contains('hidden') &&
-            !loginScreen.classList.contains('hidden') &&
-            root.offsetParent !== null
+            !loginScreen.classList.contains('hidden')
         );
     }
 
@@ -8960,6 +9071,8 @@ function reconcileProfileShellWithClientSession() {
             dot.setAttribute('aria-current', active ? 'true' : 'false');
         });
 
+        setWilduGuestProfileMedia(nextIndex);
+
         if (userInitiated) {
             wilduGuestProfileCarouselState.interactionPausedUntil = Date.now() + 9000;
             restartWilduGuestProfileCarousel();
@@ -8979,7 +9092,6 @@ function reconcileProfileShellWithClientSession() {
 
     function shouldAutoSlideWilduGuestProfileCarousel() {
         if (!isWilduGuestProfileCarouselVisible()) return false;
-        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
         return true;
     }
 
@@ -9235,7 +9347,19 @@ function reconcileProfileShellWithClientSession() {
 
     function maybeShowStartupRegistrationCTA() {
         if (isClientLogged()) return;
-        openRegistrationCTA('APP_START', { force: false });
+        if (!canShowRegistrationCTA('APP_START', { force: false })) return;
+
+        regCtaCurrentReason = 'APP_START';
+        regCtaSessionShown = true;
+
+        writeRegCtaState({
+            lastShownAt: Date.now(),
+            lastReason: 'APP_START'
+        });
+
+        if (typeof show === 'function') {
+            show('profile');
+        }
     }
 
 function requireLoggedAccess(reason, options = {}) {
