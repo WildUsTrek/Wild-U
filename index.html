@@ -6081,18 +6081,35 @@ const WilduMediaClient = (() => {
         const cleanTag = safeString(tagSlug);
         if (!cleanTag) throw new Error("tagSlug mancante");
 
-        const publicVersions = await getPublicVersions({
-            force: options.force === true
-        });
+        const force = options.force === true || shouldBypassCache();
+        const cached = readTagCache(cleanTag);
+
+        let publicVersions = null;
+        try {
+            publicVersions = await getPublicVersions({
+                force: options.force === true
+            });
+        } catch (versionsErr) {
+            if (!force && cached && Array.isArray(cached.items) && cached.items.length) {
+                console.warn("[WilduMediaClient] public_versions non raggiungibile, uso cache tag last-good:", cleanTag, versionsErr);
+                return {
+                    tagSlug: cleanTag,
+                    publicVersion: normalizeNumber(cached.publicVersion, 0),
+                    source: "tag-cache-stale-public_versions-error",
+                    items: cached.items
+                };
+            }
+
+            throw versionsErr;
+        }
 
         const versions = publicVersions && publicVersions.tags ? publicVersions.tags : publicVersions;
         const meta = publicVersions && publicVersions.meta ? publicVersions.meta : {};
         const tagMeta = meta && meta[cleanTag] && typeof meta[cleanTag] === "object" ? meta[cleanTag] : {};
         const publicVersion = normalizeNumber(versions[cleanTag], 0);
-        const cached = readTagCache(cleanTag);
 
         if (
-            !shouldBypassCache() &&
+            !force &&
             options.force !== true &&
             cached &&
             normalizeNumber(cached.publicVersion, -1) === publicVersion
@@ -6124,6 +6141,16 @@ const WilduMediaClient = (() => {
         }
 
         if (!items.length && source !== "manifest") {
+            if (!force && cached && Array.isArray(cached.items) && cached.items.length) {
+                console.warn("[WilduMediaClient] Manifest catalogo non disponibile, uso cache tag last-good:", cleanTag, manifestError);
+                return {
+                    tagSlug: cleanTag,
+                    publicVersion: normalizeNumber(cached.publicVersion, publicVersion),
+                    source: "tag-cache-stale-" + source,
+                    items: cached.items
+                };
+            }
+
             if (allowMediaFirestoreFallback()) {
                 console.warn("[WilduMediaClient] Fallback Firestore catalogo attivo solo in debug locale:", cleanTag);
                 items = await fetchTagItemsFromFirestore(cleanTag, options);
