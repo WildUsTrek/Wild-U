@@ -5646,6 +5646,8 @@ const WilduMediaClient = (() => {
     // ?mediaRefresh=1 oppure ?nocache=1 oppure ?cache=off
     const PUBLIC_VERSIONS_CACHE_KEY = CACHE_PREFIX + "public_versions";
     const PUBLIC_VERSIONS_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 giorni: meno letture Firestore, invalidazione via admin/cache epoch
+    const PUBLIC_VERSIONS_READ_TIMEOUT_MS = 9000;
+    const CATALOG_MANIFEST_FETCH_TIMEOUT_MS = 9000;
 
     let publicVersionsMemory = null;
     let publicVersionsLoadedAt = 0;
@@ -5818,7 +5820,9 @@ const WilduMediaClient = (() => {
         };
     }
 
-    function readPublicVersionsCache() {
+    function readPublicVersionsCache(options = {}) {
+        const allowExpired = options.allowExpired === true;
+
         try {
             const raw = localStorage.getItem(PUBLIC_VERSIONS_CACHE_KEY);
             if (!raw) return null;
@@ -5827,7 +5831,7 @@ const WilduMediaClient = (() => {
             if (!parsed || typeof parsed !== "object") return null;
 
             const savedAt = normalizeNumber(parsed.savedAt, 0);
-            if (!savedAt || now() - savedAt > PUBLIC_VERSIONS_TTL_MS) return null;
+            if (!savedAt || (!allowExpired && now() - savedAt > PUBLIC_VERSIONS_TTL_MS)) return null;
 
             return normalizePublicVersionsEnvelope(parsed);
         } catch (e) {
@@ -5855,6 +5859,55 @@ const WilduMediaClient = (() => {
         } catch (e) {}
     }
 
+    function buildWilduTimeoutError(message, code) {
+        const err = new Error(message || "Operazione scaduta.");
+        err.code = code || "WILDU_TIMEOUT";
+        return err;
+    }
+
+    function withWilduTimeout(promise, timeoutMs, message, code) {
+        let timer = null;
+
+        const timeoutPromise = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                reject(buildWilduTimeoutError(message, code));
+            }, timeoutMs);
+        });
+
+        return Promise.race([promise, timeoutPromise])
+            .finally(() => {
+                if (timer) clearTimeout(timer);
+            });
+    }
+
+    async function fetchWithWilduTimeout(url, options, timeoutMs, message, code) {
+        const hasAbortController = typeof AbortController !== "undefined";
+        const controller = hasAbortController ? new AbortController() : null;
+        let timer = null;
+
+        if (controller) {
+            timer = setTimeout(() => {
+                try {
+                    controller.abort();
+                } catch (e) {}
+            }, timeoutMs);
+        }
+
+        try {
+            return await fetch(url, {
+                ...(options || {}),
+                ...(controller ? { signal: controller.signal } : {})
+            });
+        } catch (err) {
+            if (err && err.name === "AbortError") {
+                throw buildWilduTimeoutError(message, code);
+            }
+            throw err;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
     async function getPublicVersions(options = {}) {
         const force = options.force === true || shouldBypassCache();
 
@@ -5873,11 +5926,32 @@ const WilduMediaClient = (() => {
             }
         }
 
+        const stalePublicVersions = !force
+            ? readPublicVersionsCache({ allowExpired: true })
+            : null;
+
         // 3) Firestore: solo se cache assente/scaduta o bypass manuale.
-        const snap = await db
-            .collection(RUNTIME_COLLECTION)
-            .doc(PUBLIC_VERSIONS_DOC)
-            .get();
+        let snap = null;
+        try {
+            snap = await withWilduTimeout(
+                db
+                    .collection(RUNTIME_COLLECTION)
+                    .doc(PUBLIC_VERSIONS_DOC)
+                    .get(),
+                PUBLIC_VERSIONS_READ_TIMEOUT_MS,
+                "Timeout lettura public_versions.",
+                "WILDU_PUBLIC_VERSIONS_TIMEOUT"
+            );
+        } catch (err) {
+            if (stalePublicVersions && stalePublicVersions.meta && Object.keys(stalePublicVersions.meta).length) {
+                console.warn("[WilduMediaClient] public_versions non raggiungibile, uso cache locale scaduta:", err);
+                publicVersionsMemory = stalePublicVersions;
+                publicVersionsLoadedAt = now();
+                return stalePublicVersions;
+            }
+
+            throw err;
+        }
 
         const data = snap.exists ? (snap.data() || {}) : {};
         const envelope = normalizePublicVersionsEnvelope(data);
@@ -5934,11 +6008,17 @@ const WilduMediaClient = (() => {
         const cleanUrl = safeString(manifestUrl);
         if (!cleanUrl) throw new Error("catalogManifestUrl mancante");
 
-        const res = await fetch(cleanUrl, {
-            method: "GET",
-            credentials: "omit",
-            cache: shouldBypassCache() || options.force === true ? "reload" : "force-cache"
-        });
+        const res = await fetchWithWilduTimeout(
+            cleanUrl,
+            {
+                method: "GET",
+                credentials: "omit",
+                cache: shouldBypassCache() || options.force === true ? "reload" : "force-cache"
+            },
+            CATALOG_MANIFEST_FETCH_TIMEOUT_MS,
+            "Timeout manifest catalogo R2.",
+            "WILDU_CATALOG_MANIFEST_TIMEOUT"
+        );
 
         if (!res.ok) {
             throw new Error("Manifest catalogo non disponibile HTTP " + res.status);
