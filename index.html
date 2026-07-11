@@ -17016,6 +17016,15 @@ if (profKeyEl) {
         return '*' + clean.slice(0, splitAt + 1) + '* ' + clean.slice(splitAt + 1).trim();
     }
 
+    function getWilduSharePlaceFirstWord(value) {
+        const clean = cleanWilduShareText(value)
+            .replace(/^(?:luogo|punto\s+ritrovo|ritrovo|start\s+point)\s*:?\s*/i, '')
+            .replace(/^[^\wÀ-ÿ]+/, '')
+            .trim();
+        const first = clean.split(/[\s,;(\[]+/).filter(Boolean)[0] || '';
+        return first;
+    }
+
     function getWilduCurrentTripShareData() {
         const current = (typeof WILDU_ACTIVE_DETAIL_CONTEXT !== 'undefined' && WILDU_ACTIVE_DETAIL_CONTEXT)
             ? WILDU_ACTIVE_DETAIL_CONTEXT
@@ -17038,7 +17047,9 @@ if (profKeyEl) {
 
         const metaLines = [];
         if (date) metaLines.push('📅 ' + date);
-        if (place) metaLines.push('📍 ' + place);
+        const sharePlace = getWilduSharePlaceFirstWord(place);
+        if (place && metaLines.length) metaLines.push('');
+        if (sharePlace) metaLines.push('📍 ' + sharePlace);
         if (region) metaLines.push('🗺️ ' + region);
 
         const lines = [
