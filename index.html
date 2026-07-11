@@ -5645,7 +5645,9 @@ const WilduMediaClient = (() => {
     // Se serve forzare subito un aggiornamento media, usare:
     // ?mediaRefresh=1 oppure ?nocache=1 oppure ?cache=off
     const PUBLIC_VERSIONS_CACHE_KEY = CACHE_PREFIX + "public_versions";
-    const PUBLIC_VERSIONS_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 giorni: meno letture Firestore, invalidazione via admin/cache epoch
+    // Documento-semaforo piccolo ma volutamente cacheato: evita letture Firestore inutili.
+    // Il tasto global_cache_epoch scavalca subito questo TTL quando serve un refresh forzato.
+    const PUBLIC_VERSIONS_TTL_MS = 3 * 24 * 60 * 60 * 1000;
     const PUBLIC_VERSIONS_READ_TIMEOUT_MS = 9000;
     const CATALOG_MANIFEST_FETCH_TIMEOUT_MS = 9000;
 
@@ -5677,6 +5679,42 @@ const WilduMediaClient = (() => {
             item.url ||
             ""
         );
+    }
+
+    function getWilduMediaUrlVersion(item) {
+        if (!item || typeof item !== "object") return "";
+
+        const values = [
+            item.mediaVersion,
+            item.media_version,
+            item.publicVersion,
+            item.public_version
+        ]
+            .map(value => normalizeNumber(value, 0))
+            .filter(value => value > 0);
+
+        return values.length ? values.join("-") : "";
+    }
+
+    function appendWilduMediaVersionParam(rawUrl, version) {
+        const cleanUrl = safeString(rawUrl);
+        const cleanVersion = safeString(version);
+        if (!cleanUrl || !cleanVersion) return cleanUrl;
+
+        try {
+            const parsed = new URL(cleanUrl, window.location.href);
+            parsed.searchParams.set("wv", cleanVersion);
+            return parsed.toString();
+        } catch (e) {
+            const join = cleanUrl.indexOf("?") >= 0 ? "&" : "?";
+            return cleanUrl + join + "wv=" + encodeURIComponent(cleanVersion);
+        }
+    }
+
+    function getWilduVersionedMediaFileUrl(item) {
+        const cleanUrl = getWilduMediaFileUrl(item);
+        const version = getWilduMediaUrlVersion(item);
+        return appendWilduMediaVersionParam(cleanUrl, version);
     }
 
     function escapeHtml(value) {
@@ -5916,7 +5954,8 @@ const WilduMediaClient = (() => {
             return publicVersionsMemory;
         }
 
-        // 2) Cache persistente: evita lettura Firestore del manifesto per 3 ore.
+        // 2) Cache persistente: TTL 3 giorni per evitare letture inutili.
+        // Il global_cache_epoch la cancella quando serve rendere subito visibile un update.
         if (!force) {
             const cachedTags = readPublicVersionsCache();
             if (cachedTags) {
@@ -8137,7 +8176,7 @@ const WilduMediaClient = (() => {
     function buildAudioCard(item) {
         const title = escapeHtml(item.title || item.Titolo || "Audio Wild-U");
         const description = escapeHtml(item.description || item.Descrizione || "");
-        const fileUrl = getWilduMediaFileUrl(item);
+        const fileUrl = getWilduVersionedMediaFileUrl(item);
         const duration = item.durationSeconds ? `${Math.round(Number(item.durationSeconds) / 60)} min` : "";
         const radioVolume = typeof getWilduRadioAudioVolume === "function"
             ? getWilduRadioAudioVolume(item)
@@ -12274,6 +12313,8 @@ function consumeWilduGlobalCacheUrlParamsOnce() {
             'refresh',
             'publicRefresh',
             'publicCacheRefresh',
+            'mediaRefresh',
+            'mediaCacheRefresh',
             'moduleRefresh',
             'gameRefresh',
             'adminRefresh'
@@ -12625,14 +12666,18 @@ function clearWilduKnownLocalCachesForGlobalNuke() {
         } catch (e) {}
     });
 
-    // Cache persistenti di Radio/Biblioteca, public_versions e runtime media.
+    // Cache persistenti di Radio/Biblioteca, reader, public_versions e runtime media/moduli/giochi.
     try {
         Object.keys(localStorage).forEach((key) => {
             if (
                 key.indexOf('wilduMediaClient:v1:') === 0 ||
+                key.indexOf('wilduReaderPayload:v1:') === 0 ||
+                key.indexOf('wilduReaderExtract:v1:') === 0 ||
                 key.indexOf('wilduRuntime') === 0 ||
+                key.indexOf('wilduGameRuntime') === 0 ||
                 key.indexOf('wildu_runtime') === 0 ||
-                key.indexOf('WILDU_RUNTIME') === 0
+                key.indexOf('WILDU_RUNTIME') === 0 ||
+                key.indexOf('wildModule') === 0
             ) {
                 localStorage.removeItem(key);
             }
@@ -12642,6 +12687,12 @@ function clearWilduKnownLocalCachesForGlobalNuke() {
     try {
         if (typeof clearWilduRuntimeVersionCache === 'function') {
             clearWilduRuntimeVersionCache();
+        }
+    } catch (e) {}
+
+    try {
+        if (typeof clearWilduGameRuntimeCache === 'function') {
+            clearWilduGameRuntimeCache();
         }
     } catch (e) {}
 }
@@ -12700,7 +12751,11 @@ async function runWilduGlobalCacheNuke(epoch, reason) {
     nextUrl.searchParams.set('nocache', '1');
     nextUrl.searchParams.set('cache', 'off');
     nextUrl.searchParams.set('publicRefresh', '1');
-    nextUrl.searchParams.set('moduleRefresh', '2');
+    nextUrl.searchParams.set('publicCacheRefresh', '1');
+    nextUrl.searchParams.set('mediaRefresh', '1');
+    nextUrl.searchParams.set('mediaCacheRefresh', '1');
+    nextUrl.searchParams.set('moduleRefresh', '1');
+    nextUrl.searchParams.set('gameRefresh', '1');
     nextUrl.searchParams.set('adminRefresh', String(Date.now()));
 
     pageDebug('GLOBAL_CACHE_RELOAD_SCHEDULED', {
@@ -19578,7 +19633,8 @@ function writeModuleCacheMeta(nextMeta) {
 // =========================================================
 // Firestore diventa autorità per le revisioni effettive.
 // module_rev legacy resta fallback se il path non è presente nel manifesto.
-// Cache manifesto: 3 ore.
+// Documento-semaforo piccolo: deve restare fresco, altrimenti i +1 versione modulo
+// non cambiano davvero il parametro ?mr=... visto dal client.
 // Bypass manuale:
 // ?moduleRefresh=1
 // ?gameRefresh=1
@@ -19588,7 +19644,9 @@ function writeModuleCacheMeta(nextMeta) {
 const WILDU_RUNTIME_VERSION_COLLECTION = "wildu_media_runtime";
 const WILDU_RUNTIME_VERSION_DOC = "module_versions";
 const WILDU_RUNTIME_VERSION_CACHE_KEY = "wilduRuntimeVersions:v1:module_versions";
+// Manifesto runtime moduli: cache 3 ore, scavalcata subito dal global_cache_epoch.
 const WILDU_RUNTIME_VERSION_TTL_MS = 3 * 60 * 60 * 1000;
+const WILDU_RUNTIME_VERSION_READ_TIMEOUT_MS = 9000;
 
 let WILDU_RUNTIME_VERSION_MEMORY = null;
 let WILDU_RUNTIME_VERSION_LOADED_AT = 0;
@@ -19699,6 +19757,27 @@ function wilduRuntimeSleep(ms) {
     });
 }
 
+function buildWilduRuntimeTimeoutError(message, code) {
+    const err = new Error(message || "Operazione scaduta.");
+    err.code = code || "WILDU_RUNTIME_TIMEOUT";
+    return err;
+}
+
+function withWilduRuntimeTimeout(promise, timeoutMs, message, code) {
+    let timer = null;
+
+    const timeoutPromise = new Promise(function (_, reject) {
+        timer = setTimeout(function () {
+            reject(buildWilduRuntimeTimeoutError(message, code));
+        }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise])
+        .finally(function () {
+            if (timer) clearTimeout(timer);
+        });
+}
+
 function hasUsableWilduRuntimeModules(runtime) {
     return !!(
         runtime &&
@@ -19730,10 +19809,15 @@ async function getWilduRuntimeVersions(options = {}) {
     }
 
     try {
-        const snap = await db
-            .collection(WILDU_RUNTIME_VERSION_COLLECTION)
-            .doc(WILDU_RUNTIME_VERSION_DOC)
-            .get();
+        const snap = await withWilduRuntimeTimeout(
+            db
+                .collection(WILDU_RUNTIME_VERSION_COLLECTION)
+                .doc(WILDU_RUNTIME_VERSION_DOC)
+                .get(),
+            WILDU_RUNTIME_VERSION_READ_TIMEOUT_MS,
+            "Timeout lettura module_versions.",
+            "WILDU_MODULE_VERSIONS_TIMEOUT"
+        );
 
         const data = snap.exists ? (snap.data() || {}) : {};
 
