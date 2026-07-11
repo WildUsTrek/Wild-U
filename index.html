@@ -10544,10 +10544,26 @@ function consumeWilduReturnTabUrlParamOnce() {
 
 function normalizeWilduSharedExperienceType(rawType) {
     const value = String(rawType || '').trim().toLowerCase();
+    if (value === 't') return 'trip';
+    if (value === 'o') return 'openday';
+    if (value === 'p') return 'payday';
     if (value === 'openday' || value === 'open-day' || value === 'open_day' || value === 'free') return 'openday';
     if (value === 'payday' || value === 'pay-day' || value === 'pay_day' || value === 'hike') return 'payday';
     if (value === 'trip' || value === 'official' || value === 'viaggio') return 'trip';
     return '';
+}
+
+function parseWilduCompactShareParam(value) {
+    const compact = String(value || '').trim();
+    const splitAt = compact.indexOf('~');
+    if (!compact || splitAt <= 0) {
+        return { type: '', id: '' };
+    }
+
+    return {
+        type: normalizeWilduSharedExperienceType(compact.slice(0, splitAt)),
+        id: compact.slice(splitAt + 1).trim()
+    };
 }
 
 function openWilduSharedExperience(type, id, source) {
@@ -10622,11 +10638,13 @@ function consumeWilduSharedExperienceUrlParamOnce(source) {
     try {
         const currentUrl = new URL(window.location.href);
         const params = currentUrl.searchParams;
-        const rawType = String(params.get('wilduShareType') || '').trim();
-        const rawId = String(params.get('wilduShareId') || '').trim();
+        const compactShare = parseWilduCompactShareParam(params.get('w'));
+        const rawType = String(params.get('wilduShareType') || compactShare.type || '').trim();
+        const rawId = String(params.get('wilduShareId') || compactShare.id || '').trim();
 
         if (!rawType && !rawId) return false;
 
+        params.delete('w');
         params.delete('wilduShareType');
         params.delete('wilduShareId');
 
@@ -16943,20 +16961,44 @@ if (profKeyEl) {
         return lines;
     }
 
-    function getWilduSharedExperienceUrl(type, id) {
+    function getWilduSharedExperienceTypeCode(type) {
         const cleanType = cleanWilduShareText(type || 'trip').toLowerCase();
+        if (cleanType === 'openday') return 'o';
+        if (cleanType === 'payday') return 'p';
+        return 't';
+    }
+
+    function getWilduSharedExperienceUrl(type, id) {
+        const cleanType = getWilduSharedExperienceTypeCode(type);
         const cleanId = cleanWilduShareText(id);
+        const compactParam = cleanType + '~' + encodeURIComponent(cleanId);
 
         try {
             const url = new URL(getWilduClientAppShareUrl());
-            url.searchParams.set('wilduShareType', cleanType);
-            url.searchParams.set('wilduShareId', cleanId);
+            url.search = '?w=' + compactParam;
             return url.toString();
         } catch (e) {
-            return getWilduClientAppShareUrl() +
-                '?wilduShareType=' + encodeURIComponent(cleanType) +
-                '&wilduShareId=' + encodeURIComponent(cleanId);
+            return getWilduClientAppShareUrl() + '?w=' + compactParam;
         }
+    }
+
+    function addWilduShareSection(lines, title, values) {
+        const cleanValues = (Array.isArray(values) ? values : [values])
+            .map(value => cleanWilduShareText(value))
+            .filter(Boolean);
+
+        if (!cleanValues.length) return;
+
+        lines.push('');
+        lines.push(title);
+        cleanValues.forEach(value => lines.push(value));
+    }
+
+    function emphasizeWilduShareLabel(line) {
+        const clean = cleanWilduShareText(line);
+        const splitAt = clean.indexOf(':');
+        if (splitAt <= 0) return '*' + clean + '*';
+        return '*' + clean.slice(0, splitAt + 1) + '* ' + clean.slice(splitAt + 1).trim();
     }
 
     function getWilduCurrentTripShareData() {
@@ -16980,16 +17022,48 @@ if (profKeyEl) {
         if (!title && !date && !place) return null;
 
         const metaLines = [];
-        if (date) metaLines.push('Data: ' + date);
-        if (place) metaLines.push('Luogo: ' + place);
-        if (region) metaLines.push('Area: ' + region);
+        if (date) metaLines.push('📅 ' + date);
+        if (place) metaLines.push('📍 ' + place);
+        if (region) metaLines.push('🗺️ ' + region);
 
-        const lines = ['Guarda questo ' + typeLabel + ' Wild-U: ' + title];
-        metaLines.forEach(line => lines.push(line));
-        priceLines.forEach(line => lines.push(line));
-        if (services.length) lines.push('Servizi inclusi: ' + services.join(', '));
-        if (description) lines.push('Anteprima: ' + description);
-        lines.push('Scopri di più: ' + url);
+        const lines = [
+            'Vorrei partire con te, ti piace questa idea?',
+            '',
+            '🌲 *' + title + '*',
+            typeLabel + ' Wild-U'
+        ];
+
+        if (metaLines.length) {
+            lines.push('');
+            metaLines.forEach(line => lines.push(line));
+        }
+
+        if (priceLines.length) {
+            addWilduShareSection(lines, '💰 *Prezzo*', priceLines.map(function(line, index) {
+                return index === priceLines.length - 1 ? '✅ ' + emphasizeWilduShareLabel(line) : '• ' + line;
+            }));
+        }
+
+        if (services.length) {
+            addWilduShareSection(lines, '🎒 *Servizi inclusi*', services.map(function(service) {
+                return '• ' + service;
+            }));
+        }
+
+        if (description) {
+            addWilduShareSection(lines, '✨ *Anteprima*', description);
+        }
+
+        const nativeLines = lines.concat([
+            '',
+            '👉 Apri la scheda viaggio dal link allegato.'
+        ]);
+
+        const copyLines = lines.concat([
+            '',
+            '👉 Scopri di più:',
+            url
+        ]);
 
         return {
             title: 'Wild-U - ' + title,
@@ -17003,8 +17077,8 @@ if (profKeyEl) {
             description: description,
             imageUrl: imageUrl,
             url: url,
-            text: lines.join('\n'),
-            copyText: lines.join('\n')
+            text: nativeLines.join('\n'),
+            copyText: copyLines.join('\n')
         };
     }
 
@@ -17024,7 +17098,7 @@ if (profKeyEl) {
             try {
                 const nativeData = {
                     title: shareData.title,
-                    text: shareData.copyText,
+                    text: shareData.text,
                     url: shareData.url
                 };
                 const files = await withWilduShareTimeout(prepareWilduTripShareImageFile(shareData), 500, []);
