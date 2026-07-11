@@ -8932,10 +8932,75 @@ function reconcileProfileShellWithClientSession() {
         };
     }
 
+    function getWilduGuestProfileImageKey(rawUrl, finalUrl) {
+        const value = String(finalUrl || rawUrl || '').trim();
+        if (!value) return '';
+
+        try {
+            const u = new URL(value, window.location.href);
+            const host = u.hostname.toLowerCase().replace(/^www\./, '');
+
+            if (host === 'res.cloudinary.com') {
+                const parts = u.pathname.split('/').filter(Boolean);
+                const cloudName = parts[0] || '';
+                const uploadIndex = parts.indexOf('upload');
+                const versionIndex = parts.findIndex((part, idx) => (
+                    idx > uploadIndex && /^v\d+$/i.test(part)
+                ));
+
+                if (uploadIndex >= 0 && versionIndex > uploadIndex && versionIndex + 1 < parts.length) {
+                    return 'cloudinary:' + cloudName + ':' + parts
+                        .slice(versionIndex + 1)
+                        .join('/')
+                        .toLowerCase();
+                }
+
+                if (uploadIndex >= 0 && uploadIndex + 1 < parts.length) {
+                    const publicParts = parts.slice(uploadIndex + 1).filter(part => {
+                        if (!part) return false;
+                        if (part.includes(',')) return false;
+                        return !/^(a|ar|b|bo|c|co|d|e|f|fl|g|h|l|o|q|r|t|u|w|x|y|z)_/i.test(part);
+                    });
+
+                    if (publicParts.length) {
+                        return 'cloudinary:' + cloudName + ':' + publicParts.join('/').toLowerCase();
+                    }
+                }
+            }
+        } catch (e) {}
+
+        try {
+            if (typeof getWilduRewardsCanonicalImageKey === 'function') {
+                return getWilduRewardsCanonicalImageKey(value);
+            }
+        } catch (e) {}
+
+        return value
+            .toLowerCase()
+            .replace(/[?&](t|time|timestamp|nocache|cache|cachebust|cb|rand|random|shellv|mr|v)=[^&]+/gi, '')
+            .trim();
+    }
+
+    function getWilduGuestProfileTitleKey(rawTitle) {
+        try {
+            if (typeof getWilduRewardsCanonicalTitleKey === 'function') {
+                return getWilduRewardsCanonicalTitleKey(rawTitle);
+            }
+        } catch (e) {}
+
+        return String(rawTitle || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
     function getWilduGuestProfileOfficialImages(max) {
         const limit = Math.max(1, parseInt(max, 10) || 3);
         const pool = [];
         const seen = new Set();
+        const seenTitles = new Set();
 
         function addFromTrip(item, source) {
             if (!item || typeof item !== 'object') return;
@@ -8960,11 +9025,17 @@ function reconcileProfileShellWithClientSession() {
                 url = new URL(url, window.location.href).toString();
             } catch (e) {}
 
-            if (!url || seen.has(url)) return;
             if (typeof wilduLooksLikeImageUrl === 'function' && !wilduLooksLikeImageUrl(url)) return;
 
-            seen.add(url);
-            pool.push({ url, title, source: source || 'official' });
+            const imageKey = getWilduGuestProfileImageKey(rawImg, url);
+            if (!url || !imageKey || seen.has(imageKey)) return;
+
+            const titleKey = getWilduGuestProfileTitleKey(title);
+            if (titleKey && seenTitles.has(titleKey)) return;
+
+            seen.add(imageKey);
+            if (titleKey) seenTitles.add(titleKey);
+            pool.push({ url, title, source: source || 'official', imageKey, titleKey });
         }
 
         try {
