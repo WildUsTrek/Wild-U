@@ -3913,7 +3913,7 @@
 
     var ok = confirm(
       'Pulizia nucleare cache client?\n\n' +
-      'I client aggiornati, al prossimo avvio, cancelleranno CacheStorage, cache pubblica, cache runtime e ricaricheranno il main index.\n\n' +
+      'I client aggiornati, al prossimo avvio, cancelleranno CacheStorage, cache pubblica, reader/libreria, runtime moduli/giochi/media e scavalcheranno i TTL 3 giorni / 3 ore prima di ricaricare il main index.\n\n' +
       'Motivo: ' + reason + '\n\n' +
       'Continuare?'
     );
@@ -3964,9 +3964,10 @@
       '<h2>☢️ Pulizia nucleare cache client</h2>' +
       '<p class="muted">' +
         'Scrive <code>global_cache_epoch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
-        'I client aggiornati useranno questo valore per cancellare cache shell, dati pubblici, runtime moduli/giochi/media e ricaricare il main index.' +
+        'I client aggiornati useranno questo valore per cancellare cache shell, dati pubblici, reader/libreria, runtime moduli/giochi/media e ricaricare il main index con parametri di refresh forzato.' +
       '</p>' +
       '<p class="small-text">' +
+        'Uso previsto: emergenza o dopo update contenuti quando vuoi scavalcare subito il TTL di 3 giorni di Radio/Biblioteca/public_versions e quello di 3 ore di module_versions. ' +
         'Nota: funziona sui client che hanno già ricevuto la patch di lettura <code>global_cache_epoch</code>. ' +
         'Per distribuirla la prima volta serve ancora un bump manuale di <code>version.json</code>.' +
       '</p>' +
