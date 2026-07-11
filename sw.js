@@ -555,67 +555,85 @@ async function handleModuleRequest(req) {
     if (cached) {
         swDebug('MODULE_CACHE_HIT', {
             request: req.url,
-            cacheName: MODULE_CACHE
+            cacheName: MODULE_CACHE,
+            mode: 'network-first-fallback-ready'
         });
-
-        fetch(req).then(async (fresh) => {
-            if (fresh && fresh.ok) {
-                await safeCachePut(
-                    MODULE_CACHE,
-                    req,
-                    fresh,
-                    MODULE_CACHE_MAX_ENTRIES,
-                    MODULE_CACHE_TRIM_TO
-                );
-
-                swDebug('MODULE_CACHE_REFRESHED', {
-                    request: req.url,
-                    cacheName: MODULE_CACHE,
-                    status: fresh.status
-                });
-            } else {
-                swDebug('MODULE_NETWORK_NON_OK', {
-                    request: req.url,
-                    cacheName: MODULE_CACHE,
-                    status: fresh ? fresh.status : 'NO_RESPONSE'
-                });
-            }
-        }).catch((e) => {
-            swDebug('MODULE_REFRESH_ERROR', {
-                request: req.url,
-                cacheName: MODULE_CACHE,
-                error: e && e.message ? e.message : 'unknown'
-            });
-        });
-
-        return cached;
     }
 
-    const fresh = await fetch(req);
+    // I moduli HTML sono piccoli e controllano logica/UI: servili freschi.
+    // La cache resta solo fallback offline, altrimenti una vecchia copia può
+    // comparire per 1-2 aperture prima della revalidate.
+    try {
+        const fresh = await fetch(req, { cache: 'no-store' });
 
-    if (fresh && fresh.ok) {
-        await safeCachePut(
-            MODULE_CACHE,
-            req,
-            fresh,
-            MODULE_CACHE_MAX_ENTRIES,
-            MODULE_CACHE_TRIM_TO
-        );
+        if (fresh && fresh.ok) {
+            await safeCachePut(
+                MODULE_CACHE,
+                req,
+                fresh,
+                MODULE_CACHE_MAX_ENTRIES,
+                MODULE_CACHE_TRIM_TO
+            );
 
-        swDebug('MODULE_NETWORK_OK', {
-            request: req.url,
-            cacheName: MODULE_CACHE,
-            status: fresh.status
-        });
-    } else {
+            swDebug('MODULE_NETWORK_OK', {
+                request: req.url,
+                cacheName: MODULE_CACHE,
+                status: fresh.status
+            });
+
+            swDebug('MODULE_CACHE_REFRESHED', {
+                request: req.url,
+                cacheName: MODULE_CACHE,
+                status: fresh.status,
+                mode: 'network-first'
+            });
+
+            return fresh;
+        }
+
+        if (cached) {
+            swDebug('MODULE_CACHE_FALLBACK_AFTER_NON_OK', {
+                request: req.url,
+                cacheName: MODULE_CACHE,
+                status: fresh ? fresh.status : 'NO_RESPONSE'
+            });
+
+            return cached;
+        }
+
         swDebug('MODULE_NETWORK_NON_OK', {
             request: req.url,
             cacheName: MODULE_CACHE,
             status: fresh ? fresh.status : 'NO_RESPONSE'
         });
-    }
 
-    return fresh;
+        return fresh;
+    } catch (e) {
+        swDebug('MODULE_REFRESH_ERROR', {
+            request: req.url,
+            cacheName: MODULE_CACHE,
+            error: e && e.message ? e.message : 'unknown',
+            mode: cached ? 'fallback-cache' : 'no-cache'
+        });
+
+        if (cached) {
+            swDebug('MODULE_CACHE_FALLBACK_AFTER_ERROR', {
+                request: req.url,
+                cacheName: MODULE_CACHE,
+                error: e && e.message ? e.message : 'unknown'
+            });
+
+            return cached;
+        }
+
+        swDebug('MODULE_TOTAL_FAILURE', {
+            request: req.url,
+            cacheName: MODULE_CACHE,
+            error: e && e.message ? e.message : 'unknown'
+        });
+
+        return Response.error();
+    }
 }
 
 async function handleAssetRequest(req) {
