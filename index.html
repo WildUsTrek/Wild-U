@@ -5946,6 +5946,109 @@ const WilduMediaClient = (() => {
         }
     }
 
+    function wilduMediaSleep(ms) {
+        return new Promise(resolve => {
+            setTimeout(resolve, Math.max(0, Number(ms || 0)));
+        });
+    }
+
+    function shouldRetryWilduMediaRenderError(err) {
+        const code = safeString(err && err.code).toUpperCase();
+        const message = safeString(err && err.message).toLowerCase();
+
+        return (
+            code.indexOf("TIMEOUT") >= 0 ||
+            code.indexOf("REST") >= 0 ||
+            code.indexOf("CATALOG") >= 0 ||
+            code.indexOf("PUBLIC_VERSIONS") >= 0 ||
+            message.indexOf("timeout") >= 0 ||
+            message.indexOf("network") >= 0 ||
+            message.indexOf("failed to fetch") >= 0 ||
+            message.indexOf("non raggiungibile") >= 0 ||
+            message.indexOf("non disponibile") >= 0
+        );
+    }
+
+    function decodeFirestoreRestValue(value) {
+        if (!value || typeof value !== "object") return undefined;
+
+        if (Object.prototype.hasOwnProperty.call(value, "stringValue")) return String(value.stringValue || "");
+        if (Object.prototype.hasOwnProperty.call(value, "integerValue")) return Number(value.integerValue || 0);
+        if (Object.prototype.hasOwnProperty.call(value, "doubleValue")) return Number(value.doubleValue || 0);
+        if (Object.prototype.hasOwnProperty.call(value, "booleanValue")) return value.booleanValue === true;
+        if (Object.prototype.hasOwnProperty.call(value, "timestampValue")) return String(value.timestampValue || "");
+        if (Object.prototype.hasOwnProperty.call(value, "nullValue")) return null;
+
+        if (value.arrayValue) {
+            return Array.isArray(value.arrayValue.values)
+                ? value.arrayValue.values.map(decodeFirestoreRestValue)
+                : [];
+        }
+
+        if (value.mapValue) {
+            const fields = value.mapValue.fields && typeof value.mapValue.fields === "object"
+                ? value.mapValue.fields
+                : {};
+            const out = {};
+            Object.keys(fields).forEach(key => {
+                out[key] = decodeFirestoreRestValue(fields[key]);
+            });
+            return out;
+        }
+
+        return undefined;
+    }
+
+    function decodeFirestoreRestDocument(doc) {
+        const fields = doc && doc.fields && typeof doc.fields === "object" ? doc.fields : {};
+        const out = {};
+        Object.keys(fields).forEach(key => {
+            out[key] = decodeFirestoreRestValue(fields[key]);
+        });
+        return out;
+    }
+
+    async function fetchPublicVersionsFromRest(options = {}) {
+        const cfg = typeof firebaseConfig !== "undefined" && firebaseConfig ? firebaseConfig : {};
+        const projectId = safeString(cfg.projectId);
+        const apiKey = safeString(cfg.apiKey);
+
+        if (!projectId || !apiKey) {
+            throw buildWilduTimeoutError("Config Firebase REST non disponibile.", "WILDU_PUBLIC_VERSIONS_REST_CONFIG");
+        }
+
+        const url =
+            "https://firestore.googleapis.com/v1/projects/" +
+            encodeURIComponent(projectId) +
+            "/databases/(default)/documents/" +
+            encodeURIComponent(RUNTIME_COLLECTION) +
+            "/" +
+            encodeURIComponent(PUBLIC_VERSIONS_DOC) +
+            "?key=" +
+            encodeURIComponent(apiKey);
+
+        const res = await fetchWithWilduTimeout(
+            url,
+            {
+                method: "GET",
+                credentials: "omit",
+                cache: options.force === true || shouldBypassCache() ? "reload" : "no-store"
+            },
+            PUBLIC_VERSIONS_READ_TIMEOUT_MS,
+            "Timeout lettura REST public_versions.",
+            "WILDU_PUBLIC_VERSIONS_REST_TIMEOUT"
+        );
+
+        if (!res.ok) {
+            throw buildWilduTimeoutError(
+                "REST public_versions non disponibile HTTP " + res.status,
+                "WILDU_PUBLIC_VERSIONS_REST_HTTP"
+            );
+        }
+
+        return normalizePublicVersionsEnvelope(decodeFirestoreRestDocument(await res.json()));
+    }
+
     async function getPublicVersions(options = {}) {
         const force = options.force === true || shouldBypassCache();
 
@@ -5969,7 +6072,34 @@ const WilduMediaClient = (() => {
             ? readPublicVersionsCache({ allowExpired: true })
             : null;
 
-        // 3) Firestore: solo se cache assente/scaduta o bypass manuale.
+        // 3) REST Firestore: evita su iOS/PWA il costo/rischio del WebChannel SDK
+        // prima di arrivare al manifest JSON leggero.
+        let restError = null;
+        try {
+            const envelope = await fetchPublicVersionsFromRest({
+                force: options.force === true
+            });
+
+            publicVersionsMemory = envelope;
+            publicVersionsLoadedAt = now();
+
+            writePublicVersionsCache(envelope);
+
+            return envelope;
+        } catch (err) {
+            restError = err;
+
+            if (stalePublicVersions && stalePublicVersions.meta && Object.keys(stalePublicVersions.meta).length) {
+                console.warn("[WilduMediaClient] REST public_versions non raggiungibile, uso cache locale scaduta:", err);
+                publicVersionsMemory = stalePublicVersions;
+                publicVersionsLoadedAt = now();
+                return stalePublicVersions;
+            }
+
+            console.warn("[WilduMediaClient] REST public_versions non raggiungibile, provo SDK Firestore:", err);
+        }
+
+        // 4) Fallback SDK Firestore: resta solo come paracadute.
         let snap = null;
         try {
             snap = await withWilduTimeout(
@@ -5989,6 +6119,7 @@ const WilduMediaClient = (() => {
                 return stalePublicVersions;
             }
 
+            if (restError) err.restError = restError;
             throw err;
         }
 
@@ -9177,7 +9308,44 @@ const WilduMediaClient = (() => {
         `;
 
         try {
-            const result = await loadTag(tagSlug, options);
+            let result = null;
+            let lastRenderError = null;
+            const maxAttempts = Math.max(1, normalizeNumber(options.retryAttempts, 3) || 3);
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    if (attempt > 1) {
+                        mountEl.innerHTML = `
+                            <div style="text-align:center; padding:28px 10px; color:var(--w-gold);">
+                                Riprovo caricamento contenuti... (${attempt}/${maxAttempts})
+                            </div>
+                        `;
+                    }
+
+                    result = await loadTag(tagSlug, options);
+                    lastRenderError = null;
+                    break;
+                } catch (err) {
+                    lastRenderError = err;
+
+                    if (attempt >= maxAttempts || !shouldRetryWilduMediaRenderError(err)) {
+                        throw err;
+                    }
+
+                    console.warn("[WilduMediaClient] render retry:", {
+                        tagSlug,
+                        attempt,
+                        maxAttempts,
+                        error: err
+                    });
+
+                    await wilduMediaSleep(attempt === 1 ? 650 : 1400);
+                }
+            }
+
+            if (!result) {
+                throw lastRenderError || new Error("Catalogo non disponibile.");
+            }
 
             if (renderer === "audio-list") {
                 renderRadio(mountEl, result);
@@ -21211,7 +21379,10 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     window.currentModuleVersionedUrl = versionedModuleUrl;
 
     try {
-        const res = await fetch(versionedModuleUrl);
+        const res = await fetch(versionedModuleUrl, { cache: 'reload' });
+        if (!res.ok) {
+            throw new Error("Modulo non disponibile HTTP " + res.status);
+        }
         const html = await res.text();
 
         m.innerHTML = `
