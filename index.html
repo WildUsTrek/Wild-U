@@ -5,6 +5,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Wild-U Hub - Master Edition 1 🌲</title>
+    <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
+    <meta property="og:site_name" content="Wild-U">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Wild-U - Avventure outdoor da vivere insieme">
+    <meta property="og:description" content="Scopri un'esperienza Wild-U e parti con chi vuoi.">
+    <meta property="og:image" content="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_1200,h_630,q_auto,f_jpg/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg">
+    <meta property="og:image:secure_url" content="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_1200,h_630,q_auto,f_jpg/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Wild-U - esperienza outdoor condivisa">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Wild-U - Avventure outdoor da vivere insieme">
+    <meta name="twitter:description" content="Scopri un'esperienza Wild-U e parti con chi vuoi.">
+    <meta name="twitter:image" content="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_1200,h_630,q_auto,f_jpg/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg">
     
     <link rel="manifest" href="manifest.json"> 
     <link rel="icon" href="favicon.ico" type="image/x-icon">
@@ -17040,7 +17055,7 @@ if (profKeyEl) {
 
         if (priceLines.length) {
             addWilduShareSection(lines, '💰 *Prezzo*', priceLines.map(function(line, index) {
-                return index === priceLines.length - 1 ? '✅ ' + emphasizeWilduShareLabel(line) : '• ' + line;
+                return index === priceLines.length - 1 ? '✅ ' + emphasizeWilduShareLabel(line) : '• ~' + line + '~';
             }));
         }
 
@@ -17082,6 +17097,27 @@ if (profKeyEl) {
         };
     }
 
+    function isWilduProblematicWebKitBlobShare() {
+        if (typeof navigator === 'undefined') return false;
+
+        const ua = String(navigator.userAgent || '');
+        const platform = String(navigator.platform || '');
+        const maxTouchPoints = Number(navigator.maxTouchPoints || 0);
+        const isiOS = /iPad|iPhone|iPod/i.test(ua + ' ' + platform) ||
+            (platform === 'MacIntel' && maxTouchPoints > 1);
+
+        // Su iOS tutti i browser usano WebKit. Blob/File condivisi insieme a link
+        // possono produrre "WebKitBlobResource error 1" nei target social.
+        return isiOS || (/AppleWebKit/i.test(ua) && !/Android/i.test(ua) && /Mobile/i.test(ua));
+    }
+
+    function shouldWilduAttemptTripImageFileShare() {
+        // Per WhatsApp/Facebook la via stabile è la link preview Open Graph.
+        // Evitiamo allegati Blob/File generati dal browser: su WebKit hanno già
+        // prodotto "WebKitBlobResource error 1" e possono rompere il link.
+        return false;
+    }
+
     async function shareWilduCurrentTrip(event) {
         if (event) {
             event.preventDefault();
@@ -17101,17 +17137,37 @@ if (profKeyEl) {
                     text: shareData.text,
                     url: shareData.url
                 };
-                const files = await withWilduShareTimeout(prepareWilduTripShareImageFile(shareData), 500, []);
-                if (files && files.length) {
-                    const withFiles = Object.assign({}, nativeData, { files: files });
-                    if (typeof navigator.canShare !== 'function' || navigator.canShare(withFiles)) {
-                        await navigator.share(withFiles);
-                    } else {
-                        await navigator.share(nativeData);
+
+                if (shouldWilduAttemptTripImageFileShare()) {
+                    const files = await withWilduShareTimeout(prepareWilduTripShareImageFile(shareData), 1400, []);
+                    if (files && files.length) {
+                        const withFiles = {
+                            title: shareData.title,
+                            text: shareData.copyText,
+                            files: files
+                        };
+                        if (typeof navigator.canShare !== 'function' || navigator.canShare(withFiles)) {
+                            try {
+                                await navigator.share(withFiles);
+                                return;
+                            } catch (fileErr) {
+                                if (fileErr && fileErr.name === 'AbortError') return;
+                                if (typeof pageDebug === 'function') {
+                                    pageDebug('WILDU_TRIP_SHARE_IMAGE_FILE_REJECTED', {
+                                        name: fileErr && fileErr.name ? fileErr.name : '',
+                                        error: fileErr && fileErr.message ? fileErr.message : String(fileErr)
+                                    });
+                                }
+                            }
+                        }
                     }
-                } else {
-                    await navigator.share(nativeData);
+                } else if (typeof pageDebug === 'function') {
+                    pageDebug('WILDU_TRIP_SHARE_IMAGE_FILE_SKIPPED_WEBKIT', {
+                        userAgent: String(navigator.userAgent || '').slice(0, 180)
+                    });
                 }
+
+                await navigator.share(nativeData);
                 return;
             } catch (err) {
                 if (err && err.name === 'AbortError') return;
@@ -17149,30 +17205,207 @@ if (profKeyEl) {
         });
     }
 
+    function getWilduVisibleTripShareImageElement() {
+        const container = document.getElementById('trip-modal-img-container');
+        const img = document.getElementById('trip-modal-img');
+        if (!img || (container && container.style.display === 'none')) return null;
+        return img;
+    }
+
+    function getWilduTripShareImageCandidateUrls(shareData) {
+        const seen = {};
+        const urls = [];
+        const img = getWilduVisibleTripShareImageElement();
+
+        [img && img.currentSrc, img && img.src, shareData && shareData.imageUrl].forEach(value => {
+            const clean = cleanWilduShareText(value);
+            if (!clean || seen[clean]) return;
+            seen[clean] = true;
+            urls.push(clean);
+        });
+
+        return urls;
+    }
+
+    function getWilduShareImageFileName(shareData, blob) {
+        const type = String(blob && blob.type || 'image/jpeg').toLowerCase();
+        const extMap = {
+            'image/jpeg': 'jpg',
+            'image/jpg': 'jpg',
+            'image/png': 'png',
+            'image/webp': 'webp'
+        };
+        const ext = extMap[type] || (type.split('/')[1] || 'jpg').replace(/[^a-z0-9]/g, '') || 'jpg';
+        const safeName = cleanWilduShareText(shareData && shareData.heading)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '') || 'esperienza-wildu';
+
+        return safeName + '.' + ext;
+    }
+
+    function createWilduShareImageFile(blob, shareData) {
+        if (!blob || !String(blob.type || '').startsWith('image/')) return null;
+        const file = new File([blob], getWilduShareImageFileName(shareData, blob), { type: blob.type || 'image/jpeg' });
+        return (typeof navigator.canShare !== 'function' || navigator.canShare({ files: [file] })) ? file : null;
+    }
+
+    function getWilduShareBlobFromDataUrl(url) {
+        try {
+            if (!String(url || '').startsWith('data:image/')) return null;
+            const parts = String(url).split(',');
+            const meta = parts[0] || '';
+            const body = parts.slice(1).join(',');
+            const mime = (meta.match(/^data:([^;]+)/) || [])[1] || 'image/jpeg';
+            const binary = atob(body);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return new Blob([bytes], { type: mime });
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function waitForWilduModalShareImageReady(img, ms) {
+        return new Promise(resolve => {
+            if (!img) {
+                resolve(false);
+                return;
+            }
+
+            if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                resolve(true);
+                return;
+            }
+
+            let done = false;
+            const finish = value => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                img.removeEventListener('load', onLoad);
+                img.removeEventListener('error', onError);
+                resolve(value);
+            };
+            const onLoad = () => finish(true);
+            const onError = () => finish(false);
+            const timer = setTimeout(() => finish(false), ms || 700);
+
+            img.addEventListener('load', onLoad, { once: true });
+            img.addEventListener('error', onError, { once: true });
+        });
+    }
+
+    async function getWilduShareBlobFromVisibleImage() {
+        const img = getWilduVisibleTripShareImageElement();
+        if (!img) return null;
+
+        await waitForWilduModalShareImageReady(img, 900);
+        if (!img.complete || !img.naturalWidth || !img.naturalHeight) return null;
+
+        const directDataBlob = getWilduShareBlobFromDataUrl(img.currentSrc || img.src);
+        if (directDataBlob) return directDataBlob;
+
+        if (String(img.currentSrc || img.src || '').startsWith('blob:') && typeof fetch === 'function') {
+            try {
+                const blobResponse = await fetch(img.currentSrc || img.src);
+                const blob = await blobResponse.blob();
+                if (blob && String(blob.type || '').startsWith('image/')) return blob;
+            } catch (e) {}
+        }
+
+        if (typeof document === 'undefined') return null;
+
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+            ctx.drawImage(img, 0, 0);
+            return await new Promise(resolve => {
+                try {
+                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.92);
+                } catch (e) {
+                    resolve(null);
+                }
+            });
+        } catch (e) {
+            if (typeof pageDebug === 'function') {
+                pageDebug('WILDU_TRIP_SHARE_IMAGE_CANVAS_BLOCKED', {
+                    src: img.currentSrc || img.src || '',
+                    error: e && e.message ? e.message : String(e)
+                });
+            }
+            return null;
+        }
+    }
+
+    async function getWilduShareBlobFromCache(url) {
+        if (!url || typeof caches === 'undefined' || !caches || typeof caches.match !== 'function') return null;
+
+        try {
+            const response = await caches.match(url, { ignoreSearch: false });
+            const fallbackResponse = response || await caches.match(url, { ignoreSearch: true });
+            if (!fallbackResponse || fallbackResponse.type === 'opaque') return null;
+            const blob = await fallbackResponse.blob();
+            return blob && String(blob.type || '').startsWith('image/') ? blob : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function getWilduShareBlobFromFetch(url) {
+        if (!url || typeof fetch !== 'function') return null;
+
+        try {
+            const response = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+            if (!response || !response.ok || response.type === 'opaque') return null;
+            const blob = await response.blob();
+            return blob && String(blob.type || '').startsWith('image/') ? blob : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     async function prepareWilduTripShareImageFile(shareData) {
         if (
             !shareData ||
-            !shareData.imageUrl ||
-            typeof fetch !== 'function' ||
             typeof File === 'undefined' ||
             typeof navigator === 'undefined' ||
-            typeof navigator.canShare !== 'function'
+            typeof navigator.share !== 'function'
         ) {
             return [];
         }
 
-        try {
-            const response = await fetch(shareData.imageUrl, { mode: 'cors' });
-            if (!response || !response.ok) return [];
-            const blob = await response.blob();
-            if (!blob || !String(blob.type || '').startsWith('image/')) return [];
-            const ext = String(blob.type || 'image/jpeg').split('/')[1] || 'jpg';
-            const safeName = cleanWilduShareText(shareData.heading).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'esperienza-wildu';
-            const file = new File([blob], safeName + '.' + ext, { type: blob.type || 'image/jpeg' });
-            return navigator.canShare({ files: [file] }) ? [file] : [];
-        } catch (e) {
-            return [];
+        const directBlob = await getWilduShareBlobFromVisibleImage();
+        const directFile = createWilduShareImageFile(directBlob, shareData);
+        if (directFile) return [directFile];
+
+        const urls = getWilduTripShareImageCandidateUrls(shareData);
+        for (let i = 0; i < urls.length; i++) {
+            const dataBlob = getWilduShareBlobFromDataUrl(urls[i]);
+            const dataFile = createWilduShareImageFile(dataBlob, shareData);
+            if (dataFile) return [dataFile];
+
+            const cacheBlob = await getWilduShareBlobFromCache(urls[i]);
+            const cacheFile = createWilduShareImageFile(cacheBlob, shareData);
+            if (cacheFile) return [cacheFile];
+
+            const fetchBlob = await getWilduShareBlobFromFetch(urls[i]);
+            const fetchFile = createWilduShareImageFile(fetchBlob, shareData);
+            if (fetchFile) return [fetchFile];
         }
+
+        if (typeof pageDebug === 'function') {
+            pageDebug('WILDU_TRIP_SHARE_IMAGE_FILE_UNAVAILABLE', {
+                hasVisibleImage: !!getWilduVisibleTripShareImageElement(),
+                imageUrl: shareData.imageUrl || '',
+                candidates: urls
+            });
+        }
+
+        return [];
     }
 
     function writeWilduClientShareText(text) {
