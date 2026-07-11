@@ -13,7 +13,7 @@
     moduleRuntime: null,
 
     // Letture legacy/partner solo per popolare campi admin compatibili.
-    // Non diventano fonte di verità dei nuovi moduli.
+    // Non diventano fonte di veritÃ  dei nuovi moduli.
     partnerClientConfig: null,
     legacyModuleResources: null,
     moduleGradeOptions: [],
@@ -102,7 +102,7 @@
 
     try {
       // Non serve che il documento esista.
-      // Serve solo che le Firestore Rules permettano la lettura all’admin universale.
+      // Serve solo che le Firestore Rules permettano la lettura allâ€™admin universale.
       await root.db
         .collection('wildu_admin_probe')
         .doc('media_suite_admin_gate')
@@ -311,7 +311,7 @@
 
     var docs = {
       dashboard: {
-        icon: '🧭',
+        icon: 'ðŸ§­',
         title: 'Dashboard',
         subtitle: 'Cabina di controllo generale della Media Suite.',
         purpose: 'Verificare lo stato base della suite, creare i tag ufficiali e sincronizzare il manifesto pubblico.',
@@ -319,14 +319,14 @@
         clientImpact: 'Aggiorna solo il manifesto ' + code('public_versions') + ' usato da Radio/Biblioteca.',
         doNot: 'Non confondere tag media con moduli client o giochi. Qui non si caricano file.',
         questions: [
-          '<strong>Prima apertura: cosa faccio?</strong> Login → Crea/aggiorna tag ufficiali → Sincronizza manifesto public_versions.',
+          '<strong>Prima apertura: cosa faccio?</strong> Login â†’ Crea/aggiorna tag ufficiali â†’ Sincronizza manifesto public_versions.',
           '<strong>Se Radio o Biblioteca non aggiornano?</strong> Controlla qui se ' + code('public_versions') + ' contiene ' + code('radio') + ' e ' + code('biblioteca') + '.',
           '<strong>Se vedo dati vecchi?</strong> Verifica la versione caricata dagli script e usa refresh/nocache solo per test.'
         ],
         steps: [
           'Accedi con Google admin.',
-          'Premi “Crea/aggiorna tag ufficiali” solo quando vuoi garantire la presenza di biblioteca, radio e immagini.',
-          'Premi “Sincronizza manifesto public_versions” per rigenerare il manifesto leggero letto dal client.',
+          'Premi â€œCrea/aggiorna tag ufficialiâ€ solo quando vuoi garantire la presenza di biblioteca, radio e immagini.',
+          'Premi â€œSincronizza manifesto public_versionsâ€ per rigenerare il manifesto leggero letto dal client.',
           'Vai in Debug se vuoi controllare JSON e dipendenze reali.'
         ],
         actions: [
@@ -349,36 +349,36 @@
           { name: 'wildu_media_catalog', role: 'Catalogo dei file caricati.', fields: 'kind, tagSlug, status, visibility, mediaVersion' }
         ],
         risks: [
-          'Non creare tag “gpx”, “giochi”, “amazon” o “wildwall” nella Media Suite.',
+          'Non creare tag â€œgpxâ€, â€œgiochiâ€, â€œamazonâ€ o â€œwildwallâ€ nella Media Suite.',
           'Non usare Dashboard per versionare moduli o giochi: esistono tab dedicate.'
         ]
       },
 
       tags: {
-        icon: '🏷️',
+        icon: 'ðŸ·ï¸',
         title: 'Tag',
         subtitle: 'Gestione dei canali logici dei media.',
         purpose: 'Definire come i media vengono raggruppati e renderizzati: Biblioteca, Radio, Immagini.',
-        fastDecision: 'Modifica i tag solo se devi cambiare regole di rendering, categorie ammesse o visibilità del canale.',
+        fastDecision: 'Modifica i tag solo se devi cambiare regole di rendering, categorie ammesse o visibilitÃ  del canale.',
         clientImpact: 'Solo tag con ' + code('clientRenderable:true') + ' e ' + code('visibility:PUBLIC') + ' entrano in public_versions.',
         doNot: 'Non usare i tag come sostituti dei moduli client o delle versioni gioco.',
         questions: [
           '<strong>Devo creare nuovi tag?</strong> Quasi mai. I tag ufficiali bastano: biblioteca, radio, immagini.',
           '<strong>Quando cambia publicVersion?</strong> Quando cambia un contenuto pubblico/renderizzabile collegato al tag.',
-          '<strong>Immagini aggiorna il client?</strong> No: immagini è admin-only e ' + code('clientRenderable:false') + '.'
+          '<strong>Immagini aggiorna il client?</strong> No: immagini Ã¨ admin-only e ' + code('clientRenderable:false') + '.'
         ],
         steps: [
           'Controlla che biblioteca accetti solo PDF.',
           'Controlla che radio accetti solo audio.',
           'Controlla che immagini sia privata e non renderizzabile dal client.',
-          'Salva solo modifiche intenzionali a renderer/categorie/visibilità.'
+          'Salva solo modifiche intenzionali a renderer/categorie/visibilitÃ .'
         ],
         actions: [
           {
             action: 'Salva tag',
             firestore: code('wildu_media_tags/{tagSlug}'),
             cache: 'Preserva version/publicVersion con increment(0) dove previsto.',
-            client: 'Cambia come il client può interpretare quel tag nei manifesti.'
+            client: 'Cambia come il client puÃ² interpretare quel tag nei manifesti.'
           },
           {
             action: 'Disattiva tag',
@@ -394,22 +394,22 @@
         ],
         risks: [
           'Se trasformi immagini in PUBLIC/renderizzabile potresti forzare refresh client non desiderati.',
-          'Se sbagli allowedCategories, l’upload può finire in tag errato o essere bloccato.'
+          'Se sbagli allowedCategories, lâ€™upload puÃ² finire in tag errato o essere bloccato.'
         ]
       },
 
       upload: {
-        icon: '☁️',
+        icon: 'â˜ï¸',
         title: 'Upload',
         subtitle: 'Caricamento file su R2 e metadati su Firestore.',
         purpose: 'Caricare PDF, MP3/audio e immagini admin-only senza far passare file grandi dal backend applicativo.',
-        fastDecision: 'Usa Upload per nuovi file. Usa Catalogo per versionare o gestire file già caricati.',
+        fastDecision: 'Usa Upload per nuovi file. Usa Catalogo per versionare o gestire file giÃ  caricati.',
         clientImpact: 'PDF/MP3 pubblici aggiornano il semaforo del tag; immagini private no.',
         doNot: 'Non caricare GPX, giochi, moduli HTML, WildWall o materiale Amazon qui.',
         questions: [
-          '<strong>Voglio caricare un MP3 Radio.</strong> Tipo audio → tag radio → status ACTIVE → visibility PUBLIC.',
-          '<strong>Voglio caricare un PDF Biblioteca.</strong> Tipo PDF → tag biblioteca → scegli Libri oppure Manuali e Guide.',
-          '<strong>Voglio caricare immagine.</strong> Tipo image → tag immagini → visibility PRIVATE.'
+          '<strong>Voglio caricare un MP3 Radio.</strong> Tipo audio â†’ tag radio â†’ status ACTIVE â†’ visibility PUBLIC.',
+          '<strong>Voglio caricare un PDF Biblioteca.</strong> Tipo PDF â†’ tag biblioteca â†’ scegli Libri oppure Manuali e Guide.',
+          '<strong>Voglio caricare immagine.</strong> Tipo image â†’ tag immagini â†’ visibility PRIVATE.'
         ],
         steps: [
           'Scegli file e tipo upload.',
@@ -423,13 +423,13 @@
             action: 'Carica PDF pubblico',
             firestore: code('wildu_media_catalog') + ' + ' + code('wildu_media_tags/biblioteca') + ' + ' + code('public_versions'),
             cache: 'Incrementa biblioteca.version e biblioteca.publicVersion.',
-            client: 'Biblioteca vedrà versione diversa e rileggerà il catalogo del tag.'
+            client: 'Biblioteca vedrÃ  versione diversa e rileggerÃ  il catalogo del tag.'
           },
           {
             action: 'Carica MP3 pubblico',
             firestore: code('wildu_media_catalog') + ' + ' + code('wildu_media_tags/radio') + ' + ' + code('public_versions'),
             cache: 'Incrementa radio.version e radio.publicVersion.',
-            client: 'Radio vedrà versione diversa e rileggerà il catalogo del tag.'
+            client: 'Radio vedrÃ  versione diversa e rileggerÃ  il catalogo del tag.'
           },
           {
             action: 'Carica immagine privata',
@@ -445,17 +445,17 @@
           { name: 'TagService', role: 'Aggiorna versioni tag dopo creazione media.', fields: 'version, publicVersion, public_versions' }
         ],
         risks: [
-          'Un file pubblico errato aggiorna il client: controlla tag/status/visibility prima dell’upload.',
+          'Un file pubblico errato aggiorna il client: controlla tag/status/visibility prima dellâ€™upload.',
           'Non usare questa suite per file sorgente giochi o moduli HTML.'
         ]
       },
 
       catalog: {
-        icon: '🗂️',
+        icon: 'ðŸ—‚ï¸',
         title: 'Catalogo',
-        subtitle: 'Gestione e versioning dei media già caricati.',
+        subtitle: 'Gestione e versioning dei media giÃ  caricati.',
         purpose: 'Ispezionare, filtrare, versionare, archiviare e controllare i media esistenti.',
-        fastDecision: 'Se cambi o vuoi ripubblicare un file audio/PDF, usa “+1 versione”.',
+        fastDecision: 'Se cambi o vuoi ripubblicare un file audio/PDF, usa â€œ+1 versioneâ€.',
         clientImpact: 'Versionare audio/PDF pubblici deve aggiornare sempre la cache client del relativo tag.',
         doNot: 'Non confondere mediaVersion con rev gioco/modulo: sono livelli diversi.',
         questions: [
@@ -466,7 +466,7 @@
         steps: [
           'Filtra per tag/kind/status/visibility.',
           'Controlla il media e la versione attuale.',
-          'Premi +1 versione quando vuoi dichiarare che il contenuto è cambiato o va riletto dal client.',
+          'Premi +1 versione quando vuoi dichiarare che il contenuto Ã¨ cambiato o va riletto dal client.',
           'Verifica Debug: tag.version/publicVersion e public_versions devono essere coerenti.'
         ],
         actions: [
@@ -496,12 +496,12 @@
         ],
         risks: [
           'Se un vecchio media non aveva mediaVersion, il primo +1 deve diventare v2 reale.',
-          'Se publicVersion non cambia, il client può continuare a usare cache vecchia.'
+          'Se publicVersion non cambia, il client puÃ² continuare a usare cache vecchia.'
         ]
       },
 
       games: {
-        icon: '🎮',
+        icon: 'ðŸŽ®',
         title: 'Giochi',
         subtitle: 'Versioning dei singoli giochi, separati dai moduli contenitori.',
         purpose: 'Governare la rev di ogni mini-app gioco senza caricare file e senza contaminare altri giochi.',
@@ -514,23 +514,23 @@
           '<strong>Qui devo caricare il codice del gioco?</strong> No, qui salvi solo URL e versione.'
         ],
         steps: [
-          'Crea preset giochi noti se il documento è vuoto.',
+          'Crea preset giochi noti se il documento Ã¨ vuoto.',
           'Controlla URL, titolo, rev, moduleUrl, cacheScope e clearNeedles.',
           'Usa +1 quando cambia codice/CSS/asset di quel gioco.',
-          'Verifica Debug: la mappa corretta è gameRuntime.games.'
+          'Verifica Debug: la mappa corretta Ã¨ gameRuntime.games.'
         ],
         actions: [
           {
             action: '+1 su Sfida dei Sassi',
             firestore: code('wildu_media_runtime/game_versions.games["giochi/sfida-dei-sassi/index.html"].rev'),
-            cache: 'Il client pulirà/aggiornerà cache correlata al cacheScope del gioco.',
+            cache: 'Il client pulirÃ /aggiornerÃ  cache correlata al cacheScope del gioco.',
             client: 'Solo quel gioco viene aggiornato. Rifugio e modulo giochi restano invariati.'
           },
           {
             action: 'Salva nuovo gioco',
             firestore: code('wildu_media_runtime/game_versions.games["giochi/..."].*'),
             cache: 'Registra rev e area cache del nuovo gioco.',
-            client: 'Il gioco sarà versionabile quando il client lo referenzia.'
+            client: 'Il gioco sarÃ  versionabile quando il client lo referenzia.'
           }
         ],
         deps: [
@@ -545,36 +545,36 @@
       },
 
       modules: {
-        icon: '🧩',
+        icon: 'ðŸ§©',
         title: 'Moduli',
         subtitle: 'Sorgente moderna dei moduli client e dei gradi richiesti.',
         purpose: 'Gestire moduli client, rev contenitore e campi client-facing, incluso Grado_Minimo.',
-        fastDecision: 'Usa questa tab per decidere chi può aprire un modulo e quando il modulo contenitore deve aggiornarsi.',
-        clientImpact: 'Nel nuovo client 2/5 la sorgente sarà module_versions, non moduli_risorse legacy.',
+        fastDecision: 'Usa questa tab per decidere chi puÃ² aprire un modulo e quando il modulo contenitore deve aggiornarsi.',
+        clientImpact: 'Nel nuovo client 2/5 la sorgente sarÃ  module_versions, non moduli_risorse legacy.',
         doNot: 'Non fare migrazione/merge. La vecchia raccolta serve solo lettura/diagnosi gradi.',
         questions: [
           '<strong>Dove scelgo il grado richiesto?</strong> Nel menu Grado richiesto, popolato da Firestore.',
-          '<strong>Da dove arrivano i gradi?</strong> Da client_config e dai valori reali già presenti nei moduli legacy.',
+          '<strong>Da dove arrivano i gradi?</strong> Da client_config e dai valori reali giÃ  presenti nei moduli legacy.',
           '<strong>Quando aumento rev modulo?</strong> Quando cambia HTML/layout/wrapper/logica del modulo contenitore.'
         ],
         steps: [
-          'Ricarica gradi da Firestore se il menu è vuoto.',
+          'Ricarica gradi da Firestore se il menu Ã¨ vuoto.',
           'Compila Titolo, URL, rev, enabled, renderer.',
           'Scegli Grado_Minimo dal menu, senza inventare valori.',
-          'Compila Categoria, Audio, Regione, Link_Risorsa e link_interni se il client dovrà usarli.',
-          'Salva il modulo: il nuovo client leggerà questa sorgente.'
+          'Compila Categoria, Audio, Regione, Link_Risorsa e link_interni se il client dovrÃ  usarli.',
+          'Salva il modulo: il nuovo client leggerÃ  questa sorgente.'
         ],
         actions: [
           {
             action: 'Salva modulo con grado',
             firestore: code('wildu_media_runtime/module_versions.modules["modules/..."].Grado_Minimo'),
             cache: 'Aggiorna solo la sorgente runtime moduli.',
-            client: 'Il nuovo client userà questo grado per decidere accesso al modulo.'
+            client: 'Il nuovo client userÃ  questo grado per decidere accesso al modulo.'
           },
           {
             action: '+1 versione modulo',
             firestore: code('wildu_media_runtime/module_versions.modules["modules/..."].rev'),
-            cache: 'Il client aggiornerà il contenitore HTML del modulo.',
+            cache: 'Il client aggiornerÃ  il contenitore HTML del modulo.',
             client: 'Non aggiorna PDF/MP3, non aggiorna giochi specifici.'
           },
           {
@@ -597,17 +597,17 @@
       },
 
       debug: {
-        icon: '🧪',
+        icon: 'ðŸ§ª',
         title: 'Debug',
         subtitle: 'Ispezione tecnica dei manifesti e dello stato admin.',
         purpose: 'Verificare che Firestore, cache e UI siano coerenti prima di passare al client.',
         fastDecision: 'Usa Debug dopo ogni seed, bump, patch o comportamento sospetto.',
-        clientImpact: 'Mostra se il client riceverà manifesti coerenti o cache/versioni contaminate.',
+        clientImpact: 'Mostra se il client riceverÃ  manifesti coerenti o cache/versioni contaminate.',
         doNot: 'Non ignorare campi fantasma o versioni incoerenti: annotali prima di andare avanti.',
         questions: [
-          '<strong>public_versions è corretto?</strong> Deve contenere solo radio/biblioteca.',
-          '<strong>game_versions è corretto?</strong> Deve contenere mappa games, non comandare moduli.',
-          '<strong>module_versions è corretto?</strong> Deve contenere mappa modules e campi client-facing.'
+          '<strong>public_versions Ã¨ corretto?</strong> Deve contenere solo radio/biblioteca.',
+          '<strong>game_versions Ã¨ corretto?</strong> Deve contenere mappa games, non comandare moduli.',
+          '<strong>module_versions Ã¨ corretto?</strong> Deve contenere mappa modules e campi client-facing.'
         ],
         steps: [
           'Controlla appVersion e script caricati.',
@@ -646,7 +646,7 @@
         risks: [
           'Script vecchi in cache possono farti credere che una patch non funzioni.',
           'Campi vecchi piatti possono comparire nel debug ma non devono diventare fonte.',
-          'Debug positivo è prerequisito per Fase 2/5.'
+          'Debug positivo Ã¨ prerequisito per Fase 2/5.'
         ]
       }
     };
@@ -726,7 +726,7 @@
 
           summaryCards(data) +
 
-          details('1. Domande rapide per casi d’uso comuni', list(data.questions), true) +
+          details('1. Domande rapide per casi dâ€™uso comuni', list(data.questions), true) +
           details('2. Procedura operativa sintetica', ordered(data.steps), true) +
           details('3. Azioni, Firestore, cache ed effetto client', actionTable(data.actions), true) +
           details('4. Mappa dipendenze e struttura reale', dependencyMap(data.deps), false) +
@@ -735,7 +735,7 @@
           '<div style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px;">' +
             '<div style="padding:13px 14px; border-radius:16px; background:rgba(107,213,138,.08); border:1px solid rgba(107,213,138,.22); font-size:13px; line-height:1.45;">' +
               '<strong style="color:#bff7cd;">Regola fonti nuove:</strong><br>' +
-              'Per i nuovi moduli il client leggerà ' + code('wildu_media_runtime/module_versions') + '. Nessuna migrazione/merge con la vecchia sorgente.' +
+              'Per i nuovi moduli il client leggerÃ  ' + code('wildu_media_runtime/module_versions') + '. Nessuna migrazione/merge con la vecchia sorgente.' +
             '</div>' +
             '<div style="padding:13px 14px; border-radius:16px; background:rgba(120,190,255,.07); border:1px solid rgba(120,190,255,.22); font-size:13px; line-height:1.45;">' +
               '<strong style="color:#9ed6ff;">Regola cache:</strong><br>' +
@@ -845,8 +845,8 @@
   function buildModuleGradeOptions(clientConfig, legacyModulesDoc) {
     var map = {};
 
-    // 1) Valori esatti già presenti nei vecchi moduli.
-    // Sono i più importanti perché il client li conosce già come Grado_Minimo.
+    // 1) Valori esatti giÃ  presenti nei vecchi moduli.
+    // Sono i piÃ¹ importanti perchÃ© il client li conosce giÃ  come Grado_Minimo.
     var items = legacyModulesDoc && Array.isArray(legacyModulesDoc.items)
       ? legacyModulesDoc.items
       : [];
@@ -872,7 +872,7 @@
 
       var raw = match[1];
 
-      // Compatibilità con il vecchio valore reale “Socio Novizio” già presente nei moduli.
+      // CompatibilitÃ  con il vecchio valore reale â€œSocio Novizioâ€ giÃ  presente nei moduli.
       if (/^novizio$/i.test(raw) && map['socio novizio']) return;
 
       addGradeOption(map, raw, 'PARAMETERS_PARTNER/client_config.' + key);
@@ -887,7 +887,7 @@
           'sentinella': 30,
           'veterano': 40,
           'leggenda': 50,
-          'divinità': 60,
+          'divinitÃ ': 60,
           'divinita': 60
         };
 
@@ -1021,7 +1021,7 @@
   }
 
   // =========================================================
-  // CLIENT APP CONFIG — Biblioteca Libri + real_news + YouTube playlist video
+  // CLIENT APP CONFIG â€” Biblioteca Libri + real_news + YouTube playlist video
   // =========================================================
   // Fonte:
   // - PARAMETERS_PARTNER/client_config.biblioteca_libri_grado_minimo
@@ -1030,7 +1030,7 @@
   //
   // Nota:
   // Non tocca catalogo media, R2, tag, giochi o moduli.
-  // È configurazione globale della client app.
+  // Ãˆ configurazione globale della client app.
   // La playlist YouTube orizzontale viene salvata come ID pulito; nessun token GitHub nel frontend.
 
   var WILDU_YOUTUBE_GAS_BRIDGE_URL = 'https://script.google.com/macros/s/AKfycbw67v1hxoezw56hO6M6vSPG8IMGQKaFiRt7I4PhvI-DENy9GpS7VXG8RG7uWPI81LTyVA/exec';
@@ -1290,7 +1290,7 @@
         : '') +
       '<div style="margin-top:8px;">' +
         root.escapeHtml(
-          [updatedAt, updatedBy].filter(Boolean).join(' — ') ||
+          [updatedAt, updatedBy].filter(Boolean).join(' â€” ') ||
           'Nessun aggiornamento registrato.'
         ) +
       '</div>';
@@ -1596,12 +1596,12 @@
 
 
   // =========================================================
-  // AUDIO APP — gestione audio di sistema client su R2 + mirror legacy
+  // AUDIO APP â€” gestione audio di sistema client su R2 + mirror legacy
   // =========================================================
   // Fonte moderna:
   // - wildu_media_runtime/system_audio
   //
-  // Mirror compatibilità client attuale:
+  // Mirror compatibilitÃ  client attuale:
   // - PARAMETERS_PARTNER/client_config.audio_*
   // - PARAMETERS_PARTNER/client_config.vol_musica
   // - PARAMETERS_PARTNER/client_config.vol_ambienza
@@ -1925,13 +1925,13 @@
     }
 
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="7" class="muted">Audio App non ancora caricata. Premi “Ricarica Audio App”.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="muted">Audio App non ancora caricata. Premi â€œRicarica Audio Appâ€.</td></tr>';
       return;
     }
 
     body.innerHTML = items.map(function (item) {
       var url = normalizeSystemAudioUrl(item.effectiveUrl);
-      var shortUrl = url || '—';
+      var shortUrl = url || 'â€”';
 
       return '' +
         '<tr>' +
@@ -2003,7 +2003,7 @@
     };
 
     root.$('#system-audio-slot-key').value = slot.key;
-    root.$('#system-audio-slot-label').value = slot.label + ' — ' + slot.key;
+    root.$('#system-audio-slot-label').value = slot.label + ' â€” ' + slot.key;
     root.$('#system-audio-current-url').value = item.effectiveUrl || '';
     root.$('#system-audio-note').value = '';
 
@@ -2258,8 +2258,8 @@
       }
 
       // Scala Wildu corretta:
-      // 0,2 resta 0.2 nel DB, cioè 0,2%.
-      // 1 resta 1 nel DB, cioè 1%.
+      // 0,2 resta 0.2 nel DB, cioÃ¨ 0,2%.
+      // 1 resta 1 nel DB, cioÃ¨ 1%.
       // La conversione in gain WebAudio /100 avviene SOLO nel client.
       return n;
     }
@@ -2384,7 +2384,7 @@
   function renderTags() {
     var tbody = root.$('#tags-table-body');
     if (!state.tags.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="muted">Nessun tag creato. Usa “Crea/aggiorna tag ufficiali”.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="muted">Nessun tag creato. Usa â€œCrea/aggiorna tag ufficialiâ€.</td></tr>';
       return;
     }
     tbody.innerHTML = state.tags.map(function (tag) {
@@ -2392,10 +2392,10 @@
       return '<tr>' +
         '<td><strong>' + root.escapeHtml(tag.title || tag.tagSlug) + '</strong><br><code>' + root.escapeHtml(tag.tagSlug) + '</code></td>' +
         '<td><code>' + root.escapeHtml(tag.renderer || 'none') + '</code></td>' +
-        '<td>' + root.escapeHtml(cats || '—') + '</td>' +
-        '<td><span class="badge ' + (tag.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(tag.status || '—') + '</span></td>' +
-        '<td>' + root.escapeHtml(tag.visibility || '—') + '</td>' +
-        '<td>' + (tag.clientRenderable === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
+        '<td>' + root.escapeHtml(cats || 'â€”') + '</td>' +
+        '<td><span class="badge ' + (tag.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(tag.status || 'â€”') + '</span></td>' +
+        '<td>' + root.escapeHtml(tag.visibility || 'â€”') + '</td>' +
+        '<td>' + (tag.clientRenderable === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÃŒ</span>') + '</td>' +
         '<td>' + Number(tag.sortOrder || 0) + '</td>' +
         '<td><strong>' + Number(tag.version || 0) + '</strong></td>' +
         '<td><strong>' + Number(tag.publicVersion || 0) + '</strong></td>' +
@@ -2447,7 +2447,7 @@
 
   async function toggleTag(tagSlug, nextStatus) {
     await root.TagService.setTagStatus(tagSlug, nextStatus);
-    root.toast('Stato tag aggiornato e manifesto sincronizzato: ' + tagSlug + ' → ' + nextStatus, 'success');
+    root.toast('Stato tag aggiornato e manifesto sincronizzato: ' + tagSlug + ' â†’ ' + nextStatus, 'success');
     await refreshTags();
   }
 
@@ -2579,7 +2579,7 @@
     var tags = getMediaSecondaryTags(item);
 
     if (!tags.length) {
-      return '<span class="chip">tag descr.: —</span>';
+      return '<span class="chip">tag descr.: â€”</span>';
     }
 
     return tags.map(function (tag) {
@@ -2619,7 +2619,7 @@
       status: root.$('#filter-status').value || '',
       visibility: root.$('#filter-visibility').value || '',
 
-      // Il filtro "tag descrittivo" è locale.
+      // Il filtro "tag descrittivo" Ã¨ locale.
       // Alziamo il limite per non perdere risultati prima del filtro.
       limit: 200
     };
@@ -2715,7 +2715,7 @@
 
     var safePatch = Object.assign({}, patch || {});
 
-    // Non toccare mai identità creazione o file fisico R2.
+    // Non toccare mai identitÃ  creazione o file fisico R2.
     delete safePatch.id;
     delete safePatch.createdAt;
     delete safePatch.createdByUid;
@@ -2866,6 +2866,7 @@
   }
 
   var WILDU_MEDIA_READER_COLLECTION = 'wildu_media_reader';
+  var WILDU_MEDIA_READER_PAYLOAD_SCHEMA_VERSION = 1;
   var WILDU_MEDIA_READER_HEAVY_FIELDS = [
     'readerBlocks',
     'readerBuildReport',
@@ -2881,10 +2882,193 @@
     return root.db.collection(WILDU_MEDIA_READER_COLLECTION).doc(String(mediaId || '').trim());
   }
 
+  function safeReaderPayloadPathPart(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 90) || 'reader';
+  }
+
+  function buildReaderPayloadObjectKey(mediaId, readerVersion) {
+    return [
+      'wildu-reader',
+      'pdf',
+      safeReaderPayloadPathPart(mediaId),
+      'v' + Math.max(1, Number(readerVersion || 1)),
+      'reader.json'
+    ].join('/');
+  }
+
+  function sanitizeReaderBlocksForPublicPayload(blocks) {
+    if (!Array.isArray(blocks)) return [];
+
+    return blocks.map(function (block) {
+      if (!block || typeof block !== 'object') return null;
+
+      var type = String(block.type || 'paragraph').trim().toLowerCase();
+      var role = String(block.role || '').trim().toLowerCase();
+
+      if (type === 'html') return null;
+
+      if (type === 'image' || type === 'img') {
+        var url = String(block.url || block.src || '').trim();
+        if (!url) return null;
+
+        return {
+          type: 'image',
+          role: role,
+          url: url,
+          alt: String(block.alt || block.title || '').trim(),
+          caption: String(block.caption || block.didascalia || '').trim(),
+          width: Number(block.width || 0) || null,
+          height: Number(block.height || 0) || null
+        };
+      }
+
+      if (type === 'divider' || type === 'hr') {
+        return { type: 'divider', role: role };
+      }
+
+      var text = String(block.text || block.content || block.value || '').trim();
+      if (!text) return null;
+
+      if (['heading', 'h1', 'h2', 'title'].indexOf(type) >= 0) type = 'heading';
+      else if (['lead', 'intro', 'summary'].indexOf(type) >= 0) type = 'lead';
+      else if (['quote', 'blockquote'].indexOf(type) >= 0) type = 'quote';
+      else if (['note', 'callout'].indexOf(type) >= 0) type = 'note';
+      else type = 'paragraph';
+
+      return { type: type, role: role, text: text };
+    }).filter(Boolean);
+  }
+
+  function buildReaderPayloadJson(mediaId, heavy) {
+    heavy = heavy || {};
+    var publicBlocks = sanitizeReaderBlocksForPublicPayload(heavy.readerBlocks);
+
+    return {
+      schemaVersion: WILDU_MEDIA_READER_PAYLOAD_SCHEMA_VERSION,
+      storageMode: 'r2-json-v1',
+      mediaId: mediaId,
+      mediaTitle: heavy.mediaTitle || '',
+      readerVersion: heavy.readerVersion || 1,
+      readerSourceMediaVersion: heavy.readerSourceMediaVersion || 1,
+      readerStatus: heavy.readerStatus || 'READY',
+      readerBlocks: publicBlocks,
+      readerBlockCount: publicBlocks.length,
+      readerCharCount: publicBlocks.reduce(function (sum, block) {
+        return sum + String(block.text || '').length;
+      }, 0),
+      readerImageCount: publicBlocks.filter(function (block) { return block && block.type === 'image'; }).length,
+      readerPreview: heavy.readerPreview || '',
+      readerGeneratedAtClient: new Date().toISOString()
+    };
+  }
+
+  async function uploadReaderPayloadToR2(mediaId, heavy) {
+    if (!root.R2WorkerService || typeof root.R2WorkerService.requestUploadUrl !== 'function') {
+      throw new Error('R2WorkerService non disponibile per payload reader JSON.');
+    }
+
+    var readerVersion = Math.max(1, Number(heavy && heavy.readerVersion || 1));
+    var payload = buildReaderPayloadJson(mediaId, heavy);
+    var json = JSON.stringify(payload);
+    var blob = new Blob([json], { type: 'application/json' });
+    var objectKey = buildReaderPayloadObjectKey(mediaId, readerVersion);
+
+    var uploadInfo = await root.R2WorkerService.requestUploadUrl({
+      kind: 'json',
+      tagSlug: 'biblioteca',
+      subcategory: 'pdf-reader-json',
+      fileName: objectKey,
+      contentType: 'application/json',
+      sizeBytes: blob.size
+    });
+
+    await root.R2WorkerService.putFileToR2(uploadInfo.uploadUrl, blob, 'application/json');
+
+    return {
+      objectKey: uploadInfo.objectKey || objectKey,
+      publicUrl: uploadInfo.publicUrl || '',
+      sizeBytes: blob.size,
+      payload: payload
+    };
+  }
+
+  function inferReaderPayloadObjectKeyFromUrl(publicUrl) {
+    publicUrl = String(publicUrl || '').trim();
+    if (!publicUrl) return '';
+
+    try {
+      var url = new URL(publicUrl, window.location.href);
+      var key = decodeURIComponent(String(url.pathname || '').replace(/^\/+/, ''));
+      return /^wildu-reader\/pdf\//i.test(key) ? key : '';
+    } catch (err) {
+      return '';
+    }
+  }
+
+  async function verifyReaderPayloadUrl(publicUrl) {
+    publicUrl = String(publicUrl || '').trim();
+    if (!publicUrl) throw new Error('URL pubblico payload reader mancante.');
+
+    var res = await fetch(publicUrl, {
+      method: 'GET',
+      credentials: 'omit',
+      cache: 'reload'
+    });
+
+    if (!res.ok) {
+      throw new Error('Payload reader JSON non leggibile via URL pubblico HTTP ' + res.status + '.');
+    }
+
+    var payload = await res.json();
+    var blocks = Array.isArray(payload && payload.readerBlocks)
+      ? payload.readerBlocks
+      : (Array.isArray(payload && payload.blocks) ? payload.blocks : []);
+
+    if (!blocks.length) {
+      throw new Error('Payload reader JSON leggibile ma senza readerBlocks.');
+    }
+
+    return {
+      payload: payload,
+      blockCount: blocks.length,
+      schemaVersion: Number(payload.schemaVersion || 0)
+    };
+  }
+
+  async function deleteReaderPayloadQuietly(item, reason) {
+    item = item || {};
+    var objectKey = String(item.readerPayloadObjectKey || item.reader_payload_object_key || '').trim();
+    if (!objectKey) {
+      objectKey = inferReaderPayloadObjectKeyFromUrl(
+        item.readerPayloadUrl ||
+        item.readerJsonUrl ||
+        item.readerPayloadLocation ||
+        item.reader_payload_url ||
+        ''
+      );
+    }
+
+    if (!objectKey || !/^wildu-reader\/pdf\//i.test(objectKey)) return;
+    if (!root.R2WorkerService || typeof root.R2WorkerService.deleteObject !== 'function') return;
+
+    try {
+      await root.R2WorkerService.deleteObject(objectKey);
+      console.log('[WILDU READER] Payload JSON cancellato:', { objectKey: objectKey, reason: reason || '' });
+    } catch (err) {
+      console.warn('[WILDU READER] Payload JSON non cancellato:', err);
+    }
+  }
+
   function hasReaderBuild(item) {
     return !!(
       item &&
       (
+        item.readerPayloadUrl ||
         item.readerDocPath ||
         item.readerStatus === 'READY' ||
         item.readerPreview ||
@@ -2893,37 +3077,123 @@
     );
   }
 
+  function getReaderPayloadUrlFromItem(item) {
+    item = item || {};
+
+    var direct = String(item.readerPayloadUrl || item.reader_json_url || item.readerJsonUrl || '').trim();
+    if (direct) return direct;
+
+    var location = String(item.readerPayloadLocation || item.reader_payload_location || '').trim();
+    if (/^https?:\/\//i.test(location)) return location;
+    if (/^r2:https?:\/\//i.test(location)) return location.replace(/^r2:/i, '');
+
+    return '';
+  }
+
+  function readerIsR2Json(item) {
+    item = item || {};
+
+    return !!(
+      getReaderPayloadUrlFromItem(item) &&
+      String(item.readerStorageMode || '').toLowerCase() === 'r2-json-v1'
+    );
+  }
+
+  function readerIsLegacyFirestore(item) {
+    item = item || {};
+
+    var location = String(item.readerPayloadLocation || '').trim();
+    var storageMode = String(item.readerStorageMode || '').trim().toLowerCase();
+    var hasDoc = !!String(item.readerDocPath || '').trim();
+
+    return !!(
+      hasReaderBuild(item) &&
+      !readerIsR2Json(item) &&
+      (
+        /^firestore:/i.test(location) ||
+        storageMode === 'split-v1' ||
+        hasDoc
+      )
+    );
+  }
+
+  function readerIsStale(item) {
+    item = item || {};
+
+    var sourceVersion = Number(item.readerSourceMediaVersion || 0);
+    var mediaVersion = Number(item.mediaVersion || 0);
+
+    return !!(
+      hasReaderBuild(item) &&
+      sourceVersion > 0 &&
+      mediaVersion > 0 &&
+      sourceVersion < mediaVersion
+    );
+  }
+
+  function readerDeliveryStatus(item) {
+    if (!isPdfMediaForReader(item)) {
+      return { kind: 'none', tone: '', label: '' };
+    }
+
+    if (isBookMediaItem(item)) {
+      return hasReaderBuild(item)
+        ? { kind: 'book-reader', tone: 'warn', label: 'libro: reader ottimizzato da pulire' }
+        : { kind: 'book-fallback', tone: '', label: 'libro: lettura PDF fallback' };
+    }
+
+    if (!hasReaderBuild(item)) {
+      return { kind: 'missing', tone: 'warn', label: 'reader: da generare' };
+    }
+
+    if (readerIsStale(item)) {
+      return { kind: 'stale', tone: 'warn', label: 'reader obsoleto: rigenera JSON' };
+    }
+
+    var count = Number(item.readerBlockCount || 0);
+    var version = Number(item.readerVersion || 1);
+    var imgCount = Number(item.readerImageCount || 0);
+    var quality = item.readerQualityScore !== undefined && item.readerQualityScore !== null
+      ? Number(item.readerQualityScore || 0)
+      : null;
+    var qualityLabel = quality !== null ? ' - Q' + quality + '%' : '';
+    var base = 'reader v' + version + (count ? ' - ' + count + ' blocchi' : '') + (imgCount ? ' - ' + imgCount + ' immagini' : '') + qualityLabel;
+
+    if (readerIsR2Json(item)) {
+      return {
+        kind: 'r2-json',
+        tone: quality !== null && quality < 60 ? 'warn' : 'good',
+        label: 'R2 JSON - ' + base
+      };
+    }
+
+    if (readerIsLegacyFirestore(item)) {
+      return {
+        kind: 'legacy-firestore',
+        tone: 'warn',
+        label: 'legacy Firestore: migra a Cloudflare'
+      };
+    }
+
+    return {
+      kind: 'unverified',
+      tone: 'warn',
+      label: 'reader JSON non verificato'
+    };
+  }
+
   function readerBuildChipHtml(item) {
     if (!isPdfMediaForReader(item)) return '';
 
-    if (isBookMediaItem(item)) {
-      if (hasReaderBuild(item)) {
-        return '<span class="chip warn">libro: reader ottimizzato da pulire</span>';
-      }
-
-      return '<span class="chip">libro: lettura PDF fallback</span>';
-    }
-
-    if (hasReaderBuild(item)) {
-      var count = Number(item.readerBlockCount || 0);
-      var version = Number(item.readerVersion || 1);
-      var imgCount = Number(item.readerImageCount || 0);
-      var quality = item.readerQualityScore !== undefined && item.readerQualityScore !== null
-        ? Number(item.readerQualityScore || 0)
-        : null;
-      var qualityLabel = quality !== null ? ' · Q' + quality + '%' : '';
-      var qualityClass = quality !== null && quality < 60 ? ' warn' : ' good';
-      var label = 'reader v' + version + (count ? ' · ' + count + ' blocchi' : '') + (imgCount ? ' · ' + imgCount + ' immagini' : '') + qualityLabel;
-      return '<span class="chip' + qualityClass + '">' + root.escapeHtml(label) + '</span>';
-    }
-
-    return '<span class="chip warn">reader: da generare</span>';
+    var status = readerDeliveryStatus(item);
+    return '<span class="chip' + (status.tone ? ' ' + status.tone : '') + '">' + root.escapeHtml(status.label) + '</span>';
   }
 
   function readerBuildActionsHtml(item) {
     if (!isPdfMediaForReader(item)) return '';
 
     var id = root.escapeHtml(item.id || '');
+    var status = readerDeliveryStatus(item);
 
     if (isBookMediaItem(item)) {
       return hasReaderBuild(item)
@@ -2931,8 +3201,15 @@
         : '';
     }
 
+    var buildLabel = status.kind === 'stale'
+      ? 'Rigenera reader JSON'
+      : (status.kind === 'missing' ? 'Genera reader JSON' : 'Genera reader + anteprima');
+
     return '' +
-      '<button class="small" data-build-pdf-reader="' + id + '">Genera reader + anteprima</button>' +
+      (status.kind === 'legacy-firestore' || status.kind === 'unverified'
+        ? '<button class="small good" data-migrate-pdf-reader="' + id + '">' + (status.kind === 'unverified' ? 'Verifica JSON Cloudflare' : 'Migra a JSON Cloudflare') + '</button>'
+        : '') +
+      '<button class="small" data-build-pdf-reader="' + id + '">' + buildLabel + '</button>' +
       (hasReaderBuild(item)
         ? '<button class="small" data-preview-pdf-reader="' + id + '">Anteprima reader</button>' +
           '<button class="small warn" data-clear-pdf-reader="' + id + '">Pulisci reader</button>'
@@ -2952,12 +3229,12 @@
           '<h3>' + root.escapeHtml(item.title || 'Senza titolo') + '</h3>' +
           '<p class="muted">' + root.escapeHtml(item.description || '') + '</p>' +
           '<div class="chip-row">' +
-            '<span class="chip">' + root.escapeHtml(kindLabel(item.kind || '—')) + '</span>' +
+            '<span class="chip">' + root.escapeHtml(kindLabel(item.kind || 'â€”')) + '</span>' +
             (sub ? '<span class="chip">' + root.escapeHtml(sub) + '</span>' : '') +
-            '<span class="chip">tag principale: ' + root.escapeHtml(item.tagSlug || '—') + '</span>' +
+            '<span class="chip">tag principale: ' + root.escapeHtml(item.tagSlug || 'â€”') + '</span>' +
             renderMediaSecondaryTagsHtml(item) +
-            '<span class="chip ' + (item.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(item.status || '—') + '</span>' +
-            '<span class="chip">' + root.escapeHtml(item.visibility || '—') + '</span>' +
+            '<span class="chip ' + (item.status === 'ACTIVE' ? 'good' : 'warn') + '">' + root.escapeHtml(item.status || 'â€”') + '</span>' +
+            '<span class="chip">' + root.escapeHtml(item.visibility || 'â€”') + '</span>' +
             '<span class="chip">' + root.formatBytes(item.sizeBytes) + '</span>' +
             '<span class="chip">v' + Number(item.mediaVersion || 1) + '</span>' +
             readerBuildChipHtml(item) +
@@ -3191,7 +3468,7 @@
         : '';
 
       updated.textContent = who || when
-        ? 'Ultimo aggiornamento: ' + [when, who].filter(Boolean).join(' — ')
+        ? 'Ultimo aggiornamento: ' + [when, who].filter(Boolean).join(' â€” ')
         : 'Nessun aggiornamento registrato.';
     }
   }
@@ -3221,7 +3498,7 @@
         console_switch_updatedByEmail: user.email || null,
 
         // Switch separato: decide SOLO se mostrare il pannello audio debug nel client.
-        // Il client lo userà insieme a console_switch:
+        // Il client lo userÃ  insieme a console_switch:
         // console_switch=true + audio_debug_panel_switch=true => pannello visibile.
         audio_debug_panel_switch: audioValue,
         audio_debug_panel_updatedAt: now,
@@ -3284,7 +3561,7 @@
       var when = root.toDateTimeLabel ? root.toDateTimeLabel(cfg.global_cache_updatedAt) : '';
       var reason = cfg.global_cache_reason || '';
 
-      updated.textContent = [when, who, reason].filter(Boolean).join(' — ') || 'Nessuna pulizia globale registrata.';
+      updated.textContent = [when, who, reason].filter(Boolean).join(' â€” ') || 'Nessuna pulizia globale registrata.';
     }
 
     if (reasonInput && !String(reasonInput.value || '').trim()) {
@@ -3353,13 +3630,13 @@
     card.className = 'card';
     card.id = 'wildu-global-cache-nuke-card';
     card.innerHTML = '' +
-      '<h2>☢️ Pulizia nucleare cache client</h2>' +
+      '<h2>â˜¢ï¸ Pulizia nucleare cache client</h2>' +
       '<p class="muted">' +
         'Scrive <code>global_cache_epoch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
         'I client aggiornati useranno questo valore per cancellare cache shell, dati pubblici, runtime moduli/giochi/media e ricaricare il main index.' +
       '</p>' +
       '<p class="small-text">' +
-        'Nota: funziona sui client che hanno già ricevuto la patch di lettura <code>global_cache_epoch</code>. ' +
+        'Nota: funziona sui client che hanno giÃ  ricevuto la patch di lettura <code>global_cache_epoch</code>. ' +
         'Per distribuirla la prima volta serve ancora un bump manuale di <code>version.json</code>.' +
       '</p>' +
       '<div class="form-grid">' +
@@ -3369,14 +3646,14 @@
         '</div>' +
         '<div class="field half">' +
           '<label>Epoch attuale</label>' +
-          '<div id="global-cache-epoch-current" style="padding-top:10px;">—</div>' +
+          '<div id="global-cache-epoch-current" style="padding-top:10px;">â€”</div>' +
         '</div>' +
         '<div class="field half">' +
           '<label>Audit</label>' +
-          '<div id="global-cache-epoch-updated" class="small-text" style="padding-top:10px;">—</div>' +
+          '<div id="global-cache-epoch-updated" class="small-text" style="padding-top:10px;">â€”</div>' +
         '</div>' +
         '<div class="form-actions full">' +
-          '<button data-requires-auth type="button" id="btn-force-global-cache-refresh" class="danger">☢️ Forza refresh globale client</button>' +
+          '<button data-requires-auth type="button" id="btn-force-global-cache-refresh" class="danger">â˜¢ï¸ Forza refresh globale client</button>' +
         '</div>' +
       '</div>';
 
@@ -3401,7 +3678,7 @@
     card.className = 'card';
     card.id = 'wildu-client-console-switch-card';
     card.innerHTML = '' +
-      '<h2>🎛️ Console switch client / Service Worker</h2>' +
+      '<h2>ðŸŽ›ï¸ Console switch client / Service Worker</h2>' +
       '<p class="muted">' +
         'Scrive <code>console_switch</code> e <code>audio_debug_panel_switch</code> in <code>PARAMETERS_PARTNER/client_config</code>. ' +
         'Il primo controlla log/debug generali; il secondo decide solo se mostrare il pannello audio debug nel client.' +
@@ -3415,29 +3692,29 @@
         '<div class="field third">' +
           '<label for="client-console-switch">Console switch</label>' +
           '<select id="client-console-switch">' +
-            '<option value="false">false — SW/log silenziosi</option>' +
-            '<option value="true">true — SW/log loquaci</option>' +
+            '<option value="false">false â€” SW/log silenziosi</option>' +
+            '<option value="true">true â€” SW/log loquaci</option>' +
           '</select>' +
         '</div>' +
         '<div class="field third">' +
           '<label>Stato console</label>' +
-          '<div id="client-console-switch-current" style="padding-top:10px;">—</div>' +
+          '<div id="client-console-switch-current" style="padding-top:10px;">â€”</div>' +
         '</div>' +
         '<div class="field third">' +
           '<label>Audit</label>' +
-          '<div id="client-console-switch-updated" class="small-text" style="padding-top:10px;">—</div>' +
+          '<div id="client-console-switch-updated" class="small-text" style="padding-top:10px;">â€”</div>' +
         '</div>' +
 
         '<div class="field third">' +
           '<label for="client-audio-debug-panel-switch">Pannello audio debug</label>' +
           '<select id="client-audio-debug-panel-switch">' +
-            '<option value="false">false — pannello nascosto</option>' +
-            '<option value="true">true — pannello visibile</option>' +
+            '<option value="false">false â€” pannello nascosto</option>' +
+            '<option value="true">true â€” pannello visibile</option>' +
           '</select>' +
         '</div>' +
         '<div class="field third">' +
           '<label>Stato pannello audio</label>' +
-          '<div id="client-audio-debug-panel-current" style="padding-top:10px;">—</div>' +
+          '<div id="client-audio-debug-panel-current" style="padding-top:10px;">â€”</div>' +
         '</div>' +
         '<div class="field third">' +
           '<label>Regola</label>' +
@@ -3470,7 +3747,7 @@
     var card = document.createElement('article');
     card.className = 'card';
     card.innerHTML = '' +
-      '<h2>🧼 Pulizia dump tecnici</h2>' +
+      '<h2>ðŸ§¼ Pulizia dump tecnici</h2>' +
       '<p class="muted">' +
         'Rimuove dai manifesti runtime le vecchie scritte tecniche ' +
         '<code>ADMIN_TABLE_BUMP</code>, <code>ADMIN_BUMP</code> e <code>VERSION_BUMP</code> ' +
@@ -3501,17 +3778,17 @@
 
     var items = state.gameRuntime && Array.isArray(state.gameRuntime.items) ? state.gameRuntime.items : [];
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">Nessun gioco registrato. Usa “Preset giochi noti” oppure salva un URL gioco.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">Nessun gioco registrato. Usa â€œPreset giochi notiâ€ oppure salva un URL gioco.</td></tr>';
       return;
     }
 
 tbody.innerHTML = items.map(function (item) {
   return '<tr>' +
     '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(cleanAdminDumpText(item.description || item.notes || '')) + '</span></td>' +
-    '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || '—') + '</span></td>' +
+    '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || 'â€”') + '</span></td>' +
     '<td><span class="badge">' + root.escapeHtml(item.openMode || 'secure_iframe') + '</span></td>' +
     '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
-    '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
+    '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÃŒ</span>') + '</td>' +
     '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
     '<td class="actions">' +
       '<button class="small" data-edit-game="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
@@ -3528,7 +3805,7 @@ tbody.innerHTML = items.map(function (item) {
     var items = state.moduleRuntime && Array.isArray(state.moduleRuntime.items) ? state.moduleRuntime.items : [];
     
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="muted">Nessun modulo registrato. Usa “Preset moduli noti” oppure salva un URL modulo.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="muted">Nessun modulo registrato. Usa â€œPreset moduli notiâ€ oppure salva un URL modulo.</td></tr>';
       return;
     }
 
@@ -3545,9 +3822,9 @@ tbody.innerHTML = items.map(function (item) {
       return '<tr>' +
         '<td><strong>' + root.escapeHtml(item.title || item.Titolo || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(cleanAdminDumpText(item.description || item.Descrizione || item.notes || '')) + '</span></td>' +
         '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Renderer: ' + root.escapeHtml(item.renderer || 'module-html') + '</span>' + warningHtml + '</td>' +
-        '<td>' + (item.Grado_Minimo ? '<span class="badge">' + root.escapeHtml(item.Grado_Minimo) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+        '<td>' + (item.Grado_Minimo ? '<span class="badge">' + root.escapeHtml(item.Grado_Minimo) + '</span>' : '<span class="muted">â€”</span>') + '</td>' +
         '<td><strong>' + Number(item.rev || item.module_rev || 1) + '</strong></td>' +
-        '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
+        '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÃŒ</span>') + '</td>' +
         '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
         '<td class="actions">' +
           '<button class="small" data-edit-module-version="' + root.escapeHtml(item.url || '') + '">Modifica</button>' +
@@ -3572,7 +3849,7 @@ tbody.innerHTML = items.map(function (item) {
   }
 
   // =========================================================
-  // WILDU RUNTIME ADMIN GUARD — solo app.js
+  // WILDU RUNTIME ADMIN GUARD â€” solo app.js
   // =========================================================
   // Obiettivo: impedire cloni tecnici tipo:
   // - wildu-map-suite/wildu-map-viewer/
@@ -3604,7 +3881,7 @@ tbody.innerHTML = items.map(function (item) {
       .replace(/^\.\/+/, '')
       .replace(/^Wild-U\//i, '');
 
-    // La Media Suite è admin shell, non identità runtime client.
+    // La Media Suite Ã¨ admin shell, non identitÃ  runtime client.
     // La togliamo solo davanti a percorsi runtime reali.
     path = path.replace(/^wildu-media-suite\/(?=modules\/|giochi\/|wildu-map-suite\/)/i, '');
 
@@ -3652,8 +3929,8 @@ tbody.innerHTML = items.map(function (item) {
   function chooseRuntimeWinnerForAdmin(entries, canonicalKey) {
     if (!entries || !entries.length) return null;
 
-    // Protezione principale: se esiste già la chiave canonica esatta, resta quella.
-    // Così il clone con slash finale non può vincere solo perché ha rev/updatedAt più alto.
+    // Protezione principale: se esiste giÃ  la chiave canonica esatta, resta quella.
+    // CosÃ¬ il clone con slash finale non puÃ² vincere solo perchÃ© ha rev/updatedAt piÃ¹ alto.
     var exact = entries.find(function (entry) { return entry.key === canonicalKey; });
     if (exact) return exact;
 
@@ -3809,7 +4086,7 @@ tbody.innerHTML = items.map(function (item) {
       Descrizione: String(input.Descrizione || description).trim() || description,
       Categoria: String(input.Categoria || '').trim(),
       Grado_Minimo: String(input.Grado_Minimo || input.gradeRequired || '').trim(),
-      // Regola progetto: Link_Risorsa resta il link reale/eseguibile, url è la chiave tecnica.
+      // Regola progetto: Link_Risorsa resta il link reale/eseguibile, url Ã¨ la chiave tecnica.
       Link_Risorsa: String(input.Link_Risorsa || input.linkRisorsa || url).trim(),
       Audio: String(input.Audio || '').trim(),
       Regione: String(input.Regione || '').trim(),
@@ -3935,7 +4212,7 @@ function readGameForm() {
       rev: root.$('#game-rev').value,
       enabled: root.$('#game-enabled').value === 'true',
 
-      // Decide come il launcher giochi aprirà questo gioco.
+      // Decide come il launcher giochi aprirÃ  questo gioco.
       // Default consigliato: secure_iframe.
       openMode: root.$('#game-open-mode') ? root.$('#game-open-mode').value : 'secure_iframe',
 
@@ -4022,7 +4299,7 @@ function fillGameForm(item) {
     }
 
     if (!technicalUrl) {
-      throw new Error('Non riesco a generare l’URL tecnico dal link eseguibile.');
+      throw new Error('Non riesco a generare lâ€™URL tecnico dal link eseguibile.');
     }
 
     var cacheScope = normalizeAdminRuntimeUrl(root.$('#module-cache-scope').value || technicalUrl);
@@ -4054,7 +4331,7 @@ function fillGameForm(item) {
       Categoria: root.$('#module-category').value,
       Grado_Minimo: root.$('#module-grade').value,
 
-      // Questo è il link reale che il client userà per aprire.
+      // Questo Ã¨ il link reale che il client userÃ  per aprire.
       Link_Risorsa: executableLink,
 
       Audio: root.$('#module-audio').value,
@@ -4147,7 +4424,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
     current.rev = Math.max(1, Number(current.rev || 0) + 1);
     var saved = await saveRuntimeEntryForAdmin('game', current, { preserveRev: true, reason: 'GAME_MANUAL_BUMP' });
-    root.toast('Versione gioco incrementata: ' + url + ' → rev ' + Number(saved.rev || 1), 'success');
+    root.toast('Versione gioco incrementata: ' + url + ' â†’ rev ' + Number(saved.rev || 1), 'success');
     await refreshGameVersions();
   }
 
@@ -4157,7 +4434,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
     current.rev = Math.max(1, Number(current.rev || current.module_rev || 0) + 1);
     var saved = await saveRuntimeEntryForAdmin('module', current, { preserveRev: true, reason: 'MODULE_MANUAL_BUMP' });
-    root.toast('Versione modulo incrementata: ' + url + ' → rev ' + Number(saved.rev || saved.module_rev || 1), 'success');
+    root.toast('Versione modulo incrementata: ' + url + ' â†’ rev ' + Number(saved.rev || saved.module_rev || 1), 'success');
     await refreshModuleVersions();
   }
 
@@ -4179,7 +4456,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
     current.rev = Math.max(1, Number(current.rev || 0) + 1);
     var saved = await saveRuntimeEntryForAdmin('game', current, { preserveRev: true, reason: 'GAME_TABLE_BUMP' });
-    root.toast('Versione gioco incrementata: ' + url + ' → rev ' + Number(saved.rev || 1), 'success');
+    root.toast('Versione gioco incrementata: ' + url + ' â†’ rev ' + Number(saved.rev || 1), 'success');
     await refreshGameVersions();
   }
 
@@ -4189,7 +4466,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var current = data.find(function (item) { return normalizeAdminRuntimeUrl(item.url || item.id) === url; }) || { url: url, title: url, rev: 0 };
     current.rev = Math.max(1, Number(current.rev || current.module_rev || 0) + 1);
     var saved = await saveRuntimeEntryForAdmin('module', current, { preserveRev: true, reason: 'MODULE_TABLE_BUMP' });
-    root.toast('Versione modulo incrementata: ' + url + ' → rev ' + Number(saved.rev || saved.module_rev || 1), 'success');
+    root.toast('Versione modulo incrementata: ' + url + ' â†’ rev ' + Number(saved.rev || saved.module_rev || 1), 'success');
     await refreshModuleVersions();
   }
 
@@ -4204,7 +4481,10 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
   function splitReaderPatchForStorage(item, patch) {
     item = item || {};
-    patch = patch || {};
+    var payloadPatch = Object.assign({}, patch || {});
+    patch = root.PdfReaderService && typeof root.PdfReaderService.compactPatchForFirestore === 'function'
+      ? root.PdfReaderService.compactPatchForFirestore(payloadPatch)
+      : payloadPatch;
 
     var mediaId = String(item.id || '').trim();
     if (!mediaId) throw new Error('Media id mancante: impossibile salvare reader separato.');
@@ -4241,7 +4521,13 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     light.readerUpdatedByUid = user.uid;
     light.readerUpdatedByEmail = user.email || null;
 
-    return { mediaId: mediaId, docPath: docPath, light: light, heavy: heavy };
+    return {
+      mediaId: mediaId,
+      docPath: docPath,
+      light: light,
+      heavy: heavy,
+      payloadSource: Object.assign({}, payloadPatch, heavy)
+    };
   }
 
   async function loadReaderDocForMedia(item) {
@@ -4260,11 +4546,62 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   async function saveSplitReaderForMedia(item, patch) {
     var split = splitReaderPatchForStorage(item, patch);
 
-    await getReaderDocRef(split.mediaId).set(split.heavy, { merge: false });
+    try {
+      var payloadUpload = await uploadReaderPayloadToR2(split.mediaId, split.payloadSource);
+      var payloadVerification = null;
+
+      try {
+        payloadVerification = await verifyReaderPayloadUrl(payloadUpload && payloadUpload.publicUrl);
+      } catch (verifyErr) {
+        await deleteReaderPayloadQuietly({
+          readerPayloadObjectKey: payloadUpload && payloadUpload.objectKey
+        }, 'READER_PAYLOAD_VERIFY_FAILED');
+        throw verifyErr;
+      }
+
+      if (payloadUpload && payloadUpload.publicUrl) {
+        split.light.readerStorageMode = 'r2-json-v1';
+        split.light.readerPayloadLocation = 'r2:' + payloadUpload.publicUrl;
+        split.light.readerPayloadUrl = payloadUpload.publicUrl;
+        split.light.readerPayloadObjectKey = payloadUpload.objectKey || null;
+        split.light.readerPayloadContentType = 'application/json';
+        split.light.readerPayloadSizeBytes = Number(payloadUpload.sizeBytes || 0);
+        split.light.readerPayloadSchemaVersion = WILDU_MEDIA_READER_PAYLOAD_SCHEMA_VERSION;
+        split.light.readerPayloadVerifiedAtClient = new Date().toISOString();
+        split.light.readerPayloadVerifiedBlockCount = Number(payloadVerification && payloadVerification.blockCount || 0);
+
+        split.heavy.readerStorageMode = 'r2-json-v1';
+        split.heavy.readerPayloadLocation = 'r2:' + payloadUpload.publicUrl;
+        split.heavy.readerPayloadUrl = payloadUpload.publicUrl;
+        split.heavy.readerPayloadObjectKey = payloadUpload.objectKey || null;
+        split.heavy.readerPayloadVerifiedAtClient = split.light.readerPayloadVerifiedAtClient;
+        split.heavy.readerPayloadVerifiedBlockCount = split.light.readerPayloadVerifiedBlockCount;
+      }
+    } catch (payloadErr) {
+      console.warn('[WILDU READER] Upload/verifica payload JSON R2 fallito: salvo solo Firestore split legacy.', payloadErr);
+      split.light.readerPayloadLocation = 'firestore:' + split.docPath;
+      split.light.readerStorageMode = 'split-v1';
+    }
+
+    try {
+      await getReaderDocRef(split.mediaId).set(split.heavy, { merge: false });
+    } catch (err) {
+      try {
+        await deleteReaderPayloadQuietly({
+          readerPayloadObjectKey: split.light.readerPayloadObjectKey
+        }, 'FIRESTORE_READER_SET_FAILED');
+      } catch (_) {}
+      throw err;
+    }
 
     try {
       await root.MediaService.updateMedia(split.mediaId, split.light);
     } catch (err) {
+      try {
+        await deleteReaderPayloadQuietly({
+          readerPayloadObjectKey: split.light.readerPayloadObjectKey
+        }, 'CATALOG_UPDATE_FAILED');
+      } catch (_) {}
       try { await getReaderDocRef(split.mediaId).delete(); } catch (_) {}
       throw err;
     }
@@ -4277,10 +4614,12 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var mediaId = String(item.id || '').trim();
     if (!mediaId) return;
 
+    await deleteReaderPayloadQuietly(item, 'DELETE_SPLIT_READER');
+
     try {
       await getReaderDocRef(mediaId).delete();
     } catch (err) {
-      console.warn('[WILDU READER] Reader doc non cancellato o già assente:', err);
+      console.warn('[WILDU READER] Reader doc non cancellato o giÃ  assente:', err);
     }
   }
 
@@ -4294,6 +4633,13 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     patch.readerDocPath = root.FieldValue.delete();
     patch.readerStorageMode = root.FieldValue.delete();
     patch.readerPayloadLocation = root.FieldValue.delete();
+    patch.readerPayloadUrl = root.FieldValue.delete();
+    patch.readerPayloadObjectKey = root.FieldValue.delete();
+    patch.readerPayloadContentType = root.FieldValue.delete();
+    patch.readerPayloadSizeBytes = root.FieldValue.delete();
+    patch.readerPayloadSchemaVersion = root.FieldValue.delete();
+    patch.readerPayloadVerifiedAtClient = root.FieldValue.delete();
+    patch.readerPayloadVerifiedBlockCount = root.FieldValue.delete();
     patch.readerUpdatedAt = root.FieldValue.serverTimestamp();
     patch.readerUpdatedByUid = root.requireCurrentUser().uid;
     patch.readerUpdatedByEmail = root.requireCurrentUser().email || null;
@@ -4324,7 +4670,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   function sanitizeReaderPatchForSave(patch) {
     var out = Object.assign({}, patch || {});
 
-    // Proprietà temporanee della modale admin: non devono finire nel catalogo Firestore.
+    // ProprietÃ  temporanee della modale admin: non devono finire nel catalogo Firestore.
     delete out.readerAdminPreviewHtml;
 
     // Limite prudente sui sospetti salvati: il report completo resta in readerBuildReport.
@@ -4385,7 +4731,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
             '<div style="min-width:0;">' +
               '<div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">' +
                 badge('Anteprima Reader V6.2', 'good') +
-                badge('Confidenza ' + (Number.isFinite(conf) ? conf + '%' : '—'), confTone) +
+                badge('Confidenza ' + (Number.isFinite(conf) ? conf + '%' : 'â€”'), confTone) +
                 badge('Blocchi ' + root.escapeHtml((patch && patch.readerBlockCount) || (report && report.blockCount) || 0), 'neutral') +
                 badge('Immagini ' + root.escapeHtml((patch && patch.readerImageCount) || (report && report.imageCount) || 0), 'neutral') +
                 badge('Fonti ' + root.escapeHtml((report && report.sourceCount) || 0), 'neutral') +
@@ -4479,6 +4825,128 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     await showPdfReaderPreviewModal(previewItem, null, { readOnly: true });
   }
 
+  async function migratePdfReaderToR2Json(id) {
+    var item = findMediaById(id);
+
+    if (!item) {
+      throw new Error('Media non trovato nel catalogo corrente. Ricarica il catalogo.');
+    }
+
+    if (!isPdfMediaForReader(item)) {
+      throw new Error('Migrazione reader disponibile solo per PDF.');
+    }
+
+    if (!canBuildPdfReaderForMedia(item)) {
+      throw new Error('I Libri restano su lettura PDF fallback: non migro reader editoriali per questa categoria.');
+    }
+
+    if (readerIsR2Json(item) && !readerIsStale(item)) {
+      var existingUrl = getReaderPayloadUrlFromItem(item);
+      var verification = await verifyReaderPayloadUrl(existingUrl);
+      root.toast('Reader R2 JSON gia verificato: ' + Number(verification.blockCount || 0) + ' blocchi.', 'success');
+      return;
+    }
+
+    if (readerIsStale(item)) {
+      throw new Error('Questo reader e obsoleto rispetto alla versione media. Usa "Rigenera reader JSON" per ricostruirlo dal PDF aggiornato.');
+    }
+
+    var existingPayloadUrl = getReaderPayloadUrlFromItem(item);
+    if (existingPayloadUrl && !readerIsLegacyFirestore(item)) {
+      var existingVerification = await verifyReaderPayloadUrl(existingPayloadUrl);
+      var existingUser = root.requireCurrentUser();
+      var existingPatch = {
+        readerStorageMode: 'r2-json-v1',
+        readerPayloadLocation: 'r2:' + existingPayloadUrl,
+        readerPayloadUrl: existingPayloadUrl,
+        readerPayloadContentType: 'application/json',
+        readerPayloadSchemaVersion: WILDU_MEDIA_READER_PAYLOAD_SCHEMA_VERSION,
+        readerPayloadVerifiedAtClient: new Date().toISOString(),
+        readerPayloadVerifiedBlockCount: Number(existingVerification && existingVerification.blockCount || 0),
+        readerUpdatedAt: root.FieldValue.serverTimestamp(),
+        readerUpdatedByUid: existingUser.uid,
+        readerUpdatedByEmail: existingUser.email || null
+      };
+      var inferredExistingObjectKey = inferReaderPayloadObjectKeyFromUrl(existingPayloadUrl);
+      if (inferredExistingObjectKey) existingPatch.readerPayloadObjectKey = inferredExistingObjectKey;
+      await root.MediaService.updateMedia(item.id, existingPatch);
+      root.toast('Reader JSON Cloudflare verificato e metadata riallineata: ' + Number(existingVerification.blockCount || 0) + ' blocchi.', 'success');
+      await refreshTags();
+      await refreshMedia();
+      return;
+    }
+
+    var readerDoc = await loadReaderDocForMedia(item);
+    var source = Object.assign({}, item, readerDoc || {});
+    var blocks = Array.isArray(source.readerBlocks) ? source.readerBlocks : [];
+
+    if (!blocks.length) {
+      throw new Error('Reader legacy senza blocchi disponibili. Serve rigenerare il reader dal PDF.');
+    }
+
+    var ok = confirm(
+      'Migrare a JSON Cloudflare questo reader legacy?\n\n' +
+      (item.title || 'PDF senza titolo') +
+      '\n\nLa suite leggera il vecchio documento Firestore solo ora, carichera un JSON pubblico sanitizzato su R2 e verifichera che sia leggibile dal client. Il vecchio documento Firestore non viene cancellato.'
+    );
+
+    if (!ok) return;
+
+    var payloadUpload = null;
+    var verification = null;
+    var user = root.requireCurrentUser();
+    var verifiedAt = new Date().toISOString();
+
+    try {
+      payloadUpload = await uploadReaderPayloadToR2(String(item.id || ''), source);
+      verification = await verifyReaderPayloadUrl(payloadUpload.publicUrl);
+
+      var patch = {
+        readerStorageMode: 'r2-json-v1',
+        readerPayloadLocation: 'r2:' + payloadUpload.publicUrl,
+        readerPayloadUrl: payloadUpload.publicUrl,
+        readerPayloadObjectKey: payloadUpload.objectKey || null,
+        readerPayloadContentType: 'application/json',
+        readerPayloadSizeBytes: Number(payloadUpload.sizeBytes || 0),
+        readerPayloadSchemaVersion: WILDU_MEDIA_READER_PAYLOAD_SCHEMA_VERSION,
+        readerPayloadVerifiedAtClient: verifiedAt,
+        readerPayloadVerifiedBlockCount: Number(verification && verification.blockCount || 0),
+        readerUpdatedAt: root.FieldValue.serverTimestamp(),
+        readerUpdatedByUid: user.uid,
+        readerUpdatedByEmail: user.email || null
+      };
+
+      await root.MediaService.updateMedia(item.id, patch);
+
+      try {
+        await getReaderDocRef(item.id).set({
+          readerStorageMode: patch.readerStorageMode,
+          readerPayloadLocation: patch.readerPayloadLocation,
+          readerPayloadUrl: patch.readerPayloadUrl,
+          readerPayloadObjectKey: patch.readerPayloadObjectKey,
+          readerPayloadContentType: patch.readerPayloadContentType,
+          readerPayloadSizeBytes: patch.readerPayloadSizeBytes,
+          readerPayloadSchemaVersion: patch.readerPayloadSchemaVersion,
+          readerPayloadVerifiedAtClient: patch.readerPayloadVerifiedAtClient,
+          readerPayloadVerifiedBlockCount: patch.readerPayloadVerifiedBlockCount
+        }, { merge: true });
+      } catch (legacyErr) {
+        console.warn('[WILDU READER] Catalogo aggiornato, ma documento legacy non riallineato:', legacyErr);
+      }
+
+      root.toast('Reader migrato a JSON Cloudflare e verificato: ' + Number(verification.blockCount || 0) + ' blocchi.', 'success');
+      await refreshTags();
+      await refreshMedia();
+    } catch (err) {
+      if (payloadUpload && payloadUpload.objectKey) {
+        await deleteReaderPayloadQuietly({
+          readerPayloadObjectKey: payloadUpload.objectKey
+        }, 'READER_MIGRATION_FAILED');
+      }
+      throw err;
+    }
+  }
+
   async function buildPdfReaderForMedia(id) {
     var item = findMediaById(id);
 
@@ -4501,8 +4969,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var ok = confirm(
       'Genero automaticamente il reader per:\n\n' +
       (item.title || 'PDF senza titolo') +
-      '\n\nL’app leggerà da sola quante pagine ha il PDF, riordinerà Fonte/Fonti in fondo e proverà a creare immagini editoriali ottimizzate.' +
-      '\n\nIl PDF originale R2 NON verrà modificato. Eventuali immagini reader saranno salvate come WebP leggeri su R2 e il catalogo riceverà solo i metadati reader.'
+      '\n\nLâ€™app leggerÃ  da sola quante pagine ha il PDF, riordinerÃ  Fonte/Fonti in fondo e proverÃ  a creare immagini editoriali ottimizzate.' +
+      '\n\nIl PDF originale R2 NON verrÃ  modificato. Eventuali immagini reader saranno salvate come WebP leggeri su R2 e il catalogo riceverÃ  solo i metadati reader.'
     );
 
     if (!ok) return;
@@ -4510,6 +4978,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     var lastMessage = '';
 
     var patch = await root.PdfReaderService.buildReaderPatchFromMedia(item, {
+      compactForFirestore: false,
       onProgress: function (message) {
         lastMessage = message || lastMessage;
         root.toast(lastMessage, 'info');
@@ -4525,20 +4994,43 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       return;
     }
 
-    // Prima di sostituire il reader salvato, elimina le vecchie immagini reader già note.
-    // Non tocca mai il PDF originale: cancella solo objectKey generati dal reader.
-    await cleanupPdfReaderImagesQuietly(item, 'READER_REPLACE_OLD_IMAGES');
+    var previousReaderDoc = null;
+    try {
+      previousReaderDoc = await loadReaderDocForMedia(item);
+    } catch (oldReaderErr) {
+      console.warn('[WILDU READER] Vecchio reader non letto prima della sostituzione:', oldReaderErr);
+    }
 
-    await saveSplitReaderForMedia(item, patch);
+    var previousReaderForCleanup = previousReaderDoc
+      ? Object.assign({}, item, previousReaderDoc)
+      : item;
+
+    var savedReader = null;
+    try {
+      savedReader = await saveSplitReaderForMedia(item, patch);
+    } catch (saveErr) {
+      await cleanupPdfReaderImagesQuietly(patch, 'READER_SAVE_FAILED_NEW_IMAGES');
+      throw saveErr;
+    }
+
+    // Pulisce solo dopo commit del nuovo reader: se il salvataggio fallisce, il vecchio resta integro.
+    await cleanupPdfReaderImagesQuietly(previousReaderForCleanup, 'READER_REPLACE_OLD_IMAGES');
+    await deleteReaderPayloadQuietly(previousReaderForCleanup, 'READER_REPLACE_OLD_PAYLOAD');
+
+    var savedMode = savedReader &&
+      savedReader.light &&
+      savedReader.light.readerStorageMode === 'r2-json-v1'
+        ? 'R2 JSON verificato + archivio Firestore admin'
+        : 'split Firestore legacy';
 
     root.toast(
-      'Reader editoriale V6.2 salvato in modalità split: ' +
+      'Reader editoriale V6.2 salvato in modalita ' + savedMode + ': ' +
       Number(patch.readerBlockCount || 0) +
       ' blocchi, ' +
       Number(patch.readerPagesProcessed || 0) +
       ' pagine, ' +
       Number(patch.readerImageCount || 0) +
-      ' immagini, qualità ' + Number(patch.readerQualityScore || 0) + '%.',
+      ' immagini, qualitÃ  ' + Number(patch.readerQualityScore || 0) + '%.',
       'success'
     );
 
@@ -4567,7 +5059,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       return;
     }
 
-    if (!confirm('Pulire i campi reader generati per questo PDF? Il PDF originale R2 non verrà toccato. Le immagini reader note verranno cancellate da R2.')) return;
+    if (!confirm('Pulire i campi reader generati per questo PDF? Il PDF originale R2 non verrÃ  toccato. Le immagini reader note verranno cancellate da R2.')) return;
 
     await cleanupPdfReaderImagesQuietly(item, 'READER_CLEAR');
     await deleteSplitReaderForMedia(item);
@@ -4639,7 +5131,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
   }
 
   async function archiveMedia(id) {
-    if (!confirm('Archiviare questo media? Se era pubblico/renderizzabile, la versione client verrà aggiornata.')) return;
+    if (!confirm('Archiviare questo media? Se era pubblico/renderizzabile, la versione client verrÃ  aggiornata.')) return;
     await root.MediaService.archiveMedia(id);
     root.toast('Media archiviato e versioni/manifesto aggiornati.', 'success');
     await refreshTags();
@@ -4920,6 +5412,9 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       var buildReaderBtn = evt.target.closest('[data-build-pdf-reader]');
       if (buildReaderBtn) return run(buildPdfReaderForMedia, buildReaderBtn.dataset.buildPdfReader);
 
+      var migrateReaderBtn = evt.target.closest('[data-migrate-pdf-reader]');
+      if (migrateReaderBtn) return run(migratePdfReaderToR2Json, migrateReaderBtn.dataset.migratePdfReader);
+
       var previewReaderBtn = evt.target.closest('[data-preview-pdf-reader]');
       if (previewReaderBtn) return run(previewPdfReaderForMedia, previewReaderBtn.dataset.previewPdfReader);
 
@@ -4978,7 +5473,7 @@ root.$('#module-description').value = item.description || item.Descrizione || it
         setAuthUi(null, false, 'not-logged');
         setSuiteLocked(
           true,
-          '<strong>Accesso richiesto.</strong><br>Effettua il login Google con l’account admin per aprire la Wildu Media Suite.',
+          '<strong>Accesso richiesto.</strong><br>Effettua il login Google con lâ€™account admin per aprire la Wildu Media Suite.',
           'warn'
         );
 
