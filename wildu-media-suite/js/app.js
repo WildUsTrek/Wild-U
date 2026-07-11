@@ -5248,6 +5248,14 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       verification = await verifyReaderPayloadUrl(payloadUpload.publicUrl);
 
       var patch = {
+        readerStatus: previewPayload.readerStatus || source.readerStatus || 'READY',
+        readerVersion: previewPayload.readerVersion || source.readerVersion || 1,
+        readerSourceMediaVersion: previewPayload.readerSourceMediaVersion || source.readerSourceMediaVersion || item.mediaVersion || 1,
+        readerBlockCount: Number(previewPayload.readerBlockCount || 0),
+        readerCharCount: Number(previewPayload.readerCharCount || 0),
+        readerImageCount: Number(previewPayload.readerImageCount || 0),
+        readerPreview: previewPayload.readerPreview || source.readerPreview || '',
+        readerQualityScore: source.readerQualityScore !== undefined ? source.readerQualityScore : null,
         readerStorageMode: 'r2-json-v1',
         readerPayloadLocation: 'r2:' + payloadUpload.publicUrl,
         readerPayloadUrl: payloadUpload.publicUrl,
@@ -5266,6 +5274,14 @@ root.$('#module-description').value = item.description || item.Descrizione || it
 
       try {
         await getReaderDocRef(item.id).set({
+          readerStatus: patch.readerStatus,
+          readerVersion: patch.readerVersion,
+          readerSourceMediaVersion: patch.readerSourceMediaVersion,
+          readerBlockCount: patch.readerBlockCount,
+          readerCharCount: patch.readerCharCount,
+          readerImageCount: patch.readerImageCount,
+          readerPreview: patch.readerPreview,
+          readerQualityScore: patch.readerQualityScore,
           readerStorageMode: patch.readerStorageMode,
           readerPayloadLocation: patch.readerPayloadLocation,
           readerPayloadUrl: patch.readerPayloadUrl,
