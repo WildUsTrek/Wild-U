@@ -28,6 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icon-192.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
@@ -737,6 +738,424 @@ body::before {
         .wildu-trip-share-btn { width: 100%; border: 1px solid rgba(212,175,55,.42); border-radius: 10px; padding: 14px 16px; background: linear-gradient(135deg, rgba(45,90,39,.35), rgba(18,18,18,.98)); color: var(--w-gold); font-size: 15px; font-weight: 950; text-transform: uppercase; letter-spacing: .35px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 8px 18px rgba(0,0,0,.22); }
         .wildu-trip-share-btn:active { transform: scale(.985); }
         .guide-accordion { background: #333; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.4); } .guide-summary { display: flex; justify-content: space-between; align-items: center; padding: 18px; cursor: pointer; border-left: 4px solid var(--w-green); border-radius: 12px; list-style: none; user-select: none; transition: 0.2s; } .guide-summary::-webkit-details-marker { display: none; } .guide-accordion[open] .guide-summary { background: #2a2a2a; border-radius: 12px 12px 0 0; } .guide-accordion[open] .acc-icon { transform: rotate(180deg); } .acc-icon { transition: transform 0.3s ease; color: #888; font-size: 14px; font-weight: 900; } .guide-content { padding: 18px; background: #222; border-radius: 0 0 12px 12px; font-size: 14px; color: #ccc; line-height: 1.5; border-top: 1px solid #333; }
+
+        .wildu-install-modal {
+            z-index: 10620;
+            padding: calc(18px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px));
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            background: rgba(0,0,0,0.88);
+        }
+
+        .wildu-install-card {
+            position: relative;
+            width: min(100%, 430px);
+            max-height: calc(100dvh - 36px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+            overflow: auto;
+            box-sizing: border-box;
+            padding: 23px;
+            border-radius: 20px;
+            border: 1px solid rgba(13,110,253,0.28);
+            background: linear-gradient(180deg, #ffffff 0%, #f3f6fb 100%);
+            color: #17191f;
+            text-align: left;
+            box-shadow: 0 24px 70px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.9);
+        }
+
+        .wildu-install-card::-webkit-scrollbar { display: none; }
+
+        .wildu-install-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .wildu-install-kicker {
+            color: #0d6efd;
+            font-size: 11px;
+            font-weight: 950;
+            line-height: 1.2;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .wildu-install-title {
+            color: #121212;
+            font-size: 24px;
+            line-height: 1.08;
+            margin: 0;
+            font-weight: 950;
+        }
+
+        .wildu-install-close {
+            width: 38px;
+            height: 38px;
+            flex: 0 0 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            border: 1px solid rgba(0,0,0,0.08);
+            background: rgba(0,0,0,0.04);
+            color: #222;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .wildu-install-copy {
+            margin: 0 0 17px;
+            color: #333842;
+            font-size: 15px;
+            line-height: 1.45;
+        }
+
+        .wildu-install-safari-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 11px 12px;
+            margin: 0 0 17px;
+            border-radius: 14px;
+            border: 1px dashed rgba(13,110,253,0.58);
+            background: rgba(13,110,253,0.08);
+            color: #0d4fbd;
+            font-size: 12px;
+            line-height: 1.35;
+            font-weight: 850;
+        }
+
+        .wildu-install-actions {
+            display: grid;
+            gap: 10px;
+        }
+
+        .wildu-install-choice-btn {
+            width: 100%;
+            border: none;
+            border-radius: 999px;
+            min-height: 48px;
+            padding: 13px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            font-size: 14px;
+            line-height: 1.15;
+            font-weight: 950;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-sizing: border-box;
+        }
+
+        .wildu-install-choice-btn.magic {
+            color: #fff;
+            background: linear-gradient(135deg, #198754, #21a366);
+            box-shadow: 0 10px 24px rgba(25,135,84,0.28);
+        }
+
+        .wildu-install-choice-btn.cinema {
+            color: #fff;
+            background: linear-gradient(135deg, #0d6efd, #084fc4);
+            box-shadow: 0 10px 24px rgba(13,110,253,0.22);
+        }
+
+        .wildu-install-choice-btn.text {
+            color: #fff;
+            background: #646b75;
+        }
+
+        .wildu-install-choice-btn.dark {
+            color: #fff;
+            background: #20242b;
+        }
+
+        .wildu-install-choice-btn.light {
+            color: #20242b;
+            background: #eef1f5;
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+
+        .wildu-install-choice-btn:active,
+        .wildu-install-close:active {
+            transform: scale(0.98);
+        }
+
+        .wildu-install-quick-box {
+            padding: 15px;
+            border-radius: 16px;
+            background: #f7f8fa;
+            border: 1px solid rgba(0,0,0,0.10);
+            color: #222;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        .wildu-install-quick-box p {
+            margin: 0;
+        }
+
+        .wildu-install-quick-box hr {
+            border: 0;
+            border-top: 1px solid rgba(0,0,0,0.10);
+            margin: 12px 0;
+        }
+
+        .wildu-install-manual-grid {
+            display: grid;
+            gap: 10px;
+        }
+
+        .wildu-install-manual-option {
+            width: 100%;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 15px;
+            background: #fff;
+            color: #1e232b;
+            padding: 14px 15px;
+            text-align: left;
+            font-size: 14px;
+            line-height: 1.25;
+            font-weight: 900;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .wildu-install-env-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: rgba(25,135,84,0.10);
+            color: #198754;
+            font-size: 12px;
+            line-height: 1.1;
+            font-weight: 950;
+        }
+
+        .wildu-install-progress {
+            color: #68707d;
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .wildu-install-stage {
+            min-height: 250px;
+            margin-bottom: 16px;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .wildu-install-theater-text {
+            min-height: 3.6em;
+            margin: 0 0 18px;
+            color: #242832;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .wildu-install-theater-nav {
+            display: flex;
+            gap: 10px;
+        }
+
+        .wildu-install-theater-nav .wildu-install-choice-btn {
+            flex: 1 1 0;
+            min-height: 46px;
+        }
+
+        .mock-browser {
+            border: 2px solid #dee2e6;
+            border-radius: 12px;
+            background: #f8f9fa;
+            height: 250px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: inset 0 4px 10px rgba(0,0,0,0.05);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: left;
+        }
+
+        .mock-bar {
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 2;
+        }
+
+        .mock-bar-bottom {
+            border-top: 1px solid #ddd;
+            border-bottom: none;
+            margin-top: auto;
+        }
+
+        .mock-content {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e9ecef;
+            position: relative;
+            z-index: 1;
+        }
+
+        .mock-menu-panel {
+            position: absolute;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            z-index: 5;
+            overflow: hidden;
+        }
+
+        .mock-menu-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #f1f1f1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.85rem;
+            color: #333;
+        }
+
+        .mock-menu-item:last-child { border-bottom: none; }
+
+        .blink-target {
+            animation: pulseGlow 1.5s infinite;
+            border-radius: 6px;
+            background: rgba(13, 110, 253, 0.05);
+        }
+
+        .mock-hand {
+            position: absolute;
+            font-size: 1.8rem;
+            z-index: 10;
+            animation: tapAction 3s infinite;
+            filter: drop-shadow(2px 4px 4px rgba(0,0,0,0.3));
+        }
+
+        .mock-mouse {
+            position: absolute;
+            font-size: 1.2rem;
+            z-index: 10;
+            animation: mouseClick 3s infinite;
+            filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.4));
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4); }
+            70% { box-shadow: 0 0 0 8px rgba(13, 110, 253, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
+        }
+
+        @keyframes tapAction {
+            0% { transform: translate(40px, 60px); opacity: 0; }
+            20% { opacity: 1; transform: translate(15px, 25px); }
+            50% { transform: translate(0, 0) scale(0.85); }
+            80% { opacity: 1; transform: translate(15px, 25px); }
+            100% { transform: translate(40px, 60px); opacity: 0; }
+        }
+
+        @keyframes mouseClick {
+            0% { transform: translate(50px, 50px); opacity: 0; }
+            20% { opacity: 1; transform: translate(10px, 10px); }
+            50% { transform: translate(0, 0) scale(0.9); color: #000; }
+            80% { opacity: 1; transform: translate(10px, 10px); }
+            100% { transform: translate(50px, 50px); opacity: 0; }
+        }
+
+        @keyframes longScrolliOS {
+            0%, 10% { transform: translateY(0); }
+            40%, 80% { transform: translateY(-160px); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes longScrollChrome {
+            0%, 10% { transform: translateY(0); }
+            40%, 80% { transform: translateY(-150px); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes longScrollFx {
+            0%, 10% { transform: translateY(0); }
+            40%, 80% { transform: translateY(-140px); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes swipeUpLong {
+            0%, 10% { transform: translateY(80px); opacity: 0; }
+            20% { opacity: 1; }
+            40% { transform: translateY(-50px); opacity: 1; }
+            60%, 100% { opacity: 0; }
+        }
+
+        @media (max-width: 380px) {
+            .wildu-install-card { padding: 19px; border-radius: 18px; }
+            .wildu-install-title { font-size: 21px; }
+        }
+
+        #install-tut-stage .text-primary { color: #0d6efd !important; }
+        #install-tut-stage .text-muted { color: #6c757d !important; }
+        #install-tut-stage .text-dark { color: #212529 !important; }
+        #install-tut-stage .text-white { color: #fff !important; }
+        #install-tut-stage .text-danger { color: #dc3545 !important; }
+        #install-tut-stage .bg-light { background-color: #f8f9fa !important; }
+        #install-tut-stage .bg-success { background-color: #198754 !important; }
+        #install-tut-stage .bg-info { background-color: #0dcaf0 !important; }
+        #install-tut-stage .bg-white { background-color: #fff !important; }
+        #install-tut-stage .opacity-50 { opacity: .5 !important; }
+        #install-tut-stage .fw-bold { font-weight: 700 !important; }
+        #install-tut-stage .fs-3 { font-size: 1.75rem !important; }
+        #install-tut-stage .fs-4 { font-size: 1.5rem !important; }
+        #install-tut-stage .fs-5 { font-size: 1.25rem !important; }
+        #install-tut-stage .small { font-size: .875em !important; }
+        #install-tut-stage .d-block { display: block !important; }
+        #install-tut-stage .d-flex { display: flex !important; }
+        #install-tut-stage .align-items-center { align-items: center !important; }
+        #install-tut-stage .justify-content-between { justify-content: space-between !important; }
+        #install-tut-stage .gap-2 { gap: .5rem !important; }
+        #install-tut-stage .gap-3 { gap: 1rem !important; }
+        #install-tut-stage .w-75 { width: 75% !important; }
+        #install-tut-stage .w-100 { width: 100% !important; }
+        #install-tut-stage .p-1 { padding: .25rem !important; }
+        #install-tut-stage .p-2 { padding: .5rem !important; }
+        #install-tut-stage .p-3 { padding: 1rem !important; }
+        #install-tut-stage .px-3 { padding-right: 1rem !important; padding-left: 1rem !important; }
+        #install-tut-stage .px-4 { padding-right: 1.5rem !important; padding-left: 1.5rem !important; }
+        #install-tut-stage .py-1 { padding-top: .25rem !important; padding-bottom: .25rem !important; }
+        #install-tut-stage .py-3 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        #install-tut-stage .mb-0 { margin-bottom: 0 !important; }
+        #install-tut-stage .mb-1 { margin-bottom: .25rem !important; }
+        #install-tut-stage .mb-2 { margin-bottom: .5rem !important; }
+        #install-tut-stage .me-1 { margin-right: .25rem !important; }
+        #install-tut-stage .me-2 { margin-right: .5rem !important; }
+        #install-tut-stage .rounded { border-radius: .375rem !important; }
+        #install-tut-stage .rounded-pill { border-radius: 50rem !important; }
+        #install-tut-stage .rounded-circle { border-radius: 50% !important; }
+        #install-tut-stage .border { border: 1px solid #dee2e6 !important; }
+        #install-tut-stage .border-0 { border: 0 !important; }
+        #install-tut-stage .border-bottom { border-bottom: 1px solid #dee2e6 !important; }
+        #install-tut-stage .shadow-lg { box-shadow: 0 1rem 3rem rgba(0,0,0,.175) !important; }
+        #install-tut-stage .shadow-sm { box-shadow: 0 .125rem .25rem rgba(0,0,0,.075) !important; }
+        #install-tut-stage .text-start { text-align: left !important; }
+        #install-tut-stage .text-center { text-align: center !important; }
+        #install-tut-stage .position-relative { position: relative !important; }
+        #install-tut-stage .position-absolute { position: absolute !important; }
+        #install-tut-stage .overflow-hidden { overflow: hidden !important; }
 
 
 /* --- WILDU NEGOZIO TAB: layout compatto + caroselli orizzontali --- */
@@ -3459,7 +3878,7 @@ body::before {
     <button id="btn-profile" onclick="show('profile')">Profilo</button>
     <button id="btn-share-app" class="nav-share-btn" type="button" onclick="shareWilduClientApp(event)" aria-label="Condividi Wild-U"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi</button>
     
-    <button id="btn-install" onclick="show('install')">Salva App</button>
+    <button id="btn-install" type="button" onclick="showInstallInfo(event)">Salva App</button>
     <button id="btn-negozio" onclick="show('negozio')">Negozio</button>
 </div>
 
@@ -4030,6 +4449,119 @@ body::before {
     
 <div id="group-action-modal" class="modal-overlay"><div class="modal-card"><h3 id="group-modal-title" style="color:var(--w-gold); margin-top:0; font-size:24px;"></h3><button id="btn-go-group" class="btn-book" style="width:100%; margin-bottom:15px; font-size:16px;">VAI AL GRUPPO</button><button id="btn-copy-group" class="btn-book" style="width:100%; background:#333; color:#fff; font-size:16px;">COPIA LINK INVITATO</button><button onclick="document.getElementById('group-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
 <div id="download-action-modal" class="modal-overlay"><div class="modal-card"><h3 style="color:var(--w-gold); margin-top:0; font-size:24px;">Scegli la versione</h3><button class="btn-action-group" style="border-left-color: #3ddc84;" onclick="handleStoreLink('link_apk')"><span>📦 Android (.APK)</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #4285F4;" onclick="handleStoreLink('link_playstore')"><span>▶️ Google Play Store</span> <span>➔</span></button><button class="btn-action-group" style="border-left-color: #555555;" onclick="handleStoreLink('link_appstore')"><span>🍏 Apple App Store</span> <span>➔</span></button><button onclick="document.getElementById('download-action-modal').style.display='none'" style="background:none; border:none; color:#666; margin-top:20px; font-size:14px; font-weight:bold; text-transform:uppercase;">Annulla</button></div></div>
+
+<div id="wildu-install-choice-modal" class="modal-overlay wildu-install-modal" onclick="closeWilduInstallChoice()">
+    <div class="wildu-install-card" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="wildu-install-choice-title">
+        <div class="wildu-install-head">
+            <div>
+                <div class="wildu-install-kicker">Salva-App magico</div>
+                <h3 id="wildu-install-choice-title" class="wildu-install-title">Salva l'App</h3>
+            </div>
+            <button type="button" class="wildu-install-close" onclick="closeWilduInstallChoice()" aria-label="Chiudi">×</button>
+        </div>
+        <p id="wildu-install-choice-copy" class="wildu-install-copy">Come preferisci procedere?</p>
+        <div id="wildu-install-safari-note" class="wildu-install-safari-note">
+            <i class="bi bi-browser-safari" aria-hidden="true"></i>
+            <span>Su iPhone per istallare app è vivamente consigliato usare Safari</span>
+        </div>
+        <div class="wildu-install-actions">
+            <button id="wildu-install-native-btn" type="button" class="wildu-install-choice-btn magic" onclick="executeWilduNativeInstall(event)">
+                <i class="bi bi-magic" aria-hidden="true"></i> Installa in 1-Click
+            </button>
+            <button type="button" class="wildu-install-choice-btn cinema" onclick="apriCinema(event)">
+                <i class="bi bi-play-circle" aria-hidden="true"></i> Tutorial Animato
+            </button>
+            <button type="button" class="wildu-install-choice-btn text" onclick="openWilduInstallQuickGuide(event)">
+                <i class="bi bi-file-text" aria-hidden="true"></i> Solo Testo
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="wildu-install-env-modal" class="modal-overlay wildu-install-modal" onclick="closeWilduInstallEnv()">
+    <div class="wildu-install-card" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="wildu-install-env-title">
+        <div class="wildu-install-head">
+            <div>
+                <div class="wildu-install-kicker">Verifica dispositivo</div>
+                <h3 id="wildu-install-env-title" class="wildu-install-title">È corretto?</h3>
+            </div>
+            <button type="button" class="wildu-install-close" onclick="closeWilduInstallEnv()" aria-label="Chiudi">×</button>
+        </div>
+        <p id="wildu-install-env-copy" class="wildu-install-copy">Sto verificando il browser...</p>
+        <div class="wildu-install-actions">
+            <button type="button" class="wildu-install-choice-btn magic" onclick="confirmWilduInstallEnvironment(event)">
+                Sì, procedi
+            </button>
+            <button type="button" class="wildu-install-choice-btn light" onclick="openWilduInstallManualChoice(event)">
+                No, cambia manuale
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="wildu-install-manual-modal" class="modal-overlay wildu-install-modal" onclick="closeWilduInstallManualChoice()">
+    <div class="wildu-install-card" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="wildu-install-manual-title">
+        <div class="wildu-install-head">
+            <div>
+                <div class="wildu-install-kicker">Ambiente manuale</div>
+                <h3 id="wildu-install-manual-title" class="wildu-install-title">Scegli il tuo caso</h3>
+            </div>
+            <button type="button" class="wildu-install-close" onclick="closeWilduInstallManualChoice()" aria-label="Chiudi">×</button>
+        </div>
+        <div class="wildu-install-manual-grid">
+            <button type="button" class="wildu-install-manual-option" onclick="selectWilduInstallPath('Mobile_iOS_Safari')"><span>iPhone/iPad (Safari)</span></button>
+            <button type="button" class="wildu-install-manual-option" onclick="selectWilduInstallPath('Mobile_Android_Chrome')"><span>Android (Chrome)</span></button>
+            <button type="button" class="wildu-install-manual-option" onclick="selectWilduInstallPath('Mobile_Any_Firefox')"><span>Smartphone (Firefox)</span></button>
+            <button type="button" class="wildu-install-manual-option" onclick="selectWilduInstallPath('Desktop_Any_Chrome')"><span>PC (Chrome/Edge)</span></button>
+            <button type="button" class="wildu-install-manual-option" onclick="selectWilduInstallPath('Desktop_Any_Firefox')"><span>PC (Firefox)</span></button>
+        </div>
+    </div>
+</div>
+
+<div id="installModal" class="modal-overlay wildu-install-modal" onclick="closeWilduInstallQuickGuide()">
+    <div class="wildu-install-card" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="wildu-install-quick-title">
+        <div class="wildu-install-head">
+            <div>
+                <div class="wildu-install-kicker">Istruzioni rapide</div>
+                <h3 id="wildu-install-quick-title" class="wildu-install-title"><i class="bi bi-file-text"></i> Istruzioni Rapide</h3>
+            </div>
+            <button type="button" class="wildu-install-close" onclick="closeWilduInstallQuickGuide()" aria-label="Chiudi">×</button>
+        </div>
+        <div class="wildu-install-safari-note">
+            <i class="bi bi-browser-safari" aria-hidden="true"></i>
+            <span>Vivamente consigliato salvataggio tramite Safari</span>
+        </div>
+        <div class="wildu-install-quick-box">
+            <p><strong>📱 Su iPhone:</strong><br>1. Tocca l'icona <b>Condividi</b> in basso (quadrato con freccia).<br>2. Scorri il menu e tocca <strong>"Aggiungi alla schermata Home"</strong>.</p>
+            <hr>
+            <p><strong>🤖 Su Android (Chrome):</strong><br>1. Tocca i <b>Tre Puntini (⋮)</b> in alto a destra.<br>2. Scorri e tocca <strong>"Installa App"</strong> o "Aggiungi a schermata Home".</p>
+        </div>
+        <div class="wildu-install-actions">
+            <button type="button" class="wildu-install-choice-btn light" onclick="closeWilduInstallQuickGuide()">
+                Ho Capito
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="install-tut-overlay" class="modal-overlay wildu-install-modal" style="z-index: 10640;">
+    <div class="wildu-install-card" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="install-tut-title">
+        <div class="wildu-install-head">
+            <div>
+                <div id="install-tut-progress" class="wildu-install-progress">Passo 1</div>
+                <h3 id="install-tut-title" class="wildu-install-title">Salva l'App</h3>
+            </div>
+            <button type="button" class="wildu-install-close" onclick="closeInstallTutorial()" aria-label="Chiudi">×</button>
+        </div>
+        <div id="install-tut-stage" class="wildu-install-stage"></div>
+        <p id="install-tut-text" class="wildu-install-theater-text">Attendere...</p>
+        <div class="wildu-install-theater-nav">
+            <button id="install-tut-prev" type="button" class="wildu-install-choice-btn light" onclick="prevInstallStep(event)">Indietro</button>
+            <button id="install-tut-next" type="button" class="wildu-install-choice-btn cinema" onclick="nextInstallStep(event)">Avanti <i class="bi bi-arrow-right" aria-hidden="true"></i></button>
+            <button id="install-tut-finish" type="button" class="wildu-install-choice-btn magic" onclick="closeInstallTutorial(event)" style="display:none;"><i class="bi bi-check-lg" aria-hidden="true"></i> Fatto</button>
+        </div>
+    </div>
+</div>
 
 <div id="share-app-modal" class="modal-overlay" style="z-index: 3600;" onclick="closeWilduClientShareModal()">
     <div class="modal-card wildu-share-card" onclick="event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="share-app-title">
@@ -21015,6 +21547,396 @@ function syncWilduAudioNavDockPosition() {
     function fallbackCopyText(text) { let t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; document.body.appendChild(t); t.focus(); t.select(); try { document.execCommand('copy'); showToast("Link copiato!"); } catch (e) { showToast("Errore copia."); } document.body.removeChild(t); }
     function handleStoreLink(chiave) { document.getElementById('download-action-modal').style.display = 'none'; let val = WILD_ASSETS[chiave]; if (!val || val.trim() === "") showToast("Versione non ancora disponibile."); else if (val.startsWith("http")) window.open(val, '_blank'); else showToast(val); }
     function parseSheetText(text) { return text ? String(text).replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>') : ""; }
+
+    // Salva-App magico: porting controllato del flusso premium del partner.
+    let wilduDeferredInstallPrompt = null;
+    let wilduDetectedInstallEnv = null;
+    let currentInstallPath = [];
+    let currentInstallStep = 0;
+    let currentInstallBackTarget = null;
+
+    window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        wilduDeferredInstallPrompt = e;
+    });
+
+    window.addEventListener('appinstalled', function() {
+        wilduDeferredInstallPrompt = null;
+        closeWilduInstallChoice();
+        closeWilduInstallEnv();
+        closeWilduInstallManualChoice();
+        closeInstallTutorial();
+        showToast("Wild-U salvata sul dispositivo.");
+    });
+
+    function consumeWilduInstallEvent(event) {
+        if (!event) return;
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    function setWilduInstallModalVisible(id, visible) {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.style.display = visible ? 'flex' : 'none';
+    }
+
+    function clearWilduInstallTutorialStage() {
+        const stage = document.getElementById('install-tut-stage');
+        if (stage) stage.innerHTML = "";
+    }
+
+    function closeWilduInstallLayers() {
+        setWilduInstallModalVisible('wildu-install-choice-modal', false);
+        setWilduInstallModalVisible('wildu-install-env-modal', false);
+        setWilduInstallModalVisible('wildu-install-manual-modal', false);
+        setWilduInstallModalVisible('installModal', false);
+        setWilduInstallModalVisible('install-tut-overlay', false);
+        clearWilduInstallTutorialStage();
+    }
+
+    function isWilduStandaloneApp() {
+        return !!(
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+            (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) ||
+            window.navigator.standalone === true
+        );
+    }
+
+    function detectUserEnvironment() {
+        const ua = navigator.userAgent;
+        let deviceType = "Desktop";
+        if (/Mobi|Android|iPhone|iPad|iPod/i.test(ua)) deviceType = "Mobile";
+
+        let os = "Windows/Mac";
+        if (/Android/i.test(ua)) os = "Android";
+        if (/iPhone|iPad|iPod/i.test(ua)) os = "iOS";
+
+        let browser = "Chrome/Edge";
+        if (/Firefox|FxiOS/i.test(ua)) browser = "Firefox";
+        else if (/Safari/i.test(ua) && !/Chrome|CriOS|Edg/i.test(ua)) browser = "Safari";
+
+        return { deviceType, os, browser };
+    }
+
+    async function showInstallInfo(event) {
+        consumeWilduInstallEvent(event);
+
+        if (isWilduStandaloneApp()) {
+            showToast("Wild-U risulta già aperta come app.");
+            return;
+        }
+
+        closeWilduInstallLayers();
+        const nativeResult = await tryWilduNativeInstall();
+        if (nativeResult.accepted) {
+            showToast("Installazione avviata.");
+            return;
+        }
+
+        if (nativeResult.attempted) {
+            showToast("Ti mostro il tutorial guidato.");
+        }
+        openDetectedWilduInstallTutorial('manual');
+    }
+
+    function refreshWilduInstallChoiceState() {
+        const nativeBtn = document.getElementById('wildu-install-native-btn');
+        const copy = document.getElementById('wildu-install-choice-copy');
+        const note = document.getElementById('wildu-install-safari-note');
+        const hasNativePrompt = !!wilduDeferredInstallPrompt;
+        const env = detectUserEnvironment();
+
+        if (nativeBtn) nativeBtn.style.display = hasNativePrompt ? 'flex' : 'none';
+        if (copy) {
+            copy.innerHTML = hasNativePrompt
+                ? "Come preferisci procedere?"
+                : "Vuoi la guida rapida testuale o il tutorial visivo passo-passo?";
+        }
+        if (note) note.style.display = (env.os === "iOS" || !hasNativePrompt) ? 'flex' : 'none';
+    }
+
+    function closeWilduInstallChoice() {
+        setWilduInstallModalVisible('wildu-install-choice-modal', false);
+    }
+
+    function openWilduInstallQuickGuide(event) {
+        consumeWilduInstallEvent(event);
+        closeWilduInstallChoice();
+        closeWilduInstallEnv();
+        closeWilduInstallManualChoice();
+        setWilduInstallModalVisible('installModal', true);
+    }
+
+    function closeWilduInstallQuickGuide() {
+        setWilduInstallModalVisible('installModal', false);
+    }
+
+    async function executeWilduNativeInstall(event) {
+        consumeWilduInstallEvent(event);
+        closeWilduInstallChoice();
+
+        const nativeResult = await tryWilduNativeInstall();
+        if (nativeResult.accepted) {
+            showToast("Installazione avviata.");
+            return;
+        }
+
+        openDetectedWilduInstallTutorial('choice');
+    }
+
+    async function tryWilduNativeInstall() {
+        if (!wilduDeferredInstallPrompt || typeof wilduDeferredInstallPrompt.prompt !== 'function') {
+            return { attempted: false, accepted: false, outcome: 'unavailable' };
+        }
+
+        const promptEvent = wilduDeferredInstallPrompt;
+        wilduDeferredInstallPrompt = null;
+
+        try {
+            const promptResult = await promptEvent.prompt();
+            const choice = promptEvent.userChoice && typeof promptEvent.userChoice.then === 'function'
+                ? await promptEvent.userChoice
+                : promptResult;
+            const outcome = choice && choice.outcome ? choice.outcome : 'unknown';
+            return { attempted: true, accepted: outcome === 'accepted', outcome };
+        } catch (e) {
+            return { attempted: true, accepted: false, outcome: 'error' };
+        }
+    }
+
+    function apriCinema(event) {
+        consumeWilduInstallEvent(event);
+        closeWilduInstallChoice();
+        closeWilduInstallQuickGuide();
+        closeWilduInstallManualChoice();
+
+        wilduDetectedInstallEnv = detectUserEnvironment();
+        const copy = document.getElementById('wildu-install-env-copy');
+        if (copy) {
+            copy.innerHTML = `Mi risulta che tu stia usando <b>${wilduDetectedInstallEnv.browser}</b> su <b>${wilduDetectedInstallEnv.deviceType} (${wilduDetectedInstallEnv.os})</b>.<br><br>È corretto?`;
+        }
+
+        setWilduInstallModalVisible('wildu-install-env-modal', true);
+    }
+
+    function closeWilduInstallEnv() {
+        setWilduInstallModalVisible('wildu-install-env-modal', false);
+    }
+
+    function confirmWilduInstallEnvironment(event) {
+        consumeWilduInstallEvent(event);
+        closeWilduInstallEnv();
+        const env = wilduDetectedInstallEnv || detectUserEnvironment();
+        startTheater(env.deviceType, env.os, env.browser, 'env');
+    }
+
+    function openWilduInstallManualChoice(event) {
+        consumeWilduInstallEvent(event);
+        closeWilduInstallEnv();
+        setWilduInstallModalVisible('wildu-install-manual-modal', true);
+    }
+
+    function closeWilduInstallManualChoice() {
+        setWilduInstallModalVisible('wildu-install-manual-modal', false);
+    }
+
+    function selectWilduInstallPath(key) {
+        closeWilduInstallManualChoice();
+        startTheaterByKey(key, 'manual');
+    }
+
+    const WILDU_INSTALL_THEATER_SCRIPTS = {};
+
+    WILDU_INSTALL_THEATER_SCRIPTS["Mobile_Any_Chrome"] = WILDU_INSTALL_THEATER_SCRIPTS["Mobile_Android_Chrome"];
+    WILDU_INSTALL_THEATER_SCRIPTS["Desktop_iOS_Safari"] = WILDU_INSTALL_THEATER_SCRIPTS["Mobile_iOS_Safari"];
+
+    Object.assign(WILDU_INSTALL_THEATER_SCRIPTS, {
+        "Mobile_iOS_Safari": [
+            { 
+                title: "Passo 1: Tocca Condividi", 
+                text: "<span class='text-primary fw-bold mb-2 d-block' style='font-size: 0.85rem;'><i class='bi bi-browser-safari'></i> Consigliato salvataggio tramite Safari</span>Cerca l'icona **Condividi** (il quadrato con la freccia ⬆️) nella barra in basso.", 
+                html: `<div class="mock-browser"><div class="mock-content"><div class="text-muted opacity-50 fw-bold fs-4">WILDU</div></div><div class="mock-bar mock-bar-bottom px-4"><i class="bi bi-chevron-left text-muted"></i><i class="bi bi-chevron-right text-muted"></i><div class="blink-target p-2 position-relative"><i class="bi bi-box-arrow-up text-primary fs-4"></i><div class="mock-hand" style="right:-10px; bottom:-20px;">👆</div></div><i class="bi bi-book text-muted"></i><i class="bi bi-copy text-muted"></i></div></div>` 
+            },
+            { 
+                title: "Passo 2: Scorri le Opzioni", 
+                text: "Si aprirà un pannello molto lungo. **Scorri verso l'alto** per superare le prime voci.", 
+                html: `<div class="mock-browser" style="background:#ddd;"><div class="mock-content"></div><div class="mock-menu-panel" style="bottom: 0; left: 2%; width: 96%; height: 200px; border-radius: 16px 16px 0 0;"><div class="p-3 text-center border-bottom"><div style="width:40px; height:5px; background:#bbb; border-radius:3px; margin:0 auto;"></div></div><div style="animation: longScrolliOS 4s infinite;"><div class="mock-menu-item text-primary"><i class="bi bi-link"></i> Copia link</div><div class="mock-menu-item text-muted"><i class="bi bi-eyeglasses"></i> Aggiungi a Elenco lettura</div><div class="mock-menu-item text-muted"><i class="bi bi-bookmark"></i> Aggiungi ai Segnalibri</div><div class="mock-menu-item text-muted"><i class="bi bi-star"></i> Aggiungi ai Preferiti</div><div class="mock-menu-item text-muted"><i class="bi bi-search"></i> Trova nella pagina</div><div class="mock-menu-item text-muted"><i class="bi bi-translate"></i> Traduci sito web</div></div><div class="mock-hand" style="right: 20px; bottom: 20px; animation: swipeUpLong 4s infinite;">👆</div></div></div><style>@keyframes longScrolliOS { 0%, 10% { transform: translateY(0); } 40%, 80% { transform: translateY(-160px); } 100% { transform: translateY(0); } } @keyframes swipeUpLong { 0%, 10% { transform: translateY(80px); opacity:0;} 20% { opacity:1;} 40% { transform: translateY(-50px); opacity:1;} 60%, 100% {opacity:0;} }</style>` 
+            },
+            { 
+                title: "Passo 3: Aggiungi a Home", 
+                text: "In fondo alla lista, tocca **Aggiungi alla schermata Home**. Cerca il **quadrato con il + al centro**.", 
+                html: `<div class="mock-browser" style="background:#ddd;"><div class="mock-content"></div><div class="mock-menu-panel" style="bottom: 0; left: 2%; width: 96%; height: 200px; border-radius: 16px 16px 0 0;"><div style="transform: translateY(-160px);"><div class="mock-menu-item text-primary"><i class="bi bi-link"></i> Copia link</div><div class="mock-menu-item text-muted"><i class="bi bi-eyeglasses"></i> Aggiungi a Elenco lettura</div><div class="mock-menu-item text-muted"><i class="bi bi-bookmark"></i> Aggiungi ai Segnalibri</div><div class="mock-menu-item text-muted"><i class="bi bi-star"></i> Aggiungi ai Preferiti</div><div class="mock-menu-item text-muted"><i class="bi bi-search"></i> Trova nella pagina</div><div class="mock-menu-item blink-target position-relative py-3"><i class="bi bi-plus-square text-dark fs-5"></i> <b>Aggiungi a schermata Home</b><div class="mock-hand" style="right: 5%; top: 15px;">👆</div></div><div class="mock-menu-item text-muted"><i class="bi bi-printer"></i> Stampa</div></div></div></div>` 
+            }
+        ],
+        "Mobile_Android_Chrome": [
+            { 
+                title: "Passo 1: Menu di Chrome", 
+                text: "Tocca i **Tre Puntini Verticali** `⋮` in alto a destra.", 
+                html: `<div class="mock-browser"><div class="mock-bar"><div class="bg-light rounded-pill px-3 py-1 w-75 text-start small text-muted"><i class="bi bi-lock-fill text-dark me-1"></i> wildu.it</div><div class="blink-target p-1 position-relative"><i class="bi bi-three-dots-vertical fs-4 text-dark"></i><div class="mock-hand" style="right: -5px; top: 15px;">👆</div></div></div><div class="mock-content"><div class="text-muted opacity-50 fw-bold fs-4">WILDU</div></div></div>` 
+            },
+            { 
+                title: "Passo 2: Scorri il menu", 
+                text: "Il menu a tendina è lungo. **Scorri verso il basso** per trovare le voci nascoste in fondo.", 
+                html: `<div class="mock-browser"><div class="mock-bar border-0"><div class="bg-light rounded-pill w-75 p-2"></div><i class="bi bi-three-dots-vertical fs-4 text-dark"></i></div><div class="mock-content" style="align-items:flex-start; justify-content:flex-end;"><div class="mock-menu-panel shadow-lg" style="top: 0; right: 10px; width: 230px; height: 210px; overflow: hidden;"><div style="animation: longScrollChrome 4s infinite;"><div class="mock-menu-item text-muted"><i class="bi bi-arrow-clockwise"></i> Aggiorna</div><div class="mock-menu-item text-muted"><i class="bi bi-star"></i> Preferiti</div><div class="mock-menu-item text-muted"><i class="bi bi-download"></i> Download</div><div class="mock-menu-item text-muted"><i class="bi bi-clock-history"></i> Cronologia</div><div class="mock-menu-item text-muted"><i class="bi bi-share"></i> Condividi...</div><div class="mock-menu-item text-muted"><i class="bi bi-search"></i> Trova nella pagina</div><div class="mock-menu-item text-muted"><i class="bi bi-google"></i> Traduci...</div></div><div class="mock-hand" style="right: 50px; bottom: 20px; animation: swipeUpLong 4s infinite;">👆</div></div></div></div><style>@keyframes longScrollChrome { 0%, 10% { transform: translateY(0); } 40%, 80% { transform: translateY(-150px); } 100% { transform: translateY(0); } }</style>` 
+            },
+            { 
+                title: "Passo 3: Installa / Home", 
+                text: "Tocca **Installa app** oppure **Aggiungi a schermata Home**.<br>L'icona può essere uno **schermo con la freccia** ⬇️ oppure un **quadrato col +**.", 
+                html: `<div class="mock-browser"><div class="mock-bar border-0"><div class="bg-light rounded-pill w-75 p-2"></div><i class="bi bi-three-dots-vertical fs-4 text-dark"></i></div><div class="mock-content" style="align-items:flex-start; justify-content:flex-end;"><div class="mock-menu-panel shadow-lg" style="top: 0; right: 10px; width: 240px; height: 210px; overflow: hidden;"><div style="transform: translateY(-130px);"><div class="mock-menu-item text-muted"><i class="bi bi-clock-history"></i> Cronologia</div><div class="mock-menu-item text-muted"><i class="bi bi-share"></i> Condividi...</div><div class="mock-menu-item text-muted"><i class="bi bi-search"></i> Trova nella pagina</div><div class="mock-menu-item blink-target position-relative py-3" style="background: rgba(13,110,253,0.05);"><div class="d-flex align-items-center gap-2"><b><i class="bi bi-display"></i> / <i class="bi bi-plus-square"></i> Installa / Home</b></div><div class="mock-hand" style="right: 15px; top: 15px;">👆</div></div><div class="mock-menu-item text-muted"><i class="bi bi-square"></i> Sito desktop</div></div></div></div></div>` 
+            }
+        ],
+        "Mobile_Any_Firefox": [
+            { 
+                title: "Passo 1: Condividi in alto", 
+                text: "Guarda nella barra di ricerca in alto: tocca l'icona **Condividi** (il simbolo con i tre puntini uniti a forma di 'V' `<`).", 
+                html: `<div class="mock-browser"><div class="mock-bar"><div class="bg-light rounded-pill px-3 py-1 w-100 d-flex justify-content-between align-items-center small text-muted"><span><i class="bi bi-lock-fill text-dark me-1"></i> wildu.it</span><div class="blink-target p-1 position-relative"><i class="bi bi-share text-dark fs-5" style="transform: scaleX(-1);"></i><div class="mock-hand" style="right: -5px; top: 15px;">👆</div></div></div></div><div class="mock-content"><div class="text-muted opacity-50 fw-bold fs-4">WILDU</div></div></div>` 
+            },
+            { 
+                title: "Passo 2: Cerca 'Altro'", 
+                text: "Si aprirà un menu. Cerca e tocca la voce **Altro** (spesso ha sempre l'icona della 'V' `<` o una spunta).", 
+                html: `<div class="mock-browser"><div class="mock-content" style="align-items:flex-end; justify-content:center; padding-bottom: 20px;"><div class="mock-menu-panel shadow-lg" style="width: 90%;"><div class="p-3 fw-bold border-bottom">Condividi tramite...</div><div class="d-flex p-3 gap-3 overflow-hidden"><div class="text-center"><div class="bg-success text-white rounded-circle p-2 mb-1"><i class="bi bi-whatsapp"></i></div><small>WhatsApp</small></div><div class="text-center"><div class="bg-info text-white rounded-circle p-2 mb-1"><i class="bi bi-telegram"></i></div><small>Telegram</small></div><div class="text-center blink-target position-relative"><div class="bg-light text-dark rounded-circle p-2 mb-1 border"><i class="bi bi-share" style="transform: scaleX(-1);"></i></div><small><b>Altro</b></small><div class="mock-hand" style="right: -10px; top: 10px;">👆</div></div></div></div></div></div>` 
+            },
+            { 
+                title: "Passo 3: Scorrimento Finale", 
+                text: "Nel pannello lungo, **scorri** e tocca **Agg. a schermata principale**.<br>Cerca la **Casetta col +**, lo **Schermo col +** o un **Telefono coi puntini in basso**.", 
+                html: `<div class="mock-browser" style="background:#ddd;"><div class="mock-content"></div><div class="mock-menu-panel" style="bottom: 0; left: 0; width: 100%; height: 200px; border-radius: 16px 16px 0 0;"><div class="p-3 fw-bold border-bottom bg-white" style="position:relative; z-index:2;">Azione...</div><div style="animation: longScrollFx 4s infinite; position:relative; z-index:1;"><div class="mock-menu-item text-muted"><i class="bi bi-link-45deg"></i> Copia link</div><div class="mock-menu-item text-muted"><i class="bi bi-device-ssd"></i> Invia a dispositivo</div><div class="mock-menu-item text-muted"><i class="bi bi-file-pdf"></i> Salva in PDF</div><div class="mock-menu-item text-muted"><i class="bi bi-printer"></i> Stampa</div><div class="mock-menu-item blink-target position-relative py-3"><div class="d-flex align-items-center gap-2"><b><i class="bi bi-house-add"></i> / <i class="bi bi-grid-3x3-gap"></i> Agg. a schermata</b></div><div class="mock-hand" style="right: 20px; top: 15px;">👆</div></div></div><div class="mock-hand" style="right: 20px; bottom: 20px; animation: swipeUpLong 4s infinite; z-index:3;">👆</div></div></div><style>@keyframes longScrollFx { 0%, 10% { transform: translateY(0); } 40%, 80% { transform: translateY(-140px); } 100% { transform: translateY(0); } }</style>` 
+            }
+        ],
+        "Desktop_Any_Chrome": [
+            { 
+                title: "Installazione PC", 
+                text: "Guarda la barra degli indirizzi: clicca sull'icona del **Monitor con la freccia** ⬇️ e conferma su 'Installa'.<br>*(Se manca l'icona, apri il menu `⋮` ➡️ Salva e condividi ➡️ Installa pagina come app)*.", 
+                html: `<div class="mock-browser" style="height: 180px;"><div class="mock-bar" style="background: #eef1f5; border-bottom: 2px solid #ccc;"><div class="bg-white rounded-pill px-3 py-1 w-100 d-flex justify-content-between align-items-center shadow-sm" style="border: 1px solid #ddd;"><span class="small text-dark"><i class="bi bi-lock-fill text-muted me-2"></i>https://wildu.it</span><div class="d-flex gap-3 align-items-center"><div class="blink-target p-1 position-relative"><i class="bi bi-display text-dark fw-bold"></i><i class="bi bi-arrow-down-short text-dark position-absolute" style="left:8px; top:8px; font-size:0.6rem;"></i><div class="mock-mouse" style="right: -15px; top: 15px;">↖</div></div><i class="bi bi-star text-muted"></i><i class="bi bi-three-dots-vertical text-dark"></i></div></div></div><div class="mock-content"><div class="text-muted opacity-50 fw-bold fs-3">WILDU WEB APP</div></div></div>` 
+            }
+        ],
+        "Desktop_Any_Firefox": [
+            { 
+                title: "Firefox PC: pulsante Web App", 
+                text: "Su **Firefox per Windows 143+** puoi salvare il sito come web app. Cerca nella barra degli indirizzi il pulsante **Web App** e cliccalo.", 
+                html: `<div class="mock-browser" style="height: 180px;"><div class="mock-bar" style="background: #eef1f5; border-bottom: 2px solid #ccc;"><div class="bg-white rounded px-3 py-1 w-100 d-flex justify-content-between align-items-center shadow-sm" style="border: 1px solid #ddd;"><span class="small text-dark"><i class="bi bi-shield-lock-fill text-muted me-2"></i>https://wildustrek.github.io/Wild-U/</span><div class="d-flex gap-3 align-items-center"><div class="blink-target p-1 position-relative"><i class="bi bi-window-plus text-primary fs-5"></i><div class="mock-mouse" style="right: -15px; top: 15px;">↖</div></div><i class="bi bi-star text-muted"></i><i class="bi bi-list text-dark"></i></div></div></div><div class="mock-content text-center px-4"><p class="text-primary small fw-bold mb-0"><i class="bi bi-window-plus"></i> Aggiungi come web app</p></div></div>` 
+            },
+            { 
+                title: "Conferma e fissa", 
+                text: "Firefox apre Wild-U in una finestra separata e aggiunge il collegamento al menu Start. Se Windows chiede di fissarla alla barra applicazioni, scegli **Sì**.", 
+                html: `<div class="mock-browser" style="height: 180px;"><div class="mock-content text-center px-4"><div class="bg-white rounded shadow-sm p-3 border" style="width: 88%; margin: 0 auto;"><div class="fw-bold text-dark mb-2"><i class="bi bi-window-plus text-primary me-2"></i>Wild-U Web App</div><div class="small text-muted mb-2">Apri Wild-U in una finestra dedicata.</div><div class="d-flex gap-2 justify-content-between"><span class="bg-light rounded-pill px-3 py-1 small">Annulla</span><span class="blink-target bg-primary text-white rounded-pill px-3 py-1 small position-relative">Installa<div class="mock-mouse" style="right: -18px; top: 12px;">↖</div></span></div></div></div></div>` 
+            },
+            { 
+                title: "Se non compare", 
+                text: "Se il pulsante Web App non appare, verifica Firefox **143+**, finestra normale e Windows. Su macOS/Linux il flusso Firefox non è disponibile: usa Chrome/Edge oppure salva Wild-U nei segnalibri.", 
+                html: `<div class="mock-browser" style="height: 180px;"><div class="mock-content text-center px-4"><div class="bg-white rounded shadow-sm p-3 border" style="width: 90%; margin: 0 auto;"><p class="text-dark small fw-bold mb-2"><i class="bi bi-info-circle text-primary me-1"></i>Controllo rapido</p><div class="small text-muted text-start"><div><i class="bi bi-check2 text-primary me-1"></i>Firefox 143 o superiore</div><div><i class="bi bi-check2 text-primary me-1"></i>Windows, finestra normale</div><div><i class="bi bi-star text-warning me-1"></i>Fallback: segnalibro o Chrome/Edge</div></div></div></div></div>` 
+            }
+        ]
+    });
+
+    WILDU_INSTALL_THEATER_SCRIPTS["Mobile_Any_Chrome"] = WILDU_INSTALL_THEATER_SCRIPTS["Mobile_Android_Chrome"];
+    WILDU_INSTALL_THEATER_SCRIPTS["Desktop_iOS_Safari"] = WILDU_INSTALL_THEATER_SCRIPTS["Mobile_iOS_Safari"];
+
+    function resolveWilduInstallPathKey(device, os, browser) {
+        let key = device + "_" + os + "_" + browser;
+        if (WILDU_INSTALL_THEATER_SCRIPTS[key]) return key;
+        if (device === "Desktop" && browser === "Firefox") return "Desktop_Any_Firefox";
+        if (device === "Desktop") return "Desktop_Any_Chrome";
+        if (device === "Mobile" && browser === "Firefox") return "Mobile_Any_Firefox";
+        if (device === "Mobile" && os === "iOS") return "Mobile_iOS_Safari";
+        return "Mobile_Android_Chrome";
+    }
+
+    function openDetectedWilduInstallTutorial(backTarget) {
+        wilduDetectedInstallEnv = detectUserEnvironment();
+        startTheater(
+            wilduDetectedInstallEnv.deviceType,
+            wilduDetectedInstallEnv.os,
+            wilduDetectedInstallEnv.browser,
+            backTarget || 'manual'
+        );
+    }
+
+    function startTheater(device, os, browser, backTarget) {
+        startTheaterByKey(resolveWilduInstallPathKey(device, os, browser), backTarget);
+    }
+
+    function startTheaterByKey(key, backTarget) {
+        currentInstallPath = WILDU_INSTALL_THEATER_SCRIPTS[key] || WILDU_INSTALL_THEATER_SCRIPTS["Mobile_Android_Chrome"];
+        currentInstallStep = 0;
+        currentInstallBackTarget = backTarget || null;
+        closeWilduInstallLayers();
+        setWilduInstallModalVisible('install-tut-overlay', true);
+        renderInstallStep();
+    }
+
+    function renderInstallStep() {
+        const step = currentInstallPath[currentInstallStep];
+        if (!step) return;
+
+        const title = document.getElementById('install-tut-title');
+        const stage = document.getElementById('install-tut-stage');
+        const text = document.getElementById('install-tut-text');
+        const progress = document.getElementById('install-tut-progress');
+        const prev = document.getElementById('install-tut-prev');
+        const next = document.getElementById('install-tut-next');
+        const finish = document.getElementById('install-tut-finish');
+
+        if (title) title.textContent = step.title;
+        if (stage) stage.innerHTML = step.html;
+        if (text) text.innerHTML = String(step.text || "").replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        if (progress) progress.textContent = "Passo " + (currentInstallStep + 1) + " / " + currentInstallPath.length;
+        if (prev) prev.disabled = currentInstallStep === 0 && !currentInstallBackTarget;
+
+        const isLast = currentInstallStep === currentInstallPath.length - 1;
+        if (next) next.style.display = isLast ? 'none' : 'flex';
+        if (finish) finish.style.display = isLast ? 'flex' : 'none';
+    }
+
+    function nextInstallStep(event) {
+        consumeWilduInstallEvent(event);
+        if (currentInstallStep < currentInstallPath.length - 1) {
+            currentInstallStep++;
+            renderInstallStep();
+        }
+    }
+
+    function prevInstallStep(event) {
+        consumeWilduInstallEvent(event);
+        if (currentInstallStep > 0) {
+            currentInstallStep--;
+            renderInstallStep();
+            return;
+        }
+
+        const backTarget = currentInstallBackTarget;
+        if (!backTarget) return;
+
+        closeInstallTutorial();
+        if (backTarget === 'env') {
+            apriCinema();
+        } else if (backTarget === 'manual') {
+            setWilduInstallModalVisible('wildu-install-manual-modal', true);
+        } else if (backTarget === 'choice') {
+            refreshWilduInstallChoiceState();
+            setWilduInstallModalVisible('wildu-install-choice-modal', true);
+        } else if (backTarget === 'quick') {
+            setWilduInstallModalVisible('installModal', true);
+        }
+    }
+
+    function closeInstallTutorial(event) {
+        consumeWilduInstallEvent(event);
+        setWilduInstallModalVisible('install-tut-overlay', false);
+        clearWilduInstallTutorialStage();
+        currentInstallPath = [];
+        currentInstallStep = 0;
+        currentInstallBackTarget = null;
+    }
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key !== 'Escape') return;
+        closeWilduInstallChoice();
+        closeWilduInstallEnv();
+        closeWilduInstallManualChoice();
+        closeWilduInstallQuickGuide();
+        closeInstallTutorial();
+    });
 
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
