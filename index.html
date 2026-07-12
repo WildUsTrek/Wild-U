@@ -5338,6 +5338,129 @@ const FV = WILDU_FIREBASE.store.fieldValue;
 
 WILDU_FIREBASE.boot();
 
+const WilduRemoteCacheTtl = (() => {
+    const COLLECTION = 'PARAMETERS_PARTNER';
+    const DOC_ID = 'cache_config';
+    const CACHE_KEY = 'wilduRemoteCacheTtl:v1:cache_config';
+    const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
+    const MIN_TTL_MS = 1000;
+
+    let memoryConfig = null;
+    let memoryLoadedAt = 0;
+    let loadPromise = null;
+
+    function now() {
+        return Date.now();
+    }
+
+    function readLocalConfig() {
+        try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (!raw) return null;
+            const box = JSON.parse(raw);
+            const savedAt = Number(box && box.savedAt);
+            if (!savedAt || now() - savedAt > CACHE_TTL_MS) return null;
+            const data = box && box.data;
+            return data && typeof data === 'object' ? data : null;
+        } catch (e) {
+            try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
+            return null;
+        }
+    }
+
+    function writeLocalConfig(data) {
+        try {
+            if (!data || typeof data !== 'object') return;
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+                savedAt: now(),
+                data
+            }));
+        } catch (e) {
+            console.warn('[WilduRemoteCacheTtl] Cache TTL non salvata:', e);
+        }
+    }
+
+    function setMemory(data) {
+        if (!data || typeof data !== 'object') return null;
+        memoryConfig = data;
+        memoryLoadedAt = now();
+        return memoryConfig;
+    }
+
+    function getCachedConfig() {
+        if (memoryConfig && now() - memoryLoadedAt < CACHE_TTL_MS) return memoryConfig;
+        const local = readLocalConfig();
+        if (local) return setMemory(local);
+        return null;
+    }
+
+    async function loadConfig(reason) {
+        if (loadPromise) return loadPromise;
+        loadPromise = (async () => {
+            try {
+                if (!navigator.onLine) return getCachedConfig();
+                if (typeof db === 'undefined' || !db || typeof db.collection !== 'function') return getCachedConfig();
+                const snap = await db.collection(COLLECTION).doc(DOC_ID).get({ source: 'server' });
+                const data = snap && snap.exists ? (snap.data() || {}) : {};
+                if (data && typeof data === 'object') {
+                    setMemory(data);
+                    writeLocalConfig(data);
+                    return data;
+                }
+            } catch (e) {
+                console.warn('[WilduRemoteCacheTtl] Lettura cache_config saltata:', reason || '', e);
+            } finally {
+                loadPromise = null;
+            }
+            return getCachedConfig();
+        })();
+        return loadPromise;
+    }
+
+    function prime(reason) {
+        if (getCachedConfig()) return Promise.resolve(memoryConfig);
+        return loadConfig(reason || 'prime');
+    }
+
+    function ttlMs(scope, key, fallbackMs) {
+        const fallback = Math.max(MIN_TTL_MS, Number(fallbackMs || 0) || MIN_TTL_MS);
+        const cfg = getCachedConfig();
+        if (!cfg) {
+            prime('ttl:' + String(scope || '') + ':' + String(key || ''));
+            return fallback;
+        }
+        const section = cfg[scope] && typeof cfg[scope] === 'object' ? cfg[scope] : null;
+        const item = section && section[key] && typeof section[key] === 'object' ? section[key] : null;
+        const ms = Number(item && item.ms);
+        if (Number.isFinite(ms) && ms > 0) return Math.max(MIN_TTL_MS, Math.floor(ms));
+        const seconds = Number(item && item.seconds);
+        if (Number.isFinite(seconds) && seconds > 0) return Math.max(MIN_TTL_MS, Math.floor(seconds * 1000));
+        return fallback;
+    }
+
+    function clientMs(key, fallbackMs) {
+        return ttlMs('client', key, fallbackMs);
+    }
+
+    function clear() {
+        memoryConfig = null;
+        memoryLoadedAt = 0;
+        loadPromise = null;
+        try { localStorage.removeItem(CACHE_KEY); } catch (e) {}
+    }
+
+    return {
+        prime,
+        ttlMs,
+        clientMs,
+        clear,
+        cacheKey: CACHE_KEY
+    };
+})();
+
+window.WilduRemoteCacheTtl = WilduRemoteCacheTtl;
+WilduRemoteCacheTtl.prime('boot');
+
 // =========================================================
 // WILDU BOOT VEIL — velo estetico fail-open anti-flash
 // =========================================================
@@ -5658,6 +5781,14 @@ const WilduMediaClient = (() => {
         return Date.now();
     }
 
+    function mediaTagCacheTtlMs() {
+        return WilduRemoteCacheTtl.clientMs("mediaTagPayloadTtl", CACHE_TTL_MS);
+    }
+
+    function publicVersionsTtlMs() {
+        return WilduRemoteCacheTtl.clientMs("publicVersionsTtl", PUBLIC_VERSIONS_TTL_MS);
+    }
+
     function safeString(value) {
         return String(value === undefined || value === null ? "" : value).trim();
     }
@@ -5805,7 +5936,7 @@ const WilduMediaClient = (() => {
             if (!parsed || typeof parsed !== "object") return null;
 
             const savedAt = normalizeNumber(parsed.savedAt, 0);
-            if (savedAt && now() - savedAt > CACHE_TTL_MS) return null;
+            if (savedAt && now() - savedAt > mediaTagCacheTtlMs()) return null;
 
             if (!Array.isArray(parsed.items)) return null;
 
@@ -5869,7 +6000,7 @@ const WilduMediaClient = (() => {
             if (!parsed || typeof parsed !== "object") return null;
 
             const savedAt = normalizeNumber(parsed.savedAt, 0);
-            if (!savedAt || (!allowExpired && now() - savedAt > PUBLIC_VERSIONS_TTL_MS)) return null;
+            if (!savedAt || (!allowExpired && now() - savedAt > publicVersionsTtlMs())) return null;
 
             return normalizePublicVersionsEnvelope(parsed);
         } catch (e) {
@@ -6053,7 +6184,7 @@ const WilduMediaClient = (() => {
         const force = options.force === true || shouldBypassCache();
 
         // 1) Cache RAM: evita doppie letture nello stesso giro di apertura modulo.
-        if (!force && publicVersionsMemory && now() - publicVersionsLoadedAt < PUBLIC_VERSIONS_TTL_MS) {
+        if (!force && publicVersionsMemory && now() - publicVersionsLoadedAt < publicVersionsTtlMs()) {
             return publicVersionsMemory;
         }
 
@@ -6336,6 +6467,10 @@ const WilduMediaClient = (() => {
 
     const WILDU_READER_EXTRACT_CACHE_PREFIX = "wilduReaderExtract:v1:";
     const WILDU_READER_EXTRACT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+    function getWilduReaderExtractTtlMs() {
+        return WilduRemoteCacheTtl.clientMs("readerExtractTtl", WILDU_READER_EXTRACT_TTL_MS);
+    }
     const WILDU_READER_MAX_FALLBACK_PAGES = 18;
     const WILDU_READER_MAX_FALLBACK_CHARS = 60000;
 
@@ -6412,7 +6547,7 @@ const WilduMediaClient = (() => {
             if (!parsed || typeof parsed !== "object") return null;
 
             const savedAt = Number(parsed.savedAt || 0);
-            if (!savedAt || Date.now() - savedAt > WILDU_READER_EXTRACT_TTL_MS) return null;
+            if (!savedAt || Date.now() - savedAt > getWilduReaderExtractTtlMs()) return null;
 
             if (!Array.isArray(parsed.blocks) || !parsed.blocks.length) return null;
 
@@ -6519,6 +6654,10 @@ const WilduMediaClient = (() => {
     const WILDU_READER_PAYLOAD_CACHE_PREFIX = "wilduReaderPayload:v1:";
     const WILDU_READER_PAYLOAD_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+    function getWilduReaderPayloadTtlMs() {
+        return WilduRemoteCacheTtl.clientMs("readerPayloadTtl", WILDU_READER_PAYLOAD_TTL_MS);
+    }
+
     function getWilduReaderPayloadUrlFromItem(item) {
         if (!item || typeof item !== "object") return "";
 
@@ -6616,7 +6755,7 @@ const WilduMediaClient = (() => {
             if (!parsed || typeof parsed !== "object") return null;
 
             const savedAt = Number(parsed.savedAt || 0);
-            if (!savedAt || Date.now() - savedAt > WILDU_READER_PAYLOAD_TTL_MS) return null;
+            if (!savedAt || Date.now() - savedAt > getWilduReaderPayloadTtlMs()) return null;
 
             return normalizeWilduReaderPayload(parsed.payload, item, payloadUrl);
         } catch (e) {
@@ -11379,6 +11518,10 @@ const WILDU_CONSOLE_SWITCH_CACHE_KEY = 'wildConsoleSwitchCache';
 const WILDU_CONSOLE_SWITCH_TTL_MS = 24 * 60 * 60 * 1000; // 24 ore, solo per console_switch
 let WILDU_SW_CONSOLE_ALLOWED = false;
 
+function getWilduConsoleSwitchTtlMs() {
+    return WilduRemoteCacheTtl.clientMs('consoleSwitchTtl', WILDU_CONSOLE_SWITCH_TTL_MS);
+}
+
 // Switch separato: decide SOLO se mostrare il pannello audio debug.
 // Fonte: PARAMETERS_PARTNER/client_config.audio_debug_panel_switch
 let WILDU_AUDIO_DEBUG_PANEL_ALLOWED = false;
@@ -12189,7 +12332,7 @@ function readConsoleSwitchCache() {
         const savedAt = Number(data.savedAt || 0);
         if (!savedAt) return null;
 
-        if ((Date.now() - savedAt) > WILDU_CONSOLE_SWITCH_TTL_MS) {
+        if ((Date.now() - savedAt) > getWilduConsoleSwitchTtlMs()) {
             return null;
         }
 
@@ -12851,6 +12994,7 @@ function clearWilduKnownLocalCachesForGlobalNuke() {
     try { if (typeof MODULE_CACHE_META_KEY !== 'undefined') exactKeys.push(MODULE_CACHE_META_KEY); } catch (e) {}
     try { if (typeof REG_CTA_STORAGE_KEY !== 'undefined') exactKeys.push(REG_CTA_STORAGE_KEY); } catch (e) {}
     try { if (typeof STORAGE_GUARD_KEY !== 'undefined') exactKeys.push(STORAGE_GUARD_KEY); } catch (e) {}
+    try { if (window.WilduRemoteCacheTtl && WilduRemoteCacheTtl.cacheKey) exactKeys.push(WilduRemoteCacheTtl.cacheKey); } catch (e) {}
 
     exactKeys.forEach((key) => {
         try {
@@ -12870,6 +13014,7 @@ function clearWilduKnownLocalCachesForGlobalNuke() {
                 key.indexOf('wilduReaderExtract:v1:') === 0 ||
                 key.indexOf('wilduRuntime') === 0 ||
                 key.indexOf('wilduGameRuntime') === 0 ||
+                key.indexOf('wilduRemoteCacheTtl:') === 0 ||
                 key.indexOf('wildu_runtime') === 0 ||
                 key.indexOf('WILDU_RUNTIME') === 0 ||
                 key.indexOf('wildModule') === 0
@@ -12888,6 +13033,12 @@ function clearWilduKnownLocalCachesForGlobalNuke() {
     try {
         if (typeof clearWilduGameRuntimeCache === 'function') {
             clearWilduGameRuntimeCache();
+        }
+    } catch (e) {}
+
+    try {
+        if (window.WilduRemoteCacheTtl && typeof WilduRemoteCacheTtl.clear === 'function') {
+            WilduRemoteCacheTtl.clear();
         }
     } catch (e) {}
 }
@@ -13181,6 +13332,10 @@ setShellReloadLock(remoteVersion);
 
 const PUBLIC_CACHE_KEY = 'wildCachePublic';
 const PUBLIC_CACHE_TTL_MS = 8 * 60 * 60 * 1000; // 8 ore
+
+function getWilduPublicCacheTtlMs() {
+    return WilduRemoteCacheTtl.clientMs('publicCacheTtl', PUBLIC_CACHE_TTL_MS);
+}
 const PUBLIC_CACHE_BYPASS_KEY = 'wildBypassPublicCacheOnce';
 const PUBLIC_CACHE_BYPASS_PIN = '8888'; // cambia qui se vuoi
 
@@ -13206,7 +13361,7 @@ function writePublicCacheEnvelope(payload) {
 
 function isPublicCacheStillValid(envelope) {
     if (!envelope || !envelope.savedAt || !envelope.payload) return false;
-    return (Date.now() - envelope.savedAt) < PUBLIC_CACHE_TTL_MS;
+    return (Date.now() - envelope.savedAt) < getWilduPublicCacheTtlMs();
 }
 
 function armPublicCacheBypassOnce() {
@@ -19843,6 +19998,10 @@ const WILDU_RUNTIME_VERSION_CACHE_KEY = "wilduRuntimeVersions:v1:module_versions
 const WILDU_RUNTIME_VERSION_TTL_MS = 3 * 60 * 60 * 1000;
 const WILDU_RUNTIME_VERSION_READ_TIMEOUT_MS = 9000;
 
+function getWilduRuntimeVersionTtlMs() {
+    return WilduRemoteCacheTtl.clientMs("runtimeModuleVersionsTtl", WILDU_RUNTIME_VERSION_TTL_MS);
+}
+
 let WILDU_RUNTIME_VERSION_MEMORY = null;
 let WILDU_RUNTIME_VERSION_LOADED_AT = 0;
 
@@ -19919,7 +20078,7 @@ function readWilduRuntimeVersionCache(options = {}) {
         const savedAt = Number(parsed.savedAt || 0);
         const allowStale = options.allowStale === true;
         if (!savedAt) return null;
-        if (!allowStale && Date.now() - savedAt > WILDU_RUNTIME_VERSION_TTL_MS) return null;
+        if (!allowStale && Date.now() - savedAt > getWilduRuntimeVersionTtlMs()) return null;
 
         return parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
     } catch (e) {
@@ -19989,7 +20148,7 @@ async function getWilduRuntimeVersions(options = {}) {
     if (
         !force &&
         WILDU_RUNTIME_VERSION_MEMORY &&
-        Date.now() - WILDU_RUNTIME_VERSION_LOADED_AT < WILDU_RUNTIME_VERSION_TTL_MS
+        Date.now() - WILDU_RUNTIME_VERSION_LOADED_AT < getWilduRuntimeVersionTtlMs()
     ) {
         return WILDU_RUNTIME_VERSION_MEMORY;
     }
@@ -21084,6 +21243,10 @@ const WILDU_GAME_RUNTIME_DOC = "game_versions";
 const WILDU_GAME_RUNTIME_CACHE_KEY = "wilduGameRuntime:v1:game_versions";
 const WILDU_GAME_RUNTIME_TTL_MS = 3 * 60 * 60 * 1000;
 
+function getWilduGameRuntimeTtlMs() {
+    return WilduRemoteCacheTtl.clientMs("gameRuntimeTtl", WILDU_GAME_RUNTIME_TTL_MS);
+}
+
 let WILDU_GAME_RUNTIME_MEMORY = null;
 let WILDU_GAME_RUNTIME_LOADED_AT = 0;
 
@@ -21117,7 +21280,7 @@ function readWilduGameRuntimeCache() {
         if (!parsed || typeof parsed !== "object") return null;
 
         const savedAt = Number(parsed.savedAt || 0);
-        if (!savedAt || Date.now() - savedAt > WILDU_GAME_RUNTIME_TTL_MS) return null;
+        if (!savedAt || Date.now() - savedAt > getWilduGameRuntimeTtlMs()) return null;
 
         return parsed.payload && typeof parsed.payload === "object" ? parsed.payload : null;
     } catch (e) {
@@ -21150,7 +21313,7 @@ async function getWilduGameRuntime(options = {}) {
     if (
         !force &&
         WILDU_GAME_RUNTIME_MEMORY &&
-        Date.now() - WILDU_GAME_RUNTIME_LOADED_AT < WILDU_GAME_RUNTIME_TTL_MS
+        Date.now() - WILDU_GAME_RUNTIME_LOADED_AT < getWilduGameRuntimeTtlMs()
     ) {
         return WILDU_GAME_RUNTIME_MEMORY;
     }
