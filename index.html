@@ -17033,6 +17033,146 @@ function renderWilduSimpleEventGearAccordion(gearHtml, toneColor) {
 // ==========================================
 // NUOVA FUNZIONE: DETTAGLI VIAGGI (MODAL)
 // ==========================================
+function wilduCanonicalConfigKey(key) {
+    return String(key == null ? '' : key)
+        .normalize('NFKC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
+}
+
+function wilduReadClientConfigValue(keys, fallback) {
+    const source = (config && typeof config === 'object') ? config : {};
+    const wanted = (keys || []).map(wilduCanonicalConfigKey);
+    for (const key of wanted) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) return source[key];
+    }
+    for (const rawKey of Object.keys(source)) {
+        if (wanted.indexOf(wilduCanonicalConfigKey(rawKey)) >= 0) return source[rawKey];
+    }
+    return fallback;
+}
+
+function wilduParsePriceNumber(value, fallback) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (value === undefined || value === null) return fallback;
+    let raw = String(value).trim().replace(/[%€\s]/g, '');
+    if (!raw) return fallback;
+    if (raw.indexOf(',') >= 0) raw = raw.replace(/\./g, '').replace(',', '.');
+    else raw = raw.replace(/[^0-9.\-]/g, '');
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function wilduRoundPrice(value) {
+    const parsed = wilduParsePriceNumber(value, 0);
+    return Math.max(0, Math.round(parsed * 100) / 100);
+}
+
+function wilduBooleanValue(value) {
+    if (value === true) return true;
+    if (value === false || value === undefined || value === null) return false;
+    return ['true', '1', 'si', 'sì', 'yes', 'on'].indexOf(String(value).trim().toLowerCase()) >= 0;
+}
+
+function wilduOfficialEventDate(ev, today) {
+    const raw = String(firstNonEmptyValue(
+        ev && ev['Data inizio'], ev && ev['Data Inizio'], ev && ev.dataInizio,
+        ev && ev.startDate, ev && ev.data
+    ) || '').trim();
+    if (!raw) return null;
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(raw)) {
+        const parts = raw.slice(0, 10).split('-').map(Number);
+        const isoDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        isoDate.setHours(0, 0, 0, 0);
+        return isNaN(isoDate.getTime()) ? null : isoDate;
+    }
+    const match = raw.match(/(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?/);
+    if (!match) return null;
+    let year = match[3] ? parseInt(match[3], 10) : parseInt(ev && ev.Anno, 10);
+    if (!Number.isFinite(year) || year <= 0) year = today.getFullYear();
+    if (year < 100) year += 2000;
+    const result = new Date(year, parseInt(match[2], 10) - 1, parseInt(match[1], 10));
+    result.setHours(0, 0, 0, 0);
+    if (!match[3] && !(ev && ev.Anno) && result < today) result.setFullYear(today.getFullYear() + 1);
+    return isNaN(result.getTime()) ? null : result;
+}
+
+function wilduResolveOfficialPriceContract(ev, accessContext, referenceDate) {
+    const context = String(accessContext || 'PUBLIC').toUpperCase() === 'COMMUNITY_DISCOUNT'
+        ? 'COMMUNITY_DISCOUNT'
+        : 'PUBLIC';
+    const today = referenceDate instanceof Date ? new Date(referenceDate.getTime()) : new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const firstPrice = function () {
+        for (let i = 0; i < arguments.length; i++) {
+            const value = arguments[i];
+            if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+        }
+        return 0;
+    };
+    const standardRaw = firstPrice(
+        ev && ev['Prezzo (€)'], ev && ev.Prezzo, ev && ev['Prezzo Standard'],
+        ev && ev.prezzo_standard, ev && ev['Prezzo Listino'], ev && ev.prezzo_listino,
+        ev && ev.prezzo_std, ev && ev.prezzo, ev && ev['Prezzo Prime'], 0
+    );
+    const standardPrice = wilduRoundPrice(standardRaw);
+    const explicitPrime = wilduRoundPrice(firstPrice(ev && ev['Prezzo Prime'], ev && ev.prezzo_prime, ev && ev.prezzoPrime, 0));
+    const explicitOffer = wilduRoundPrice(firstPrice(ev && ev['Prezzo Early'], ev && ev.prezzo_early, ev && ev.prezzoEarly, 0));
+    const percent = function (keys) {
+        return Math.max(0, Math.min(95, wilduParsePriceNumber(wilduReadClientConfigValue(keys, 0), 0)));
+    };
+    const primePercent = percent(['percentuale_sconto_prime']);
+    const longLeadPercent = percent(['percentuale_100_giorni', 'percentuale_sconto_100_giorni', 'sconto_100_giorni_percentuale', 'early_discount_percent', 'discount_percent']);
+    const offerPercent = percent(['percentuale_early_booking', 'percentuale_early', 'sconto_early_booking_percentuale', 'early_booking_percent', 'early_percent']);
+    const discounted = function (pct, fallback) {
+        return pct > 0 && standardPrice > 0
+            ? Math.max(0, Math.round(standardPrice * (100 - pct) / 100))
+            : wilduRoundPrice(fallback);
+    };
+    const communityPrice = explicitPrime > 0
+        ? explicitPrime
+        : discounted(primePercent, standardPrice);
+    const longLeadPrice = discounted(longLeadPercent, communityPrice);
+    const calculatedOfferPrice = discounted(offerPercent, communityPrice);
+    const publicOfferPrice = explicitOffer > 0 ? explicitOffer : calculatedOfferPrice;
+    const reservedOfferPrice = offerPercent > 0 ? calculatedOfferPrice : publicOfferPrice;
+    const threshold = Math.max(1, Math.round(wilduParsePriceNumber(wilduReadClientConfigValue([
+        'giorni_100_giorni', 'soglia_100_giorni', 'giorni_sconto_100_giorni',
+        'giorni_anticipo_sconto', 'sconto_100_giorni_giorni', 'early_discount_days', 'discount_days'
+    ], 100), 100)));
+    const eventDate = wilduOfficialEventDate(ev, today);
+    const daysToStart = eventDate ? Math.ceil((eventDate.getTime() - today.getTime()) / 86400000) : null;
+    const longLeadEligible = Number.isFinite(daysToStart) && daysToStart > threshold;
+    const offerActive = wilduBooleanValue(ev && ev['Offerta Attiva']);
+    const publicKey = offerActive ? 'offer' : 'community';
+    const reservedKey = offerActive ? 'offer' : (longLeadEligible ? 'longLead' : 'community');
+    const finalKey = context === 'COMMUNITY_DISCOUNT' ? reservedKey : publicKey;
+    const publicValues = { offer: publicOfferPrice, longLead: longLeadPrice, community: communityPrice, standard: standardPrice };
+    const reservedValues = { offer: reservedOfferPrice, longLead: longLeadPrice, community: communityPrice, standard: standardPrice };
+    const values = context === 'COMMUNITY_DISCOUNT' ? reservedValues : publicValues;
+    const finalPrice = values[finalKey] > 0 ? values[finalKey] : (communityPrice || standardPrice || 0);
+
+    return {
+        context: context,
+        standardPrice: standardPrice,
+        communityPrice: communityPrice,
+        longLeadPrice: longLeadPrice,
+        offerPrice: values.offer,
+        publicOfferPrice: publicOfferPrice,
+        reservedOfferPrice: reservedOfferPrice,
+        publicFinalPrice: publicValues[publicKey] || communityPrice || standardPrice || 0,
+        reservedFinalPrice: reservedValues[reservedKey] || communityPrice || standardPrice || 0,
+        finalPrice: wilduRoundPrice(finalPrice),
+        finalKey: finalKey,
+        offerActive: offerActive,
+        longLeadEligible: longLeadEligible,
+        daysToStart: daysToStart,
+        threshold: threshold,
+        percentages: { prime: primePercent, longLead: longLeadPercent, offer: offerPercent }
+    };
+}
+
 function showTripDetails(id, detailContext = null) {
     const ev = allTrips.find(e => (e.eventDocId || e.id) === id);
     if (!ev) {
@@ -17273,7 +17413,7 @@ function showTripDetails(id, detailContext = null) {
     // - la bacheca normale NON applica mai lo sconto 100+ giorni;
     // - il prezzo 100+ giorni vale solo se il dettaglio viene aperto dal modulo Sconti;
     // - lo zaino mostra il prezzo storico prenotato senza ricalcolare dal viaggio corrente.
-    const hasOfferta = ev["Offerta Attiva"] === true;
+    const hasOfferta = wilduBooleanValue(ev["Offerta Attiva"]);
 
     function parseModalMoney(value, fallback) {
         if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -17308,38 +17448,23 @@ function showTripDetails(id, detailContext = null) {
         return clean.indexOf('€') >= 0 ? clean : clean + '€';
     }
 
-    const standardRaw = firstNonEmptyValue(ev["Prezzo (€)"], ev.Prezzo, ev["Prezzo Standard"], ev.prezzo_standard, ev["Prezzo Listino"], ev.prezzo_listino);
-    const primeRaw = firstNonEmptyValue(ev["Prezzo Prime"], ev.prezzo_std);
-
-    const standardNumber = parseModalMoney(standardRaw, 0);
-    const primeNumber = parseModalMoney(primeRaw, standardNumber || 0);
-    const earlyNumber = parseModalMoney(ev["Prezzo Early"], primeNumber || standardNumber || 0);
-
-    const hasStandardPrice = String(standardRaw || '').trim() !== '' && standardNumber > 0;
-    const hasPrimePrice = String(primeRaw || '').trim() !== '' && primeNumber > 0;
-
-    const scontiContextValid = wilduDiscountContext
+    const scontiContextValid = !!(
+        wilduDiscountContext
         && wilduDiscountContext.source === 'wildu-sconti'
-        && Number(wilduDiscountContext.activePrice) > 0;
-
-    const longLeadContextValid = scontiContextValid
-        && wilduDiscountContext.mode === 'longLead'
-        && !hasOfferta;
-
-    const offerContextValid = scontiContextValid
-        && wilduDiscountContext.mode === 'offer'
-        && hasOfferta;
-
-    let priceMode = 'prime';
-    let finalNumber = primeNumber || standardNumber || 0;
-
-    if (hasOfferta) {
-        priceMode = 'offer';
-        finalNumber = offerContextValid ? Number(wilduDiscountContext.activePrice) : (earlyNumber || primeNumber || standardNumber || 0);
-    } else if (longLeadContextValid) {
-        priceMode = 'longLead';
-        finalNumber = Number(wilduDiscountContext.activePrice);
-    }
+        && typeof isClientLogged === 'function'
+        && isClientLogged()
+    );
+    const priceContract = wilduResolveOfficialPriceContract(
+        ev,
+        scontiContextValid ? 'COMMUNITY_DISCOUNT' : 'PUBLIC'
+    );
+    const standardNumber = priceContract.standardPrice;
+    const primeNumber = priceContract.communityPrice;
+    const hasStandardPrice = standardNumber > 0;
+    const priceMode = priceContract.finalKey === 'offer'
+        ? 'offer'
+        : (priceContract.finalKey === 'longLead' ? 'longLead' : 'prime');
+    const finalNumber = priceContract.finalPrice || primeNumber || standardNumber || 0;
 
     const prezzoFinale = formatModalMoney(finalNumber) || String(finalNumber || '').trim() || '0';
     const prezzoFinaleNumber = parseModalMoney(prezzoFinale, finalNumber || 0);
@@ -19240,7 +19365,23 @@ if (profKeyEl) {
             .slice(0, 5);
     }
 
-    function getWilduTripSharePriceLines() {
+    function getWilduTripSharePriceLines(current) {
+        if (current && current.type === 'trip' && current.raw) {
+            const contract = wilduResolveOfficialPriceContract(current.raw, 'PUBLIC');
+            const formatShareMoney = function (value) {
+                const rounded = wilduRoundPrice(value);
+                if (rounded <= 0) return '';
+                return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace('.', ',')) + '€';
+            };
+            const standard = contract.standardPrice;
+            const finalPrice = contract.publicFinalPrice;
+            const finalLabel = contract.offerActive ? 'Prezzo finale attivo (superofferta)' : 'Prezzo finale attivo';
+            const lines = [];
+            if (standard > finalPrice + 0.009) lines.push('Prezzo standard: ' + formatShareMoney(standard));
+            if (finalPrice > 0) lines.push(finalLabel + ': ' + formatShareMoney(finalPrice));
+            return lines;
+        }
+
         const standard = getWilduDetailDomText('trip-modal-p-std');
         const finalPrice = getWilduDetailDomText('trip-modal-p-prime');
         const finalLabel = getWilduDetailDomText('trip-modal-prime-label') || 'Prezzo finale';
@@ -19321,7 +19462,7 @@ if (profKeyEl) {
         const imageUrl = getWilduTripShareImageUrl(current);
         const description = getWilduTripShareDescription(current);
         const services = getWilduTripShareServices(current);
-        const priceLines = getWilduTripSharePriceLines();
+        const priceLines = getWilduTripSharePriceLines(current);
 
         if (!title && !date && !place) return null;
 
@@ -19937,6 +20078,7 @@ if (profKeyEl) {
     function checkRankMet(reqRank) {
         const required = normalizeWilduRankName(reqRank);
         if (!required) return true;
+        if (typeof isClientLogged !== 'function' || !isClientLogged()) return false;
 
         const RANKS = [
             "socio novizio",
@@ -19961,6 +20103,23 @@ if (profKeyEl) {
         }
 
         return uIdx >= rIdx;
+    }
+
+    function wilduRequireResourceEntitlement(reqRank) {
+        const required = normalizeWilduRankName(reqRank);
+        if (!required) return true;
+
+        if (typeof isClientLogged !== 'function' || !isClientLogged()) {
+            if (typeof requireLoggedAccess === 'function') requireLoggedAccess('RANKED_CONTENT', { force: true });
+            else if (typeof openRegistrationCTA === 'function') openRegistrationCTA('AUTH_REQUIRED', { force: true });
+            return false;
+        }
+
+        if (!checkRankMet(reqRank)) {
+            showToast("🔒 Grado richiesto: " + String(reqRank || "").toUpperCase());
+            return false;
+        }
+        return true;
     }
     
     // 🟢 MOTORE DI RENDERING PREMI (ANTI-PARADOSSO AUDIO)
@@ -21402,10 +21561,7 @@ window.WILDU_GAME_RUNTIME = {
 function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode) {
     const mode = String(openMode || "module").trim();
 
-    if (!checkRankMet(r)) {
-        showToast("🔒 Grado richiesto: " + String(r || "").toUpperCase());
-        return;
-    }
+    if (!wilduRequireResourceEntitlement(r)) return;
 
     const targetUrl = String(f || "").trim();
     if (!targetUrl) {
@@ -21480,10 +21636,7 @@ function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode)
     
     
 async function openModule(f, a, i, r, encodedLinks, moduleRev) {
-    if (!checkRankMet(r)) {
-        showToast("🔒 Grado richiesto: " + r.toUpperCase());
-        return;
-    }
+    if (!wilduRequireResourceEntitlement(r)) return;
 
     // Pre-lock audio immediato: su iOS il primo tap non deve accendere
     // musica/ambienza default mentre il modulo sta ancora caricando runtime/rev.
@@ -25249,38 +25402,16 @@ function showTripDetailsFromCarousel(id, isHike) {
         return Math.max(0, Math.round(n * 100) / 100);
     }
 
-    function wdApplyPercentFromStandard(standardPrice, percent, fallbackPrice) {
-        if (!Number.isFinite(percent) || percent <= 0) return wdRoundPrice(fallbackPrice);
-        return wdRoundPrice(standardPrice * (100 - percent) / 100);
-    }
-
     function wdBuildItem(ev, isHike, mode, settings, today) {
         const dateObj = wdParseEventDate(ev, today);
         const daysToStart = dateObj ? Math.ceil((dateObj.getTime() - today.getTime()) / DAY_MS) : null;
-
-        const standardRaw = wdFirstNonEmpty(
-            ev['Prezzo (€)'],
-            ev.Prezzo,
-            ev['Prezzo Standard'],
-            ev.prezzo_standard,
-            ev['Prezzo Listino'],
-            ev.prezzo_listino,
-            ev['Prezzo Prime'],
-            ev.prezzo_std,
-            '0'
-        );
-        const standardPrice = wdParseNumber(standardRaw, 0);
-
-        const primeRaw = wdFirstNonEmpty(ev['Prezzo Prime'], ev.prezzo_std, standardRaw, '0');
-        const primePrice = wdParseNumber(primeRaw, standardPrice);
-
+        const priceContract = wilduResolveOfficialPriceContract(ev, 'COMMUNITY_DISCOUNT', today);
+        const standardPrice = priceContract.standardPrice;
+        const primePrice = priceContract.communityPrice;
         const earlyBookingPercent = settings.earlyBookingPercent;
         const longLeadPercent = settings.longLeadPercent;
-
-        // Offerta Attiva usa percentuale_early_booking, anche se il vecchio campo Prezzo Early esiste.
-        // Prezzo 100+ giorni usa percentuale_100_giorni. Entrambe le percentuali sono totali sul prezzo standard/listino.
-        const offerPrice = wdApplyPercentFromStandard(standardPrice, earlyBookingPercent, primePrice);
-        const longLeadPrice = wdApplyPercentFromStandard(standardPrice, longLeadPercent, primePrice);
+        const offerPrice = priceContract.offerPrice;
+        const longLeadPrice = priceContract.longLeadPrice;
 
         const activePrice = mode === 'offer' ? offerPrice : longLeadPrice;
         const savingFromStandard = Math.max(0, wdRoundPrice(standardPrice - activePrice));
@@ -25406,9 +25537,13 @@ function showTripDetailsFromCarousel(id, isHike) {
     }
 
     function wdPrimeDetailsContext(item) {
+        if (typeof isClientLogged !== 'function' || !isClientLogged()) {
+            wdActiveDetailsContext = null;
+            return false;
+        }
         if (!item || !item.id) {
             wdActiveDetailsContext = null;
-            return;
+            return false;
         }
 
         wdActiveDetailsContext = {
@@ -25429,12 +25564,14 @@ function showTripDetailsFromCarousel(id, isHike) {
             createdAt: Date.now(),
             expiresAt: Date.now() + 15000
         };
+        return true;
     }
 
     function wdTakeDetailsContext(id, isHike) {
         const ctx = wdActiveDetailsContext;
         wdActiveDetailsContext = null;
 
+        if (typeof isClientLogged !== 'function' || !isClientLogged()) return null;
         if (!ctx || ctx.source !== 'wildu-sconti') return null;
         if (Date.now() > Number(ctx.expiresAt || 0)) return null;
         if (String(ctx.id || '') !== String(id || '')) return null;
@@ -25444,9 +25581,14 @@ function showTripDetailsFromCarousel(id, isHike) {
 
     function wdOpenDetails(id, isHike, mode) {
         if (!id) return;
+        if (typeof isClientLogged !== 'function' || !isClientLogged()) {
+            wdActiveDetailsContext = null;
+            if (typeof requireLoggedAccess === 'function') requireLoggedAccess('RANKED_CONTENT', { force: true });
+            return;
+        }
 
         const item = wdFindDiscountItem(id, isHike, mode);
-        wdPrimeDetailsContext(item);
+        if (!wdPrimeDetailsContext(item)) return;
 
         // V8: gli sconti non aprono mai PayDay/OpenDay.
         // Se arriva un vecchio click con isHike=true lo blocchiamo, senza toccare il prezzo rigido dei PayDay.
