@@ -4343,16 +4343,45 @@ body::before {
     display: block;
     width: 100%;
     margin: 0 0 10px 0;
+    cursor: pointer;
+    touch-action: pan-y;
 }
 
 #custom-booking-modal .wildu-ondemand-date-choice input[type="date"] {
     position: absolute;
-    inset: 0;
-    opacity: 0;
-    z-index: 2;
-    width: 100%;
-    height: 100%;
-    cursor: pointer;
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: auto;
+    opacity: .01;
+    z-index: 0;
+    width: 1px;
+    max-width: 1px;
+    min-width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    pointer-events: none;
+}
+
+#custom-booking-modal #cb-ondemand-date-fields .wildu-ondemand-date-choice input[type="date"] {
+    position: absolute;
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: auto;
+    opacity: .01;
+    z-index: 0;
+    width: 1px;
+    max-width: 1px;
+    min-width: 1px;
+    height: 1px;
+    min-height: 1px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    pointer-events: none;
 }
 
 #custom-booking-modal .wildu-ondemand-date-display {
@@ -4367,6 +4396,7 @@ body::before {
     background: linear-gradient(135deg, rgba(212,175,55,.12), rgba(255,255,255,.045));
     box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
     box-sizing: border-box;
+    pointer-events: none;
 }
 
 #custom-booking-modal .wildu-ondemand-date-main {
@@ -4405,6 +4435,24 @@ body::before {
     background: rgba(0,0,0,.28);
     color: #fff;
     font-size: 14px;
+}
+
+#custom-booking-modal.wildu-booking-ondemand-mode {
+    align-items: flex-start !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    height: 100dvh !important;
+    padding-top: max(14px, env(safe-area-inset-top)) !important;
+    padding-bottom: max(22px, env(safe-area-inset-bottom)) !important;
+}
+
+#custom-booking-modal.wildu-booking-ondemand-mode .modal-content {
+    max-height: none;
+    margin: 0 auto;
+}
+
+#custom-booking-modal.wildu-booking-ondemand-mode #cb-ondemand-date-fields {
+    overflow: visible;
 }
 
 .wildu-profile-quick-actions {
@@ -17161,6 +17209,46 @@ function getOnDemandTripTitle(item) {
     return String(item.title || item.titolo || item.Titolo || 'Viaggio su richiesta').trim();
 }
 
+function normalizeOnDemandServiceList(value) {
+    if (Array.isArray(value)) {
+        return value.map(function (item) {
+            if (item == null) return '';
+            if (typeof item === 'object') {
+                return String(item.label || item.nome || item.name || item.titolo || item.title || item.text || item.value || '').trim();
+            }
+            return String(item).trim();
+        }).filter(Boolean).slice(0, 30);
+    }
+
+    const raw = String(value || '').trim();
+    if (!raw) return [];
+
+    if (/^\s*\[/.test(raw)) {
+        try {
+            return normalizeOnDemandServiceList(JSON.parse(raw));
+        } catch (_) {}
+    }
+
+    return raw.split(/\r?\n|;/).map(function (item) {
+        return String(item || '').trim();
+    }).filter(Boolean).slice(0, 30);
+}
+
+function getOnDemandTripServices(item) {
+    item = item || {};
+    const raw = item.raw || {};
+    return normalizeOnDemandServiceList(
+        item.services ||
+        item.servizi ||
+        item.Servizi ||
+        item['Servizi inclusi'] ||
+        raw.services ||
+        raw.servizi ||
+        raw.Servizi ||
+        raw['Servizi inclusi']
+    );
+}
+
 function getOnDemandPriceDisplay(value, itemOrMode) {
     const raw = String(value || '').trim();
     if (!raw) return 'Prezzo su richiesta';
@@ -17199,7 +17287,7 @@ function renderOnDemandTrips() {
         const region = String(trip.region || trip.regione || '').trim();
         const desc = String(trip.description || trip.descrizione || '').trim();
         const image = String(trip.imageUrl || trip.immagine || trip.fotoUrl || '').trim();
-        const services = Array.isArray(trip.services) ? trip.services : [];
+        const services = getOnDemandTripServices(trip);
         const safeId = id.replace(/'/g, "\\'");
         const serviceHtml = services.slice(0, 5).map(function (s) {
             return '<li style="margin-bottom:6px;">' + escapeOnDemandHtml(s) + '</li>';
@@ -17237,12 +17325,12 @@ function openOnDemandDetails(productId) {
     const region = String(trip.region || trip.regione || '').trim();
     const desc = String(trip.description || trip.descrizione || 'Descrizione in aggiornamento.').trim();
     const image = String(trip.imageUrl || trip.immagine || trip.fotoUrl || '').trim();
-    const services = Array.isArray(trip.services) ? trip.services : [];
+    const services = getOnDemandTripServices(trip);
     const priceDisplay = getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo, trip);
 
     const oldClone = document.getElementById('cloned-top-btn-wrapper');
     if (oldClone) oldClone.remove();
-    resetWilduSharedDetailLayoutForSimpleEvent();
+    resetWilduOnDemandDetailLayout();
 
     const imgContainer = document.getElementById('trip-modal-img-container');
     const imgEl = document.getElementById('trip-modal-img');
@@ -17384,7 +17472,11 @@ function openOnDemandBooking(productId) {
     const viewersToast = document.getElementById('cb-viewers-fomo');
     if (viewersToast) viewersToast.style.opacity = '0';
 
-    document.getElementById('custom-booking-modal').style.display = 'flex';
+    const bookingModal = document.getElementById('custom-booking-modal');
+    if (bookingModal) {
+        bookingModal.classList.add('wildu-booking-ondemand-mode');
+        bookingModal.style.display = 'flex';
+    }
 }
 
 function scrollOnDemandTripIntoView(productId) {
@@ -17721,6 +17813,55 @@ function resetWilduSharedDetailLayoutForSimpleEvent() {
 
     if (stack && !stack.contains(p.priceBox) && !stack.contains(p.gearListEl)) {
         stack.remove();
+    }
+}
+
+function resetWilduOnDemandDetailLayout() {
+    resetWilduSharedDetailLayoutForSimpleEvent();
+
+    const p = getWilduSharedDetailParts();
+    if (!p.container || !p.descEl) return;
+
+    if (p.gearDetails) {
+        p.gearDetails.open = false;
+        p.gearDetails.style.display = 'none';
+    }
+
+    if (p.gearTitleEl) {
+        p.container.insertBefore(p.gearTitleEl, p.descEl.nextSibling);
+    }
+
+    if (p.gearListEl && p.gearListEl.parentNode !== p.container) {
+        p.container.insertBefore(p.gearListEl, p.gearTitleEl ? p.gearTitleEl.nextSibling : p.descEl.nextSibling);
+    }
+
+    if (p.gearTitleEl && p.gearListEl && p.gearTitleEl.nextSibling !== p.gearListEl) {
+        p.container.insertBefore(p.gearListEl, p.gearTitleEl.nextSibling);
+    }
+
+    if (p.gearTitleEl) {
+        p.gearTitleEl.style.cssText = [
+            'display:none',
+            'color:var(--w-gold)',
+            'font-size:18px',
+            'font-weight:950',
+            'margin:18px 0 10px 0',
+            'padding-top:2px',
+            'border-bottom:1px solid rgba(212,175,55,0.22)',
+            'padding-bottom:8px'
+        ].join(';');
+    }
+
+    if (p.gearListEl) {
+        p.gearListEl.style.cssText = [
+            'display:none',
+            'list-style:none',
+            'padding:0',
+            'margin:0 0 22px 0',
+            'color:#ddd',
+            'font-size:15px',
+            'line-height:1.4'
+        ].join(';');
     }
 }
 
@@ -18925,7 +19066,11 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
     document.getElementById('cb-nome').value = nomeSalvato;
     document.getElementById('cb-telefono').value = telefonoSalvato;
 
-    document.getElementById('custom-booking-modal').style.display = 'flex';
+    const bookingModal = document.getElementById('custom-booking-modal');
+    if (bookingModal) {
+        bookingModal.classList.remove('wildu-booking-ondemand-mode');
+        bookingModal.style.display = 'flex';
+    }
     
     // --- 👀 FOMO: AVVIO LOOP LIVE VIEWERS ---
     clearTimeout(window.fomoViewersTimeout);
@@ -18936,6 +19081,8 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
     // Funzione per chiudere il modulo
 function closeCustomBooking() {
     currentBookingDraft = null;
+    const bookingModal = document.getElementById('custom-booking-modal');
+    if (bookingModal) bookingModal.classList.remove('wildu-booking-ondemand-mode');
 // --- 🛑 STOP TOTALE FOMO ---
     clearTimeout(window.fomoViewersTimeout);
     clearTimeout(window.fomoCycleTimeout);
@@ -18962,7 +19109,7 @@ function closeCustomBooking() {
     if (onDemandStartManual) onDemandStartManual.value = '';
     if (onDemandEndManual) onDemandEndManual.value = '';
 
-    document.getElementById('custom-booking-modal').style.display = 'none';
+    if (bookingModal) bookingModal.style.display = 'none';
 }
 
 async function sendOnDemandBookingFromModal(options) {
