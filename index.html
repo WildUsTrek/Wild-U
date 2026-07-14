@@ -4478,6 +4478,142 @@ body::before {
     background: linear-gradient(135deg, rgba(33,82,38,.75), rgba(18,18,18,.88));
 }
 
+.wildu-profile-legal-card {
+    border-left-color: #9ed6ff;
+    margin-top: 24px;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, rgba(14,27,23,.96), rgba(15,15,15,.98));
+}
+
+.wildu-profile-legal-card summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.wildu-profile-legal-card summary::-webkit-details-marker {
+    display: none;
+}
+
+.wildu-profile-legal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.wildu-profile-legal-title {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 950;
+}
+
+.wildu-profile-legal-subtitle {
+    color: #aaa;
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 4px;
+}
+
+.wildu-profile-legal-pill {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 5px 9px;
+    border: 1px solid rgba(158,214,255,.34);
+    background: rgba(158,214,255,.10);
+    color: #9ed6ff;
+    font-size: 10px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .35px;
+}
+
+.wildu-profile-legal-body {
+    margin-top: 16px;
+    display: grid;
+    gap: 10px;
+}
+
+.wildu-profile-legal-row {
+    display: grid;
+    gap: 7px;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 14px;
+    padding: 12px;
+    background: rgba(255,255,255,.035);
+}
+
+.wildu-profile-legal-row b {
+    color: #fff;
+    font-size: 13px;
+}
+
+.wildu-profile-legal-row span {
+    color: #bdbdbd;
+    font-size: 12px;
+    line-height: 1.42;
+}
+
+.wildu-profile-legal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    margin-top: 4px;
+}
+
+.wildu-profile-legal-actions button {
+    border: 1px solid rgba(212,175,55,.42);
+    border-radius: 12px;
+    padding: 10px 9px;
+    color: #fff;
+    background: rgba(255,255,255,.05);
+    font-size: 11px;
+    font-weight: 950;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
+.wildu-health-consent-box {
+    margin: 13px 0 2px 0;
+    padding: 12px;
+    border-radius: 13px;
+    border: 1px solid rgba(212,175,55,.30);
+    background: rgba(212,175,55,.075);
+    color: #ddd;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.wildu-health-consent-box label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.wildu-health-consent-box input {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+}
+
+.wildu-detail-date-options-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(158,214,255,.10);
+    border: 2px solid rgba(158,214,255,.70);
+    color: #9ed6ff;
+    text-align: center;
+    padding: 12px;
+    border-radius: 10px;
+    font-weight: 950;
+    font-size: 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
 </style>
     
 </head>
@@ -5185,6 +5321,36 @@ body::before {
         In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
     </div>
     <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
+
+    <details id="wildu-profile-legal-card" class="card wildu-profile-legal-card">
+        <summary>
+            <div class="wildu-profile-legal-head">
+                <div style="min-width:0;">
+                    <div class="wildu-profile-legal-title">Privacy e preferenze</div>
+                    <div class="wildu-profile-legal-subtitle">Gestisci informazioni privacy, cookie e conferma per partecipare in sicurezza.</div>
+                </div>
+                <span id="wildu-profile-legal-status" class="wildu-profile-legal-pill">da verificare</span>
+            </div>
+        </summary>
+        <div class="wildu-profile-legal-body">
+            <div class="wildu-profile-legal-row">
+                <b>Privacy</b>
+                <span>Informazioni su dati usati per profilo, prenotazioni, progressi e contatto operativo Wild-U.</span>
+            </div>
+            <div class="wildu-profile-legal-row">
+                <b>Cookie e memoria app</b>
+                <span>La cache tecnica serve a far funzionare la PWA. Eventuali strumenti non tecnici restano gestiti dalle preferenze.</span>
+            </div>
+            <div class="wildu-profile-legal-row">
+                <b>Consenso al trattamento dei dati e della privacy per partecipazione</b>
+                <span id="wildu-health-consent-status">Non ancora confermata.</span>
+            </div>
+            <div class="wildu-profile-legal-actions">
+                <button type="button" onclick="acceptWilduBasicLegalConsents('profile')">Accetta preferenze</button>
+                <button type="button" onclick="acceptWilduHealthConsent('profile')">Conferma attivita</button>
+            </div>
+        </div>
+    </details>
 </div>
 </div>
 
@@ -11297,6 +11463,152 @@ async function saveProfileData() {
         alert("❌ Errore durante il salvataggio. Riprova.");
     }
 }
+
+const WILDU_LEGAL_CONSENT_VERSIONS = {
+    privacy: 'privacy_2026_07_14',
+    cookies: 'cookies_2026_07_14',
+    healthBooking: 'outdoor_activity_2026_07_14'
+};
+
+function getWilduLegalConsents() {
+    return (cachedXPData && typeof cachedXPData.legalConsents === 'object' && cachedXPData.legalConsents)
+        ? cachedXPData.legalConsents
+        : {};
+}
+
+function isWilduConsentCurrent(key) {
+    const item = getWilduLegalConsents()[key] || {};
+    return item.accepted === true && item.version === WILDU_LEGAL_CONSENT_VERSIONS[key];
+}
+
+function mergeWilduLegalConsentPatch(patch) {
+    const base = getWilduLegalConsents();
+    cachedXPData = cachedXPData || {};
+    cachedXPData.legalConsents = {
+        ...base,
+        ...patch
+    };
+    renderWilduLegalConsentStatus();
+}
+
+async function saveWilduLegalConsentPatch(patch) {
+    if (!wildUserKey) {
+        showToast("Accedi per salvare le preferenze nel profilo.");
+        return false;
+    }
+
+    const finalConsents = {
+        ...getWilduLegalConsents(),
+        ...(patch || {})
+    };
+
+    await FS.setUtente(wildUserKey, {
+        legalConsents: finalConsents,
+        ultimo_aggiornamento: FV.serverTimestamp()
+    });
+    mergeWilduLegalConsentPatch(finalConsents);
+    return true;
+}
+
+function renderWilduLegalConsentStatus() {
+    const card = document.getElementById('wildu-profile-legal-card');
+    if (!card) return;
+
+    const status = document.getElementById('wildu-profile-legal-status');
+    const healthStatus = document.getElementById('wildu-health-consent-status');
+    const privacyOk = isWilduConsentCurrent('privacy');
+    const cookiesOk = isWilduConsentCurrent('cookies');
+    const healthOk = isWilduConsentCurrent('healthBooking');
+
+    if (status) {
+        status.innerText = privacyOk && cookiesOk && healthOk
+            ? 'completo'
+            : (privacyOk && cookiesOk ? 'attivita da confermare' : 'da completare');
+        status.style.color = privacyOk && cookiesOk && healthOk ? '#9dffbd' : '#9ed6ff';
+        status.style.borderColor = privacyOk && cookiesOk && healthOk ? 'rgba(157,255,189,.38)' : 'rgba(158,214,255,.34)';
+        status.style.background = privacyOk && cookiesOk && healthOk ? 'rgba(49,185,90,.10)' : 'rgba(158,214,255,.10)';
+    }
+
+    if (healthStatus) {
+        healthStatus.innerText = healthOk
+            ? 'Confermata. Non te la richiederemo di nuovo finche il testo resta invariato.'
+            : 'Da confermare prima di una prenotazione che richiede dati sullo stato fisico.';
+    }
+}
+
+async function acceptWilduBasicLegalConsents(source) {
+    const acceptedAt = new Date().toISOString();
+    try {
+        const saved = await saveWilduLegalConsentPatch({
+            privacy: {
+                accepted: true,
+                version: WILDU_LEGAL_CONSENT_VERSIONS.privacy,
+                acceptedAt: acceptedAt,
+                source: source || 'profile'
+            },
+            cookies: {
+                accepted: true,
+                technicalNoticeSeen: true,
+                analytics: false,
+                marketing: false,
+                version: WILDU_LEGAL_CONSENT_VERSIONS.cookies,
+                updatedAt: acceptedAt,
+                source: source || 'profile'
+            }
+        });
+        if (!saved) return;
+        try {
+            localStorage.setItem('wilduLegalNoticeSeen', WILDU_LEGAL_CONSENT_VERSIONS.cookies);
+        } catch (e) {}
+        showToast("Preferenze privacy salvate.");
+    } catch (err) {
+        console.error("Errore salvataggio preferenze privacy:", err);
+        showToast("Preferenze non salvate. Riprova.");
+    }
+}
+
+async function acceptWilduHealthConsent(source) {
+    const ok = window.confirm(
+        "Autorizzo Wild-U a trattare le informazioni necessarie a gestire la mia partecipazione alle attivita outdoor, incluse eventuali informazioni sullo stato fisico comunicate nel form."
+    );
+    if (!ok) return false;
+
+    try {
+        const saved = await saveWilduLegalConsentPatch({
+            healthBooking: {
+                accepted: true,
+                version: WILDU_LEGAL_CONSENT_VERSIONS.healthBooking,
+                acceptedAt: new Date().toISOString(),
+                source: source || 'profile'
+            }
+        });
+        if (!saved) return false;
+        showToast("Conferma attivita salvata.");
+        return true;
+    } catch (err) {
+        console.error("Errore salvataggio conferma attivita:", err);
+        showToast("Conferma non salvata. Riprova.");
+        return false;
+    }
+}
+
+async function ensureWilduHealthConsentForBooking() {
+    if (isWilduConsentCurrent('healthBooking')) return true;
+    return await acceptWilduHealthConsent('standard_booking_form');
+}
+
+function maybePromptWilduLegalNotice() {
+    if (!wildUserKey || (isWilduConsentCurrent('privacy') && isWilduConsentCurrent('cookies'))) return;
+    let alreadySeen = false;
+    try {
+        alreadySeen = localStorage.getItem('wilduLegalNoticeSeen') === WILDU_LEGAL_CONSENT_VERSIONS.cookies;
+    } catch (e) {}
+    if (alreadySeen) return;
+    try {
+        localStorage.setItem('wilduLegalNoticeSeen', WILDU_LEGAL_CONSENT_VERSIONS.cookies);
+    } catch (e) {}
+    showToast("Puoi gestire privacy e preferenze in fondo al Profilo.");
+}
     
 // ==========================================
 // IL MOTORE DEL BIVIO (TELEGRAM VS GOOGLE)
@@ -11793,6 +12105,7 @@ async function completeRegistration() {
                 grado: existingData.grado || "Socio Novizio",
                 nome: userName,
                 telefono: phone,
+                legalConsents: existingData.legalConsents || {},
                 config: config
             };
         }
@@ -11821,6 +12134,7 @@ async function completeRegistration() {
             grado: existingData.grado || "Socio Novizio",
             nome: userName,
             telefono: phone,
+            legalConsents: existingData.legalConsents || {},
             config: config
         };
 
@@ -14383,6 +14697,7 @@ async function fetchXP() {
                         grado: backup.grado || "Socio Novizio",
                         nome: backup.nome || "",
                         telefono: backup.telefono || "",
+                        legalConsents: backup.legalConsents || {},
                         config: config
                     };
 
@@ -14421,6 +14736,7 @@ async function fetchXP() {
             grado: data.grado || "Socio Novizio",
             nome: data.nome || "",
             telefono: data.telefono || "",
+            legalConsents: data.legalConsents || {},
             config: config
         };
 
@@ -14432,6 +14748,7 @@ async function fetchXP() {
                 grado: userData.grado,
                 nome: userData.nome,
                 telefono: userData.telefono,
+                legalConsents: userData.legalConsents || {},
                 savedAt: Date.now()
             }));
 
@@ -14525,6 +14842,7 @@ async function fetchXP() {
                     grado: backup.grado || "Socio Novizio",
                     nome: backup.nome || "",
                     telefono: backup.telefono || "",
+                    legalConsents: backup.legalConsents || {},
                     config: config
                 };
                 if (currentTab === 'profile') renderProfile(cachedXPData);
@@ -17304,7 +17622,7 @@ function renderOnDemandTrips() {
             (serviceHtml ? '<ul style="margin:0 0 16px 18px; padding:0; color:#ddd; font-size:13px; line-height:1.35;">' + serviceHtml + '</ul>' : '') +
             '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:auto;">' +
                 '<div style="color:var(--w-gold); font-weight:950; font-size:20px; white-space:nowrap;">' + escapeOnDemandHtml(getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo, trip)) + '</div>' +
-                '<button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); openOnDemandBooking(&quot;' + escapeOnDemandHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Richiedi data</button>' +
+                '<button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); openOnDemandDetails(&quot;' + escapeOnDemandHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Scopri dettagli</button>' +
             '</div>' +
         '</article>';
     }).join('');
@@ -17328,9 +17646,7 @@ function openOnDemandDetails(productId) {
     const services = getOnDemandTripServices(trip);
     const priceDisplay = getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo, trip);
 
-    const oldClone = document.getElementById('cloned-top-btn-wrapper');
-    if (oldClone) oldClone.remove();
-    resetWilduOnDemandDetailLayout();
+    prepareWilduDetailModalMode('ondemand');
 
     const imgContainer = document.getElementById('trip-modal-img-container');
     const imgEl = document.getElementById('trip-modal-img');
@@ -17396,6 +17712,7 @@ function openOnDemandDetails(productId) {
 
     const shareBtn = document.getElementById('od-modal-share-trip');
     if (shareBtn) shareBtn.style.display = 'none';
+    configureWilduDetailDateOptions('', null, '');
 
     const bookBtn = document.getElementById('od-modal-book');
     if (bookBtn) {
@@ -17560,7 +17877,7 @@ function renderTrips(trips, targetId) {
         const safeLinkSito = encodeURIComponent(linkSito);
 
         const miniLinkBtn = (linkSito && !isHike) ? 
-            `<button onclick="openCommercialLink(decodeURIComponent('${safeLinkSito}'))" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">LINK AL SITO</button>` 
+            `<button onclick="event.stopPropagation(); openCommercialLink(decodeURIComponent('${safeLinkSito}'))" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">LINK AL SITO</button>` 
             : "";
 
         // --- MOTORE FOMO ---
@@ -17580,7 +17897,7 @@ function renderTrips(trips, targetId) {
         // --- RENDER IBRIDO ---
         if (isHike) {
             // ⛰️ ESTETICA HIKE (Cornice Oro - Prezzo VIP Gigante Allineato a Fondo)
-            return `<div class="card wildu-adventure-card wildu-adventure-card-hike">
+            return `<div class="card wildu-adventure-card wildu-adventure-card-hike" role="button" tabindex="0" onclick="showPayDayDetails('${safeId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPayDayDetails('${safeId}');}" style="cursor:pointer;">
                 ${imgHtml}
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
                     <h3 class="wildu-adventure-title" style="color: #fff; margin: 0; font-size: 20px; line-height: 1.2; min-width:0; flex:1 1 auto;">${titolo}</h3>
@@ -17598,7 +17915,7 @@ function renderTrips(trips, targetId) {
                     <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 26px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 42px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
                 </div>
                 
-                <button class="btn-book wildu-adventure-details-btn" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
+                <button class="btn-book wildu-adventure-details-btn" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="event.stopPropagation(); showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
             </div>`;
         } else {
             // 🌲 ESTETICA OFFICIAL
@@ -17613,7 +17930,7 @@ function renderTrips(trips, targetId) {
                    <div style="text-decoration: line-through; font-size: 12px; color: #666; margin-top: 4px;">Prime: ${prezzoBase}€</div>`
                 : `<div class="price-prime"><span class="prime-val">${prezzoBase}€</span></div>`;
 
-            return `<div class="card wildu-adventure-card wildu-adventure-card-official${hasOfferta ? ' wildu-adventure-card-offer' : ''}">
+            return `<div class="card wildu-adventure-card wildu-adventure-card-official${hasOfferta ? ' wildu-adventure-card-offer' : ''}" role="button" tabindex="0" onclick="showTripDetails('${safeId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showTripDetails('${safeId}');}" style="cursor:pointer;">
                 ${imgHtml}
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px;">
                     <span class="card-title wildu-adventure-title" style="margin-bottom:0; min-width:0; flex:1 1 auto;">${titolo}</span>
@@ -17636,7 +17953,7 @@ function renderTrips(trips, targetId) {
                     </div>
                 </div>
 
-                <button class="btn-book wildu-adventure-details-btn" style="width:100%; margin-top:15px; background:rgba(212, 175, 55, 0.1); color:var(--w-gold); border: 2px solid var(--w-gold);" onclick="showTripDetails('${safeId}')">SCOPRI DETTAGLI</button>
+                <button class="btn-book wildu-adventure-details-btn" style="width:100%; margin-top:15px; background:rgba(212, 175, 55, 0.1); color:var(--w-gold); border: 2px solid var(--w-gold);" onclick="event.stopPropagation(); showTripDetails('${safeId}')">SCOPRI DETTAGLI</button>
             </div>`;
         }
     }).join('');
@@ -17863,6 +18180,54 @@ function resetWilduOnDemandDetailLayout() {
             'line-height:1.4'
         ].join(';');
     }
+}
+
+function prepareWilduDetailModalMode(mode) {
+    const cleanMode = String(mode || '').trim() || 'simple';
+    const modal = document.getElementById('od-details-modal');
+    if (modal) modal.dataset.detailMode = cleanMode;
+
+    const oldClone = document.getElementById('cloned-top-btn-wrapper');
+    if (oldClone) oldClone.remove();
+
+    const dateBtn = document.getElementById('od-modal-date-options');
+    if (dateBtn) {
+        dateBtn.style.display = 'none';
+        dateBtn.onclick = null;
+        dateBtn.removeAttribute('data-wildu-date-type');
+        dateBtn.removeAttribute('data-wildu-date-id');
+    }
+
+    const details = document.getElementById('od-modal-gear-details');
+    if (details) {
+        details.open = false;
+        details.style.display = 'none';
+    }
+
+    if (cleanMode === 'ondemand') {
+        resetWilduOnDemandDetailLayout();
+        return;
+    }
+
+    resetWilduSharedDetailLayoutForSimpleEvent();
+}
+
+function configureWilduDetailDateOptions(type, item, id) {
+    const btn = document.getElementById('od-modal-date-options');
+    if (!btn) return;
+
+    if (!type || !item || !id || !wilduHasMultipleDates(type, item)) {
+        btn.style.display = 'none';
+        btn.onclick = null;
+        return;
+    }
+
+    btn.style.display = 'flex';
+    btn.dataset.wilduDateType = type;
+    btn.dataset.wilduDateId = id;
+    btn.onclick = function (event) {
+        openWilduDateOptions(type, id, event);
+    };
 }
 
 function renderWilduSimpleEventGearAccordion(gearHtml, toneColor) {
@@ -18092,6 +18457,7 @@ function showTripDetails(id, detailContext = null) {
     }
 
     wilduSetActiveDetailContext('trip', ev, id);
+    prepareWilduDetailModalMode('official');
 
     // V9: contesti prudenziali e non globali.
     // - Sconti: prezzo 100+ giorni valido solo se il dettaglio arriva dal modulo Sconti.
@@ -18516,6 +18882,7 @@ if (discreteLink) {
 }
 // --- 🗺️ MAPPA UNIFICATA ---
 renderUnifiedDetailMapFromItem(ev);
+configureWilduDetailDateOptions('trip', ev, id);
     
     // Tasto Prenota Finale
     const bookBtn = document.getElementById('od-modal-book');
@@ -18863,10 +19230,11 @@ renderUnifiedDetailMapFromItem(ev);
             const luogoCompleto = `${nomeRegione}${luogo}`;
             const km = od["KM"] ? `🥾 ${od["KM"]} km` : "";
             const dsl = od["Dislivello"] ? `⛰️ ${od["Dislivello"]} m` : "";
+            const safeId = String(id || '').replace(/'/g, "\\'");
             const dateLineHtml = wilduBuildExternalDateHtml('openday', od, id, displayDate);
 
             html += `
-            <div class="wildu-adventure-card wildu-adventure-card-openday">
+            <div class="wildu-adventure-card wildu-adventure-card-openday" role="button" tabindex="0" onclick="showOpenDayDetails('${safeId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showOpenDayDetails('${safeId}');}" style="cursor:pointer;">
                 ${imgHtml}
                 <h3 class="wildu-adventure-title" style="color: #fff; margin: 0 0 8px 0; font-size: 20px;">${titolo}</h3>
                 <div style="margin-bottom: 12px; line-height: 1.4;">
@@ -18879,7 +19247,7 @@ renderUnifiedDetailMapFromItem(ev);
                     ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
                     ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
                 </div>
-                <button class="wildu-adventure-details-btn" onclick="showOpenDayDetails('${id}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+                <button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); showOpenDayDetails('${safeId}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
             </div>`;
         }
         container.innerHTML = html;
@@ -18965,6 +19333,7 @@ function renderPayDays() {
         const luogoCompleto = `${nomeRegione}${luogo}`;
         const km = pd["KM"] ? `🥾 ${pd["KM"]} km` : "";
         const dsl = pd["Dislivello"] ? `⛰️ ${pd["Dislivello"]} m` : "";
+        const safeId = String(id || '').replace(/'/g, "\\'");
         const dateLineHtml = wilduBuildExternalDateHtml('payday', pd, id, displayDate);
 
 // --- ⚙️ MOTORE FOMO: CALCOLO OCCUPAZIONE E BADGE ---
@@ -18984,7 +19353,7 @@ function renderPayDays() {
             }
 
             html += `
-            <div class="wildu-adventure-card wildu-adventure-card-hike">
+            <div class="wildu-adventure-card wildu-adventure-card-hike" role="button" tabindex="0" onclick="showPayDayDetails('${safeId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPayDayDetails('${safeId}');}" style="cursor:pointer;">
                 ${imgHtml}
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
                     <h3 class="wildu-adventure-title" style="color: #fff; margin: 0; font-size: 20px; line-height: 1.2; min-width:0; flex:1 1 auto;">${titolo}</h3>
@@ -19000,7 +19369,7 @@ function renderPayDays() {
                 ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
                 <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;"> ${prezzo}€</div>
             </div>
-            <button class="wildu-adventure-details-btn" onclick="showPayDayDetails('${id}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+            <button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); showPayDayDetails('${safeId}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
         </div>`;
     }
 
@@ -19254,6 +19623,12 @@ async function sendCustomBooking() {
 
     if (document.getElementById('cb-tipo-evento').value === 'ONDEMAND') {
         await sendOnDemandBookingFromModal({ btn, originalText, telefono, nome: nomeRaw });
+        return;
+    }
+
+    const healthConsentOk = await ensureWilduHealthConsentForBooking();
+    if (!healthConsentOk) {
+        isBookingInProgress = false;
         return;
     }
 
@@ -19518,6 +19893,8 @@ if (profKeyEl) {
         profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome] ? GRADI_MAP[currentLevel.nome].ico : "🌿";
         profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "-" + (nextLevel.punti - finalXP) + " XP";
         if(!isAnimatingXP){ lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome); }
+        renderWilduLegalConsentStatus();
+        maybePromptWilduLegalNotice();
     }
 
     async function spinWheel() {
@@ -24976,6 +25353,7 @@ function showOpenDayDetails(id) {
     }
 
     wilduSetActiveDetailContext('openday', od, id);
+    prepareWilduDetailModalMode('openday');
 
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
     const oldPrice = document.getElementById('pd-dynamic-price');
@@ -25077,6 +25455,7 @@ function showOpenDayDetails(id) {
 
 // --- 🗺️ MAPPA UNIFICATA ---
 renderUnifiedDetailMapFromItem(od);
+configureWilduDetailDateOptions('openday', od, id);
 
     // --- IL CERVELLO DEL TASTO ISCRIVITI ---
     const bookBtn = document.getElementById('od-modal-book');
@@ -25179,6 +25558,7 @@ function showPayDayDetails(id) {
     }
 
     wilduSetActiveDetailContext('payday', pd, id);
+    prepareWilduDetailModalMode('payday');
 
     // --- 🧹 RESET MANIACALE DEL MODAL CONDIVISO ---
     const oldPrice = document.getElementById('pd-dynamic-price');
@@ -25274,6 +25654,7 @@ function showPayDayDetails(id) {
 
 // --- 🗺️ MAPPA UNIFICATA ---
 renderUnifiedDetailMapFromItem(pd);
+configureWilduDetailDateOptions('payday', pd, id);
 
     // --- IL CERVELLO DEL TASTO ISCRIVITI ---
     const bookBtn = document.getElementById('od-modal-book');
@@ -27269,6 +27650,7 @@ window.addEventListener('pageshow', () => {
             <a id="trip-modal-link-ufficiale" href="#" target="_blank" style="display:none; background:#333; border:1px solid #444; color:#fff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">🔗 LINK SITO UFFICIALE</a>
             <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
             <button type="button" id="od-modal-share-trip" class="wildu-trip-share-btn" onclick="shareWilduCurrentTrip(event)"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi viaggio</button>
+            <button type="button" id="od-modal-date-options" class="wildu-detail-date-options-btn"><i class="bi bi-calendar2-week" aria-hidden="true"></i> Vedi date</button>
             <button type="button" id="od-modal-close-bottom" class="wildu-detail-bottom-close" onclick="handleWilduDetailClose('bottom')">Chiudi scheda</button>
         </div>
     </div>
