@@ -3038,6 +3038,7 @@ body::before {
     #event-list,
     #openday-list,
     #payday-list,
+    #ondemand-list,
     #dynamic-resources-list {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(318px, 380px));
@@ -3052,6 +3053,8 @@ body::before {
     #openday-list > .wildu-adventure-card,
     #payday-list > .card,
     #payday-list > .wildu-adventure-card,
+    #ondemand-list > .card,
+    #ondemand-list > .wildu-adventure-card,
     #dynamic-resources-list > .resource-item {
         width: 100%;
         min-width: 0;
@@ -3067,24 +3070,29 @@ body::before {
     #openday-list > .card,
     #openday-list > .wildu-adventure-card,
     #payday-list > .card,
-    #payday-list > .wildu-adventure-card {
+    #payday-list > .wildu-adventure-card,
+    #ondemand-list > .card,
+    #ondemand-list > .wildu-adventure-card {
         display: flex;
         flex-direction: column;
     }
 
     #event-list .wildu-adventure-details-btn,
     #openday-list .wildu-adventure-details-btn,
-    #payday-list .wildu-adventure-details-btn {
+    #payday-list .wildu-adventure-details-btn,
+    #ondemand-list .wildu-adventure-details-btn {
         margin-top: auto !important;
     }
 
     #event-list > p,
     #openday-list > p,
     #payday-list > p,
+    #ondemand-list > p,
     #dynamic-resources-list > p,
     #event-list > .empty-state,
     #openday-list > .empty-state,
     #payday-list > .empty-state,
+    #ondemand-list > .empty-state,
     #dynamic-resources-list > .empty-state {
         grid-column: 1 / -1;
     }
@@ -3107,6 +3115,7 @@ body::before {
     #event-list,
     #openday-list,
     #payday-list,
+    #ondemand-list,
     #dynamic-resources-list {
         grid-template-columns: repeat(auto-fit, minmax(330px, 390px));
     }
@@ -3117,6 +3126,8 @@ body::before {
     #openday-list > .wildu-adventure-card,
     #payday-list > .card,
     #payday-list > .wildu-adventure-card,
+    #ondemand-list > .card,
+    #ondemand-list > .wildu-adventure-card,
     #dynamic-resources-list > .resource-item {
         max-width: 390px;
     }
@@ -3137,6 +3148,7 @@ body::before {
     #event-list .wildu-adventure-details-btn,
     #openday-list .wildu-adventure-details-btn,
     #payday-list .wildu-adventure-details-btn,
+    #ondemand-list .wildu-adventure-details-btn,
     #wheel-result-container .wildu-adventure-details-btn {
         margin-top: auto !important;
         padding: 11px 12px !important;
@@ -4244,6 +4256,14 @@ body::before {
             <div style="font-size: 11px; color: #888; letter-spacing: 1px;">DATA</div>
             <div id="cb-data" style="font-size: 15px; margin-bottom: 10px; color: white;">...</div>
 
+            <div id="cb-ondemand-date-fields" style="display:none; margin: 12px 0 10px 0; padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(212,175,55,0.28);">
+                <label style="font-size: 11px; color: #888; letter-spacing: 1px;">DATA DESIDERATA</label>
+                <input type="date" id="cb-ondemand-start" class="wild-input-profile" style="border-bottom: 1px solid var(--w-gold); color: white;">
+                <label style="display:block; margin-top: 10px; font-size: 11px; color: #888; letter-spacing: 1px;">DATA FINE (OPZIONALE)</label>
+                <input type="date" id="cb-ondemand-end" class="wild-input-profile" style="border-bottom: 1px solid #333; color: white;">
+                <div style="font-size: 10px; color: #777; margin-top: 6px;">Wild-U ti ricontatta per confermare disponibilita, durata e dettagli.</div>
+            </div>
+
             <div id="cb-prezzo-container">
                 <div style="font-size: 11px; color: #888; letter-spacing: 1px;">PREZZO</div>
                 <div id="cb-prezzo" style="font-size: 16px; color: var(--w-gold); font-weight: bold;">...</div>
@@ -4266,6 +4286,7 @@ body::before {
         <input type="hidden" id="cb-booking-id">
         <input type="hidden" id="cb-booking-collection">
         <input type="hidden" id="cb-booking-eventdocid">
+        <input type="hidden" id="cb-ondemand-product-id">
 
         <div style="display: flex; gap: 10px;">
             <button onclick="closeCustomBooking()" style="flex: 1; padding: 12px; border-radius: 8px; background: #333; color: white; border: none; font-weight: bold; cursor: pointer;">Indietro</button>
@@ -4285,6 +4306,7 @@ body::before {
 <div class="nav">
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
     <button id="btn-free" onclick="show('free')">Open Day</button>
+    <button id="btn-ondemand" onclick="show('ondemand')">Su Richiesta</button>
     
 
     <button id="btn-rewards" onclick="show('rewards')">Premi e Giochi</button>
@@ -4446,6 +4468,15 @@ body::before {
 
     <div id="events-destiny-slot"></div>
 </div>
+    </div>
+
+    <div id="sec-ondemand" class="hidden">
+        <section style="margin-bottom:18px; padding:20px; border-radius:18px; background:linear-gradient(135deg, rgba(33,82,38,0.24), rgba(18,18,18,0.92)); border:1px solid rgba(212,175,55,0.38); box-shadow:0 8px 24px rgba(0,0,0,0.35);">
+            <div style="display:inline-flex; align-items:center; gap:8px; border:1px solid rgba(212,175,55,0.44); color:var(--w-gold); border-radius:999px; padding:6px 12px; font-size:12px; font-weight:950; text-transform:uppercase; letter-spacing:.4px;">Viaggi su richiesta</div>
+            <h2 style="margin:14px 0 8px 0; color:#fff; font-size:28px; line-height:1.05;">Parti quando vuoi</h2>
+            <p style="margin:0; color:#cfcfcf; line-height:1.45; font-size:15px;">Esperienze senza data fissa e senza gruppo predefinito. Scegli la proposta, indica la data desiderata e Wild-U ti ricontatta per organizzarla.</p>
+        </section>
+        <div id="ondemand-list"></div>
     </div>
 
     <div id="sec-free" class="hidden">
@@ -8100,7 +8131,8 @@ const WilduMediaClient = (() => {
         const runtimeLists = {
             events: Array.isArray(allTrips) ? allTrips : [],
             opendays: Array.isArray(allOpenDays) ? allOpenDays : [],
-            paydays: Array.isArray(allPayDays) ? allPayDays : []
+            paydays: Array.isArray(allPayDays) ? allPayDays : [],
+            onDemandTrips: Array.isArray(allOnDemandTrips) ? allOnDemandTrips : []
         };
 
         const cachedLists = {
@@ -9547,7 +9579,7 @@ const WilduMediaClient = (() => {
 window.WilduMediaClient = WilduMediaClient;
     
     // --- VARIABILI GLOBALI ---
-    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let wildUserKey = localStorage.getItem('wildUserKey');
+    let WILD_ASSETS = {}; let config = {}; let allTrips = []; let allBookings = []; let allOpenDays = []; let allPayDays = []; let allOnDemandTrips = []; let wildUserKey = localStorage.getItem('wildUserKey');
     let lastCelXP = parseInt(localStorage.getItem('lastCelebratedXP') || "0");
     let lastVXP = parseInt(localStorage.getItem('lastViewedXP') || "0"); 
     let isLockedXP = false; let isAnimatingXP = false; let isPageActive = true; let currentTab = 'events';
@@ -13704,6 +13736,7 @@ if (cachedPublicData && !bypassPublicCache) {
         allTrips = data.events || [];
         allOpenDays = data.opendays || [];
         allPayDays = data.paydays || [];
+        allOnDemandTrips = data.onDemandTrips || [];
 
         // La cache pubblica non deve sporcare lo stato utente.
         // Se siamo guest, puliamo lo zaino runtime.
@@ -13725,6 +13758,7 @@ if (cachedPublicData && !bypassPublicCache) {
         renderOpenDays();
         buildPDFilters();
         renderPayDays();
+        renderOnDemandTrips();
         reconcileProfileShellWithClientSession();
         if (!consumeWilduSharedExperienceUrlParamOnce('PUBLIC_CACHE_RENDER')) {
             consumeWilduOpenProfileUrlParamOnce('PUBLIC_CACHE_RENDER');
@@ -13804,7 +13838,8 @@ const publicCachePayload = {
     resources: data.resources || [],
     events: data.events || [],
     opendays: data.opendays || [],
-    paydays: data.paydays || []
+    paydays: data.paydays || [],
+    onDemandTrips: data.onDemandTrips || []
 };
 
             await safeWritePublicCacheEnvelope(publicCachePayload);
@@ -13813,7 +13848,8 @@ const publicCachePayload = {
     resources: publicCachePayload.resources.length,
     events: publicCachePayload.events.length,
     opendays: publicCachePayload.opendays.length,
-    paydays: publicCachePayload.paydays.length
+    paydays: publicCachePayload.paydays.length,
+    onDemandTrips: publicCachePayload.onDemandTrips.length
 });
 
             WILD_ASSETS = data.assets || {};
@@ -13827,6 +13863,7 @@ const publicCachePayload = {
             allTrips = data.events || [];
             allOpenDays = data.opendays || [];
             allPayDays = data.paydays || [];
+            allOnDemandTrips = data.onDemandTrips || [];
             /// 🛡️ TAGLIO DEL CORDONE COL GATEWAY (SHEET):
             // L'app da ora in poi ignorerà le prenotazioni provenienti dallo Sheet.
             // La variabile allBookings verrà riempita ESCLUSIVAMENTE da Firestore.
@@ -13868,6 +13905,7 @@ const publicCachePayload = {
 
             renderOpenDays();
             renderPayDays();
+            renderOnDemandTrips();
             reconcileProfileShellWithClientSession();
             if (!consumeWilduSharedExperienceUrlParamOnce('INITDATA_REMOTE_RENDERED')) {
                 consumeWilduOpenProfileUrlParamOnce('INITDATA_REMOTE_RENDERED');
@@ -14227,6 +14265,9 @@ function evaluateBookings() {
         const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
         const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
         const hikeOrig = allPayDays.find(h => buildClientBookingKey({bookingId: h.bookingId, titolo: h["Titolo"], data: h["Data Inizio"]}) === bookingKey);
+        const onDemandOrig = String(b.bookingKind || '').trim() === 'ondemand'
+            ? getOnDemandTripById(b.productId || b.eventDocId)
+            : null;
 
         // --- COSTRUZIONE TASTO INFO ---
         if (tripOrig) {
@@ -14236,6 +14277,9 @@ function evaluateBookings() {
             infoBtn = `<button onclick="showOpenDayDetails('${odOrig["ID Evento (Super-Key)"] || odOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         } else if (hikeOrig) {
             infoBtn = `<button onclick="showPayDayDetails('${hikeOrig["ID Evento (Super-Key)"] || hikeOrig["ID Evento"]}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
+        } else if (onDemandOrig) {
+            const odProductId = String(onDemandOrig.productId || onDemandOrig.id || '').replace(/'/g, "\\'");
+            infoBtn = `<button onclick="scrollOnDemandTripIntoView('${odProductId}')" style="background: var(--w-gold); color: #000; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">INFO</button>`;
         }
 
     // --- 🎯 COSTRUZIONE TASTO SITO (SOLO PER OFFICIAL TRIPS) ---
@@ -14250,7 +14294,16 @@ if (tripOrig) {
     }
 }
 
-        const cP = encodeURIComponent(JSON.stringify({ titolo: title, data: dateStr, bookingId: b.bookingId, collection: b.collection, eventDocId: b.eventDocId }));
+        const cP = encodeURIComponent(JSON.stringify({
+            titolo: title,
+            data: dateStr,
+            bookingId: b.bookingId,
+            collection: b.collection,
+            eventDocId: b.eventDocId,
+            bookingKind: b.bookingKind || '',
+            productId: b.productId || '',
+            requestedStartDateIso: b.requestedStartDateIso || ''
+        }));
 
         activeHtml += `
         <div style="background: #222; padding: 15px; border-radius: 12px; margin-bottom: 12px; border-left: 4px solid var(--w-gold); box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
@@ -14309,6 +14362,7 @@ if (tripOrig) {
 
     filterTrips();
     if (typeof renderOpenDays === "function") renderOpenDays();
+    if (typeof renderOnDemandTrips === "function") renderOnDemandTrips();
     
     if (debugZainoEnabled()) zainoGroupEnd();
 }
@@ -14493,6 +14547,9 @@ async function requestCancel(encodedBookingPayload, btnElement) {
     const bookingId = String(bookingIdentity.bookingId || "").trim();
     const collection = String(bookingIdentity.collection || "").trim();
     const eventDocId = String(bookingIdentity.eventDocId || "").trim();
+    const bookingKind = String(bookingIdentity.bookingKind || "").trim();
+    const productId = String(bookingIdentity.productId || eventDocId || "").trim();
+    const requestedStartDateIso = String(bookingIdentity.requestedStartDateIso || data || "").trim();
 
     const bookingKey = buildClientBookingKey({
         bookingId,
@@ -14533,12 +14590,14 @@ async function requestCancel(encodedBookingPayload, btnElement) {
         const safeToken = await getVerifiedClientToken();
 
         const payload = {
-            action: "cancelBooking",
+            action: bookingKind === "ondemand" ? "cancelOnDemandBooking" : "cancelBooking",
             titolo: titolo,
             data: data,
             bookingId: bookingId,
             collection: collection,
             eventDocId: eventDocId,
+            productId: productId,
+            requestedStartDateIso: requestedStartDateIso,
             clientContext: {
                 channel: clientSession.channel
             }
@@ -16625,6 +16684,146 @@ function closeWilduDateOptionsModal() {
     unlockWilduOverlayScrollIfIdle();
 }
 
+function getOnDemandTripId(item) {
+    item = item || {};
+    return String(item.productId || item.id || item.eventDocId || '').trim();
+}
+
+function getOnDemandTripTitle(item) {
+    item = item || {};
+    return String(item.title || item.titolo || item.Titolo || 'Viaggio su richiesta').trim();
+}
+
+function getOnDemandPriceDisplay(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 'Prezzo su richiesta';
+    const clean = raw.replace(/€/g, '').replace(/â‚¬/g, '').trim();
+    return clean ? ('da ' + clean + '€') : 'Prezzo su richiesta';
+}
+
+function getOnDemandTripById(id) {
+    const target = String(id || '').trim();
+    return (Array.isArray(allOnDemandTrips) ? allOnDemandTrips : []).find(function (item) {
+        return getOnDemandTripId(item) === target;
+    }) || null;
+}
+
+function renderOnDemandTrips() {
+    const container = document.getElementById('ondemand-list');
+    if (!container) return;
+
+    const list = Array.isArray(allOnDemandTrips) ? allOnDemandTrips : [];
+    if (!list.length) {
+        container.innerHTML = '<div class="empty-state" style="padding:22px; text-align:center; color:#aaa;">Nessun viaggio su richiesta disponibile al momento.</div>';
+        return;
+    }
+
+    const sorted = list.slice().sort(function (a, b) {
+        return (Number(a.sortOrder || 0) - Number(b.sortOrder || 0)) ||
+            getOnDemandTripTitle(a).localeCompare(getOnDemandTripTitle(b), 'it');
+    });
+
+    container.innerHTML = sorted.map(function (trip) {
+        const id = getOnDemandTripId(trip);
+        const title = getOnDemandTripTitle(trip);
+        const region = String(trip.region || trip.regione || '').trim();
+        const desc = String(trip.description || trip.descrizione || '').trim();
+        const image = String(trip.imageUrl || trip.immagine || trip.fotoUrl || '').trim();
+        const services = Array.isArray(trip.services) ? trip.services : [];
+        const safeId = id.replace(/'/g, "\\'");
+        const serviceHtml = services.slice(0, 5).map(function (s) {
+            return '<li style="margin-bottom:6px;">' + escapeHtml(s) + '</li>';
+        }).join('');
+
+        return '<article id="ondemand-card-' + escapeHtml(id) + '" class="card wildu-adventure-card" style="border-left-color:var(--w-gold); overflow:hidden;">' +
+            (image ? '<img src="' + escapeHtml(formatAssetLink(image)) + '" loading="lazy" style="width:100%; height:190px; object-fit:cover; border-radius:10px; margin-bottom:14px;">' : '') +
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">' +
+                '<span style="color:var(--w-gold); font-size:11px; font-weight:950; text-transform:uppercase; letter-spacing:.45px;">Su richiesta</span>' +
+                (region ? '<span style="color:#ddd; font-size:11px; font-weight:900; border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:4px 8px; white-space:nowrap;">' + escapeHtml(region) + '</span>' : '') +
+            '</div>' +
+            '<h3 class="wildu-adventure-title" style="margin:0 0 10px 0; color:#fff; font-size:22px; line-height:1.12;">' + escapeHtml(title) + '</h3>' +
+            (desc ? '<p style="color:#cfcfcf; font-size:14px; line-height:1.42; margin:0 0 14px 0;">' + escapeHtml(desc).slice(0, 260) + (desc.length > 260 ? '...' : '') + '</p>' : '') +
+            (serviceHtml ? '<ul style="margin:0 0 16px 18px; padding:0; color:#ddd; font-size:13px; line-height:1.35;">' + serviceHtml + '</ul>' : '') +
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:auto;">' +
+                '<div style="color:var(--w-gold); font-weight:950; font-size:20px; white-space:nowrap;">' + escapeHtml(getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo)) + '</div>' +
+                '<button class="wildu-adventure-details-btn" onclick="openOnDemandBooking(&quot;' + escapeHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Richiedi data</button>' +
+            '</div>' +
+        '</article>';
+    }).join('');
+}
+
+function openOnDemandBooking(productId) {
+    if (!requireLoggedAccess('BOOKING_ATTEMPT')) return;
+
+    const trip = getOnDemandTripById(productId);
+    if (!trip) {
+        showToast("Viaggio su richiesta non trovato.");
+        return;
+    }
+
+    if (!canBook) {
+        showToast("Zaino: " + (banReason || "richiesta non disponibile."));
+        return;
+    }
+
+    const title = getOnDemandTripTitle(trip);
+    const priceDisplay = getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo);
+    const todayIso = new Date().toISOString().slice(0, 10);
+
+    setCurrentBookingDraft({
+        bookingKind: 'ondemand',
+        productId: getOnDemandTripId(trip),
+        eventDocId: getOnDemandTripId(trip),
+        titolo: title,
+        data: '',
+        prezzo: priceDisplay,
+        clickSource: 'ONDEMAND_TAB'
+    });
+
+    document.getElementById('cb-titolo').innerText = title;
+    document.getElementById('cb-data').innerText = 'Scegli una data desiderata';
+    document.getElementById('cb-prezzo').innerText = priceDisplay;
+    document.getElementById('cb-tipo-evento').value = 'ONDEMAND';
+    document.getElementById('cb-xp').value = '0';
+    document.getElementById('cb-booking-id').value = '';
+    document.getElementById('cb-booking-collection').value = 'wildu_on_demand_bookings';
+    document.getElementById('cb-booking-eventdocid').value = getOnDemandTripId(trip);
+    document.getElementById('cb-ondemand-product-id').value = getOnDemandTripId(trip);
+
+    const dateBox = document.getElementById('cb-ondemand-date-fields');
+    const startInput = document.getElementById('cb-ondemand-start');
+    const endInput = document.getElementById('cb-ondemand-end');
+    if (dateBox) dateBox.style.display = 'block';
+    if (startInput) {
+        startInput.min = todayIso;
+        startInput.value = '';
+    }
+    if (endInput) {
+        endInput.min = todayIso;
+        endInput.value = '';
+    }
+
+    const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
+    const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
+    document.getElementById('cb-nome').value = nomeSalvato;
+    document.getElementById('cb-telefono').value = telefonoSalvato;
+
+    clearTimeout(window.fomoViewersTimeout);
+    clearTimeout(window.fomoCycleTimeout);
+    const viewersToast = document.getElementById('cb-viewers-fomo');
+    if (viewersToast) viewersToast.style.opacity = '0';
+
+    document.getElementById('custom-booking-modal').style.display = 'flex';
+}
+
+function scrollOnDemandTripIntoView(productId) {
+    show('ondemand');
+    setTimeout(function () {
+        const card = document.getElementById('ondemand-card-' + String(productId || '').trim());
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 180);
+}
+
 function renderTrips(trips, targetId) {
     document.getElementById(targetId).innerHTML = trips.map(ev => {
         const isHike = ev.isHike;
@@ -18128,6 +18327,14 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
     document.getElementById('cb-booking-id').value = bookingId || "";
     document.getElementById('cb-booking-collection').value = collection || "";
     document.getElementById('cb-booking-eventdocid').value = eventDocId || "";
+    document.getElementById('cb-ondemand-product-id').value = "";
+
+    const onDemandDateFields = document.getElementById('cb-ondemand-date-fields');
+    const onDemandStart = document.getElementById('cb-ondemand-start');
+    const onDemandEnd = document.getElementById('cb-ondemand-end');
+    if (onDemandDateFields) onDemandDateFields.style.display = 'none';
+    if (onDemandStart) onDemandStart.value = '';
+    if (onDemandEnd) onDemandEnd.value = '';
 
     const nomeSalvato = cachedXPData ? (cachedXPData.nome || "Non inserito") : "Non inserito";
     const telefonoSalvato = cachedXPData ? (cachedXPData.telefono || "") : "";
@@ -18158,8 +18365,117 @@ function closeCustomBooking() {
     if (bookingIdEl) bookingIdEl.value = "";
     if (bookingCollectionEl) bookingCollectionEl.value = "";
     if (bookingEventDocIdEl) bookingEventDocIdEl.value = "";
+    const onDemandProductEl = document.getElementById('cb-ondemand-product-id');
+    const onDemandDateFields = document.getElementById('cb-ondemand-date-fields');
+    const onDemandStart = document.getElementById('cb-ondemand-start');
+    const onDemandEnd = document.getElementById('cb-ondemand-end');
+    if (onDemandProductEl) onDemandProductEl.value = "";
+    if (onDemandDateFields) onDemandDateFields.style.display = 'none';
+    if (onDemandStart) onDemandStart.value = '';
+    if (onDemandEnd) onDemandEnd.value = '';
 
     document.getElementById('custom-booking-modal').style.display = 'none';
+}
+
+async function sendOnDemandBookingFromModal(options) {
+    options = options || {};
+    const btn = options.btn || document.querySelector('#custom-booking-modal button[onclick="sendCustomBooking()"]');
+    const originalText = options.originalText || (btn ? btn.innerText : 'Conferma');
+    const telefono = String(options.telefono || '').trim();
+    const nome = String(options.nome || '').trim();
+    const productId = String(document.getElementById('cb-ondemand-product-id')?.value || currentBookingDraft?.productId || '').trim();
+    const requestedStartDateIso = String(document.getElementById('cb-ondemand-start')?.value || '').trim();
+    const requestedEndDateIso = String(document.getElementById('cb-ondemand-end')?.value || '').trim();
+    const title = document.getElementById('cb-titolo')?.innerText || 'Viaggio su richiesta';
+    const todayIso = new Date().toISOString().slice(0, 10);
+
+    if (!productId) {
+        alert("Viaggio su richiesta non riconosciuto. Riapri la scheda e riprova.");
+        isBookingInProgress = false;
+        return;
+    }
+    if (!requestedStartDateIso || requestedStartDateIso < todayIso) {
+        alert("Scegli una data desiderata valida, non precedente a oggi.");
+        isBookingInProgress = false;
+        return;
+    }
+    if (requestedEndDateIso && requestedEndDateIso < requestedStartDateIso) {
+        alert("La data fine non puo precedere la data desiderata.");
+        isBookingInProgress = false;
+        return;
+    }
+
+    const bookingKey = buildClientBookingKey({
+        bookingId: '',
+        titolo: title,
+        data: requestedStartDateIso
+    });
+    if (bookingKey && !pendingBookings.includes(bookingKey)) pendingBookings.push(bookingKey);
+    if (bookingKey && !myBookedTitles.includes(bookingKey)) myBookedTitles.push(bookingKey);
+    evaluateBookings();
+
+    if (btn) {
+        btn.innerText = "INVIO RICHIESTA...";
+        btn.disabled = true;
+        btn.style.opacity = "0.7";
+    }
+
+    let bookingCompleted = false;
+
+    try {
+        const safeToken = await getVerifiedClientToken();
+        const response = await fetch(MOTORE_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${safeToken}`,
+                'X-WILDU-CHANNEL': clientSession.channel
+            },
+            body: JSON.stringify({
+                action: 'bookOnDemandTrip',
+                productId,
+                requestedStartDateIso,
+                requestedEndDateIso,
+                nome,
+                telefono,
+                participantsCount: 1,
+                clientContext: {
+                    channel: clientSession.channel
+                }
+            })
+        });
+
+        const result = await response.json();
+        if (!response.ok || result.status !== "success") {
+            throw new Error(result.message || result.error || "Errore sconosciuto dal server");
+        }
+
+        bookingCompleted = true;
+        closeCustomBooking();
+        showToast(result.alreadyBooked ? "Richiesta gia presente nello zaino." : "Richiesta inviata. Ti ricontatteremo per confermare.");
+        setTimeout(() => show('profile'), 700);
+        setTimeout(async () => {
+            await fetchInitData({ force: true });
+            await fetchXP();
+        }, 1000);
+    } catch (err) {
+        console.error("Errore prenotazione su richiesta:", err);
+        alert("Errore invio richiesta: " + err.message);
+    } finally {
+        isBookingInProgress = false;
+        if (!bookingCompleted) {
+            if (bookingKey) {
+                pendingBookings = pendingBookings.filter(k => k !== bookingKey);
+                myBookedTitles = myBookedTitles.filter(k => k !== bookingKey);
+                evaluateBookings();
+            }
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+                btn.style.opacity = "1";
+            }
+        }
+    }
 }
     
  // IL POSTINO CHE SPEDISCE I DATI ALLO SCRIPT E BLOCCA I DOPPI CLICK
@@ -18183,6 +18499,11 @@ async function sendCustomBooking() {
     const dataRaw = document.getElementById('cb-data').innerText;
     const prezzoRaw = document.getElementById('cb-prezzo').innerText;
     const nomeRaw = document.getElementById('cb-nome').value;
+
+    if (document.getElementById('cb-tipo-evento').value === 'ONDEMAND') {
+        await sendOnDemandBookingFromModal({ btn, originalText, telefono, nome: nomeRaw });
+        return;
+    }
 
     const bookingIdRaw = (document.getElementById('cb-booking-id').value || currentBookingDraft?.bookingId || "").trim();
     const bookingCollectionRaw = (document.getElementById('cb-booking-collection').value || currentBookingDraft?.collection || "").trim();
@@ -19942,7 +20263,7 @@ if (profKeyEl) {
         // IMPORTANTE:
         // "wheel" non va più trattata come sezione autonoma.
         // Ora #sec-wheel è dentro #sec-rewards.
-        ['events', 'free', 'paid', 'rewards', 'profile', 'groups', 'install', 'negozio'].forEach(s => { 
+        ['events', 'free', 'ondemand', 'paid', 'rewards', 'profile', 'groups', 'install', 'negozio'].forEach(s => { 
             const section = document.getElementById('sec-' + s);
             const button = document.getElementById('btn-' + s);
 
@@ -20016,6 +20337,10 @@ if (profKeyEl) {
 
         if (id === 'negozio' && typeof renderWilduShop === 'function') {
             renderWilduShop();
+        }
+
+        if (id === 'ondemand' && typeof renderOnDemandTrips === 'function') {
+            renderOnDemandTrips();
         }
 
         // Se un vecchio richiamo usa show('wheel'), apro Premi e Giochi
