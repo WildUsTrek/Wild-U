@@ -2185,6 +2185,91 @@ body::before {
     background: #111;
 }
 
+.wildu-rewards-video-section {
+    margin-top: 24px;
+}
+
+.wildu-rewards-video-row {
+    display: flex;
+    gap: 13px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 2px 12px 2px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+}
+
+.wildu-rewards-video-card {
+    flex: 0 0 min(78vw, 310px);
+    scroll-snap-align: start;
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 19px;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(212,175,55,.18), transparent 38%),
+        linear-gradient(145deg, rgba(27,31,28,.98), rgba(10,12,14,.98));
+    border: 1px solid rgba(212,175,55,.28);
+    box-shadow: 0 13px 34px rgba(0,0,0,.42);
+}
+
+.wildu-rewards-video-thumb {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #060708;
+    overflow: hidden;
+}
+
+.wildu-rewards-video-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.wildu-rewards-video-play {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: rgba(0,0,0,.72);
+    color: var(--w-gold);
+    border: 1px solid rgba(212,175,55,.50);
+    font-size: 17px;
+    box-shadow: 0 8px 26px rgba(0,0,0,.55);
+}
+
+.wildu-rewards-video-body {
+    padding: 12px 13px 13px;
+}
+
+.wildu-rewards-video-title {
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.22;
+    font-weight: 950;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.wildu-rewards-video-meta {
+    margin-top: 7px;
+    color: var(--w-gold);
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .68px;
+}
+
 @media (max-width: 420px) {
     .wildu-reward-card {
         padding: 15px 14px 14px 14px;
@@ -4205,6 +4290,54 @@ body::before {
     }
 }
 
+#custom-booking-modal .modal-content {
+    max-height: calc(100dvh - 30px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#custom-booking-modal #cb-ondemand-date-fields {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+#custom-booking-modal #cb-ondemand-date-fields label {
+    display: block;
+    margin-bottom: 7px;
+}
+
+#custom-booking-modal #cb-ondemand-date-fields input[type="date"] {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: 54px;
+    margin: 0 0 13px 0;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,.15);
+    border-bottom: 1px solid var(--w-gold);
+    border-radius: 14px;
+    background: #242424;
+    color: #fff;
+    font-size: 16px;
+    line-height: 1.2;
+    text-align: left;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#custom-booking-modal #cb-ondemand-date-fields input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+}
+
+#custom-booking-modal #cb-ondemand-date-fields input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: .72;
+}
+
 </style>
     
 </head>
@@ -4611,6 +4744,7 @@ body::before {
             <div id="wildu-rewards-real-news"></div>
 
             <div id="wildu-rewards-wildwall-random" aria-hidden="true"></div>
+            <div id="wildu-rewards-horizontal-videos"></div>
         </div>
    
    </div>
@@ -8176,9 +8310,114 @@ const WilduMediaClient = (() => {
         }
     }
 
+    let wilduRewardsYoutubeManifestPromise = null;
+
+    function escapeWilduRewardsVideoHtml(value) {
+        return String(value === undefined || value === null ? "" : value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function getWilduRewardsYoutubeManifestUrl() {
+        try {
+            return new URL("data/youtube-playlists.json", window.location.href).toString();
+        } catch (e) {
+            return "data/youtube-playlists.json";
+        }
+    }
+
+    async function loadWilduRewardsYoutubeManifest() {
+        if (wilduRewardsYoutubeManifestPromise) return wilduRewardsYoutubeManifestPromise;
+
+        wilduRewardsYoutubeManifestPromise = fetch(getWilduRewardsYoutubeManifestUrl(), {
+            method: "GET",
+            credentials: "omit",
+            cache: shouldBypassCache() ? "reload" : "force-cache"
+        }).then(function (res) {
+            if (!res || !res.ok) {
+                throw new Error("Playlist video non disponibile HTTP " + (res ? res.status : "0"));
+            }
+            return res.json();
+        }).catch(function (err) {
+            wilduRewardsYoutubeManifestPromise = null;
+            throw err;
+        });
+
+        return wilduRewardsYoutubeManifestPromise;
+    }
+
+    function getWilduRewardsHorizontalVideos(manifest) {
+        const playlist = manifest &&
+            manifest.playlists &&
+            manifest.playlists.video_horizontal &&
+            typeof manifest.playlists.video_horizontal === "object"
+                ? manifest.playlists.video_horizontal
+                : null;
+
+        if (!playlist || String(playlist.orientation || "").toLowerCase() !== "horizontal") return [];
+
+        return (Array.isArray(playlist.items) ? playlist.items : []).filter(function (video) {
+            return video &&
+                typeof video === "object" &&
+                safeString(video.videoId) &&
+                String(video.kind || playlist.kind || "video").toLowerCase() !== "shorts";
+        });
+    }
+
+    function buildWilduRewardsHorizontalVideoCard(video) {
+        const videoId = safeString(video && video.videoId);
+        const title = safeString(video && video.title) || "Video Wild-U";
+        const watchUrl = safeString(video && video.watchUrl) || ("https://www.youtube.com/watch?v=" + encodeURIComponent(videoId));
+        const thumbnail = safeString(video && video.thumbnail) || ("https://i.ytimg.com/vi/" + encodeURIComponent(videoId) + "/hqdefault.jpg");
+
+        return `
+            <a class="wildu-rewards-video-card" href="${escapeWilduRewardsVideoHtml(watchUrl)}" target="_blank" rel="noopener">
+                <div class="wildu-rewards-video-thumb">
+                    <img src="${escapeWilduRewardsVideoHtml(thumbnail)}" alt="${escapeWilduRewardsVideoHtml(title)}" loading="lazy">
+                    <span class="wildu-rewards-video-play" aria-hidden="true">▶</span>
+                </div>
+                <div class="wildu-rewards-video-body">
+                    <div class="wildu-rewards-video-title">${escapeWilduRewardsVideoHtml(title)}</div>
+                    <div class="wildu-rewards-video-meta">Video Wild-U</div>
+                </div>
+            </a>
+        `;
+    }
+
+    async function renderWilduRewardsHorizontalVideos() {
+        const box = document.getElementById("wildu-rewards-horizontal-videos");
+        if (!box) return;
+
+        try {
+            const manifest = await loadWilduRewardsYoutubeManifest();
+            const videos = getWilduRewardsHorizontalVideos(manifest);
+
+            if (!videos.length) {
+                box.innerHTML = "";
+                return;
+            }
+
+            box.innerHTML = `
+                <section class="wildu-rewards-video-section" aria-label="Video Wild-U">
+                    <div class="wildu-rewards-divider"><span>Video Wild-U</span></div>
+                    <div class="wildu-rewards-video-row">
+                        ${videos.map(buildWilduRewardsHorizontalVideoCard).join("")}
+                    </div>
+                </section>
+            `;
+        } catch (e) {
+            console.warn("[WILDU REWARDS] Video orizzontali non disponibili:", e);
+            box.innerHTML = "";
+        }
+    }
+
     function renderWilduRewardsBottom() {
         renderWilduRewardsRealNews();
         renderWilduRewardsWildWallRandomImage();
+        renderWilduRewardsHorizontalVideos();
     }
 
     function loadWilduPdfJs() {
