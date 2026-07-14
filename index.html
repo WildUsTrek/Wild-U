@@ -16684,6 +16684,15 @@ function closeWilduDateOptionsModal() {
     unlockWilduOverlayScrollIfIdle();
 }
 
+function escapeOnDemandHtml(value) {
+    return String(value === undefined || value === null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function getOnDemandTripId(item) {
     item = item || {};
     return String(item.productId || item.id || item.eventDocId || '').trim();
@@ -16732,21 +16741,21 @@ function renderOnDemandTrips() {
         const services = Array.isArray(trip.services) ? trip.services : [];
         const safeId = id.replace(/'/g, "\\'");
         const serviceHtml = services.slice(0, 5).map(function (s) {
-            return '<li style="margin-bottom:6px;">' + escapeHtml(s) + '</li>';
+            return '<li style="margin-bottom:6px;">' + escapeOnDemandHtml(s) + '</li>';
         }).join('');
 
-        return '<article id="ondemand-card-' + escapeHtml(id) + '" class="card wildu-adventure-card" style="border-left-color:var(--w-gold); overflow:hidden;">' +
-            (image ? '<img src="' + escapeHtml(formatAssetLink(image)) + '" loading="lazy" style="width:100%; height:190px; object-fit:cover; border-radius:10px; margin-bottom:14px;">' : '') +
+        return '<article id="ondemand-card-' + escapeOnDemandHtml(id) + '" class="card wildu-adventure-card" style="border-left-color:var(--w-gold); overflow:hidden;">' +
+            (image ? '<img src="' + escapeOnDemandHtml(formatAssetLink(image)) + '" loading="lazy" style="width:100%; height:190px; object-fit:cover; border-radius:10px; margin-bottom:14px;">' : '') +
             '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">' +
                 '<span style="color:var(--w-gold); font-size:11px; font-weight:950; text-transform:uppercase; letter-spacing:.45px;">Su richiesta</span>' +
-                (region ? '<span style="color:#ddd; font-size:11px; font-weight:900; border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:4px 8px; white-space:nowrap;">' + escapeHtml(region) + '</span>' : '') +
+                (region ? '<span style="color:#ddd; font-size:11px; font-weight:900; border:1px solid rgba(255,255,255,.16); border-radius:999px; padding:4px 8px; white-space:nowrap;">' + escapeOnDemandHtml(region) + '</span>' : '') +
             '</div>' +
-            '<h3 class="wildu-adventure-title" style="margin:0 0 10px 0; color:#fff; font-size:22px; line-height:1.12;">' + escapeHtml(title) + '</h3>' +
-            (desc ? '<p style="color:#cfcfcf; font-size:14px; line-height:1.42; margin:0 0 14px 0;">' + escapeHtml(desc).slice(0, 260) + (desc.length > 260 ? '...' : '') + '</p>' : '') +
+            '<h3 class="wildu-adventure-title" style="margin:0 0 10px 0; color:#fff; font-size:22px; line-height:1.12;">' + escapeOnDemandHtml(title) + '</h3>' +
+            (desc ? '<p style="color:#cfcfcf; font-size:14px; line-height:1.42; margin:0 0 14px 0;">' + escapeOnDemandHtml(desc).slice(0, 260) + (desc.length > 260 ? '...' : '') + '</p>' : '') +
             (serviceHtml ? '<ul style="margin:0 0 16px 18px; padding:0; color:#ddd; font-size:13px; line-height:1.35;">' + serviceHtml + '</ul>' : '') +
             '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:auto;">' +
-                '<div style="color:var(--w-gold); font-weight:950; font-size:20px; white-space:nowrap;">' + escapeHtml(getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo)) + '</div>' +
-                '<button class="wildu-adventure-details-btn" onclick="openOnDemandBooking(&quot;' + escapeHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Richiedi data</button>' +
+                '<div style="color:var(--w-gold); font-weight:950; font-size:20px; white-space:nowrap;">' + escapeOnDemandHtml(getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo)) + '</div>' +
+                '<button class="wildu-adventure-details-btn" onclick="openOnDemandBooking(&quot;' + escapeOnDemandHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Richiedi data</button>' +
             '</div>' +
         '</article>';
     }).join('');
