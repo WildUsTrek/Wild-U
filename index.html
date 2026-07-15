@@ -4,7 +4,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild-U Bussola</title>
+    <title>Wild-U Hub - Master Edition 1 🌲</title>
     <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
     <meta property="og:site_name" content="Wild-U">
     <meta property="og:type" content="website">
@@ -46,8 +46,22 @@
             --wildu-bottom-safe-active: env(safe-area-inset-bottom, 0px);
         }
         html.wildu-standalone-mode #btn-install { display: none !important; }
-        html { overscroll-behavior-y: none; background: var(--w-dark); overflow-x: hidden; max-width: 100%; }
-        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; width: 100%; max-width: 100%; overflow-x: hidden; overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
+        html { overscroll-behavior-y: none; background: var(--w-dark); }
+        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
+        @media (hover: none), (pointer: coarse), (max-width: 768px) {
+            html,
+            body {
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+            }
+
+            html::-webkit-scrollbar,
+            body::-webkit-scrollbar {
+                width: 0;
+                height: 0;
+                display: none;
+            }
+        }
         .btn-action-group { background: #333; color: white; padding: 18px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; font-weight: 900; font-size: 16px; border: none; width: 100%; text-align: left; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
         .btn-action-group:active { transform: scale(0.98); } .btn-action-group.wa { border-left: 5px solid #25D366; } .btn-action-group.tg { border-left: 5px solid #0088cc; }
         .guide-box { background: #222; padding: 18px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid var(--w-green); } .guide-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 16px; } .guide-box p { margin: 0; font-size: 14px; color: #ccc; line-height: 1.5; }
@@ -393,8 +407,10 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     overflow-y: hidden;
     padding: 2px 1px 8px 1px;
     scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    overscroll-behavior-x: contain;
 }
 
 .wildu-travelhub-carousel::-webkit-scrollbar {
@@ -477,7 +493,11 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 .wildu-travelhub-card-cta {
     width: fit-content;
-    margin-top: 2px;
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    right: 12px;
+    margin: 0;
     padding: 8px 11px;
     border-radius: 999px;
     background: var(--w-gold);
@@ -485,6 +505,54 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     font-size: 11px;
     font-weight: 950;
     text-transform: uppercase;
+    box-shadow: 0 8px 22px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.42);
+    pointer-events: none;
+    max-width: calc(100% - 24px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wildu-travelhub-scroll-hint {
+    justify-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: -2px auto 2px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(212,175,55,.30);
+    background: linear-gradient(135deg, rgba(212,175,55,.10), rgba(45,90,39,.12));
+    color: rgba(255,255,255,.84);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .42px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.wildu-travelhub-scroll-hint::before,
+.wildu-travelhub-scroll-hint::after {
+    content: ">";
+    color: var(--w-gold);
+    font-size: 14px;
+    line-height: 1;
+    opacity: .86;
+}
+
+.wildu-travelhub-scroll-hint::before {
+    content: "<";
+}
+
+@media (max-width: 520px) {
+    .wildu-travelhub-card-cta {
+        top: 10px;
+        right: 10px;
+        padding: 7px 9px;
+        font-size: 10px;
+    }
 }
 
 .wildu-travel-nav-menu-title {
@@ -5520,7 +5588,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     <button id="btn-ondemand" onclick="show('ondemand')">Su Richiesta</button>
     
 
-    <button id="btn-rewards" onclick="show('rewards')">Taverna dei Giochi</button>
+    <button id="btn-rewards" onclick="show('rewards')">Taverna Giochi</button>
     <button id="btn-profile" onclick="show('profile')">Profilo</button>
     <button id="btn-share-app" class="nav-share-btn" type="button" onclick="shareWilduClientApp(event)" aria-label="Condividi Wild-U"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi</button>
     
@@ -5558,34 +5626,35 @@ html.wildu-grouped-travel-nav #btn-ondemand {
             <div class="wildu-travelhub-carousel" aria-label="Scelte di partenza Wild-U">
                 <button type="button" class="wildu-travelhub-card" onclick="show('events')">
                     <img data-wildu-travelhub-image-slot="0" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg" alt="" loading="lazy" aria-hidden="true">
+                    <span class="wildu-travelhub-card-cta">Apri viaggi</span>
                     <span class="wildu-travelhub-card-body">
                         <span class="wildu-travelhub-card-label">Catalogo viaggi</span>
                         <strong class="wildu-travelhub-card-title">Avventure con noi</strong>
                         <span class="wildu-travelhub-card-copy">Viaggi di gruppo con programma e date pronte.</span>
-                        <span class="wildu-travelhub-card-cta">Apri viaggi</span>
                     </span>
                 </button>
 
                 <button type="button" class="wildu-travelhub-card" onclick="show('free')">
                     <img data-wildu-travelhub-image-slot="1" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1783868857/PARTNER/qrqhaczo4drtjfdjtdyq.jpg" alt="" loading="lazy" aria-hidden="true">
+                    <span class="wildu-travelhub-card-cta">Apri eventi gratis</span>
                     <span class="wildu-travelhub-card-body">
                         <span class="wildu-travelhub-card-label">Gratis Open Day</span>
                         <strong class="wildu-travelhub-card-title">Gratis Open Day</strong>
                         <span class="wildu-travelhub-card-copy">Esperienze e trekking gratuiti di gruppo.</span>
-                        <span class="wildu-travelhub-card-cta">Apri eventi gratis</span>
                     </span>
                 </button>
 
                 <button type="button" class="wildu-travelhub-card" onclick="show('ondemand')">
                     <img data-wildu-travelhub-image-slot="2" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg" alt="" loading="lazy" aria-hidden="true">
+                    <span class="wildu-travelhub-card-cta">Apri su richiesta</span>
                     <span class="wildu-travelhub-card-body">
                         <span class="wildu-travelhub-card-label">Su richiesta</span>
                         <strong class="wildu-travelhub-card-title">Su misura per te</strong>
                         <span class="wildu-travelhub-card-copy">Parti tu, da solo o con i tuoi amici, scegliti i servizi.</span>
-                        <span class="wildu-travelhub-card-cta">Apri su richiesta</span>
                     </span>
                 </button>
             </div>
+            <div class="wildu-travelhub-scroll-hint" aria-hidden="true">Scorri le scelte</div>
         </section>
     </div>
     
@@ -5797,7 +5866,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
    <div id="sec-rewards" class="hidden">
         <div class="wildu-rewards-hero">
             <div class="wildu-rewards-hero-kicker">Ricompense Wild-U</div>
-            <h3 class="wildu-rewards-hero-title">🎁 Taverna dei Giochi</h3>
+            <h3 class="wildu-rewards-hero-title">🎁 Taverna Giochi</h3>
             <p class="wildu-rewards-hero-copy">
                 Sblocca risorse, sfide e bonus Wild-U.
             </p>
@@ -5909,7 +5978,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
                             <div class="wildu-guest-profile-icon"><i class="bi bi-controller" aria-hidden="true"></i></div>
                             <div>
                                 <h4>Giochi gratis</h4>
-                                <p>Ruote, missioni e mini-esperienze nella Taverna dei Giochi.</p>
+                                <p>Ruote, missioni e mini-esperienze nella Taverna Giochi.</p>
                             </div>
                         </div>
                         <span class="wildu-guest-profile-tag"><i class="bi bi-gift" aria-hidden="true"></i> Gratis</span>
@@ -18091,6 +18160,130 @@ function wilduAnySoftModalVisible() {
     return !!document.querySelector('.wildu-soft-modal.is-visible');
 }
 
+function wilduIsDisplayed(el) {
+    if (!el) return false;
+    if (el.classList && (
+        el.classList.contains('is-visible') ||
+        el.classList.contains('amazon-overlay-visible')
+    )) return true;
+
+    try {
+        const style = window.getComputedStyle(el);
+        if (!style) return false;
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduGetTopDismissLayer() {
+    const mapsModal = document.getElementById('wildu-maps-soft-confirm-modal');
+    if (wilduIsDisplayed(mapsModal)) {
+        return {
+            type: 'maps',
+            close: function () {
+                try { mapsModal.remove(); } catch (e) {}
+            }
+        };
+    }
+
+    const shopPreview = document.getElementById('wildu-shop-preview-modal');
+    if (wilduIsDisplayed(shopPreview)) {
+        return {
+            type: 'shop-preview',
+            close: function () {
+                if (typeof closeWilduShopPreview === 'function') closeWilduShopPreview();
+                else shopPreview.style.display = 'none';
+            }
+        };
+    }
+
+    const amazonOverlay = document.getElementById('amazon-detail-overlay');
+    if (wilduIsDisplayed(amazonOverlay)) {
+        return {
+            type: 'amazon-detail',
+            close: function () {
+                if (typeof closeAmazonDetail === 'function') closeAmazonDetail();
+                else amazonOverlay.classList.remove('amazon-overlay-visible');
+            }
+        };
+    }
+
+    const installTutorial = document.getElementById('install-tut-overlay');
+    if (wilduIsDisplayed(installTutorial)) {
+        return {
+            type: 'install-tutorial',
+            close: function () {
+                if (typeof closeInstallTutorial === 'function') closeInstallTutorial();
+                else installTutorial.style.display = 'none';
+            }
+        };
+    }
+
+    const shareAppModal = document.getElementById('share-app-modal');
+    if (wilduIsDisplayed(shareAppModal)) {
+        return {
+            type: 'share-app',
+            close: function () {
+                if (typeof closeWilduClientShareModal === 'function') closeWilduClientShareModal();
+                else shareAppModal.style.display = 'none';
+            }
+        };
+    }
+
+    const dateModal = document.getElementById('wildu-date-options-modal');
+    if (dateModal && dateModal.classList.contains('is-visible')) {
+        return {
+            type: 'date-options',
+            close: function () { closeWilduDateOptionsModal(); }
+        };
+    }
+
+    const relatedModal = document.getElementById('wildu-related-modal');
+    if (relatedModal && relatedModal.classList.contains('is-visible')) {
+        return {
+            type: 'related',
+            close: function () { closeWilduRelatedModal(true); }
+        };
+    }
+
+    return null;
+}
+
+function wilduHasBlockingTopLayer() {
+    return !!wilduGetTopDismissLayer();
+}
+
+function installWilduTopLayerEscapeRouter() {
+    if (document.documentElement.dataset.wilduTopLayerEscapeRouter === '1') return;
+    document.documentElement.dataset.wilduTopLayerEscapeRouter = '1';
+
+    document.addEventListener('keydown', function (evt) {
+        if (!evt || evt.key !== 'Escape') return;
+
+        const topLayer = wilduGetTopDismissLayer();
+        if (topLayer && typeof topLayer.close === 'function') {
+            if (typeof evt.preventDefault === 'function') evt.preventDefault();
+            if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+            else if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+            topLayer.close();
+            return;
+        }
+
+        const detailModal = document.getElementById('od-details-modal');
+        const detailVisible = detailModal && (
+            detailModal.classList.contains('is-visible') ||
+            detailModal.style.display !== 'none'
+        );
+        if (detailVisible && typeof handleWilduDetailClose === 'function') {
+            if (typeof evt.preventDefault === 'function') evt.preventDefault();
+            if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+            else if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+            handleWilduDetailClose('escape');
+        }
+    }, true);
+}
+
 function lockWilduOverlayScroll() {
     if (WILDU_SOFT_SCROLL_LOCK.locked) return;
 
@@ -18279,12 +18472,23 @@ function wilduInstallPhysicalSwipe(card, options) {
     }, { passive: true });
 }
 
+function wilduSetDetailModalVisible(visible) {
+    const modal = document.getElementById('od-details-modal');
+    if (!modal) return null;
+
+    const isVisible = visible === true;
+    modal.style.display = isVisible ? 'block' : 'none';
+    modal.classList.toggle('is-visible', isVisible);
+    modal.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+    return modal;
+}
+
 function wilduCloseDetailModalOnly() {
     const modal = document.getElementById('od-details-modal');
     const card = document.getElementById('od-details-card');
     if (card) wilduResetSwipeTarget(card);
     hideWilduSwipeHint();
-    if (modal) modal.style.display = 'none';
+    if (modal) wilduSetDetailModalVisible(false);
 }
 
 function wilduOpenDetailByRef(ref, options) {
@@ -18484,7 +18688,7 @@ function installWilduDetailDismissGestures() {
         ratio: 1.28,
         maxRotate: 4.5,
         canStart: function () {
-            return modal.style.display !== 'none';
+            return modal.style.display !== 'none' && !wilduHasBlockingTopLayer();
         },
         isBlockedTarget: function (target) {
             return !!(target && target.closest && target.closest('button,a,input,textarea,select,iframe,[role="button"],.wildu-card-date-action'));
@@ -18496,6 +18700,12 @@ function installWilduDetailDismissGestures() {
 
     document.addEventListener('keydown', function (evt) {
         if (evt.key !== 'Escape') return;
+        const topLayer = wilduGetTopDismissLayer();
+        if (topLayer && typeof topLayer.close === 'function') {
+            evt.preventDefault();
+            topLayer.close();
+            return;
+        }
         if (modal.style.display === 'none') return;
         handleWilduDetailClose('escape');
     });
@@ -18928,12 +19138,14 @@ function openOnDemandDetails(productId) {
         bookBtn.style.background = 'var(--w-gold)';
         bookBtn.style.color = '#000';
         bookBtn.onclick = function () {
-            document.getElementById('od-details-modal').style.display = 'none';
+            WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
+            WILDU_ACTIVE_DETAIL_CONTEXT = null;
+            wilduSetDetailModalVisible(false);
             openOnDemandBooking(id);
         };
     }
 
-    document.getElementById('od-details-modal').style.display = 'block';
+    wilduSetDetailModalVisible(true);
 }
 
 function openOnDemandBooking(productId) {
@@ -20163,7 +20375,7 @@ configureWilduDetailDateOptions('trip', ev, id);
         bookBtn.style.color = "#000";
 
         bookBtn.onclick = () => {
-            document.getElementById('od-details-modal').style.display = 'none';
+            wilduSetDetailModalVisible(false);
             openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id);
         };
     }
@@ -20182,7 +20394,7 @@ configureWilduDetailDateOptions('trip', ev, id);
     
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
-            document.getElementById('od-details-modal').style.display = 'none';
+            wilduSetDetailModalVisible(false);
             openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id, "TOP_SENZA_IMPEGNO");
         };
     }
@@ -20205,7 +20417,7 @@ configureWilduDetailDateOptions('trip', ev, id);
         gearTitle.parentNode.insertBefore(wrapper, gearTitle);
     }
 
-    document.getElementById('od-details-modal').style.display = 'block';
+    wilduSetDetailModalVisible(true);
     requestAnimationFrame(positionWilduOfficialPriceTypeChip);
 }
 
@@ -22593,9 +22805,15 @@ if (profKeyEl) {
     const WILDU_SCREEN_WAKE_LOCK_ENABLED = true;
     const WILDU_TRAVEL_NAV_TAB_IDS = ['events', 'free', 'ondemand'];
     const WILDU_TRAVEL_NAV_GROUP_TAB_IDS = ['travelhub', 'events', 'free', 'ondemand'];
+    const WILDU_TRAVELHUB_AUTOSCROLL_ENABLED = true;
+    const WILDU_TRAVELHUB_AUTOSCROLL_RESPECT_REDUCED_MOTION = false;
+    const WILDU_DESKTOP_AMAZON_WHEEL_PASS_THROUGH_ENABLED = true;
     let wilduScreenWakeLock = null;
     let wilduScreenWakeLockRequested = false;
     let wilduTravelHubImagesHydrated = false;
+    let wilduTravelHubAutoScrollTimer = null;
+    let wilduTravelHubAutoScrollResumeTimer = null;
+    let wilduTravelNavMenuPositionRaf = null;
 
     function isWilduGroupedTravelNavEnabled() {
         return WILDU_GROUPED_TRAVEL_NAV_ENABLED === true;
@@ -22641,6 +22859,151 @@ if (profKeyEl) {
         if (applied > 0) wilduTravelHubImagesHydrated = true;
     }
 
+    function getWilduTravelHubCarousel() {
+        return document.querySelector('#sec-travelhub .wildu-travelhub-carousel');
+    }
+
+    function isWilduTravelHubVisible() {
+        const section = document.getElementById('sec-travelhub');
+        return !!(section && !section.classList.contains('hidden'));
+    }
+
+    function shouldRunWilduTravelHubAutoScroll() {
+        if (WILDU_TRAVELHUB_AUTOSCROLL_ENABLED !== true) return false;
+        if (!isWilduTravelHubVisible()) return false;
+        if (WILDU_TRAVELHUB_AUTOSCROLL_RESPECT_REDUCED_MOTION !== true) return true;
+        try {
+            return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function stopWilduTravelHubAutoScroll() {
+        if (wilduTravelHubAutoScrollTimer) {
+            clearInterval(wilduTravelHubAutoScrollTimer);
+            wilduTravelHubAutoScrollTimer = null;
+        }
+
+        if (wilduTravelHubAutoScrollResumeTimer) {
+            clearTimeout(wilduTravelHubAutoScrollResumeTimer);
+            wilduTravelHubAutoScrollResumeTimer = null;
+        }
+    }
+
+    function bindWilduTravelHubAutoScrollPauseOnce(carousel) {
+        if (!carousel || carousel.dataset.wilduTravelhubAutoBound === '1') return;
+        carousel.dataset.wilduTravelhubAutoBound = '1';
+
+        const pauseAndResume = function () {
+            pauseWilduTravelHubAutoScroll();
+        };
+
+        carousel.addEventListener('pointerdown', pauseAndResume, { passive: true });
+        carousel.addEventListener('touchstart', pauseAndResume, { passive: true });
+        carousel.addEventListener('wheel', pauseAndResume, { passive: true });
+        carousel.addEventListener('focusin', pauseAndResume);
+        carousel.addEventListener('mouseenter', pauseAndResume);
+        carousel.addEventListener('mouseleave', function () {
+            scheduleWilduTravelHubAutoScrollResume(3000);
+        });
+    }
+
+    function getWilduTravelHubCardTargetLeft(carousel, card) {
+        const carouselRect = carousel.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
+        const rawTarget = carousel.scrollLeft + (cardRect.left - carouselRect.left);
+        const max = Math.max(0, carousel.scrollWidth - carousel.clientWidth);
+        return Math.max(0, Math.min(rawTarget, max));
+    }
+
+    function stepWilduTravelHubAutoScroll() {
+        if (!shouldRunWilduTravelHubAutoScroll()) {
+            stopWilduTravelHubAutoScroll();
+            return;
+        }
+
+        const carousel = getWilduTravelHubCarousel();
+        if (!carousel || carousel.scrollWidth <= carousel.clientWidth + 2) return;
+
+        const cards = Array.from(carousel.querySelectorAll('.wildu-travelhub-card'));
+        if (cards.length < 2) return;
+
+        const currentLeft = carousel.scrollLeft || 0;
+        const targets = cards
+            .map(function (card) { return getWilduTravelHubCardTargetLeft(carousel, card); })
+            .filter(function (left, index, list) { return index === 0 || Math.abs(left - list[index - 1]) > 2; });
+
+        if (targets.length < 2) return;
+
+        const next = targets.find(function (left) { return left > currentLeft + 10; });
+        const targetLeft = typeof next === 'number' ? next : 0;
+
+        carousel.scrollTo({
+            left: targetLeft,
+            behavior: targetLeft === 0 ? 'auto' : 'smooth'
+        });
+    }
+
+    function startWilduTravelHubAutoScroll() {
+        if (!shouldRunWilduTravelHubAutoScroll()) {
+            stopWilduTravelHubAutoScroll();
+            return;
+        }
+
+        const carousel = getWilduTravelHubCarousel();
+        if (!carousel || carousel.scrollWidth <= carousel.clientWidth + 2) return;
+
+        bindWilduTravelHubAutoScrollPauseOnce(carousel);
+
+        if (wilduTravelHubAutoScrollTimer) return;
+        wilduTravelHubAutoScrollTimer = setInterval(stepWilduTravelHubAutoScroll, 4200);
+    }
+
+    function scheduleWilduTravelHubAutoScrollResume(delayMs) {
+        if (wilduTravelHubAutoScrollResumeTimer) {
+            clearTimeout(wilduTravelHubAutoScrollResumeTimer);
+        }
+
+        wilduTravelHubAutoScrollResumeTimer = setTimeout(function () {
+            wilduTravelHubAutoScrollResumeTimer = null;
+            startWilduTravelHubAutoScroll();
+        }, Math.max(1000, Number(delayMs || 6500)));
+    }
+
+    function pauseWilduTravelHubAutoScroll() {
+        if (wilduTravelHubAutoScrollTimer) {
+            clearInterval(wilduTravelHubAutoScrollTimer);
+            wilduTravelHubAutoScrollTimer = null;
+        }
+
+        if (isWilduTravelHubVisible()) {
+            scheduleWilduTravelHubAutoScrollResume(6500);
+        }
+    }
+
+    function installWilduDesktopAmazonWheelPassThrough() {
+        if (WILDU_DESKTOP_AMAZON_WHEEL_PASS_THROUGH_ENABLED !== true) return;
+        if (window.__wilduDesktopAmazonWheelPassThroughInstalled) return;
+        window.__wilduDesktopAmazonWheelPassThroughInstalled = true;
+
+        const slider = document.getElementById('amazon-slider-engine');
+        if (!slider) return;
+
+        slider.addEventListener('wheel', function (event) {
+            if (!event || !event.cancelable) return;
+            if (window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches) return;
+            if (Math.abs(event.deltaY || 0) <= Math.abs(event.deltaX || 0)) return;
+
+            event.preventDefault();
+            window.scrollBy({
+                top: event.deltaY,
+                left: 0,
+                behavior: 'auto'
+            });
+        }, { passive: false });
+    }
+
     function scrollWilduTravelHubIntoView() {
         const hubBtn = document.getElementById('btn-travel-hub');
         if (!hubBtn || typeof hubBtn.scrollIntoView !== 'function') return;
@@ -22664,6 +23027,15 @@ if (profKeyEl) {
 
         menu.style.setProperty('--wildu-travel-menu-left', left + 'px');
         menu.style.setProperty('--wildu-travel-menu-top', top + 'px');
+    }
+
+    function requestWilduTravelNavMenuPosition() {
+        if (wilduTravelNavMenuPositionRaf) return;
+
+        wilduTravelNavMenuPositionRaf = requestAnimationFrame(function () {
+            wilduTravelNavMenuPositionRaf = null;
+            positionWilduTravelNavMenu();
+        });
     }
 
     function setWilduTravelNavMenuOpen(open) {
@@ -22790,16 +23162,50 @@ if (profKeyEl) {
             if (event && event.key === 'Escape') setWilduTravelNavMenuOpen(false);
         });
 
-        window.addEventListener('resize', positionWilduTravelNavMenu);
-        window.addEventListener('orientationchange', positionWilduTravelNavMenu);
-        window.addEventListener('scroll', positionWilduTravelNavMenu, { passive: true });
+        window.addEventListener('resize', requestWilduTravelNavMenuPosition);
+        window.addEventListener('orientationchange', requestWilduTravelNavMenuPosition);
+        window.addEventListener('scroll', requestWilduTravelNavMenuPosition, { passive: true });
     }
 
     setTimeout(initWilduTravelNavHub, 0);
 
+    function getWilduStickyNavAnchorTop() {
+        const sentinel = document.getElementById('wildu-nav-sticky-sentinel');
+        if (sentinel) {
+            return Math.max(0, Math.round(sentinel.getBoundingClientRect().top + (window.scrollY || window.pageYOffset || 0)));
+        }
+
+        const nav = document.querySelector('.nav');
+        if (!nav) return 0;
+        return Math.max(0, Math.round(nav.getBoundingClientRect().top + (window.scrollY || window.pageYOffset || 0)));
+    }
+
+    function getWilduNavStickyTopOffset() {
+        const nav = document.querySelector('.nav');
+        if (!nav) return 0;
+        try {
+            const rawTop = window.getComputedStyle(nav).top;
+            const parsedTop = parseFloat(rawTop);
+            return Number.isFinite(parsedTop) ? Math.max(0, Math.round(parsedTop)) : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function getWilduTabScrollTarget() {
+        const currentY = window.scrollY || window.pageYOffset || 0;
+        const navTop = getWilduStickyNavAnchorTop();
+        const stickyOffset = getWilduNavStickyTopOffset();
+        // La nav usa top: env(safe-area-inset-top). Su iOS/PWA diventa sticky
+        // prima del sentinel puro: la soglia deve rispettare lo stesso offset.
+        if (navTop > 0 && currentY >= navTop - stickyOffset - 2) return navTop;
+        return 0;
+    }
+
     function show(id) {
         let requestedTab = id;
         const previousTab = currentTab;
+        const tabScrollTarget = getWilduTabScrollTarget();
 
         // Compatibilità prudente:
         // se qualche vecchio pezzo di codice chiama ancora show('wheel'),
@@ -22855,7 +23261,7 @@ if (profKeyEl) {
         }
         
         window.scrollTo({ 
-            top: 0, 
+            top: tabScrollTarget,
             behavior: 'smooth' 
         });
 
@@ -22882,6 +23288,9 @@ if (profKeyEl) {
 
         if (id === 'travelhub') {
             hydrateWilduTravelHubImages(false);
+            scheduleWilduTravelHubAutoScrollResume(1800);
+        } else {
+            stopWilduTravelHubAutoScroll();
         }
 
         // Se apro Premi e Giochi, forzo la Ruota visibile in fondo.
@@ -27001,7 +27410,7 @@ configureWilduDetailDateOptions('openday', od, id);
         
         bookBtn.onclick = function () {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
-            document.getElementById('od-details-modal').style.display = 'none';
+            wilduSetDetailModalVisible(false);
             // Usa il randomXP fisso calcolato in alto!
             openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId);
         };
@@ -27020,7 +27429,7 @@ configureWilduDetailDateOptions('openday', od, id);
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
-            document.getElementById('od-details-modal').style.display = 'none';
+            wilduSetDetailModalVisible(false);
             // Usa il randomXP fisso calcolato in alto!
             openBook(t, d, "GRATUITO", randomXP, odBookingId, odCollection, odEventDocId, "TOP_SENZA_IMPEGNO");
         };
@@ -27044,7 +27453,7 @@ configureWilduDetailDateOptions('openday', od, id);
     }
 
     // MOSTRA IL MODAL DETTAGLI
-    document.getElementById('od-details-modal').style.display = 'block';
+    wilduSetDetailModalVisible(true);
 }
 
 
@@ -27199,7 +27608,7 @@ configureWilduDetailDateOptions('payday', pd, id);
 
         bookBtn.onclick = function() {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
-            document.getElementById('od-details-modal').style.display = 'none';
+            wilduSetDetailModalVisible(false);
             // Utilizza earnedXP già calcolato in alto in modo sicuro!
             openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId);
         };
@@ -27218,7 +27627,7 @@ configureWilduDetailDateOptions('payday', pd, id);
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
             if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'od-details-modal' })) return;
-            document.getElementById('od-details-modal').style.display = 'none';
+            wilduSetDetailModalVisible(false);
             // Utilizza earnedXP già calcolato in alto!
             openBook(t, d, prezzo, earnedXP, pdBookingId, pdCollection, pdEventDocId, "TOP_SENZA_IMPEGNO");
         };
@@ -27242,7 +27651,7 @@ configureWilduDetailDateOptions('payday', pd, id);
     }
 
     // MOSTRA IL MODAL DETTAGLI
-    document.getElementById('od-details-modal').style.display = 'block';
+    wilduSetDetailModalVisible(true);
 }
     
 // --- MOTORE AMAZON SPONSOR SLIDER CON QUICK VIEW ---
@@ -28901,7 +29310,11 @@ function getWilduHorizontalGestureZone(target) {
     const el = target && target.nodeType === 1 ? target : (target && target.parentElement);
     if (!el || typeof el.closest !== 'function') return null;
 
+    // Contratto anti-regressione: ogni nuovo carosello o area con swipe/scroll
+    // orizzontale deve dichiararsi qui o usare data-wildu-horizontal-zone="true".
     return el.closest([
+        '[data-wildu-horizontal-zone="true"]',
+        '.wildu-horizontal-gesture-zone',
         '.nav',
         '.wildu-travelhub-carousel',
         '.wildu-rewards-video-row',
@@ -28915,9 +29328,20 @@ function getWilduHorizontalGestureZone(target) {
     ].join(','));
 }
 
-function canWilduScrollElementHorizontally(el) {
+function canWilduScrollElementHorizontally(el, touchDeltaX) {
     if (!el) return false;
-    return (el.scrollWidth || 0) > (el.clientWidth || 0) + 2;
+    const max = Math.max(0, (el.scrollWidth || 0) - (el.clientWidth || 0));
+    if (max <= 2) return false;
+
+    const left = el.scrollLeft || 0;
+    if (typeof touchDeltaX === 'number' && Math.abs(touchDeltaX) > 0) {
+        // Finger right means content should move back toward scrollLeft 0.
+        if (touchDeltaX > 0) return left > 1;
+        // Finger left means content should advance toward max scrollLeft.
+        if (touchDeltaX < 0) return left < max - 1;
+    }
+
+    return true;
 }
 
 function canWilduScrollElementVertically(el, touchDeltaY) {
@@ -28957,7 +29381,7 @@ function installWilduRootOverscrollGuard() {
         if (Math.abs(dx) > Math.abs(dy)) {
             const horizontalZone = getWilduHorizontalGestureZone(event.target);
             if (horizontalZone) {
-                if (canWilduScrollElementHorizontally(horizontalZone)) return;
+                if (canWilduScrollElementHorizontally(horizontalZone, dx)) return;
                 if (
                     horizontalZone.id === 'od-details-card' ||
                     horizontalZone.classList.contains('wildu-soft-modal-card')
@@ -29108,6 +29532,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncWilduDisplayModeClass();
     syncAmazonFooterViewportOffset();
     installWilduRootOverscrollGuard();
+    installWilduTopLayerEscapeRouter();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
 
@@ -29119,6 +29544,7 @@ installWilduSoftModalHorizontalDismiss();
 
     init();
     initAmazonSponsors();
+    installWilduDesktopAmazonWheelPassThrough();
 });
 
 window.addEventListener('pageshow', () => {
@@ -29131,7 +29557,7 @@ window.addEventListener('pageshow', () => {
                 
 </script>
 
-<div id="od-details-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
+<div id="od-details-modal" aria-hidden="true" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
     <div id="od-details-card" style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
         <button onclick="handleWilduDetailClose('x')" aria-label="Chiudi scheda" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
         
