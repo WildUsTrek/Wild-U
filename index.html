@@ -4,7 +4,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild-U Hub - Master Edition 1 🌲</title>
+    <title>Wild-U - Bussola</title>
     <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
     <meta property="og:site_name" content="Wild-U">
     <meta property="og:type" content="website">
@@ -4485,15 +4485,6 @@ body::before {
     background: linear-gradient(135deg, rgba(14,27,23,.96), rgba(15,15,15,.98));
 }
 
-.wildu-profile-legal-card summary {
-    cursor: pointer;
-    list-style: none;
-}
-
-.wildu-profile-legal-card summary::-webkit-details-marker {
-    display: none;
-}
-
 .wildu-profile-legal-head {
     display: flex;
     align-items: center;
@@ -4533,43 +4524,210 @@ body::before {
     gap: 10px;
 }
 
-.wildu-profile-legal-row {
-    display: grid;
-    gap: 7px;
-    border: 1px solid rgba(255,255,255,.10);
-    border-radius: 14px;
-    padding: 12px;
-    background: rgba(255,255,255,.035);
-}
-
-.wildu-profile-legal-row b {
-    color: #fff;
-    font-size: 13px;
-}
-
-.wildu-profile-legal-row span {
+.wildu-profile-legal-summary {
     color: #bdbdbd;
     font-size: 12px;
-    line-height: 1.42;
+    line-height: 1.45;
 }
 
-.wildu-profile-legal-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 9px;
-    margin-top: 4px;
-}
-
-.wildu-profile-legal-actions button {
+.wildu-profile-legal-manage {
     border: 1px solid rgba(212,175,55,.42);
     border-radius: 12px;
-    padding: 10px 9px;
+    padding: 11px 12px;
     color: #fff;
-    background: rgba(255,255,255,.05);
-    font-size: 11px;
+    background: linear-gradient(135deg, rgba(33,82,38,.72), rgba(18,18,18,.86));
+    font-size: 12px;
     font-weight: 950;
     cursor: pointer;
     text-transform: uppercase;
+    letter-spacing: .25px;
+}
+
+.wildu-legal-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 30050;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+    background: rgba(0,0,0,.78);
+    backdrop-filter: blur(10px);
+}
+
+.wildu-legal-modal.is-open {
+    display: flex;
+}
+
+.wildu-legal-modal-card {
+    width: min(94vw, 680px);
+    max-height: min(88vh, 780px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(212,175,55,.45);
+    border-radius: 22px;
+    background: linear-gradient(160deg, rgba(13,25,21,.98), rgba(16,16,16,.99));
+    box-shadow: 0 24px 80px rgba(0,0,0,.75);
+    overflow: hidden;
+}
+
+.wildu-legal-modal-top,
+.wildu-legal-modal-bottom {
+    flex: 0 0 auto;
+    padding: 14px;
+    background: rgba(8,13,11,.96);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.wildu-legal-modal-bottom {
+    border-top: 1px solid rgba(255,255,255,.08);
+    border-bottom: 0;
+}
+
+.wildu-legal-modal-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.wildu-legal-modal-kicker {
+    color: var(--w-gold);
+    font-size: 11px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+}
+
+.wildu-legal-modal-title {
+    color: #fff;
+    font-size: clamp(18px, 4.8vw, 24px);
+    font-weight: 950;
+    line-height: 1.08;
+    margin: 4px 0 0;
+}
+
+.wildu-legal-modal-subtitle {
+    color: #bdbdbd;
+    font-size: 12px;
+    line-height: 1.45;
+    margin: 8px 0 0;
+}
+
+.wildu-legal-modal-scroll-btn {
+    flex: 0 0 auto;
+    border: 1px solid rgba(158,214,255,.38);
+    border-radius: 999px;
+    padding: 8px 10px;
+    background: rgba(158,214,255,.10);
+    color: #9ed6ff;
+    font-size: 10px;
+    font-weight: 950;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.wildu-legal-modal-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    gap: 10px;
+}
+
+.wildu-legal-modal-actions button {
+    min-height: 44px;
+    border-radius: 13px;
+    border: 1px solid rgba(255,255,255,.14);
+    padding: 11px 10px;
+    font-size: 12px;
+    font-weight: 950;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.wildu-legal-cancel {
+    background: rgba(255,255,255,.06);
+    color: #ddd;
+}
+
+.wildu-legal-accept {
+    background: linear-gradient(135deg, #2f9f58, #d4af37);
+    color: #09110d;
+    border-color: rgba(212,175,55,.72) !important;
+}
+
+.wildu-legal-modal-body {
+    overflow-y: auto;
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.wildu-legal-section {
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 16px;
+    padding: 13px;
+    background: rgba(255,255,255,.035);
+}
+
+.wildu-legal-section h4 {
+    color: #fff;
+    margin: 0 0 7px;
+    font-size: 14px;
+    line-height: 1.2;
+}
+
+.wildu-legal-section p,
+.wildu-legal-section li {
+    color: #cfcfcf;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.wildu-legal-section p {
+    margin: 0 0 8px;
+}
+
+.wildu-legal-section ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.wildu-legal-emphasis {
+    border-color: rgba(212,175,55,.35);
+    background: rgba(212,175,55,.07);
+}
+
+.wildu-legal-booking-warning {
+    display: none;
+    border: 1px solid rgba(212,175,55,.38);
+    border-radius: 15px;
+    padding: 12px;
+    background: rgba(212,175,55,.08);
+    color: #f2e7be;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.wildu-legal-modal.is-confirming-cancel .wildu-legal-booking-warning {
+    display: block;
+}
+
+@media (max-width: 520px) {
+    .wildu-legal-modal-card {
+        width: 96vw;
+        max-height: 91vh;
+    }
+
+    .wildu-legal-modal-title-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .wildu-legal-modal-scroll-btn {
+        align-self: flex-start;
+    }
 }
 
 .wildu-health-consent-box {
@@ -5322,36 +5480,93 @@ body::before {
     </div>
     <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
 
-    <details id="wildu-profile-legal-card" class="card wildu-profile-legal-card">
-        <summary>
-            <div class="wildu-profile-legal-head">
-                <div style="min-width:0;">
-                    <div class="wildu-profile-legal-title">Privacy e preferenze</div>
-                    <div class="wildu-profile-legal-subtitle">Gestisci informazioni privacy, cookie e conferma per partecipare in sicurezza.</div>
-                </div>
-                <span id="wildu-profile-legal-status" class="wildu-profile-legal-pill">da verificare</span>
+    <div id="wildu-profile-legal-card" class="card wildu-profile-legal-card">
+        <div class="wildu-profile-legal-head">
+            <div style="min-width:0;">
+                <div class="wildu-profile-legal-title">Consensi, privacy e preferenze</div>
+                <div class="wildu-profile-legal-subtitle">Informativa privacy, memoria tecnica, link affiliati e consenso per partecipare.</div>
             </div>
-        </summary>
+            <span id="wildu-profile-legal-status" class="wildu-profile-legal-pill">da verificare</span>
+        </div>
         <div class="wildu-profile-legal-body">
-            <div class="wildu-profile-legal-row">
-                <b>Privacy</b>
-                <span>Informazioni su dati usati per profilo, prenotazioni, progressi e contatto operativo Wild-U.</span>
-            </div>
-            <div class="wildu-profile-legal-row">
-                <b>Cookie e memoria app</b>
-                <span>La cache tecnica serve a far funzionare la PWA. Eventuali strumenti non tecnici restano gestiti dalle preferenze.</span>
-            </div>
-            <div class="wildu-profile-legal-row">
-                <b>Consenso al trattamento dei dati e della privacy per partecipazione</b>
+            <div class="wildu-profile-legal-summary">
                 <span id="wildu-health-consent-status">Non ancora confermata.</span>
+                Gestisci in un unico popup le informazioni obbligatorie e il consenso esplicito per le attivita outdoor.
             </div>
-            <div class="wildu-profile-legal-actions">
-                <button type="button" onclick="acceptWilduBasicLegalConsents('profile')">Accetta preferenze</button>
-                <button type="button" onclick="acceptWilduHealthConsent('profile')">Conferma attivita</button>
+            <button type="button" class="wildu-profile-legal-manage" onclick="openWilduLegalConsentModal('profile')">Gestisci consensi</button>
+        </div>
+    </div>
+</div>
+</div>
+
+<div id="wildu-legal-consent-modal" class="wildu-legal-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="wildu-legal-title">
+    <div class="wildu-legal-modal-card">
+        <div class="wildu-legal-modal-top">
+            <div class="wildu-legal-modal-title-row">
+                <div>
+                    <div class="wildu-legal-modal-kicker">Privacy Wild-U</div>
+                    <h3 id="wildu-legal-title" class="wildu-legal-modal-title">Consensi, privacy e preferenze</h3>
+                    <p class="wildu-legal-modal-subtitle">Leggi le informazioni essenziali e scegli se dare il consenso. Puoi chiudere senza consenso: se stai prenotando, il flusso prosegue comunque.</p>
+                </div>
+                <button type="button" class="wildu-legal-modal-scroll-btn" onclick="scrollWilduLegalConsentToEnd()">Vai al consenso</button>
+            </div>
+            <div class="wildu-legal-modal-actions">
+                <button type="button" class="wildu-legal-cancel" onclick="cancelWilduLegalConsentModal()">Annulla</button>
+                <button type="button" class="wildu-legal-accept" onclick="confirmWilduLegalConsentModal()">Dai il tuo consenso</button>
             </div>
         </div>
-    </details>
-</div>
+        <div id="wildu-legal-modal-body" class="wildu-legal-modal-body">
+            <section class="wildu-legal-section wildu-legal-emphasis">
+                <h4>Titolare del trattamento</h4>
+                <p>Il titolare del trattamento e Wildu S.r.l. Il referente indicato per la gestione operativa e Andrea Cignarelli. Per comunicazioni formali puoi usare la PEC <b>wildusrl@pec.it</b>.</p>
+                <p>Le informazioni sono rese ai sensi del Regolamento UE 2016/679 (GDPR) e servono a rendere trasparente l'uso dei dati nell'app Wild-U.</p>
+            </section>
+            <section class="wildu-legal-section">
+                <h4>Dati trattati e finalita</h4>
+                <p>Wild-U usa i dati necessari a far funzionare profilo, prenotazioni, zaino, progressi, comunicazioni operative, contenuti consultati nell'app e richieste di partecipazione.</p>
+                <ul>
+                    <li>dati di contatto: nome, telefono, email o identificativo account quando disponibili;</li>
+                    <li>dati di prenotazione: viaggio scelto, data, prezzo, note e stato della richiesta;</li>
+                    <li>dati funzionali: XP, premi, zaino, preferenze app e cache tecnica;</li>
+                    <li>eventuali informazioni sullo stato fisico comunicate volontariamente nei form di partecipazione.</li>
+                </ul>
+            </section>
+            <section class="wildu-legal-section wildu-legal-emphasis">
+                <h4>Consenso al trattamento dei dati e della privacy per partecipazione</h4>
+                <p>Per le attivita outdoor Wild-U puo ricevere informazioni utili a gestire la partecipazione e la sicurezza organizzativa, incluse eventuali informazioni sullo stato fisico comunicate nel form.</p>
+                <p><b>Autorizzo Wild-U a trattare le informazioni necessarie a gestire la mia partecipazione alle attivita outdoor, incluse eventuali informazioni sullo stato fisico comunicate nel form.</b></p>
+                <p>Questo consenso e esplicito e specifico per la gestione della partecipazione. Puoi non darlo ora: la prenotazione non viene bloccata, ma Wild-U potrebbe dover completare le verifiche prima dell'attivita.</p>
+            </section>
+            <section class="wildu-legal-section">
+                <h4>Cookie, cache e memoria tecnica</h4>
+                <p>L'app usa memoria locale, cache PWA e strumenti tecnici necessari per login, sessione, prestazioni, contenuti offline, preferenze, caricamento rapido e sicurezza. Questi strumenti tecnici non sono usati per profilazione pubblicitaria.</p>
+                <p>Eventuali strumenti non tecnici, di analytics, marketing o profilazione restano disattivati salvo consenso separato e specifico.</p>
+            </section>
+            <section class="wildu-legal-section">
+                <h4>Link affiliati Amazon</h4>
+                <p>Alcune sezioni mostrano prodotti consigliati con link affiliati Amazon. In qualita di Affiliato Amazon, Wild-U riceve un guadagno dagli acquisti idonei.</p>
+                <p>Se apri un link Amazon esci dall'app Wild-U: Amazon potra trattare dati secondo le proprie informative e impostazioni. Wild-U non riceve i dati di pagamento o spedizione Amazon.</p>
+            </section>
+            <section class="wildu-legal-section">
+                <h4>Servizi tecnici e destinatari</h4>
+                <p>I dati possono transitare su servizi tecnici usati per erogare l'app, come Firebase/Google, Cloudflare/R2, Cloudinary, Apps Script o backend Wild-U. WhatsApp, Telegram, Facebook o Amazon vengono coinvolti solo quando apri volontariamente collegamenti o condivisioni verso quei servizi.</p>
+            </section>
+            <section class="wildu-legal-section">
+                <h4>Conservazione, diritti e revoca</h4>
+                <p>I dati sono conservati per il tempo necessario a gestire profilo, prenotazioni, obblighi organizzativi, fiscali o di tutela. Puoi chiedere accesso, rettifica, cancellazione, limitazione, opposizione e revoca del consenso. La revoca non rende illecito cio che e stato trattato prima della revoca.</p>
+                <p id="wildu-legal-consent-end">Dando il consenso registriamo nel tuo profilo data, versione dell'informativa e origine della scelta.</p>
+            </section>
+            <div id="wildu-legal-booking-warning" class="wildu-legal-booking-warning">
+                Senza consenso non possiamo registrare nel profilo la conferma privacy per la partecipazione. La prenotazione prosegue comunque, ma Wild-U potrebbe ricontattarti prima dell'attivita per completare le verifiche necessarie.
+            </div>
+        </div>
+        <div class="wildu-legal-modal-bottom">
+            <div class="wildu-legal-modal-actions">
+                <button type="button" class="wildu-legal-cancel" onclick="cancelWilduLegalConsentModal()">Annulla</button>
+                <button type="button" class="wildu-legal-accept" onclick="confirmWilduLegalConsentModal()">Dai il tuo consenso</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 
@@ -11465,9 +11680,9 @@ async function saveProfileData() {
 }
 
 const WILDU_LEGAL_CONSENT_VERSIONS = {
-    privacy: 'privacy_2026_07_14',
-    cookies: 'cookies_2026_07_14',
-    healthBooking: 'outdoor_activity_2026_07_14'
+    privacy: 'privacy_2026_07_15',
+    cookies: 'cookies_2026_07_15',
+    healthBooking: 'health_participation_2026_07_15'
 };
 
 function getWilduLegalConsents() {
@@ -11536,65 +11751,154 @@ function renderWilduLegalConsentStatus() {
     }
 }
 
-async function acceptWilduBasicLegalConsents(source) {
+let wilduLegalConsentModalState = {
+    source: 'profile',
+    allowContinueWithoutConsent: false,
+    confirmingCancel: false,
+    resolve: null
+};
+
+function buildWilduLegalConsentPatch(source) {
     const acceptedAt = new Date().toISOString();
+    const consentSource = source || 'profile';
+    const healthStatement = "Autorizzo Wild-U a trattare le informazioni necessarie a gestire la mia partecipazione alle attivita outdoor, incluse eventuali informazioni sullo stato fisico comunicate nel form.";
+
+    return {
+        privacy: {
+            accepted: true,
+            version: WILDU_LEGAL_CONSENT_VERSIONS.privacy,
+            acceptedAt: acceptedAt,
+            source: consentSource,
+            controller: 'Wildu S.r.l.',
+            contact: 'wildusrl@pec.it'
+        },
+        cookies: {
+            accepted: true,
+            technicalNoticeSeen: true,
+            analytics: false,
+            marketing: false,
+            version: WILDU_LEGAL_CONSENT_VERSIONS.cookies,
+            updatedAt: acceptedAt,
+            source: consentSource
+        },
+        healthBooking: {
+            accepted: true,
+            version: WILDU_LEGAL_CONSENT_VERSIONS.healthBooking,
+            acceptedAt: acceptedAt,
+            source: consentSource,
+            statement: healthStatement
+        }
+    };
+}
+
+async function acceptWilduAllLegalConsents(source) {
     try {
-        const saved = await saveWilduLegalConsentPatch({
-            privacy: {
-                accepted: true,
-                version: WILDU_LEGAL_CONSENT_VERSIONS.privacy,
-                acceptedAt: acceptedAt,
-                source: source || 'profile'
-            },
-            cookies: {
-                accepted: true,
-                technicalNoticeSeen: true,
-                analytics: false,
-                marketing: false,
-                version: WILDU_LEGAL_CONSENT_VERSIONS.cookies,
-                updatedAt: acceptedAt,
-                source: source || 'profile'
-            }
-        });
+        const saved = await saveWilduLegalConsentPatch(buildWilduLegalConsentPatch(source));
         if (!saved) return;
         try {
             localStorage.setItem('wilduLegalNoticeSeen', WILDU_LEGAL_CONSENT_VERSIONS.cookies);
         } catch (e) {}
-        showToast("Preferenze privacy salvate.");
-    } catch (err) {
-        console.error("Errore salvataggio preferenze privacy:", err);
-        showToast("Preferenze non salvate. Riprova.");
-    }
-}
-
-async function acceptWilduHealthConsent(source) {
-    const ok = window.confirm(
-        "Autorizzo Wild-U a trattare le informazioni necessarie a gestire la mia partecipazione alle attivita outdoor, incluse eventuali informazioni sullo stato fisico comunicate nel form."
-    );
-    if (!ok) return false;
-
-    try {
-        const saved = await saveWilduLegalConsentPatch({
-            healthBooking: {
-                accepted: true,
-                version: WILDU_LEGAL_CONSENT_VERSIONS.healthBooking,
-                acceptedAt: new Date().toISOString(),
-                source: source || 'profile'
-            }
-        });
-        if (!saved) return false;
-        showToast("Conferma attivita salvata.");
+        showToast("Consensi e preferenze salvati.");
         return true;
     } catch (err) {
-        console.error("Errore salvataggio conferma attivita:", err);
-        showToast("Conferma non salvata. Riprova.");
+        console.error("Errore salvataggio consensi privacy:", err);
+        showToast("Consensi non salvati. Riprova.");
         return false;
     }
 }
 
+function openWilduLegalConsentModal(source, options = {}) {
+    const modal = document.getElementById('wildu-legal-consent-modal');
+    const body = document.getElementById('wildu-legal-modal-body');
+    if (!modal) return Promise.resolve(false);
+
+    return new Promise(resolve => {
+        wilduLegalConsentModalState = {
+            source: source || 'profile',
+            allowContinueWithoutConsent: options.allowContinueWithoutConsent === true,
+            confirmingCancel: false,
+            resolve
+        };
+
+        modal.classList.add('is-open');
+        modal.classList.remove('is-confirming-cancel');
+        modal.setAttribute('aria-hidden', 'false');
+
+        modal.querySelectorAll('.wildu-legal-cancel').forEach(btn => {
+            btn.innerText = 'Annulla';
+        });
+        modal.querySelectorAll('.wildu-legal-accept').forEach(btn => {
+            btn.innerText = 'Dai il tuo consenso';
+        });
+
+        if (body) body.scrollTop = 0;
+    });
+}
+
+function closeWilduLegalConsentModal(result) {
+    const modal = document.getElementById('wildu-legal-consent-modal');
+    if (modal) {
+        modal.classList.remove('is-open', 'is-confirming-cancel');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    const resolver = wilduLegalConsentModalState && wilduLegalConsentModalState.resolve;
+    wilduLegalConsentModalState = {
+        source: 'profile',
+        allowContinueWithoutConsent: false,
+        confirmingCancel: false,
+        resolve: null
+    };
+
+    if (typeof resolver === 'function') resolver(result === true);
+}
+
+function cancelWilduLegalConsentModal() {
+    const state = wilduLegalConsentModalState || {};
+    const modal = document.getElementById('wildu-legal-consent-modal');
+
+    if (state.allowContinueWithoutConsent && !state.confirmingCancel) {
+        wilduLegalConsentModalState.confirmingCancel = true;
+        if (modal) modal.classList.add('is-confirming-cancel');
+        document.querySelectorAll('#wildu-legal-consent-modal .wildu-legal-cancel').forEach(btn => {
+            btn.innerText = 'Continua senza consenso';
+        });
+        const warning = document.getElementById('wildu-legal-booking-warning');
+        if (warning && typeof warning.scrollIntoView === 'function') {
+            warning.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+    }
+
+    closeWilduLegalConsentModal(false);
+}
+
+async function confirmWilduLegalConsentModal() {
+    const state = wilduLegalConsentModalState || {};
+    const saved = await acceptWilduAllLegalConsents(state.source || 'profile');
+    if (saved) closeWilduLegalConsentModal(true);
+}
+
+function scrollWilduLegalConsentToEnd() {
+    const end = document.getElementById('wildu-legal-consent-end');
+    if (end && typeof end.scrollIntoView === 'function') {
+        end.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+async function acceptWilduBasicLegalConsents(source) {
+    return await acceptWilduAllLegalConsents(source || 'profile');
+}
+
+async function acceptWilduHealthConsent(source) {
+    return await acceptWilduAllLegalConsents(source || 'profile');
+}
+
 async function ensureWilduHealthConsentForBooking() {
     if (isWilduConsentCurrent('healthBooking')) return true;
-    return await acceptWilduHealthConsent('standard_booking_form');
+    return await openWilduLegalConsentModal('standard_booking_form', {
+        allowContinueWithoutConsent: true
+    });
 }
 
 function maybePromptWilduLegalNotice() {
@@ -19626,11 +19930,7 @@ async function sendCustomBooking() {
         return;
     }
 
-    const healthConsentOk = await ensureWilduHealthConsentForBooking();
-    if (!healthConsentOk) {
-        isBookingInProgress = false;
-        return;
-    }
+    await ensureWilduHealthConsentForBooking();
 
     const bookingIdRaw = (document.getElementById('cb-booking-id').value || currentBookingDraft?.bookingId || "").trim();
     const bookingCollectionRaw = (document.getElementById('cb-booking-collection').value || currentBookingDraft?.collection || "").trim();
