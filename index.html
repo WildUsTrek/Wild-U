@@ -22968,7 +22968,11 @@ if (profKeyEl) {
 
         msg.innerText = "HAI VINTO +" + amt + " XP!";
         overlay.style.display = 'flex';
-        playWilduSystemSound(sRew, 'reward', { reset: true });
+        try {
+            playWilduSystemSound(sRew, 'reward', { reset: true });
+        } catch (soundErr) {
+            console.warn("Audio reward non disponibile:", soundErr);
+        }
 
         return new Promise(function (resolve) {
             wilduRewardResolve = resolve;
@@ -22976,14 +22980,21 @@ if (profKeyEl) {
                 overlay.style.display = 'none';
                 wilduRewardAutoHideTimer = null;
                 wilduRewardResolve = null;
-                if (typeof options.onComplete === 'function') options.onComplete();
+                if (typeof options.onComplete === 'function') {
+                    try { options.onComplete(); } catch (completeErr) { console.warn("Callback reward non completata:", completeErr); }
+                }
                 resolve(true);
             }, duration);
         });
     }
 
-    async function focusWilduProfileForXp(reason) {
-        show('profile', { scrollPolicy: 'profile-top', scrollBehavior: 'auto', source: reason || 'xp' });
+    async function focusWilduProfileForXp(reason, options) {
+        options = options || {};
+        show('profile', {
+            scrollPolicy: options.scrollPolicy || 'top',
+            scrollBehavior: 'auto',
+            source: reason || 'xp'
+        });
         await wilduDelay(120);
         if (typeof openWilduPassportForXPAnimation === 'function') {
             openWilduPassportForXPAnimation();
@@ -23009,46 +23020,126 @@ if (profKeyEl) {
         }
     }
 
+    function wilduNeedsHealthBookingConsent() {
+        return (
+            typeof isWilduConsentCurrent === 'function' &&
+            !isWilduConsentCurrent('healthBooking')
+        );
+    }
+
+    function restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, reason) {
+        if (wildUserKey || !flowUserKey || !auth.currentUser || auth.currentUser.uid !== flowUserKey) return;
+
+        wildUserKey = flowUserKey;
+        try {
+            localStorage.setItem('wildUserKey', flowUserKey);
+        } catch (storageErr) {
+            console.warn("Ripristino UID post-prenotazione non salvato in locale:", storageErr);
+        }
+
+        if (typeof pageDebug === 'function') {
+            pageDebug('POST_BOOKING_UID_RESTORED', {
+                reason: reason || 'post-booking',
+                uid: flowUserKey
+            });
+        }
+    }
+
+    function scheduleWilduPostBookingConsentModal(options, reason) {
+        options = options || {};
+        const needsConsent = wilduNeedsHealthBookingConsent();
+        const modal = document.getElementById('wildu-legal-consent-modal');
+        const canOpen = typeof openWilduLegalConsentModal === 'function';
+
+        if (typeof pageDebug === 'function') {
+            pageDebug('POST_BOOKING_CONSENT_CHECK', {
+                reason: reason || 'post-booking',
+                needsConsent,
+                hasModal: !!modal,
+                canOpen
+            });
+        }
+
+        if (!needsConsent || !modal || !canOpen) {
+            if (needsConsent && (!modal || !canOpen)) {
+                console.warn("Consenso post-prenotazione richiesto, ma il modal non e disponibile.");
+            }
+            return false;
+        }
+
+        window.setTimeout(function () {
+            if (!wilduNeedsHealthBookingConsent()) return;
+
+            if (typeof pageDebug === 'function') {
+                pageDebug('POST_BOOKING_CONSENT_OPEN', {
+                    source: options.consentSource || 'booking_success'
+                });
+            }
+
+            try {
+                openWilduLegalConsentModal(options.consentSource || 'booking_success', {
+                    allowContinueWithoutConsent: true
+                });
+            } catch (modalErr) {
+                console.warn("Apertura consenso post-prenotazione non riuscita:", modalErr);
+            }
+        }, 220);
+
+        return true;
+    }
+
     async function completeWilduBookingSuccessFlow(options) {
         options = options || {};
         const earnedXP = parseInt(options.earnedXP || 0, 10) || 0;
         const shouldPromptConsent = options.promptConsent !== false;
+        const flowUserKey = wildUserKey || (auth.currentUser ? auth.currentUser.uid : '');
+        const needsConsentBeforeFlow = shouldPromptConsent && wilduNeedsHealthBookingConsent();
 
         wilduPostBookingFlowActive = true;
+        let flowWarning = null;
         try {
             if (typeof fetchInitData === 'function') {
                 try { await fetchInitData({ force: true }); } catch (e) { console.warn("Aggiornamento dati post-prenotazione non riuscito:", e); }
             }
+            restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, 'after-initdata');
+
             if (typeof fetchXP === 'function') {
                 try { await fetchXP(); } catch (e) { console.warn("Aggiornamento XP post-prenotazione non riuscito:", e); }
             }
+            restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, 'after-fetchxp');
 
-            await focusWilduProfileForXp(options.reason || 'booking-success');
+            try {
+                await focusWilduProfileForXp(options.reason || 'booking-success', { scrollPolicy: 'top' });
+            } catch (focusErr) {
+                flowWarning = focusErr;
+                console.warn("Focus profilo post-prenotazione non completato:", focusErr);
+            }
+
             const bufferedXP = Math.max(0, parseInt(xpCelebrationBuffer || 0, 10) || 0);
             const extraBufferedXP = earnedXP > 0 && bufferedXP === earnedXP ? 0 : bufferedXP;
             const rewardXP = earnedXP + extraBufferedXP;
             if (bufferedXP > 0) xpCelebrationBuffer = 0;
 
             if (rewardXP > 0) {
-                await showReward(rewardXP, { durationMs: options.rewardDurationMs || 3500 });
+                try {
+                    await showReward(rewardXP, { durationMs: options.rewardDurationMs || 3500 });
+                } catch (rewardErr) {
+                    flowWarning = rewardErr;
+                    console.warn("Reward post-prenotazione non completato:", rewardErr);
+                }
             } else {
                 await wilduDelay(350);
             }
+        } catch (flowErr) {
+            flowWarning = flowErr;
+            console.warn("Flusso post-prenotazione completato con avviso:", flowErr);
         } finally {
             wilduPostBookingFlowActive = false;
         }
 
-        if (
-            shouldPromptConsent &&
-            typeof isWilduConsentCurrent === 'function' &&
-            !isWilduConsentCurrent('healthBooking') &&
-            typeof openWilduLegalConsentModal === 'function'
-        ) {
-            window.setTimeout(function () {
-                openWilduLegalConsentModal(options.consentSource || 'booking_success', {
-                    allowContinueWithoutConsent: true
-                });
-            }, 220);
+        const needsConsentAfterFlow = shouldPromptConsent && wilduNeedsHealthBookingConsent();
+        if (shouldPromptConsent && (needsConsentBeforeFlow || needsConsentAfterFlow)) {
+            scheduleWilduPostBookingConsentModal(options, flowWarning ? 'post-booking-after-warning' : 'post-booking-complete');
         }
     }
     function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; playWilduSystemSound(sLvl, 'levelup', { reset: true }); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
