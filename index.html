@@ -4,7 +4,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild-U - Bussola</title>
+    <title>Wild-U Hub - Master Edition 1 🌲</title>
     <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
     <meta property="og:site_name" content="Wild-U">
     <meta property="og:type" content="website">
@@ -40,10 +40,12 @@
         :root { --w-green: #2d5a27; --w-dark: #121212; --w-card: #1e1e1e; --w-gold: #d4af37; --w-text: #e0e0e0; --w-sub: #a0a0a0; --wildu-bottom-safe-active: 0px; }
         @media (display-mode: standalone), (display-mode: fullscreen) {
             :root { --wildu-bottom-safe-active: env(safe-area-inset-bottom, 0px); }
+            #btn-install { display: none !important; }
         }
         html.wildu-standalone-mode {
             --wildu-bottom-safe-active: env(safe-area-inset-bottom, 0px);
         }
+        html.wildu-standalone-mode #btn-install { display: none !important; }
         html { overscroll-behavior-y: none; background: var(--w-dark); }
         body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
         .btn-action-group { background: #333; color: white; padding: 18px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; font-weight: 900; font-size: 16px; border: none; width: 100%; text-align: left; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
@@ -277,6 +279,113 @@ body::before {
     transform: scale(.97);
 }
 
+.wildu-nav-travel-hub {
+    display: none;
+    flex: 0 0 auto;
+}
+
+html.wildu-grouped-travel-nav .wildu-nav-travel-hub {
+    display: inline-flex;
+}
+
+html.wildu-grouped-travel-nav #btn-events,
+html.wildu-grouped-travel-nav #btn-free,
+html.wildu-grouped-travel-nav #btn-ondemand {
+    display: none !important;
+}
+
+#btn-travel-hub {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid rgba(212,175,55,.50);
+    background:
+        radial-gradient(circle at top left, rgba(212,175,55,.20), transparent 44%),
+        linear-gradient(135deg, rgba(45,90,39,.96), rgba(22,31,24,.96));
+    color: #fff;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 4px 14px rgba(45,90,39,.28);
+}
+
+#btn-travel-hub.active,
+#btn-travel-hub[aria-expanded="true"] {
+    background:
+        radial-gradient(circle at top left, rgba(212,175,55,.30), transparent 42%),
+        linear-gradient(135deg, rgba(45,90,39,1), rgba(212,175,55,.24));
+    color: #fff;
+    box-shadow: 0 0 14px rgba(45,90,39,.78);
+}
+
+.wildu-travel-nav-menu {
+    position: fixed;
+    z-index: 1250;
+    left: var(--wildu-travel-menu-left, 12px);
+    top: var(--wildu-travel-menu-top, 96px);
+    width: min(420px, calc(100vw - 24px));
+    display: none;
+    padding: 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(212,175,55,.34);
+    background:
+        radial-gradient(circle at top left, rgba(45,90,39,.34), transparent 44%),
+        linear-gradient(145deg, rgba(16,24,18,.98), rgba(10,10,10,.99));
+    box-shadow: 0 20px 58px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.08);
+    box-sizing: border-box;
+}
+
+.wildu-travel-nav-menu.is-open {
+    display: grid;
+    gap: 8px;
+}
+
+.wildu-travel-nav-menu-title {
+    color: var(--w-gold);
+    font-size: 10px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    padding: 1px 4px 4px 4px;
+}
+
+.wildu-travel-nav-choice {
+    width: 100%;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 15px;
+    padding: 12px 13px;
+    text-align: left;
+    color: #fff;
+    background: rgba(255,255,255,.055);
+    cursor: pointer;
+    box-sizing: border-box;
+    display: grid;
+    gap: 4px;
+}
+
+.wildu-travel-nav-choice strong {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 950;
+    text-transform: uppercase;
+    line-height: 1.18;
+}
+
+.wildu-travel-nav-choice span {
+    color: #b8c8bd;
+    font-size: 11px;
+    line-height: 1.28;
+}
+
+.wildu-travel-nav-choice:active {
+    transform: scale(.985);
+}
+
+.wildu-travel-nav-choice.is-active {
+    border-color: rgba(212,175,55,.45);
+    background: linear-gradient(135deg, rgba(45,90,39,.42), rgba(212,175,55,.10));
+}
+
 /* --- WILDU AUDIO TOGGLE: parte reale della navbar, non più inseguitore fixed --- */
 #wildu-audio-nav-dock {
     --wildu-audio-button-size: 34px;
@@ -360,6 +469,12 @@ body::before {
         linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.022));
     box-shadow: 0 8px 22px rgba(0,0,0,0.34);
     box-sizing: border-box;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wildu-trip-filter-shell:active {
+    border-color: rgba(212,175,55,0.34);
 }
 
 .wildu-trip-filter-top {
@@ -482,6 +597,7 @@ body::before {
     margin-top: 13px;
     padding-top: 13px;
     border-top: 1px solid rgba(255,255,255,0.08);
+    cursor: default;
 }
 
 .wildu-trip-filter-grid {
@@ -3325,6 +3441,7 @@ body::before {
     #profile-data > .wildu-profile-help-card,
     #profile-data > .wildu-profile-community-divider,
     #profile-data > .wildu-profile-social-card,
+    #profile-data > .wildu-profile-legal-card,
     #profile-data > .wildu-profile-commercial-disclosure {
         grid-column: 1;
         min-width: 0;
@@ -3546,6 +3663,7 @@ body::before {
 @media (min-width: 900px) {
     #profile-data:not(.hidden) > .wildu-profile-community-divider,
     #profile-data:not(.hidden) > .wildu-profile-social-card,
+    #profile-data:not(.hidden) > .wildu-profile-legal-card,
     #profile-data:not(.hidden) > .wildu-profile-commercial-disclosure {
         grid-column: 1 / -1 !important;
         width: 100%;
@@ -3571,6 +3689,11 @@ body::before {
 
     #profile-data:not(.hidden) > .wildu-profile-social-card .wildu-profile-social-main {
         flex: 1 1 auto;
+    }
+
+    #profile-data:not(.hidden) > .wildu-profile-legal-card {
+        margin: 0 !important;
+        border-radius: 18px;
     }
 
     #profile-data:not(.hidden) > .wildu-profile-commercial-disclosure {
@@ -4480,8 +4603,9 @@ body::before {
 
 .wildu-profile-legal-card {
     border-left-color: #9ed6ff;
-    margin-top: 24px;
+    margin-top: 12px;
     margin-bottom: 12px;
+    padding: 14px 16px !important;
     background: linear-gradient(135deg, rgba(14,27,23,.96), rgba(15,15,15,.98));
 }
 
@@ -4519,9 +4643,9 @@ body::before {
 }
 
 .wildu-profile-legal-body {
-    margin-top: 16px;
+    margin-top: 11px;
     display: grid;
-    gap: 10px;
+    gap: 0;
 }
 
 .wildu-profile-legal-summary {
@@ -4891,6 +5015,9 @@ body::before {
 </div>
 
 <div class="nav">
+    <div id="wildu-nav-travel-hub" class="wildu-nav-travel-hub" aria-label="Selettore partenze Wild-U">
+        <button id="btn-travel-hub" type="button" onclick="toggleWilduTravelNavMenu(event)" aria-haspopup="true" aria-expanded="false">Parti con noi</button>
+    </div>
     <button id="btn-events" class="active" onclick="show('events')">Viaggi</button>
     <button id="btn-free" onclick="show('free')">Open Day</button>
     <button id="btn-ondemand" onclick="show('ondemand')">Su Richiesta</button>
@@ -4904,13 +5031,29 @@ body::before {
     <button id="btn-negozio" onclick="show('negozio')">Negozio</button>
 </div>
 
+<div id="wildu-travel-nav-menu" class="wildu-travel-nav-menu" aria-hidden="true">
+    <div class="wildu-travel-nav-menu-title">Scegli come partire</div>
+    <button id="wildu-travel-nav-choice-events" type="button" class="wildu-travel-nav-choice" onclick="selectWilduTravelNavTab('events', event)">
+        <strong>Avventure con noi</strong>
+        <span>Viaggi Wild-U con programma e date già pronte.</span>
+    </button>
+    <button id="wildu-travel-nav-choice-free" type="button" class="wildu-travel-nav-choice" onclick="selectWilduTravelNavTab('free', event)">
+        <strong>Gratis Open Day</strong>
+        <span>Esperienze gratuite per conoscere la community.</span>
+    </button>
+    <button id="wildu-travel-nav-choice-ondemand" type="button" class="wildu-travel-nav-choice" onclick="selectWilduTravelNavTab('ondemand', event)">
+        <strong>Destinazioni, esperienze e cammini organizzati su misura per te</strong>
+        <span>Proposte flessibili con data da concordare.</span>
+    </button>
+</div>
+
 <div class="container">          
     <div id="module-container" class="hidden"></div>
     
     <div id="sec-events">
 
         <div id="events-catalog-view">
-            <div id="wildu-trip-filter-shell" class="wildu-trip-filter-shell">
+            <div id="wildu-trip-filter-shell" class="wildu-trip-filter-shell" onclick="handleTripFilterShellClick(event)">
                 <div class="wildu-trip-filter-top">
                     <div style="min-width:0;">
                         <div id="trip-count-badge" class="trip-counter wildu-trip-filter-count">Caricamento...</div>
@@ -4918,8 +5061,8 @@ body::before {
                     </div>
 
                     <div class="wildu-trip-filter-actions">
-                        <button id="wildu-trip-filter-toggle" type="button" class="wildu-trip-action-btn" onclick="toggleTripFiltersPanel()" aria-expanded="false">⚙ Filtri</button>
-                        <button id="wildu-trip-sort-toggle" type="button" class="wildu-trip-action-btn wildu-trip-sort-btn" onclick="cycleTripSortMode()">↕ Ordina: € ↑</button>
+                        <button id="wildu-trip-filter-toggle" type="button" class="wildu-trip-action-btn" onclick="event.stopPropagation(); toggleTripFiltersPanel()" aria-expanded="false">⚙ Filtri</button>
+                        <button id="wildu-trip-sort-toggle" type="button" class="wildu-trip-action-btn wildu-trip-sort-btn" onclick="event.stopPropagation(); cycleTripSortMode()">↕ Ordina: € ↑</button>
                     </div>
                 </div>
 
@@ -5472,6 +5615,17 @@ body::before {
         <span style="color:#9ed6ff; font-weight:950; font-size:18px;">➔</span>
     </div>
     
+    <div id="wildu-profile-legal-card" class="card wildu-profile-legal-card">
+        <div class="wildu-profile-legal-head">
+            <div style="min-width:0;">
+                <div class="wildu-profile-legal-title">Consensi, privacy e preferenze</div>
+            </div>
+        </div>
+        <div class="wildu-profile-legal-body">
+            <button type="button" class="wildu-profile-legal-manage" onclick="openWilduLegalConsentModal('profile')">Gestisci consensi</button>
+        </div>
+    </div>
+
     <!-- INIZIO DISCLOSURE TATTICA LATO CLIENTE -->
     <div class="wildu-profile-commercial-disclosure" style="text-align: center; opacity: 0.5; margin-top: 30px; padding-top: 20px; font-size: 11px; letter-spacing: 0.5px; margin-bottom: 20px;">
         <b style="color:var(--w-gold);">TRASPARENZA COMMERCIALE</b><br>
@@ -5479,23 +5633,6 @@ body::before {
         In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
     </div>
     <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
-
-    <div id="wildu-profile-legal-card" class="card wildu-profile-legal-card">
-        <div class="wildu-profile-legal-head">
-            <div style="min-width:0;">
-                <div class="wildu-profile-legal-title">Consensi, privacy e preferenze</div>
-                <div class="wildu-profile-legal-subtitle">Informativa privacy, memoria tecnica, link affiliati e consenso per partecipare.</div>
-            </div>
-            <span id="wildu-profile-legal-status" class="wildu-profile-legal-pill">da verificare</span>
-        </div>
-        <div class="wildu-profile-legal-body">
-            <div class="wildu-profile-legal-summary">
-                <span id="wildu-health-consent-status">Non ancora confermata.</span>
-                Gestisci in un unico popup le informazioni obbligatorie e il consenso esplicito per le attivita outdoor.
-            </div>
-            <button type="button" class="wildu-profile-legal-manage" onclick="openWilduLegalConsentModal('profile')">Gestisci consensi</button>
-        </div>
-    </div>
 </div>
 </div>
 
@@ -16677,6 +16814,113 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         return 'Ordina per data di partenza';
     }
 
+    function getTripSortInfoCopy() {
+        if (activeFilters.sortMode === 'priceAsc') {
+            return {
+                title: 'Prezzo più leggero',
+                text: 'Ho ordinato i viaggi dal prezzo più basso al più alto.'
+            };
+        }
+        if (activeFilters.sortMode === 'priceDesc') {
+            return {
+                title: 'Prezzo più alto',
+                text: 'Ho ordinato i viaggi dal prezzo più alto al più basso.'
+            };
+        }
+        return {
+            title: 'Data di partenza',
+            text: 'Ho riportato i viaggi in ordine di data, dai più vicini ai successivi.'
+        };
+    }
+
+    function showTripSortInfoModal() {
+        const copy = getTripSortInfoCopy();
+        const existing = document.getElementById('wildu-trip-sort-info-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'wildu-trip-sort-info-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-label', 'Ordinamento viaggi aggiornato');
+        modal.style.cssText = [
+            'position:fixed',
+            'inset:0',
+            'z-index:30020',
+            'display:flex',
+            'align-items:center',
+            'justify-content:center',
+            'padding:18px',
+            'box-sizing:border-box',
+            'background:rgba(0,0,0,0.62)',
+            'backdrop-filter:blur(8px)',
+            '-webkit-backdrop-filter:blur(8px)'
+        ].join(';');
+
+        modal.innerHTML = `
+            <div style="
+                width:min(90vw,360px);
+                border-radius:22px;
+                border:1px solid rgba(158,214,255,0.34);
+                background:
+                    radial-gradient(circle at top left, rgba(120,190,255,0.20), transparent 42%),
+                    linear-gradient(145deg, rgba(17,29,37,0.98), rgba(13,16,18,0.99));
+                color:#fff;
+                box-shadow:0 22px 64px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.08);
+                padding:21px 19px 18px 19px;
+                text-align:center;
+                box-sizing:border-box;
+            ">
+                <div style="
+                    width:48px;
+                    height:48px;
+                    margin:0 auto 12px auto;
+                    border-radius:17px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    background:rgba(158,214,255,0.13);
+                    border:1px solid rgba(158,214,255,0.28);
+                    color:#9ed6ff;
+                    font-size:25px;
+                    font-weight:950;
+                ">↕</div>
+                <h3 style="margin:0 0 8px 0; color:#9ed6ff; font-size:20px; line-height:1.12; font-weight:950; text-transform:uppercase; letter-spacing:.35px;">${copy.title}</h3>
+                <p style="margin:0 0 17px 0; color:#d7e6ee; font-size:14px; line-height:1.42;">${copy.text}</p>
+                <button type="button" id="wildu-trip-sort-info-ok" style="
+                    width:100%;
+                    border:0;
+                    border-radius:999px;
+                    padding:12px 15px;
+                    background:linear-gradient(135deg, #9ed6ff, #d7efff);
+                    color:#04101a;
+                    font-size:14px;
+                    font-weight:950;
+                    text-transform:uppercase;
+                    cursor:pointer;
+                    box-shadow:0 8px 22px rgba(158,214,255,0.18);
+                    -webkit-tap-highlight-color:transparent;
+                ">Ok</button>
+            </div>
+        `;
+
+        function closeSortModal() {
+            try { modal.remove(); } catch (e) {}
+        }
+
+        document.body.appendChild(modal);
+
+        const okBtn = document.getElementById('wildu-trip-sort-info-ok');
+        if (okBtn) {
+            okBtn.onclick = function (evt) {
+                if (evt && evt.preventDefault) evt.preventDefault();
+                if (evt && evt.stopPropagation) evt.stopPropagation();
+                closeSortModal();
+                return false;
+            };
+        }
+    }
+
     function prepareWilduDatePickerInput(input) {
         if (!input) return;
 
@@ -16737,6 +16981,17 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         setTripFiltersPanelOpen(!tripFiltersPanelOpen);
     }
 
+    function isTripFilterShellInteractiveTarget(target) {
+        const el = target && target.nodeType === 1 ? target : (target && target.parentElement);
+        if (!el || typeof el.closest !== 'function') return false;
+        return !!el.closest('button, input, select, textarea, a, label, option, .wildu-trip-filter-panel, .wildu-trip-active-chips, .wildu-trip-chip');
+    }
+
+    function handleTripFilterShellClick(event) {
+        if (event && isTripFilterShellInteractiveTarget(event.target)) return;
+        setTripFiltersPanelOpen(true);
+    }
+
     function setFilter(type, val) {
         activeFilters[type] = val;
         filterTrips();
@@ -16762,6 +17017,7 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         else if (activeFilters.sortMode === 'priceAsc') activeFilters.sortMode = 'priceDesc';
         else activeFilters.sortMode = 'date';
         filterTrips();
+        showTripSortInfoModal();
     }
 
     function countTripActiveFilters() {
@@ -21632,6 +21888,108 @@ if (profKeyEl) {
 
 
     
+    const WILDU_GROUPED_TRAVEL_NAV_ENABLED = true;
+    const WILDU_TRAVEL_NAV_TAB_IDS = ['events', 'free', 'ondemand'];
+
+    function isWilduGroupedTravelNavEnabled() {
+        return WILDU_GROUPED_TRAVEL_NAV_ENABLED === true;
+    }
+
+    function positionWilduTravelNavMenu() {
+        const menu = document.getElementById('wildu-travel-nav-menu');
+        const btn = document.getElementById('btn-travel-hub');
+        if (!menu || !btn || !menu.classList.contains('is-open')) return;
+
+        const rect = btn.getBoundingClientRect();
+        const width = Math.min(420, Math.max(220, window.innerWidth - 24));
+        const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+        const top = Math.max(12, rect.bottom + 8);
+
+        menu.style.setProperty('--wildu-travel-menu-left', left + 'px');
+        menu.style.setProperty('--wildu-travel-menu-top', top + 'px');
+    }
+
+    function setWilduTravelNavMenuOpen(open) {
+        const menu = document.getElementById('wildu-travel-nav-menu');
+        const btn = document.getElementById('btn-travel-hub');
+        const enabled = isWilduGroupedTravelNavEnabled();
+        const shouldOpen = enabled && open === true;
+
+        if (menu) {
+            menu.classList.toggle('is-open', shouldOpen);
+            menu.setAttribute('aria-hidden', shouldOpen ? 'false' : 'true');
+        }
+
+        if (btn) {
+            btn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+        }
+
+        if (shouldOpen) positionWilduTravelNavMenu();
+    }
+
+    function toggleWilduTravelNavMenu(event) {
+        if (event && event.preventDefault) event.preventDefault();
+        if (event && event.stopPropagation) event.stopPropagation();
+
+        const menu = document.getElementById('wildu-travel-nav-menu');
+        const isOpen = !!(menu && menu.classList.contains('is-open'));
+        setWilduTravelNavMenuOpen(!isOpen);
+    }
+
+    function selectWilduTravelNavTab(id, event) {
+        if (event && event.preventDefault) event.preventDefault();
+        if (event && event.stopPropagation) event.stopPropagation();
+
+        if (!WILDU_TRAVEL_NAV_TAB_IDS.includes(id)) return false;
+        setWilduTravelNavMenuOpen(false);
+        show(id);
+        return false;
+    }
+
+    function syncWilduTravelNavHubState(activeId) {
+        const enabled = isWilduGroupedTravelNavEnabled();
+        document.documentElement.classList.toggle('wildu-grouped-travel-nav', enabled);
+
+        const hubBtn = document.getElementById('btn-travel-hub');
+        if (!hubBtn) return;
+
+        const isTravelTab = WILDU_TRAVEL_NAV_TAB_IDS.includes(activeId);
+        hubBtn.classList.toggle('active', enabled && isTravelTab);
+
+        WILDU_TRAVEL_NAV_TAB_IDS.forEach(function (tabId) {
+            const choice = document.getElementById('wildu-travel-nav-choice-' + tabId);
+            if (choice) choice.classList.toggle('is-active', enabled && activeId === tabId);
+        });
+
+        if (!enabled) {
+            setWilduTravelNavMenuOpen(false);
+        }
+    }
+
+    function initWilduTravelNavHub() {
+        syncWilduTravelNavHubState(currentTab || 'events');
+
+        document.addEventListener('click', function (event) {
+            const target = event && event.target;
+            if (target && typeof target.closest === 'function') {
+                if (target.closest('#wildu-nav-travel-hub') || target.closest('#wildu-travel-nav-menu')) {
+                    return;
+                }
+            }
+            setWilduTravelNavMenuOpen(false);
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event && event.key === 'Escape') setWilduTravelNavMenuOpen(false);
+        });
+
+        window.addEventListener('resize', positionWilduTravelNavMenu);
+        window.addEventListener('orientationchange', positionWilduTravelNavMenu);
+        window.addEventListener('scroll', positionWilduTravelNavMenu, { passive: true });
+    }
+
+    setTimeout(initWilduTravelNavHub, 0);
+
     function show(id) {
         const requestedTab = id;
         const previousTab = currentTab;
@@ -21736,6 +22094,11 @@ if (profKeyEl) {
                 inline: 'center', 
                 block: 'nearest' 
             });
+        }
+
+        if (typeof syncWilduTravelNavHubState === 'function') {
+            syncWilduTravelNavHubState(activeButtonId);
+            setWilduTravelNavMenuOpen(false);
         }
         
         const m = document.getElementById('module-container'); 
@@ -25258,6 +25621,7 @@ function syncWilduAudioNavDockPosition() {
         closeWilduInstallEnv();
         closeWilduInstallManualChoice();
         closeInstallTutorial();
+        syncWilduInstallButtonVisibility();
         showToast("Wild-U salvata sul dispositivo.");
     });
 
@@ -25295,6 +25659,16 @@ function syncWilduAudioNavDockPosition() {
         );
     }
 
+    function syncWilduInstallButtonVisibility() {
+        const btn = document.getElementById('btn-install');
+        if (!btn) return;
+
+        const standalone = isWilduStandaloneApp();
+        btn.style.display = standalone ? 'none' : '';
+        btn.setAttribute('aria-hidden', standalone ? 'true' : 'false');
+        btn.tabIndex = standalone ? -1 : 0;
+    }
+
     function detectUserEnvironment() {
         const ua = navigator.userAgent;
         let deviceType = "Desktop";
@@ -25311,8 +25685,12 @@ function syncWilduAudioNavDockPosition() {
         return { deviceType, os, browser };
     }
 
+    window.addEventListener('load', syncWilduInstallButtonVisibility);
+    setTimeout(syncWilduInstallButtonVisibility, 0);
+
     async function showInstallInfo(event) {
         consumeWilduInstallEvent(event);
+        syncWilduInstallButtonVisibility();
 
         if (isWilduStandaloneApp()) {
             showToast("Wild-U risulta già aperta come app.");
@@ -27651,6 +28029,9 @@ function syncWilduDisplayModeClass() {
             window.navigator.standalone === true;
 
         document.documentElement.classList.toggle('wildu-standalone-mode', !!standalone);
+        if (typeof syncWilduInstallButtonVisibility === 'function') {
+            syncWilduInstallButtonVisibility();
+        }
     } catch (e) {
         document.documentElement.classList.remove('wildu-standalone-mode');
     }
