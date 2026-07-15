@@ -4,7 +4,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild-U Bussola</title>
+    <title>Wild-U Hub - Master Edition 1 🌲</title>
     <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
     <meta property="og:site_name" content="Wild-U">
     <meta property="og:type" content="website">
@@ -46,8 +46,8 @@
             --wildu-bottom-safe-active: env(safe-area-inset-bottom, 0px);
         }
         html.wildu-standalone-mode #btn-install { display: none !important; }
-        html { overscroll-behavior-y: none; background: var(--w-dark); }
-        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
+        html { overscroll-behavior: none; background: var(--w-dark); }
+        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
         @media (hover: none), (pointer: coarse), (max-width: 768px) {
             html,
             body {
@@ -5812,7 +5812,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         <section class="wildu-ondemand-hero">
             <div class="wildu-ondemand-hero-kicker">Viaggi su richiesta</div>
             <h2 class="wildu-ondemand-hero-title">Parti quando vuoi</h2>
-            <p class="wildu-ondemand-hero-copy">Scegli la proposta, indica la data desiderata e Wild-U ti ricontatta.</p>
+            <p class="wildu-ondemand-hero-copy">Scegli la proposta indica la data e parti.</p>
         </section>
         <div id="ondemand-list"></div>
     </div>
@@ -12601,6 +12601,7 @@ let wilduLegalConsentModalState = {
     confirmingCancel: false,
     resolve: null
 };
+let wilduBookingConsentPromptKey = '';
 
 function buildWilduLegalConsentPatch(source) {
     const acceptedAt = new Date().toISOString();
@@ -12738,11 +12739,42 @@ async function acceptWilduHealthConsent(source) {
     return await acceptWilduAllLegalConsents(source || 'profile');
 }
 
-async function ensureWilduHealthConsentForBooking() {
+async function ensureWilduHealthConsentForBooking(source) {
     if (isWilduConsentCurrent('healthBooking')) return true;
-    return await openWilduLegalConsentModal('standard_booking_form', {
+    return await openWilduLegalConsentModal(source || 'standard_booking_form', {
         allowContinueWithoutConsent: true
     });
+}
+
+function scheduleWilduBookingConsentPrompt(source) {
+    if (isWilduConsentCurrent('healthBooking')) return;
+
+    const bookingModal = document.getElementById('custom-booking-modal');
+    const typeEl = document.getElementById('cb-tipo-evento');
+    const legalModal = document.getElementById('wildu-legal-consent-modal');
+    if (!bookingModal || !typeEl) return;
+
+    const key = [
+        String(typeEl.value || '').trim(),
+        String(document.getElementById('cb-booking-id')?.value || '').trim(),
+        String(document.getElementById('cb-booking-eventdocid')?.value || '').trim(),
+        String(document.getElementById('cb-ondemand-product-id')?.value || '').trim(),
+        String(currentBookingDraft?.titolo || '').trim(),
+        String(currentBookingDraft?.data || '').trim()
+    ].join('|');
+
+    if (key && wilduBookingConsentPromptKey === key) return;
+    wilduBookingConsentPromptKey = key;
+
+    window.setTimeout(function () {
+        if (isWilduConsentCurrent('healthBooking')) return;
+        if (!bookingModal || bookingModal.style.display === 'none') return;
+        if (legalModal && legalModal.classList.contains('is-open')) return;
+
+        openWilduLegalConsentModal(source || 'booking_form', {
+            allowContinueWithoutConsent: true
+        });
+    }, 220);
 }
 
 function maybePromptWilduLegalNotice() {
@@ -19213,6 +19245,7 @@ function openOnDemandBooking(productId) {
         bookingModal.classList.add('wildu-booking-ondemand-mode');
         bookingModal.style.display = 'flex';
     }
+    scheduleWilduBookingConsentPrompt('ondemand_booking_form');
 }
 
 function scrollOnDemandTripIntoView(productId) {
@@ -20913,6 +20946,7 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
         bookingModal.classList.remove('wildu-booking-ondemand-mode');
         bookingModal.style.display = 'flex';
     }
+    scheduleWilduBookingConsentPrompt('standard_booking_form');
     
     // --- 👀 FOMO: AVVIO LOOP LIVE VIEWERS ---
     clearTimeout(window.fomoViewersTimeout);
@@ -20923,6 +20957,7 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
     // Funzione per chiudere il modulo
 function closeCustomBooking() {
     currentBookingDraft = null;
+    wilduBookingConsentPromptKey = '';
     const bookingModal = document.getElementById('custom-booking-modal');
     if (bookingModal) bookingModal.classList.remove('wildu-booking-ondemand-mode');
 // --- 🛑 STOP TOTALE FOMO ---
@@ -20998,6 +21033,8 @@ async function sendOnDemandBookingFromModal(options) {
         isBookingInProgress = false;
         return;
     }
+
+    await ensureWilduHealthConsentForBooking('ondemand_booking_form');
 
     const bookingKey = buildClientBookingKey({
         bookingId: '',
@@ -21099,7 +21136,7 @@ async function sendCustomBooking() {
         return;
     }
 
-    await ensureWilduHealthConsentForBooking();
+    await ensureWilduHealthConsentForBooking('standard_booking_form');
 
     const bookingIdRaw = (document.getElementById('cb-booking-id').value || currentBookingDraft?.bookingId || "").trim();
     const bookingCollectionRaw = (document.getElementById('cb-booking-collection').value || currentBookingDraft?.collection || "").trim();
@@ -22803,8 +22840,15 @@ if (profKeyEl) {
     
     const WILDU_GROUPED_TRAVEL_NAV_ENABLED = true;
     const WILDU_SCREEN_WAKE_LOCK_ENABLED = true;
+    const WILDU_TRAVEL_TAB_SWIPE_ENABLED = true;
     const WILDU_TRAVEL_NAV_TAB_IDS = ['events', 'free', 'ondemand'];
     const WILDU_TRAVEL_NAV_GROUP_TAB_IDS = ['travelhub', 'events', 'free', 'ondemand'];
+    const WILDU_TRAVEL_NAV_LABELS = {
+        travelhub: 'Parti con noi',
+        events: 'Viaggi',
+        free: 'Open Day',
+        ondemand: 'Su richiesta'
+    };
     const WILDU_TRAVELHUB_AUTOSCROLL_ENABLED = true;
     const WILDU_TRAVELHUB_AUTOSCROLL_RESPECT_REDUCED_MOTION = false;
     const WILDU_DESKTOP_AMAZON_WHEEL_PASS_THROUGH_ENABLED = true;
@@ -22814,6 +22858,7 @@ if (profKeyEl) {
     let wilduTravelHubAutoScrollTimer = null;
     let wilduTravelHubAutoScrollResumeTimer = null;
     let wilduTravelNavMenuPositionRaf = null;
+    let wilduTravelTabSwipeTouch = null;
 
     function isWilduGroupedTravelNavEnabled() {
         return WILDU_GROUPED_TRAVEL_NAV_ENABLED === true;
@@ -23083,6 +23128,14 @@ if (profKeyEl) {
         return false;
     }
 
+    function getWilduTravelNavHubLabel(activeId) {
+        if (!isWilduGroupedTravelNavEnabled()) return WILDU_TRAVEL_NAV_LABELS.travelhub;
+        if (WILDU_TRAVEL_NAV_TAB_IDS.includes(activeId)) {
+            return '↩ ' + (WILDU_TRAVEL_NAV_LABELS[activeId] || WILDU_TRAVEL_NAV_LABELS.travelhub);
+        }
+        return WILDU_TRAVEL_NAV_LABELS.travelhub;
+    }
+
     function syncWilduTravelNavHubState(activeId) {
         const enabled = isWilduGroupedTravelNavEnabled();
         document.documentElement.classList.toggle('wildu-grouped-travel-nav', enabled);
@@ -23093,6 +23146,14 @@ if (profKeyEl) {
         const isTravelTab = WILDU_TRAVEL_NAV_GROUP_TAB_IDS.includes(activeId);
         hubBtn.classList.toggle('active', enabled && isTravelTab);
         hubBtn.setAttribute('aria-current', enabled && isTravelTab ? 'page' : 'false');
+        const hubLabel = getWilduTravelNavHubLabel(activeId);
+        hubBtn.textContent = hubLabel;
+        hubBtn.setAttribute(
+            'aria-label',
+            WILDU_TRAVEL_NAV_TAB_IDS.includes(activeId)
+                ? hubLabel + ' - torna alla scelta Parti con noi'
+                : WILDU_TRAVEL_NAV_LABELS.travelhub
+        );
 
         WILDU_TRAVEL_NAV_TAB_IDS.forEach(function (tabId) {
             const choice = document.getElementById('wildu-travel-nav-choice-' + tabId);
@@ -23144,9 +23205,151 @@ if (profKeyEl) {
         });
     }
 
+    function wilduIsTravelTabSwipeTopLayerOpen() {
+        const moduleContainer = document.getElementById('module-container');
+        const blockingLayerIds = [
+            'custom-booking-modal',
+            'wildu-legal-consent-modal',
+            'od-details-modal',
+            'wildu-rewards-video-modal',
+            'book-modal',
+            'iframe-modal',
+            'registration-cta-modal',
+            'install-tut-overlay',
+            'share-app-modal',
+            'wildu-shop-preview-modal',
+            'amazon-detail-overlay'
+        ];
+
+        if (typeof wilduHasBlockingTopLayer === 'function' && wilduHasBlockingTopLayer()) return true;
+        for (const id of blockingLayerIds) {
+            const layer = document.getElementById(id);
+            if (!layer) continue;
+            if (layer.classList && (
+                layer.classList.contains('is-open') ||
+                layer.classList.contains('is-visible') ||
+                layer.classList.contains('amazon-overlay-visible')
+            )) return true;
+            if (typeof wilduIsDisplayed === 'function') {
+                if (wilduIsDisplayed(layer)) return true;
+            } else if (layer.style && layer.style.display !== 'none') {
+                return true;
+            }
+        }
+        if (moduleContainer && !moduleContainer.classList.contains('hidden')) return true;
+        return false;
+    }
+
+    function wilduIsTravelTabSwipeBlockedTarget(target) {
+        if (!target || typeof target.closest !== 'function') return true;
+
+        if (target.closest('button,a,input,textarea,select,iframe,[role="button"],details,summary,[contenteditable="true"]')) return true;
+        if (target.closest('.nav,#wildu-travel-nav-menu,.wildu-travelhub-carousel,.wildu-rewards-video-row,.wildu-shop-row,.amazon-slider,.wildu-trip-active-chips,.wildu-guest-profile-carousel')) return true;
+        if (target.closest('.wildu-soft-modal-card,#od-details-card,#custom-booking-modal,.wildu-legal-modal-card')) return true;
+
+        if (typeof getWilduHorizontalGestureZone === 'function' && getWilduHorizontalGestureZone(target)) return true;
+        return false;
+    }
+
+    function canWilduStartTravelTabSwipe(target) {
+        return WILDU_TRAVEL_TAB_SWIPE_ENABLED === true &&
+            isWilduGroupedTravelNavEnabled() &&
+            WILDU_TRAVEL_NAV_TAB_IDS.includes(currentTab) &&
+            !wilduIsTravelTabSwipeTopLayerOpen() &&
+            !wilduIsTravelTabSwipeBlockedTarget(target);
+    }
+
+    function getWilduTravelTabSwipeTarget(dx) {
+        const index = WILDU_TRAVEL_NAV_TAB_IDS.indexOf(currentTab);
+        if (index < 0) return null;
+
+        const nextIndex = dx < 0 ? index + 1 : index - 1;
+        if (nextIndex < 0 || nextIndex >= WILDU_TRAVEL_NAV_TAB_IDS.length) return null;
+        return WILDU_TRAVEL_NAV_TAB_IDS[nextIndex];
+    }
+
+    function installWilduTravelTabSwipe() {
+        if (window.__wilduTravelTabSwipeInstalled) return;
+        window.__wilduTravelTabSwipeInstalled = true;
+
+        document.addEventListener('touchstart', function (event) {
+            const touch = event.touches && event.touches[0];
+            if (!touch || !canWilduStartTravelTabSwipe(event.target)) {
+                wilduTravelTabSwipeTouch = null;
+                return;
+            }
+
+            wilduTravelTabSwipeTouch = {
+                x: touch.clientX,
+                y: touch.clientY,
+                tracking: true,
+                horizontal: false,
+                consumed: false,
+                target: event.target
+            };
+        }, { passive: true });
+
+        document.addEventListener('touchmove', function (event) {
+            if (!event.cancelable || !wilduTravelTabSwipeTouch || !wilduTravelTabSwipeTouch.tracking) return;
+            if (!canWilduStartTravelTabSwipe(wilduTravelTabSwipeTouch.target)) {
+                wilduTravelTabSwipeTouch = null;
+                return;
+            }
+
+            const touch = event.touches && event.touches[0];
+            if (!touch) return;
+
+            const dx = touch.clientX - wilduTravelTabSwipeTouch.x;
+            const dy = touch.clientY - wilduTravelTabSwipeTouch.y;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+
+            if (!wilduTravelTabSwipeTouch.horizontal) {
+                if (absX < 18 && absY < 18) return;
+                if (absX > 28 && absX > absY * 1.45) {
+                    wilduTravelTabSwipeTouch.horizontal = true;
+                } else if (absY > absX * 1.05) {
+                    wilduTravelTabSwipeTouch = null;
+                    return;
+                } else {
+                    return;
+                }
+            }
+
+            if (getWilduTravelTabSwipeTarget(dx)) {
+                wilduTravelTabSwipeTouch.consumed = true;
+                event.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchend', function (event) {
+            if (!wilduTravelTabSwipeTouch || !wilduTravelTabSwipeTouch.tracking) {
+                wilduTravelTabSwipeTouch = null;
+                return;
+            }
+
+            const changed = event.changedTouches && event.changedTouches[0];
+            const state = wilduTravelTabSwipeTouch;
+            wilduTravelTabSwipeTouch = null;
+            if (!changed || !state.horizontal || !state.consumed) return;
+
+            const dx = changed.clientX - state.x;
+            const dy = changed.clientY - state.y;
+            if (Math.abs(dx) < 82 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+
+            const targetTab = getWilduTravelTabSwipeTarget(dx);
+            if (targetTab) show(targetTab);
+        }, { passive: true });
+
+        document.addEventListener('touchcancel', function () {
+            wilduTravelTabSwipeTouch = null;
+        }, { passive: true });
+    }
+
     function initWilduTravelNavHub() {
         syncWilduTravelNavHubState(currentTab || 'events');
         initWilduScreenWakeLock();
+        installWilduTravelTabSwipe();
 
         document.addEventListener('click', function (event) {
             const target = event && event.target;
