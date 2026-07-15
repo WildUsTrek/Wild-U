@@ -667,6 +667,27 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         padding-bottom: calc(110px + var(--wildu-bottom-safe-active, 0px));
     }
 }
+
+@media (orientation: landscape) and (max-height: 560px) and (hover: none),
+       (orientation: landscape) and (max-height: 560px) and (pointer: coarse) {
+    .container {
+        max-width: 980px;
+        margin-left: auto;
+        margin-right: auto;
+        padding-left: max(18px, env(safe-area-inset-left, 0px));
+        padding-right: max(18px, env(safe-area-inset-right, 0px));
+        padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    .nav {
+        padding-left: max(8px, env(safe-area-inset-left, 0px));
+        padding-right: max(8px, env(safe-area-inset-right, 0px));
+    }
+
+    #amazon-footer-wrapper {
+        display: none !important;
+    }
+}
         .filter-header { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 15px; } .trip-counter { color: var(--w-green); font-size: 14px; font-weight: 900; text-transform: uppercase; }
         .card { background: var(--w-card); border-radius: 16px; padding: 24px; margin-bottom: 20px; border-left: 6px solid var(--w-green); box-shadow: 0 6px 20px rgba(0,0,0,0.6); position: relative; } .card-title { display: block; font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 10px; line-height: 1.2; }
         .filter-section-dropdowns { display: flex; gap: 10px; margin-bottom: 20px; } .pill-select { flex: 1; background: #222; border: 1px solid #444; color: #fff; padding: 12px 15px; border-radius: 25px; font-size: 14px; font-weight: bold; appearance: none; cursor: pointer; outline: none; transition: 0.2s; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="%23d4af37" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat: no-repeat; background-position: right 15px center; background-size: 12px; } .pill-select:focus { border-color: var(--w-green); box-shadow: 0 0 10px var(--w-green); }
@@ -2498,7 +2519,8 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 .wildu-rewards-news-divider {
-    margin-top: 30px;
+    margin-top: 34px;
+    margin-bottom: 18px;
 }
 
 .wildu-rewards-travel-divider {
@@ -2506,7 +2528,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 .wildu-rewards-travel-quick-cell {
-    margin: 2px 0 4px 0;
+    margin: 18px 0 10px 0;
     padding: 16px 15px 17px 15px;
     border-radius: 18px;
     border: 1px solid rgba(212,175,55,.18);
@@ -2564,7 +2586,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         order: 3;
         grid-column: 1 / -1;
         padding: 18px 22px 20px 22px;
-        margin: 2px 0 8px 0;
+        margin: 24px 0 10px 0;
     }
 
     .wildu-rewards-travel-links {
@@ -2579,7 +2601,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 #wildu-rewards-wildwall-random {
-    margin-top: 18px;
+    margin: 12px 0 18px 0;
 }
 
 .wildu-rewards-random-image {
@@ -2826,7 +2848,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: var(--amazon-footer-offset, 0px);
     width: 100%;
 
     display: none;
@@ -5954,9 +5976,8 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
         <div class="wildu-rewards-bottom">
             <div class="wildu-rewards-divider wildu-rewards-news-divider"><span>Comunicazioni Wild-U</span></div>
-            <div id="wildu-rewards-real-news"></div>
-
             <div id="wildu-rewards-wildwall-random" aria-hidden="true"></div>
+            <div id="wildu-rewards-real-news"></div>
             <div id="wildu-rewards-horizontal-videos"></div>
         </div>
    
@@ -6426,7 +6447,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     <div style="margin-top: 40px; background: #ff4444; color: #fff; padding: 15px 25px; border-radius: 12px; font-weight: bold; font-size: 16px; box-shadow: 0 0 15px rgba(255, 68, 68, 0.6); animation: pulse 1.5s infinite;">TOCCA PER APRIRE WHATSAPP ➔</div>
     <style>@keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }</style>
 </div>   
-<div id="reward-overlay" onclick="this.style.display='none'"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
+<div id="reward-overlay" onclick="hideWilduRewardOverlay()"><div style="font-size:80px;">🏆</div><h2 style="color:var(--w-gold);">OTTIMO!</h2><p id="reward-msg" style="font-size:26px; font-weight:bold;"></p></div>
 <div id="levelup-overlay" onclick="this.style.display='none'"><img id="lv-img" src="" class="levelup-img"><h2 style="color:var(--w-gold); margin:0; font-size: 24px;">GRADO SUPERIORE!</h2><p id="levelup-msg" style="font-size:38px; font-weight:900; color:#fff; margin: 15px 0;"></p><p style="opacity:0.8; font-size:16px; font-style:italic;">Gli Spiriti del Bosco onorano il tuo cammino.</p></div>
 
 <div id="social-action-modal" class="modal-overlay" onclick="this.style.display='none'">
@@ -16005,6 +16026,9 @@ async function fetchXP() {
 
             if (!isPageActive) {
                 xpCelebrationBuffer += delta;
+            } else if (wilduPostBookingFlowActive) {
+                // Il flusso post-prenotazione/ruota governa profilo e reward: evita doppie animazioni concorrenti.
+                xpCelebrationBuffer += delta;
             } else {
                 showReward(delta);
                 if (currentTab === 'profile') renderProfile(userData);
@@ -16074,6 +16098,8 @@ function setCurrentBookingDraft(payload = {}) {
         bookingId: String(payload.bookingId || "").trim(),
         collection: String(payload.collection || "").trim(),
         eventDocId: String(payload.eventDocId || "").trim(),
+        bookingKind: String(payload.bookingKind || payload.tipoEvento || "").trim(),
+        productId: String(payload.productId || payload.productID || "").trim(),
         clickSource: String(payload.clickSource || "BOTTOM").trim()
     };
 
@@ -18377,6 +18403,21 @@ function wilduResetSwipeTarget(el) {
     el.style.opacity = '';
 }
 
+function resetWilduScrollableTop(el) {
+    if (!el) return;
+    try { el.scrollTop = 0; } catch (e) {}
+}
+
+function resetWilduOverlayScrollPosition(root) {
+    if (!root) return;
+    resetWilduScrollableTop(root);
+    try {
+        root.querySelectorAll('.wildu-soft-modal-card,#od-details-card,.modal-content,.wildu-legal-modal-body,.guide-content,[data-wildu-reset-scroll="true"]').forEach(function (node) {
+            resetWilduScrollableTop(node);
+        });
+    } catch (e) {}
+}
+
 function wilduAnimateSwipeClose(el, dx, done) {
     if (!el) {
         if (typeof done === 'function') done();
@@ -18509,6 +18550,9 @@ function wilduSetDetailModalVisible(visible) {
     if (!modal) return null;
 
     const isVisible = visible === true;
+    if (isVisible) {
+        resetWilduOverlayScrollPosition(modal);
+    }
     modal.style.display = isVisible ? 'block' : 'none';
     modal.classList.toggle('is-visible', isVisible);
     modal.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
@@ -18659,6 +18703,7 @@ function showWilduRelatedModal(items) {
     const list = document.getElementById('wildu-related-list');
     if (!modal || !list || !Array.isArray(items) || !items.length) return false;
     list.innerHTML = items.map(function (ref) { return wilduBuildSoftCardHtml(ref); }).join('');
+    resetWilduOverlayScrollPosition(modal);
     modal.classList.add('is-visible');
     modal.setAttribute('aria-hidden', 'false');
     lockWilduOverlayScroll();
@@ -18835,6 +18880,7 @@ function openWilduDateOptions(type, id, evt) {
         const extra = ref.id === currentId ? 'questa data' : '';
         return wilduBuildSoftCardHtml(ref, extra);
     }).join('');
+    resetWilduOverlayScrollPosition(modal);
     modal.classList.add('is-visible');
     modal.setAttribute('aria-hidden', 'false');
     lockWilduOverlayScroll();
@@ -18931,8 +18977,9 @@ function syncWilduOnDemandManualDate(which) {
     const manualInput = document.getElementById(key === 'start' ? 'cb-ondemand-start-manual' : 'cb-ondemand-end-manual');
     const nativeInput = document.getElementById(key === 'start' ? 'cb-ondemand-start' : 'cb-ondemand-end');
     const display = document.getElementById(key === 'start' ? 'cb-ondemand-start-display' : 'cb-ondemand-end-display');
-    const iso = normalizeOnDemandDateToIso(manualInput && manualInput.value ? manualInput.value : '');
-    if (iso && nativeInput) nativeInput.value = iso;
+    const manualRaw = String(manualInput && manualInput.value ? manualInput.value : '').trim();
+    const iso = normalizeOnDemandDateToIso(manualRaw);
+    if (nativeInput) nativeInput.value = iso || '';
     if (display) display.textContent = iso
         ? formatOnDemandIsoDateLong(iso, '')
         : (key === 'start' ? 'Da concordare' : 'Non indicata');
@@ -19243,9 +19290,9 @@ function openOnDemandBooking(productId) {
     const bookingModal = document.getElementById('custom-booking-modal');
     if (bookingModal) {
         bookingModal.classList.add('wildu-booking-ondemand-mode');
+        resetWilduOverlayScrollPosition(bookingModal);
         bookingModal.style.display = 'flex';
     }
-    scheduleWilduBookingConsentPrompt('ondemand_booking_form');
 }
 
 function scrollOnDemandTripIntoView(productId) {
@@ -20944,9 +20991,9 @@ function openBook(titolo, data, prezzo, xp, bookingId, collection, eventDocId, s
     const bookingModal = document.getElementById('custom-booking-modal');
     if (bookingModal) {
         bookingModal.classList.remove('wildu-booking-ondemand-mode');
+        resetWilduOverlayScrollPosition(bookingModal);
         bookingModal.style.display = 'flex';
     }
-    scheduleWilduBookingConsentPrompt('standard_booking_form');
     
     // --- 👀 FOMO: AVVIO LOOP LIVE VIEWERS ---
     clearTimeout(window.fomoViewersTimeout);
@@ -21034,8 +21081,6 @@ async function sendOnDemandBookingFromModal(options) {
         return;
     }
 
-    await ensureWilduHealthConsentForBooking('ondemand_booking_form');
-
     const bookingKey = buildClientBookingKey({
         bookingId: '',
         titolo: title,
@@ -21084,11 +21129,11 @@ async function sendOnDemandBookingFromModal(options) {
         bookingCompleted = true;
         closeCustomBooking();
         showToast(result.alreadyBooked ? "Richiesta gia presente nello zaino." : "Richiesta inviata. Ti ricontatteremo per confermare.");
-        setTimeout(() => show('profile'), 700);
-        setTimeout(async () => {
-            await fetchInitData({ force: true });
-            await fetchXP();
-        }, 1000);
+        await completeWilduBookingSuccessFlow({
+            earnedXP: 0,
+            reason: 'ondemand-booking-success',
+            consentSource: 'ondemand_booking_success'
+        });
     } catch (err) {
         console.error("Errore prenotazione su richiesta:", err);
         alert("Errore invio richiesta: " + err.message);
@@ -21135,8 +21180,6 @@ async function sendCustomBooking() {
         await sendOnDemandBookingFromModal({ btn, originalText, telefono, nome: nomeRaw });
         return;
     }
-
-    await ensureWilduHealthConsentForBooking('standard_booking_form');
 
     const bookingIdRaw = (document.getElementById('cb-booking-id').value || currentBookingDraft?.bookingId || "").trim();
     const bookingCollectionRaw = (document.getElementById('cb-booking-collection').value || currentBookingDraft?.collection || "").trim();
@@ -21204,8 +21247,11 @@ async function sendCustomBooking() {
 
 if (result.alreadyBooked === true) {
             showToast("🎒 Sei già iscritto a questa avventura!");
-            setTimeout(() => show('profile'), 700);
-            setTimeout(() => fetchInitData({ force: true }), 1200);
+            await completeWilduBookingSuccessFlow({
+                earnedXP: 0,
+                reason: 'booking-already-present',
+                consentSource: 'standard_booking_already_present'
+            });
         } else {
             // --- ⚙️ MOTORE FOMO: CONTROLLO LISTA D'ATTESA POST-PRENOTAZIONE ---
             const tipoEv = document.getElementById('cb-tipo-evento').value;
@@ -21226,10 +21272,12 @@ if (result.alreadyBooked === true) {
             }
 
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
+            let earnedXpToCelebrate = 0;
+            const xpUserKey = wildUserKey || (auth.currentUser ? auth.currentUser.uid : '');
 
-            if (earnedXP > 0 && wildUserKey) {
+            if (earnedXP > 0 && xpUserKey) {
                 try {
-                    await FS.setUtente(wildUserKey, {
+                    await FS.setUtente(xpUserKey, {
                         xp: FV.increment(earnedXP),
                         ultimo_aggiornamento: FV.serverTimestamp()
                     });
@@ -21238,26 +21286,18 @@ if (result.alreadyBooked === true) {
                     lastCelXP += earnedXP;
                     localStorage.setItem('lastCelebratedXP', lastCelXP);
 
-                    setTimeout(() => {
-                        showReward(earnedXP);
-                        setTimeout(() => {
-                            document.getElementById('reward-overlay').style.display = 'none';
-                            show('profile');
-                        }, 2000);
-                    }, 600);
+                    earnedXpToCelebrate = earnedXP;
                 } catch (xpErr) {
                     console.error("Prenotazione OK ma scrittura XP fallita:", xpErr);
-                    setTimeout(() => show('profile'), 800);
                 }
-            } else {
-                setTimeout(() => show('profile'), 1000);
             }
 
             // 🛡️ AGGIORNAMENTO SEQUENZIALE (Niente più gara di velocità)
-            setTimeout(async () => {
-                await fetchInitData({ force: true }); // Prima aggiorna i posti disponibili
-                await fetchXP();                      // POI riempie lo zaino
-            }, 1500);
+            await completeWilduBookingSuccessFlow({
+                earnedXP: earnedXpToCelebrate,
+                reason: 'standard-booking-success',
+                consentSource: 'standard_booking_success'
+            });
         }
 
     } catch (error) {
@@ -21411,14 +21451,24 @@ if (profKeyEl) {
 
         if (giocateOggi >= limiteGiocate) { showToast("Hai esaurito i giri per oggi. Gli spiriti riposano."); return; }
 
-        const btn = document.getElementById('wheel-button'); const msg = document.getElementById('spirit-msg');
-        btn.disabled = true; document.getElementById('wheel-result-container').innerHTML = "";
-        msg.innerText = "Gli spiriti del bosco stanno decidendo..."; playWilduSystemSound(sSpin, 'spin', { reset: true });
+        const btn = document.getElementById('wheel-button');
+        const msg = document.getElementById('spirit-msg');
+        const resultContainer = document.getElementById('wheel-result-container');
+        const wheelGraphics = document.getElementById('wheel-graphics');
+        if (!btn || !msg || !wheelGraphics) {
+            console.warn("Ruota non disponibile: elementi UI mancanti.");
+            return;
+        }
+
+        btn.disabled = true;
+        if (resultContainer) resultContainer.innerHTML = "";
+        msg.innerText = "Gli spiriti del bosco stanno decidendo...";
+        playWilduSystemSound(sSpin, 'spin', { reset: true });
         
-        let currentWheelRotation = parseInt(document.getElementById('wheel-graphics').style.transform.replace(/[^0-9]/g, '') || 0);
-        document.getElementById('wheel-graphics').style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
+        let currentWheelRotation = parseInt(wheelGraphics.style.transform.replace(/[^0-9]/g, '') || 0);
+        wheelGraphics.style.transition = "transform 6s cubic-bezier(0.1, 0, 0.2, 1)";
         currentWheelRotation += 2160; 
-        document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
+        wheelGraphics.style.transform = `rotate(${currentWheelRotation}deg)`;
         
         try {
             const winAmount = Math.random() > 0.8 ? 5 : 0;
@@ -21433,25 +21483,62 @@ if (profKeyEl) {
 
             const targetA = winAmount > 0 ? 135 : (Math.random() > 0.5 ? 225 : 315);
             currentWheelRotation += (360 - (currentWheelRotation % 360)) + targetA;
-            document.getElementById('wheel-graphics').style.transition = "transform 3s cubic-bezier(0.1, 0, 0.2, 1)";
-            document.getElementById('wheel-graphics').style.transform = `rotate(${currentWheelRotation}deg)`;
+            wheelGraphics.style.transition = "transform 3s cubic-bezier(0.1, 0, 0.2, 1)";
+            wheelGraphics.style.transform = `rotate(${currentWheelRotation}deg)`;
             
-            setTimeout(() => {
-                stopWilduSystemSound(sSpin); playWilduSystemSound(sEnd, 'end', { reset: true }); msg.innerText = "Verdetto spiriti del bosco:";
-                localStorage.setItem('ruota_count_' + oggi, giocateOggi + 1);
-                
-                if (winAmount > 0) {
-                    isLockedXP = true; lastCelXP += winAmount; localStorage.setItem('lastCelebratedXP', lastCelXP);
-                    showReward(winAmount); 
-                    setTimeout(() => { document.getElementById('reward-overlay').style.display = 'none'; show('profile'); }, 2000); 
-                    setTimeout(() => isLockedXP = false, 8000);
-                } else {
-                    const randT = allTrips[Math.floor(Math.random() * allTrips.length)];
-                    renderTrips(allTrips.filter(t => t.Titolo === randT.Titolo), 'wheel-result-container');
+            setTimeout(async () => {
+                let lockedThisSpin = false;
+                let unlockScheduled = false;
+                const scheduleXpUnlock = () => {
+                    if (unlockScheduled) return;
+                    unlockScheduled = true;
+                    setTimeout(async () => {
+                        isLockedXP = false;
+                        try { await fetchXP(); } catch (e) { console.warn("Aggiornamento XP post-ruota non riuscito:", e); }
+                    }, 800);
+                };
+
+                try {
+                    stopWilduSystemSound(sSpin);
+                    playWilduSystemSound(sEnd, 'end', { reset: true });
+                    msg.innerText = "Verdetto spiriti del bosco:";
+                    localStorage.setItem('ruota_count_' + oggi, giocateOggi + 1);
+
+                    if (winAmount > 0) {
+                        isLockedXP = true;
+                        lockedThisSpin = true;
+                        lastCelXP += winAmount;
+                        localStorage.setItem('lastCelebratedXP', lastCelXP);
+                        try {
+                            await completeWilduXpAwardFlow(winAmount, {
+                                reason: 'wheel-xp-award'
+                            });
+                        } finally {
+                            scheduleXpUnlock();
+                        }
+                    } else {
+                        const safeTrips = Array.isArray(allTrips) ? allTrips : [];
+                        const randT = safeTrips.length ? safeTrips[Math.floor(Math.random() * safeTrips.length)] : null;
+                        if (randT) {
+                            renderTrips(safeTrips.filter(t => t.Titolo === randT.Titolo), 'wheel-result-container');
+                        } else if (resultContainer) {
+                            resultContainer.innerHTML = '<div class="empty-state">Nessuna avventura disponibile al momento.</div>';
+                        }
+                    }
+                } catch (callbackErr) {
+                    console.error("Errore completamento ruota:", callbackErr);
+                    msg.innerText = "Gli spiriti sono confusi. Riprova.";
+                    if (lockedThisSpin) scheduleXpUnlock();
+                } finally {
+                    btn.disabled = false;
                 }
-                btn.disabled = false;
             }, 3000);
-        } catch(e) { console.error(e); btn.disabled = false; sSpin.pause(); msg.innerText = "Gli spiriti sono confusi. Riprova."; }
+        } catch(e) {
+            console.error(e);
+            btn.disabled = false;
+            try { stopWilduSystemSound(sSpin); } catch (_) {}
+            msg.innerText = "Gli spiriti sono confusi. Riprova.";
+        }
     }
 
     function sanitizeVolume(val) {
@@ -22832,8 +22919,138 @@ if (profKeyEl) {
             closeWilduClientShareModal();
         }
     });
-    function processXPBuffer() { if (xpCelebrationBuffer > 0) { showReward(xpCelebrationBuffer); xpCelebrationBuffer = 0; setTimeout(fetchXP, 500); } }
-    function showReward(amt) { document.getElementById('reward-msg').innerText = "HAI VINTO +" + amt + " XP!"; document.getElementById('reward-overlay').style.display = 'flex'; playWilduSystemSound(sRew, 'reward', { reset: true }); setTimeout(() => document.getElementById('reward-overlay').style.display = 'none', 3500); }
+    var wilduRewardAutoHideTimer = null;
+    var wilduRewardResolve = null;
+    var wilduPostBookingFlowActive = false;
+
+    function wilduDelay(ms) {
+        return new Promise(function (resolve) {
+            window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+        });
+    }
+
+    function hideWilduRewardOverlay() {
+        if (wilduRewardAutoHideTimer) {
+            clearTimeout(wilduRewardAutoHideTimer);
+            wilduRewardAutoHideTimer = null;
+        }
+        if (typeof wilduRewardResolve === 'function') {
+            const resolve = wilduRewardResolve;
+            wilduRewardResolve = null;
+            resolve(false);
+        }
+        const overlay = document.getElementById('reward-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    function processXPBuffer() {
+        if (wilduPostBookingFlowActive) return;
+        if (xpCelebrationBuffer > 0) {
+            showReward(xpCelebrationBuffer);
+            xpCelebrationBuffer = 0;
+            setTimeout(fetchXP, 500);
+        }
+    }
+
+    function showReward(amt, options) {
+        options = options || {};
+        const overlay = document.getElementById('reward-overlay');
+        const msg = document.getElementById('reward-msg');
+        const duration = Math.max(800, Number(options.durationMs || 3500));
+
+        if (!overlay || !msg) return Promise.resolve(false);
+        if (wilduRewardAutoHideTimer) clearTimeout(wilduRewardAutoHideTimer);
+        if (typeof wilduRewardResolve === 'function') {
+            const resolvePrevious = wilduRewardResolve;
+            wilduRewardResolve = null;
+            resolvePrevious(false);
+        }
+
+        msg.innerText = "HAI VINTO +" + amt + " XP!";
+        overlay.style.display = 'flex';
+        playWilduSystemSound(sRew, 'reward', { reset: true });
+
+        return new Promise(function (resolve) {
+            wilduRewardResolve = resolve;
+            wilduRewardAutoHideTimer = window.setTimeout(function () {
+                overlay.style.display = 'none';
+                wilduRewardAutoHideTimer = null;
+                wilduRewardResolve = null;
+                if (typeof options.onComplete === 'function') options.onComplete();
+                resolve(true);
+            }, duration);
+        });
+    }
+
+    async function focusWilduProfileForXp(reason) {
+        show('profile', { scrollPolicy: 'profile-top', scrollBehavior: 'auto', source: reason || 'xp' });
+        await wilduDelay(120);
+        if (typeof openWilduPassportForXPAnimation === 'function') {
+            openWilduPassportForXPAnimation();
+        }
+        await wilduDelay(120);
+    }
+
+    async function completeWilduXpAwardFlow(earnedXP, options) {
+        options = options || {};
+        const xp = parseInt(earnedXP || 0, 10) || 0;
+        if (xp <= 0) return;
+
+        const previousFlowState = wilduPostBookingFlowActive;
+        wilduPostBookingFlowActive = true;
+        try {
+            await focusWilduProfileForXp(options.reason || 'xp-award');
+            await showReward(xp, { durationMs: options.durationMs || 3500 });
+            if (options.fetchAfter === true && typeof fetchXP === 'function') {
+                await fetchXP();
+            }
+        } finally {
+            wilduPostBookingFlowActive = previousFlowState;
+        }
+    }
+
+    async function completeWilduBookingSuccessFlow(options) {
+        options = options || {};
+        const earnedXP = parseInt(options.earnedXP || 0, 10) || 0;
+        const shouldPromptConsent = options.promptConsent !== false;
+
+        wilduPostBookingFlowActive = true;
+        try {
+            if (typeof fetchInitData === 'function') {
+                try { await fetchInitData({ force: true }); } catch (e) { console.warn("Aggiornamento dati post-prenotazione non riuscito:", e); }
+            }
+            if (typeof fetchXP === 'function') {
+                try { await fetchXP(); } catch (e) { console.warn("Aggiornamento XP post-prenotazione non riuscito:", e); }
+            }
+
+            await focusWilduProfileForXp(options.reason || 'booking-success');
+            const bufferedXP = Math.max(0, parseInt(xpCelebrationBuffer || 0, 10) || 0);
+            const extraBufferedXP = earnedXP > 0 && bufferedXP === earnedXP ? 0 : bufferedXP;
+            const rewardXP = earnedXP + extraBufferedXP;
+            if (bufferedXP > 0) xpCelebrationBuffer = 0;
+
+            if (rewardXP > 0) {
+                await showReward(rewardXP, { durationMs: options.rewardDurationMs || 3500 });
+            } else {
+                await wilduDelay(350);
+            }
+        } finally {
+            wilduPostBookingFlowActive = false;
+        }
+
+        if (
+            shouldPromptConsent &&
+            typeof isWilduConsentCurrent === 'function' &&
+            !isWilduConsentCurrent('healthBooking') &&
+            typeof openWilduLegalConsentModal === 'function'
+        ) {
+            window.setTimeout(function () {
+                openWilduLegalConsentModal(options.consentSource || 'booking_success', {
+                    allowContinueWithoutConsent: true
+                });
+            }, 220);
+        }
+    }
     function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; playWilduSystemSound(sLvl, 'levelup', { reset: true }); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
 
 
@@ -23051,13 +23268,9 @@ if (profKeyEl) {
 
     function scrollWilduTravelHubIntoView() {
         const hubBtn = document.getElementById('btn-travel-hub');
-        if (!hubBtn || typeof hubBtn.scrollIntoView !== 'function') return;
+        if (!hubBtn) return;
 
-        hubBtn.scrollIntoView({
-            behavior: 'smooth',
-            inline: 'center',
-            block: 'nearest'
-        });
+        centerWilduNavButton(hubBtn);
     }
 
     function positionWilduTravelNavMenu() {
@@ -23268,6 +23481,26 @@ if (profKeyEl) {
         return WILDU_TRAVEL_NAV_TAB_IDS[nextIndex];
     }
 
+    function getWilduTravelTabSwipeVisualEl() {
+        const section = document.getElementById('sec-' + currentTab);
+        return section && !section.classList.contains('hidden') ? section : null;
+    }
+
+    function resetWilduTravelTabSwipeVisual(el, animated) {
+        if (!el) return;
+        el.style.transition = animated === false ? 'none' : 'transform .22s cubic-bezier(.2,.85,.2,1), opacity .18s ease';
+        el.style.transform = '';
+        el.style.opacity = '';
+        if (animated !== false) {
+            window.setTimeout(function () {
+                el.style.transition = '';
+            }, 230);
+        } else {
+            el.style.transition = '';
+        }
+        hideWilduSwipeHint();
+    }
+
     function installWilduTravelTabSwipe() {
         if (window.__wilduTravelTabSwipeInstalled) return;
         window.__wilduTravelTabSwipeInstalled = true;
@@ -23285,7 +23518,8 @@ if (profKeyEl) {
                 tracking: true,
                 horizontal: false,
                 consumed: false,
-                target: event.target
+                target: event.target,
+                visualEl: getWilduTravelTabSwipeVisualEl()
             };
         }, { passive: true });
 
@@ -23316,9 +23550,21 @@ if (profKeyEl) {
                 }
             }
 
-            if (getWilduTravelTabSwipeTarget(dx)) {
+            const targetTab = getWilduTravelTabSwipeTarget(dx);
+            if (targetTab || wilduTravelTabSwipeTouch.horizontal) {
                 wilduTravelTabSwipeTouch.consumed = true;
                 event.preventDefault();
+
+                const visualEl = wilduTravelTabSwipeTouch.visualEl;
+                if (visualEl) {
+                    const damped = targetTab ? dx * .30 : dx * .10;
+                    const rotate = Math.max(-3.2, Math.min(3.2, dx / 95));
+                    const opacity = Math.max(.76, 1 - (absX / 620));
+                    visualEl.style.transition = 'none';
+                    visualEl.style.transform = 'translateX(' + damped + 'px) rotate(' + rotate + 'deg)';
+                    visualEl.style.opacity = String(opacity);
+                }
+                showWilduSwipeHint(targetTab && absX >= 82 ? 'Rilascia per cambiare sezione' : 'Trascina per cambiare sezione');
             }
         }, { passive: false });
 
@@ -23331,17 +23577,41 @@ if (profKeyEl) {
             const changed = event.changedTouches && event.changedTouches[0];
             const state = wilduTravelTabSwipeTouch;
             wilduTravelTabSwipeTouch = null;
-            if (!changed || !state.horizontal || !state.consumed) return;
+            if (!changed || !state.horizontal || !state.consumed) {
+                resetWilduTravelTabSwipeVisual(state && state.visualEl, true);
+                return;
+            }
 
             const dx = changed.clientX - state.x;
             const dy = changed.clientY - state.y;
-            if (Math.abs(dx) < 82 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+            if (Math.abs(dx) < 82 || Math.abs(dx) < Math.abs(dy) * 1.35) {
+                resetWilduTravelTabSwipeVisual(state.visualEl, true);
+                return;
+            }
 
             const targetTab = getWilduTravelTabSwipeTarget(dx);
-            if (targetTab) show(targetTab);
+            if (targetTab) {
+                const visualEl = state.visualEl;
+                if (visualEl) {
+                    const sign = dx >= 0 ? 1 : -1;
+                    visualEl.style.transition = 'transform .14s ease, opacity .14s ease';
+                    visualEl.style.transform = 'translateX(' + (sign * 70) + 'px) rotate(' + (sign * 2.4) + 'deg)';
+                    visualEl.style.opacity = '.62';
+                }
+                hideWilduSwipeHint();
+                window.setTimeout(function () {
+                    resetWilduTravelTabSwipeVisual(visualEl, false);
+                    show(targetTab, { scrollPolicy: 'section-start', source: 'travel-tab-swipe' });
+                }, 145);
+            } else {
+                resetWilduTravelTabSwipeVisual(state.visualEl, true);
+            }
         }, { passive: true });
 
         document.addEventListener('touchcancel', function () {
+            if (wilduTravelTabSwipeTouch) {
+                resetWilduTravelTabSwipeVisual(wilduTravelTabSwipeTouch.visualEl, true);
+            }
             wilduTravelTabSwipeTouch = null;
         }, { passive: true });
     }
@@ -23395,20 +23665,46 @@ if (profKeyEl) {
         }
     }
 
-    function getWilduTabScrollTarget() {
+    function getWilduTabScrollTarget(policy) {
+        const cleanPolicy = String(policy || '').trim();
         const currentY = window.scrollY || window.pageYOffset || 0;
         const navTop = getWilduStickyNavAnchorTop();
         const stickyOffset = getWilduNavStickyTopOffset();
+
+        if (cleanPolicy === 'top') return 0;
+        if (cleanPolicy === 'section-start' || cleanPolicy === 'profile-top') {
+            return navTop > 0 ? navTop : 0;
+        }
+
         // La nav usa top: env(safe-area-inset-top). Su iOS/PWA diventa sticky
         // prima del sentinel puro: la soglia deve rispettare lo stesso offset.
         if (navTop > 0 && currentY >= navTop - stickyOffset - 2) return navTop;
         return 0;
     }
 
-    function show(id) {
+    function centerWilduNavButton(activeBtn) {
+        if (!activeBtn) return;
+        const nav = activeBtn.closest ? activeBtn.closest('.nav') : null;
+        if (!nav || typeof nav.scrollTo !== 'function') {
+            if (typeof activeBtn.scrollIntoView === 'function') {
+                activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }
+            return;
+        }
+
+        const left = activeBtn.offsetLeft - Math.max(0, (nav.clientWidth - activeBtn.offsetWidth) / 2);
+        nav.scrollTo({
+            left: Math.max(0, left),
+            behavior: 'smooth'
+        });
+    }
+
+    function show(id, options = {}) {
         let requestedTab = id;
         const previousTab = currentTab;
-        const tabScrollTarget = getWilduTabScrollTarget();
+        const scrollPolicy = options.scrollPolicy || 'section-start';
+        const scrollBehavior = options.scrollBehavior || 'smooth';
+        const tabScrollTarget = getWilduTabScrollTarget(scrollPolicy);
 
         // Compatibilità prudente:
         // se qualche vecchio pezzo di codice chiama ancora show('wheel'),
@@ -23463,11 +23759,6 @@ if (profKeyEl) {
             }
         }
         
-        window.scrollTo({ 
-            top: tabScrollTarget,
-            behavior: 'smooth' 
-        });
-
         // IMPORTANTE:
         // "wheel" non va più trattata come sezione autonoma.
         // Ora #sec-wheel è dentro #sec-rewards.
@@ -23516,12 +23807,7 @@ if (profKeyEl) {
 
         if (activeBtn) {
             activeBtn.classList.add('active');
-
-            activeBtn.scrollIntoView({ 
-                behavior: 'smooth', 
-                inline: 'center', 
-                block: 'nearest' 
-            });
+            centerWilduNavButton(activeBtn);
         }
 
         if (typeof syncWilduTravelNavHubState === 'function') {
@@ -23534,6 +23820,11 @@ if (profKeyEl) {
                 setTimeout(scrollWilduTravelHubIntoView, 0);
             }
         }
+
+        window.scrollTo({
+            top: tabScrollTarget,
+            behavior: scrollBehavior
+        });
         
         const m = document.getElementById('module-container'); 
         if (m && !m.classList.contains('hidden')) { 
@@ -29494,6 +29785,7 @@ if (window.visualViewport) {
 }
 
 let WILDU_ROOT_OVERSCROLL_TOUCH = null;
+let WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS = typeof WeakSet === 'function' ? new WeakSet() : null;
 
 function getWilduVerticalScrollableAncestor(target) {
     let el = target;
@@ -29574,6 +29866,13 @@ function installWilduRootOverscrollGuard() {
     }, { passive: true });
 
     const handleRootOverscrollMove = function (event) {
+        if (WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS) {
+            if (WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS.has(event)) return;
+            WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS.add(event);
+        } else {
+            if (event.__wilduRootOverscrollHandled) return;
+            try { event.__wilduRootOverscrollHandled = true; } catch (e) {}
+        }
         if (!event.cancelable || !WILDU_ROOT_OVERSCROLL_TOUCH) return;
         const touch = event.touches && event.touches[0];
         if (!touch) return;
