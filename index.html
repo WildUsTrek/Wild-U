@@ -46,8 +46,14 @@
             --wildu-bottom-safe-active: env(safe-area-inset-bottom, 0px);
         }
         html.wildu-standalone-mode #btn-install { display: none !important; }
-        html { overscroll-behavior: none; background: var(--w-dark); }
-        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; }
+        html { overscroll-behavior: none; overscroll-behavior-x: none; background: var(--w-dark); max-width: 100%; }
+        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, Roboto, sans-serif; background-color: var(--w-dark); color: var(--w-text); margin: 0; padding: 0; overflow-x: hidden; overscroll-behavior: none; overscroll-behavior-x: none; -webkit-tap-highlight-color: transparent; font-size: 18px; -webkit-user-select: none; user-select: none; max-width: 100%; }
+        @supports (overflow: clip) {
+            html,
+            body {
+                overflow-x: clip;
+            }
+        }
         @media (hover: none), (pointer: coarse), (max-width: 768px) {
             html,
             body {
@@ -229,6 +235,7 @@ body::before {
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
     -ms-overflow-style: none;
 
@@ -803,6 +810,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     padding: 11px 1px 2px 1px;
     margin-top: 7px;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
 }
 
@@ -2627,6 +2635,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     padding: 2px 2px 12px 2px;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 .wildu-rewards-video-card {
@@ -4034,9 +4043,16 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         min-width: 0;
     }
 
+    #profile-data > .wildu-profile-quick-actions {
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+        margin-top: 0 !important;
+    }
+
     #profile-data > .wildu-bookings-card {
         grid-column: 2;
-        grid-row: 1 / span 8;
+        grid-row: 2 / span 8;
         margin-top: 0 !important;
         min-width: 0;
         align-self: start;
@@ -4860,10 +4876,36 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     letter-spacing: .5px !important;
 }
 
+.wildu-detail-bottom-close.wildu-detail-bottom-x {
+    align-self: center !important;
+    width: 50px !important;
+    height: 50px !important;
+    min-width: 50px !important;
+    min-height: 50px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    border: 2px solid rgba(255,255,255,.78) !important;
+    background: linear-gradient(145deg, #7b1e1e, #d84343) !important;
+    color: #fff !important;
+    font-size: 20px !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,.52), 0 0 18px rgba(255,68,68,.20) !important;
+}
+
 @media (hover:hover) {
     .wildu-detail-bottom-close:hover {
         border-color: rgba(212,175,55,.34) !important;
         color: var(--w-gold) !important;
+    }
+
+    .wildu-detail-bottom-close.wildu-detail-bottom-x:hover {
+        border-color: rgba(255,255,255,.92) !important;
+        color: #fff !important;
+        filter: brightness(1.08);
     }
 }
 
@@ -5610,7 +5652,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     <button id="btn-ondemand" onclick="showWilduNavTab('ondemand')">Su Richiesta</button>
     
 
-    <button id="btn-rewards" onclick="showWilduNavTab('rewards')">Taverna Giochi</button>
+    <button id="btn-rewards" onclick="showWilduNavTab('rewards')">Taverna Gratis</button>
     <button id="btn-profile" onclick="showWilduNavTab('profile')">Profilo</button>
     <button id="btn-share-app" class="nav-share-btn" type="button" onclick="shareWilduClientApp(event)" aria-label="Condividi Wild-U"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi</button>
     
@@ -6216,6 +6258,11 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         </div>
     </div>
     
+    <div class="wildu-profile-quick-actions" aria-label="Azioni app Wild-U">
+        <button type="button" onclick="showInstallInfo(event)"><i class="bi bi-download" aria-hidden="true"></i> Salva app</button>
+        <button type="button" onclick="shareWilduClientApp(event)"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi</button>
+    </div>
+
     <div class="card wildu-bookings-card">
         <div class="wildu-bookings-head">
             <div class="wildu-bookings-icon">🎒</div>
@@ -6226,17 +6273,6 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         </div>
         <p style="position:relative; font-size:12px; color:#b9c8d6; margin:0 0 15px 0; line-height:1.45;">Gli XP vengono aggiunti il giorno dopo il viaggio.</p>
         <div id="my-bookings-list"></div>
-    </div>
-
-    <div class="card wildu-profile-help-card" style="border-left-color: #25D366; text-align: center; margin-top: 25px;">
-        <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
-        <p style="font-size:14px; color:#aaa; margin-bottom:20px; line-height:1.42;">Scrivici su WhatsApp per qualsiasi dubbio.</p>
-        <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
-    </div>
-
-    <div class="wildu-profile-quick-actions" aria-label="Azioni app Wild-U">
-        <button type="button" onclick="showInstallInfo(event)"><i class="bi bi-download" aria-hidden="true"></i> Salva app</button>
-        <button type="button" onclick="shareWilduClientApp(event)"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi</button>
     </div>
 
     <div class="wildu-profile-community-divider"><span>Community Wild-U</span></div>
@@ -6271,6 +6307,12 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         In qualità di Affiliati Amazon, riceviamo un guadagno dagli acquisti idonei.
     </div>
     <!-- FINE DISCLOSURE TATTICA LATO CLIENTE -->
+
+    <div class="card wildu-profile-help-card" style="border-left-color: #25D366; text-align: center; margin-top: 28px; margin-bottom: 26px;">
+        <h3 style="margin-top:0; color:#fff;">Hai bisogno di aiuto?</h3>
+        <p style="font-size:14px; color:#aaa; margin-bottom:20px; line-height:1.42;">Scrivici su WhatsApp per qualsiasi dubbio.</p>
+        <button class="btn-book btn-action-glow" style="width:100%;" onclick="window.open(WILD_ASSETS['link_chat_wa'] || 'https://wa.me/393931326733', '_blank')">💬 CHATTA CON NOI</button>
+    </div>
 </div>
 </div>
 
@@ -12565,6 +12607,39 @@ function isWilduConsentCurrent(key) {
     return isWilduConsentCurrentInMap(getWilduLegalConsents(), key);
 }
 
+function getWilduLegalConsentStateFromMap(consents) {
+    const privacyOk = isWilduConsentCurrentInMap(consents, 'privacy');
+    const cookiesOk = isWilduConsentCurrentInMap(consents, 'cookies');
+    const healthOk = isWilduConsentCurrentInMap(consents, 'healthBooking');
+
+    return {
+        privacyOk,
+        cookiesOk,
+        healthOk,
+        complete: privacyOk && cookiesOk && healthOk
+    };
+}
+
+function getWilduLegalConsentState(profileData) {
+    const consents = arguments.length > 0
+        ? (
+            profileData && typeof profileData.legalConsents === 'object'
+                ? profileData.legalConsents
+                : {}
+        )
+        : getWilduLegalConsents();
+
+    return getWilduLegalConsentStateFromMap(consents);
+}
+
+function hasWilduCompleteLegalConsent() {
+    return getWilduLegalConsentStateFromMap(getWilduLegalConsents()).complete === true;
+}
+
+function hasWilduCompleteLegalConsentInProfile(profileData) {
+    return getWilduLegalConsentState(profileData).complete === true;
+}
+
 function hasWilduCurrentHealthBookingConsentInProfile(profileData) {
     const consents = profileData && typeof profileData.legalConsents === 'object'
         ? profileData.legalConsents
@@ -12607,23 +12682,20 @@ function renderWilduLegalConsentStatus() {
 
     const status = document.getElementById('wildu-profile-legal-status');
     const healthStatus = document.getElementById('wildu-health-consent-status');
-    const privacyOk = isWilduConsentCurrent('privacy');
-    const cookiesOk = isWilduConsentCurrent('cookies');
-    const healthOk = isWilduConsentCurrent('healthBooking');
+    const consentState = getWilduLegalConsentStateFromMap(getWilduLegalConsents());
+    const allOk = consentState.complete === true;
 
     if (status) {
-        status.innerText = privacyOk && cookiesOk && healthOk
-            ? 'completo'
-            : (privacyOk && cookiesOk ? 'attività da confermare' : 'da completare');
-        status.style.color = privacyOk && cookiesOk && healthOk ? '#9dffbd' : '#9ed6ff';
-        status.style.borderColor = privacyOk && cookiesOk && healthOk ? 'rgba(157,255,189,.38)' : 'rgba(158,214,255,.34)';
-        status.style.background = privacyOk && cookiesOk && healthOk ? 'rgba(49,185,90,.10)' : 'rgba(158,214,255,.10)';
+        status.innerText = allOk ? 'completo' : 'da completare';
+        status.style.color = allOk ? '#9dffbd' : '#9ed6ff';
+        status.style.borderColor = allOk ? 'rgba(157,255,189,.38)' : 'rgba(158,214,255,.34)';
+        status.style.background = allOk ? 'rgba(49,185,90,.10)' : 'rgba(158,214,255,.10)';
     }
 
     if (healthStatus) {
-        healthStatus.innerText = healthOk
+        healthStatus.innerText = allOk
             ? 'Confermata. Non te la richiederemo di nuovo finche il testo resta invariato.'
-            : 'Da confermare prima di una prenotazione che richiede dati sullo stato fisico.';
+            : 'Da confermare per completare privacy, preferenze tecniche e partecipazione outdoor.';
     }
 }
 
@@ -12778,14 +12850,14 @@ async function acceptWilduHealthConsent(source) {
 }
 
 async function ensureWilduHealthConsentForBooking(source) {
-    if (isWilduConsentCurrent('healthBooking')) return true;
+    if (hasWilduCompleteLegalConsent()) return true;
     return await openWilduLegalConsentModal(source || 'standard_booking_form', {
         allowContinueWithoutConsent: true
     });
 }
 
 function scheduleWilduBookingConsentPrompt(source) {
-    if (isWilduConsentCurrent('healthBooking')) return;
+    if (hasWilduCompleteLegalConsent()) return;
 
     const bookingModal = document.getElementById('custom-booking-modal');
     const typeEl = document.getElementById('cb-tipo-evento');
@@ -12805,7 +12877,7 @@ function scheduleWilduBookingConsentPrompt(source) {
     wilduBookingConsentPromptKey = key;
 
     window.setTimeout(function () {
-        if (isWilduConsentCurrent('healthBooking')) return;
+        if (hasWilduCompleteLegalConsent()) return;
         if (!bookingModal || bookingModal.style.display === 'none') return;
         if (legalModal && legalModal.classList.contains('is-open')) return;
 
@@ -17307,7 +17379,7 @@ function renderUnifiedDetailMap(payload) {
     if (buttonUrl) {
         mapsBtn.href = "#";
         mapsBtn.setAttribute("data-wildu-maps-url", buttonUrl);
-        mapsBtn.style.display = "block";
+        mapsBtn.style.display = "none";
         mapsBtn.onclick = openWilduMapsAfterSoftConfirm;
     }
 
@@ -17373,7 +17445,7 @@ function renderUnifiedDetailMap(payload) {
             regione,
             hasCoords,
             query,
-            buttonVisible: !!buttonUrl,
+            buttonVisible: false,
             iframeVisible: !!iframeUrl,
             overlayEnabled: !!(iframeUrl && buttonUrl),
             softConfirmEnabled: !!buttonUrl,
@@ -22947,6 +23019,7 @@ if (profKeyEl) {
     var wilduRewardAutoHideTimer = null;
     var wilduRewardResolve = null;
     var wilduPostBookingFlowActive = false;
+    var wilduPostBookingConsentRunId = 0;
 
     function wilduDelay(ms) {
         return new Promise(function (resolve) {
@@ -23046,20 +23119,23 @@ if (profKeyEl) {
     }
 
     function wilduNeedsHealthBookingConsent() {
-        return (
-            typeof isWilduConsentCurrent === 'function' &&
-            !isWilduConsentCurrent('healthBooking')
-        );
+        return typeof hasWilduCompleteLegalConsent === 'function'
+            ? !hasWilduCompleteLegalConsent()
+            : true;
     }
 
     async function refreshWilduPostBookingHealthConsentState(reason) {
         const uid = wildUserKey || (auth.currentUser ? auth.currentUser.uid : '');
-        const localNeeds = wilduNeedsHealthBookingConsent();
+        const localState = typeof getWilduLegalConsentStateFromMap === 'function'
+            ? getWilduLegalConsentStateFromMap(getWilduLegalConsents())
+            : { complete: !wilduNeedsHealthBookingConsent() };
+        const localNeeds = localState.complete !== true;
 
         if (!uid || !FS || typeof FS.getUtente !== 'function') {
             return {
                 needsConsent: localNeeds,
                 source: uid ? 'local-no-reader' : 'local-no-uid',
+                consentState: localState,
                 error: null
             };
         }
@@ -23074,9 +23150,13 @@ if (profKeyEl) {
             if (typeof renderWilduLegalConsentStatus === 'function') {
                 renderWilduLegalConsentStatus();
             }
+            const serverState = typeof getWilduLegalConsentState === 'function'
+                ? getWilduLegalConsentState(data)
+                : { complete: hasWilduCurrentHealthBookingConsentInProfile(data) === true };
             return {
-                needsConsent: !hasWilduCurrentHealthBookingConsentInProfile(data),
+                needsConsent: !hasWilduCompleteLegalConsentInProfile(data),
                 source: snap && snap.exists ? 'server' : 'server-missing-profile',
+                consentState: serverState,
                 error: null
             };
         } catch (err) {
@@ -23084,6 +23164,7 @@ if (profKeyEl) {
             return {
                 needsConsent: localNeeds,
                 source: 'local-after-server-error',
+                consentState: localState,
                 error: err && err.message ? err.message : String(err || '')
             };
         }
@@ -23107,8 +23188,36 @@ if (profKeyEl) {
         }
     }
 
+    function openWilduPostBookingConsentModalWhenSafe(options, attempt) {
+        options = options || {};
+        attempt = parseInt(attempt || 0, 10) || 0;
+
+        const rewardOverlay = document.getElementById('reward-overlay');
+        const legalModal = document.getElementById('wildu-legal-consent-modal');
+        if (!legalModal || typeof openWilduLegalConsentModal !== 'function') return false;
+
+        if (rewardOverlay && rewardOverlay.style.display && rewardOverlay.style.display !== 'none') {
+            hideWilduRewardOverlay();
+        }
+
+        if (typeof pageDebug === 'function') {
+            pageDebug('POST_BOOKING_CONSENT_OPEN_ATTEMPT', {
+                attempt,
+                rewardVisible: !!(rewardOverlay && rewardOverlay.style.display !== 'none')
+            });
+        }
+
+        openWilduLegalConsentModal(options.consentSource || 'booking_success', {
+            allowContinueWithoutConsent: true
+        });
+        return true;
+    }
+
     function scheduleWilduPostBookingConsentModal(options, reason) {
         options = options || {};
+        const expectedRunId = parseInt(options.postBookingConsentRunId || 0, 10) || 0;
+        const initialNeedsConsent = options.consentWasIncompleteAtFlowStart === true;
+        const initialConsentState = options.consentStateAtFlowStart || null;
         const localNeedsConsent = wilduNeedsHealthBookingConsent();
         const modal = document.getElementById('wildu-legal-consent-modal');
         const canOpen = typeof openWilduLegalConsentModal === 'function';
@@ -23116,6 +23225,9 @@ if (profKeyEl) {
         if (typeof pageDebug === 'function') {
             pageDebug('POST_BOOKING_CONSENT_QUEUED', {
                 reason: reason || 'post-booking',
+                runId: expectedRunId,
+                initialNeedsConsent,
+                initialConsentState,
                 localNeedsConsent,
                 hasModal: !!modal,
                 canOpen
@@ -23128,22 +23240,58 @@ if (profKeyEl) {
         }
 
         window.setTimeout(async function () {
+            if (expectedRunId && expectedRunId !== wilduPostBookingConsentRunId) {
+                if (typeof pageDebug === 'function') {
+                    pageDebug('POST_BOOKING_CONSENT_STALE_RUN_SKIP', {
+                        reason: reason || 'post-booking',
+                        expectedRunId,
+                        activeRunId: wilduPostBookingConsentRunId
+                    });
+                }
+                return;
+            }
+
             const state = await refreshWilduPostBookingHealthConsentState(reason || 'post-booking');
-            const needsConsent = state && state.needsConsent === true;
+            if (expectedRunId && expectedRunId !== wilduPostBookingConsentRunId) {
+                if (typeof pageDebug === 'function') {
+                    pageDebug('POST_BOOKING_CONSENT_STALE_AFTER_REFRESH_SKIP', {
+                        reason: reason || 'post-booking',
+                        expectedRunId,
+                        activeRunId: wilduPostBookingConsentRunId
+                    });
+                }
+                return;
+            }
+
+            const serverNeedsConsent = state && state.needsConsent === true;
+            const serverConfirmedComplete = !!(
+                state &&
+                state.needsConsent === false &&
+                (state.source === 'server' || state.source === 'server-missing-profile')
+            );
+            const liveNeedsConsent = wilduNeedsHealthBookingConsent();
+            const shouldOpenConsent = serverNeedsConsent || (!serverConfirmedComplete && initialNeedsConsent && liveNeedsConsent);
 
             if (typeof pageDebug === 'function') {
                 pageDebug('POST_BOOKING_CONSENT_CHECK', {
                     reason: reason || 'post-booking',
-                    needsConsent,
+                    runId: expectedRunId,
+                    shouldOpenConsent,
+                    serverNeedsConsent,
+                    serverConfirmedComplete,
+                    initialNeedsConsent,
+                    liveNeedsConsent,
                     source: state ? state.source : 'unknown',
+                    consentState: state ? state.consentState : null,
                     error: state ? state.error : null
                 });
             }
 
-            if (!needsConsent) return;
+            if (!shouldOpenConsent) return;
 
             if (typeof pageDebug === 'function') {
                 pageDebug('POST_BOOKING_CONSENT_OPEN', {
+                    runId: expectedRunId,
                     source: options.consentSource || 'booking_success'
                 });
             }
@@ -23157,9 +23305,7 @@ if (profKeyEl) {
                     });
                 }
                 window.setTimeout(function () {
-                    openWilduLegalConsentModal(options.consentSource || 'booking_success', {
-                        allowContinueWithoutConsent: true
-                    });
+                    openWilduPostBookingConsentModalWhenSafe(options, 0);
                 }, 80);
             } catch (modalErr) {
                 console.warn("Apertura consenso post-prenotazione non riuscita:", modalErr);
@@ -23174,6 +23320,24 @@ if (profKeyEl) {
         const earnedXP = parseInt(options.earnedXP || 0, 10) || 0;
         const shouldPromptConsent = options.promptConsent !== false;
         const flowUserKey = wildUserKey || (auth.currentUser ? auth.currentUser.uid : '');
+        const postBookingConsentRunId = ++wilduPostBookingConsentRunId;
+        const consentStateAtFlowStart = (
+            typeof getWilduLegalConsentStateFromMap === 'function' &&
+            typeof getWilduLegalConsents === 'function'
+        )
+            ? getWilduLegalConsentStateFromMap(getWilduLegalConsents())
+            : { complete: false };
+        const consentWasIncompleteAtFlowStart = shouldPromptConsent && consentStateAtFlowStart.complete !== true;
+
+        if (typeof pageDebug === 'function') {
+            pageDebug('POST_BOOKING_FLOW_START', {
+                runId: postBookingConsentRunId,
+                reason: options.reason || 'booking-success',
+                shouldPromptConsent,
+                consentWasIncompleteAtFlowStart,
+                consentStateAtFlowStart
+            });
+        }
 
         wilduPostBookingFlowActive = true;
         let flowWarning = null;
@@ -23218,7 +23382,12 @@ if (profKeyEl) {
         }
 
         if (shouldPromptConsent) {
-            scheduleWilduPostBookingConsentModal(options, flowWarning ? 'post-booking-after-warning' : 'post-booking-complete');
+            scheduleWilduPostBookingConsentModal({
+                ...options,
+                postBookingConsentRunId,
+                consentWasIncompleteAtFlowStart,
+                consentStateAtFlowStart
+            }, flowWarning ? 'post-booking-after-warning' : 'post-booking-complete');
         }
     }
     function showLevelUpCelebration(grado) { const conf = GRADI_MAP[grado] || GRADI_MAP["Esploratore"]; const customImg = WILD_ASSETS['img_' + grado.toLowerCase().replace(" ", "_")]; document.getElementById('lv-img').src = customImg ? formatAssetLink(customImg) : conf.img; document.getElementById('levelup-msg').innerText = grado; document.getElementById('levelup-overlay').style.display = 'flex'; playWilduSystemSound(sLvl, 'levelup', { reset: true }); if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success'); }
@@ -23771,7 +23940,7 @@ if (profKeyEl) {
                 hideWilduSwipeHint();
                 window.setTimeout(function () {
                     resetWilduTravelTabSwipeVisual(visualEl, false);
-                    show(targetTab, { scrollPolicy: 'section-start', source: 'travel-tab-swipe' });
+                    show(targetTab, { scrollPolicy: 'top', scrollBehavior: 'auto', source: 'travel-tab-swipe' });
                 }, 145);
             } else {
                 resetWilduTravelTabSwipeVisual(state.visualEl, true);
@@ -25722,10 +25891,10 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
         const html = await res.text();
 
         m.innerHTML = `
-            <div style="text-align:right; padding:8px 10px 0 10px; font-size:11px; color:#777; letter-spacing:0.5px;">
+            ${html}
+            <div class="wildu-module-version-footer" style="text-align:right; padding:18px 10px 28px 10px; font-size:11px; color:#777; letter-spacing:0.5px;">
                 Modulo v${resolvedModuleRev}
             </div>
-            ${html}
         `;
 
         exposeModuleRuntime(resolvedModuleRev);
@@ -30293,12 +30462,12 @@ window.addEventListener('pageshow', () => {
         </div>
 
         <div style="margin-top:25px; display:flex; gap:15px; flex-direction:column;">
-            <a id="od-modal-maps" href="#" target="_blank" style="background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 START POINT SU MAPS</a>
+            <a id="od-modal-maps" href="#" target="_blank" style="display:none; background:#222; border:2px solid #00aaff; color:#00aaff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">📍 Apri su Maps</a>
             <a id="trip-modal-link-ufficiale" href="#" target="_blank" style="display:none; background:#333; border:1px solid #444; color:#fff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">🔗 LINK SITO UFFICIALE</a>
             <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
             <button type="button" id="od-modal-share-trip" class="wildu-trip-share-btn" onclick="shareWilduCurrentTrip(event)"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi viaggio</button>
-            <button type="button" id="od-modal-date-options" class="wildu-detail-date-options-btn"><i class="bi bi-calendar2-week" aria-hidden="true"></i> Vedi date</button>
-            <button type="button" id="od-modal-close-bottom" class="wildu-detail-bottom-close" onclick="handleWilduDetailClose('bottom')">Chiudi scheda</button>
+            <button type="button" id="od-modal-date-options" class="wildu-detail-date-options-btn"><i class="bi bi-calendar2-week" aria-hidden="true"></i> Vedi altre date</button>
+            <button type="button" id="od-modal-close-bottom" class="wildu-detail-bottom-close wildu-detail-bottom-x" onclick="handleWilduDetailClose('bottom')" aria-label="Chiudi scheda">X</button>
         </div>
     </div>
 </div>
