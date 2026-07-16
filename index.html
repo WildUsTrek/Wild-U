@@ -23100,6 +23100,88 @@ if (profKeyEl) {
         await wilduDelay(120);
     }
 
+    function isWilduOverlayVisibleById(id) {
+        const el = document.getElementById(id);
+        if (!el) return false;
+        try {
+            const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+            return (
+                el.style.display !== 'none' &&
+                (!style || (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0'))
+            );
+        } catch (e) {
+            return el.style.display !== 'none';
+        }
+    }
+
+    async function waitWilduXpVisualSequenceSettled(reason, options) {
+        options = options || {};
+        const timeoutMs = Math.max(1200, Number(options.timeoutMs || 12000));
+        const pollMs = Math.max(60, Number(options.pollMs || 120));
+        const levelUpHoldMs = Math.max(400, Number(options.levelUpHoldMs || 1900));
+        const start = Date.now();
+        let sawAnimating = false;
+
+        // Lascia a show('profile') il tempo di avviare renderProfile() senza creare un secondo render.
+        await wilduDelay(Math.max(60, Number(options.renderStartDelayMs || 180)));
+
+        while (Date.now() - start < timeoutMs) {
+            if (isAnimatingXP) sawAnimating = true;
+            if (!isAnimatingXP) break;
+            await wilduDelay(pollMs);
+        }
+
+        const timedOut = isAnimatingXP === true;
+        const levelUpWasVisible = isWilduOverlayVisibleById('levelup-overlay');
+
+        if (levelUpWasVisible) {
+            await wilduDelay(levelUpHoldMs);
+            const levelupOverlay = document.getElementById('levelup-overlay');
+            if (levelupOverlay && isWilduOverlayVisibleById('levelup-overlay')) {
+                levelupOverlay.style.display = 'none';
+            }
+        }
+
+        if (typeof pageDebug === 'function') {
+            pageDebug('XP_ORCHESTRATOR_SETTLED', {
+                reason: reason || 'xp',
+                sawAnimating,
+                timedOut,
+                levelUpWasVisible,
+                elapsedMs: Date.now() - start
+            });
+        }
+
+        return {
+            sawAnimating,
+            timedOut,
+            levelUpWasVisible
+        };
+    }
+
+    async function runWilduXpRewardOrchestrator(rewardXP, options) {
+        options = options || {};
+        const xp = Math.max(0, parseInt(rewardXP || 0, 10) || 0);
+        const reason = options.reason || 'xp-orchestrator';
+
+        await focusWilduProfileForXp(reason, {
+            scrollPolicy: options.scrollPolicy || 'top'
+        });
+
+        const settled = await waitWilduXpVisualSequenceSettled(reason, {
+            timeoutMs: options.xpTimeoutMs || 12000,
+            levelUpHoldMs: options.levelUpHoldMs || 1900
+        });
+
+        if (xp > 0) {
+            await showReward(xp, { durationMs: options.rewardDurationMs || options.durationMs || 3500 });
+        } else {
+            await wilduDelay(Math.max(250, Number(options.noRewardDelayMs || 350)));
+        }
+
+        return settled;
+    }
+
     async function completeWilduXpAwardFlow(earnedXP, options) {
         options = options || {};
         const xp = parseInt(earnedXP || 0, 10) || 0;
@@ -23108,8 +23190,12 @@ if (profKeyEl) {
         const previousFlowState = wilduPostBookingFlowActive;
         wilduPostBookingFlowActive = true;
         try {
-            await focusWilduProfileForXp(options.reason || 'xp-award');
-            await showReward(xp, { durationMs: options.durationMs || 3500 });
+            await runWilduXpRewardOrchestrator(xp, {
+                reason: options.reason || 'xp-award',
+                durationMs: options.durationMs || 3500,
+                rewardDurationMs: options.rewardDurationMs,
+                levelUpHoldMs: options.levelUpHoldMs
+            });
             if (options.fetchAfter === true && typeof fetchXP === 'function') {
                 await fetchXP();
             }
@@ -23352,27 +23438,22 @@ if (profKeyEl) {
             }
             restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, 'after-fetchxp');
 
-            try {
-                await focusWilduProfileForXp(options.reason || 'booking-success', { scrollPolicy: 'top' });
-            } catch (focusErr) {
-                flowWarning = focusErr;
-                console.warn("Focus profilo post-prenotazione non completato:", focusErr);
-            }
-
             const bufferedXP = Math.max(0, parseInt(xpCelebrationBuffer || 0, 10) || 0);
             const extraBufferedXP = earnedXP > 0 && bufferedXP === earnedXP ? 0 : bufferedXP;
             const rewardXP = earnedXP + extraBufferedXP;
             if (bufferedXP > 0) xpCelebrationBuffer = 0;
 
-            if (rewardXP > 0) {
-                try {
-                    await showReward(rewardXP, { durationMs: options.rewardDurationMs || 3500 });
-                } catch (rewardErr) {
-                    flowWarning = rewardErr;
-                    console.warn("Reward post-prenotazione non completato:", rewardErr);
-                }
-            } else {
-                await wilduDelay(350);
+            try {
+                await runWilduXpRewardOrchestrator(rewardXP, {
+                    reason: options.reason || 'booking-success',
+                    scrollPolicy: 'top',
+                    rewardDurationMs: options.rewardDurationMs || 3500,
+                    noRewardDelayMs: 350,
+                    levelUpHoldMs: options.levelUpHoldMs
+                });
+            } catch (orchestratorErr) {
+                flowWarning = orchestratorErr;
+                console.warn("Orchestrazione XP post-prenotazione non completata:", orchestratorErr);
             }
         } catch (flowErr) {
             flowWarning = flowErr;
