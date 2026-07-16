@@ -5283,12 +5283,13 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 .wildu-travel-swipe-preview {
     position: fixed;
     left: 50%;
-    top: 50%;
+    top: auto;
+    bottom: calc(54px + env(safe-area-inset-bottom, 0px));
     transform: translate(-50%, -50%) scale(.94);
-    z-index: 3090;
+    z-index: 3087;
     opacity: 0;
     pointer-events: none;
-    min-width: min(78vw, 320px);
+    min-width: min(68vw, 280px);
     max-width: calc(100vw - 42px);
     padding: 13px 16px;
     border-radius: 18px;
@@ -5315,31 +5316,78 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 .wildu-travel-swipe-ghost {
     position: fixed;
-    top: 49%;
+    top: calc(112px + env(safe-area-inset-top, 0px));
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
     z-index: 3088;
     pointer-events: none;
-    width: min(62vw, 292px);
-    max-width: calc(100vw - 58px);
-    min-height: 112px;
+    width: min(78vw, 380px);
+    max-width: calc(100vw - 46px);
     opacity: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 7px;
-    padding: 18px 18px 17px;
-    border-radius: 22px;
-    border: 1px solid rgba(212,175,55,.46);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 14px;
+    padding: 20px 18px 18px;
+    border-radius: 30px;
+    border: 1px solid rgba(212,175,55,.50);
     background:
-        radial-gradient(circle at 12% 0%, rgba(212,175,55,.24), transparent 40%),
-        linear-gradient(135deg, rgba(26,35,27,.95), rgba(0,0,0,.92));
+        radial-gradient(circle at 12% 0%, rgba(212,175,55,.28), transparent 38%),
+        linear-gradient(145deg, rgba(28,39,30,.97), rgba(4,5,5,.94));
     color: #fff6cf;
-    box-shadow: 0 22px 58px rgba(0,0,0,.66), inset 0 1px 0 rgba(255,255,255,.08);
+    box-shadow: 0 26px 72px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.09);
     backdrop-filter: blur(14px);
+    overflow: hidden;
+    transform-origin: center center;
     transition: opacity .12s ease, transform .12s linear;
+}
+
+.wildu-travel-swipe-ghost::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.08), transparent 22%),
+        radial-gradient(circle at 84% 14%, rgba(255,255,255,.10), transparent 28%);
+    pointer-events: none;
+}
+
+.wildu-travel-swipe-ghost[data-target-tab="events"] {
+    border-color: rgba(240,200,48,.58);
+    background:
+        radial-gradient(circle at 10% 0%, rgba(240,200,48,.30), transparent 38%),
+        linear-gradient(145deg, rgba(43,41,24,.97), rgba(6,7,6,.95));
+}
+
+.wildu-travel-swipe-ghost[data-target-tab="free"] {
+    border-color: rgba(118,220,134,.58);
+    background:
+        radial-gradient(circle at 10% 0%, rgba(118,220,134,.28), transparent 38%),
+        linear-gradient(145deg, rgba(20,53,31,.97), rgba(5,8,6,.95));
+}
+
+.wildu-travel-swipe-ghost[data-target-tab="ondemand"] {
+    border-color: rgba(121,200,255,.54);
+    background:
+        radial-gradient(circle at 10% 0%, rgba(121,200,255,.24), transparent 38%),
+        linear-gradient(145deg, rgba(19,43,58,.97), rgba(5,7,9,.95));
 }
 
 .wildu-travel-swipe-ghost.is-visible {
     opacity: 1;
+}
+
+.wildu-travel-swipe-ghost-head,
+.wildu-travel-swipe-ghost-navbar,
+.wildu-travel-swipe-ghost-toolbar,
+.wildu-travel-swipe-ghost-cards,
+.wildu-travel-swipe-ghost-footer {
+    position: relative;
+    z-index: 1;
+}
+
+.wildu-travel-swipe-ghost-head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .wildu-travel-swipe-ghost-kicker {
@@ -5352,8 +5400,8 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 .wildu-travel-swipe-ghost-title {
     color: #fff;
-    font-size: clamp(20px, 5vw, 28px);
-    line-height: .98;
+    font-size: clamp(30px, 8vw, 44px);
+    line-height: .90;
     font-weight: 1000;
     letter-spacing: 0;
     text-shadow: 0 2px 10px rgba(0,0,0,.55);
@@ -5361,9 +5409,233 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 .wildu-travel-swipe-ghost-copy {
     color: rgba(255,255,255,.78);
-    font-size: 12px;
-    line-height: 1.25;
+    font-size: 13px;
+    line-height: 1.28;
     font-weight: 800;
+}
+
+.wildu-travel-swipe-ghost-cards {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    min-height: 0;
+}
+
+.wildu-travel-swipe-ghost-row {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    align-items: center;
+    gap: 11px;
+    min-height: 66px;
+    padding: 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.09);
+    background: rgba(255,255,255,.055);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.wildu-travel-swipe-ghost-row:nth-child(2) {
+    opacity: .72;
+    transform: translateX(10px) scale(.98);
+}
+
+.wildu-travel-swipe-ghost-row:nth-child(3) {
+    opacity: .48;
+    transform: translateX(22px) scale(.95);
+}
+
+.wildu-travel-swipe-ghost-thumb {
+    width: 58px;
+    height: 46px;
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at 35% 28%, rgba(255,255,255,.38), transparent 26%),
+        linear-gradient(135deg, rgba(212,175,55,.50), rgba(45,90,39,.40));
+}
+
+.wildu-travel-swipe-ghost-lines {
+    display: grid;
+    gap: 7px;
+}
+
+.wildu-travel-swipe-ghost-line {
+    display: block;
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.72);
+}
+
+.wildu-travel-swipe-ghost-line.is-short {
+    width: 58%;
+    background: rgba(212,175,55,.70);
+}
+
+.wildu-travel-swipe-ghost-footer {
+    justify-self: start;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(212,175,55,.34);
+    background: rgba(0,0,0,.28);
+    color: #f8e6ad;
+    font-size: 10px;
+    font-weight: 1000;
+    letter-spacing: .55px;
+    text-transform: uppercase;
+}
+
+/* WILDU V45 - FULL PAGE-LIKE INCOMING PREVIEW
+   Facsimile del primo viewport della tab entrante: mini navbar, hero e card. */
+.wildu-travel-swipe-ghost {
+    top: calc(60px + env(safe-area-inset-top, 0px)) !important;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+    width: calc(100vw - 22px) !important;
+    max-width: 520px !important;
+    padding: 13px 12px 16px !important;
+    border-radius: 26px !important;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto !important;
+    gap: 11px !important;
+}
+
+.wildu-travel-swipe-ghost-navbar {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 7px;
+    padding: 4px;
+    border-radius: 16px;
+    background: rgba(0,0,0,.28);
+    border: 1px solid rgba(255,255,255,.08);
+}
+
+.wildu-travel-swipe-ghost-navitem {
+    min-width: 0;
+    padding: 9px 5px;
+    border-radius: 12px;
+    color: rgba(255,255,255,.66);
+    background: rgba(255,255,255,.06);
+    font-size: 9px;
+    font-weight: 1000;
+    letter-spacing: .15px;
+    text-align: center;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wildu-travel-swipe-ghost-navitem.is-active {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(45,90,39,.95), rgba(212,175,55,.42));
+    box-shadow: 0 0 18px rgba(45,90,39,.34);
+}
+
+.wildu-travel-swipe-ghost-head {
+    min-height: 132px;
+    justify-content: end;
+    padding: 16px 14px;
+    border-radius: 22px;
+    border: 1px solid rgba(255,255,255,.08);
+    background:
+        linear-gradient(180deg, transparent, rgba(0,0,0,.70)),
+        radial-gradient(circle at 18% 0%, rgba(255,255,255,.16), transparent 36%),
+        linear-gradient(135deg, rgba(212,175,55,.18), rgba(45,90,39,.10));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+.wildu-travel-swipe-ghost[data-target-tab="events"] .wildu-travel-swipe-ghost-head {
+    background:
+        linear-gradient(180deg, transparent, rgba(0,0,0,.72)),
+        radial-gradient(circle at 15% 0%, rgba(240,200,48,.34), transparent 38%),
+        linear-gradient(135deg, rgba(80,73,30,.50), rgba(8,9,8,.44));
+}
+
+.wildu-travel-swipe-ghost[data-target-tab="free"] .wildu-travel-swipe-ghost-head {
+    background:
+        linear-gradient(180deg, transparent, rgba(0,0,0,.72)),
+        radial-gradient(circle at 15% 0%, rgba(118,220,134,.34), transparent 38%),
+        linear-gradient(135deg, rgba(32,100,50,.50), rgba(8,9,8,.44));
+}
+
+.wildu-travel-swipe-ghost[data-target-tab="ondemand"] .wildu-travel-swipe-ghost-head {
+    background:
+        linear-gradient(180deg, transparent, rgba(0,0,0,.72)),
+        radial-gradient(circle at 15% 0%, rgba(121,200,255,.30), transparent 38%),
+        linear-gradient(135deg, rgba(28,78,112,.48), rgba(8,9,8,.44));
+}
+
+.wildu-travel-swipe-ghost-title {
+    font-size: clamp(34px, 10.5vw, 54px) !important;
+    line-height: .88 !important;
+    max-width: 11ch;
+}
+
+.wildu-travel-swipe-ghost-copy {
+    max-width: 25ch;
+}
+
+.wildu-travel-swipe-ghost-toolbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 11px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.09);
+    background:
+        radial-gradient(circle at 0% 0%, rgba(212,175,55,.16), transparent 40%),
+        rgba(0,0,0,.26);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.wildu-travel-swipe-ghost-count {
+    color: #fff;
+    font-size: 12px;
+    font-weight: 1000;
+    letter-spacing: .35px;
+    text-transform: uppercase;
+}
+
+.wildu-travel-swipe-ghost-filter {
+    padding: 7px 10px;
+    border-radius: 999px;
+    color: #f8e6ad;
+    border: 1px solid rgba(212,175,55,.34);
+    background: rgba(212,175,55,.12);
+    font-size: 10px;
+    font-weight: 1000;
+    text-transform: uppercase;
+}
+
+.wildu-travel-swipe-ghost-cards {
+    justify-content: start !important;
+    padding: 2px 2px 0;
+    overflow: hidden;
+}
+
+.wildu-travel-swipe-ghost-row {
+    min-height: 82px !important;
+    grid-template-columns: 78px 1fr !important;
+    padding: 12px !important;
+    border-radius: 20px !important;
+    background:
+        linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035)) !important;
+}
+
+.wildu-travel-swipe-ghost-thumb {
+    width: 78px !important;
+    height: 58px !important;
+    border-radius: 16px !important;
+}
+
+.wildu-travel-swipe-ghost-line {
+    height: 11px !important;
+}
+
+.wildu-travel-swipe-ghost-footer {
+    justify-self: stretch !important;
+    text-align: center;
+    padding: 11px 14px !important;
+    background: rgba(0,0,0,.42) !important;
 }
 
 @media (max-width: 520px) {
@@ -24125,6 +24397,16 @@ if (profKeyEl) {
     const WILDU_TRAVEL_NAV_LONGPRESS_ENABLED = true;
     const WILDU_TRAVEL_NAV_TAB_IDS = ['events', 'free', 'ondemand'];
     const WILDU_TRAVEL_NAV_GROUP_TAB_IDS = ['travelhub', 'events', 'free', 'ondemand'];
+    const WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY = {
+        dragRotate: 4.0,
+        ghostRotate: 4.0,
+        travelX: 104,
+        releaseRotate: 3.8,
+        releaseMs: 230,
+        incomingMs: 380,
+        overlapMs: 135,
+        easing: 'cubic-bezier(.18,.9,.18,1)'
+    };
     const WILDU_TRAVEL_NAV_LABELS = {
         travelhub: 'Parti con noi',
         events: 'Viaggi',
@@ -24724,23 +25006,31 @@ if (profKeyEl) {
             events: {
                 kicker: 'Catalogo viaggi',
                 title: 'Viaggi',
-                copy: 'Avventure di gruppo con date pronte'
+                copy: 'Avventure di gruppo con date pronte',
+                count: 'Catalogo viaggi',
+                filter: 'Filtri'
             },
             free: {
                 kicker: 'Esperienze gratis',
                 title: 'Open Day',
-                copy: 'Trekking gratuiti per conoscere la community'
+                copy: 'Trekking gratuiti per conoscere la community',
+                count: 'Open day gratuiti',
+                filter: 'Gratis'
             },
             ondemand: {
                 kicker: 'Su misura',
                 title: 'Su richiesta',
-                copy: 'Parti tu, con i servizi che scegli'
+                copy: 'Parti tu, con i servizi che scegli',
+                count: 'Proposte flessibili',
+                filter: 'Su misura'
             }
         };
         return map[targetTab] || {
             kicker: 'Parti con noi',
             title: 'Cambia sezione',
-            copy: 'Rilascia per aprire'
+            copy: 'Rilascia per aprire',
+            count: 'Partenze Wild-U',
+            filter: 'Apri'
         };
     }
 
@@ -24752,16 +25042,26 @@ if (profKeyEl) {
         const kicker = el.querySelector('.wildu-travel-swipe-ghost-kicker');
         const title = el.querySelector('.wildu-travel-swipe-ghost-title');
         const copy = el.querySelector('.wildu-travel-swipe-ghost-copy');
+        const count = el.querySelector('.wildu-travel-swipe-ghost-count');
+        const filter = el.querySelector('.wildu-travel-swipe-ghost-filter');
         if (kicker) kicker.textContent = meta.kicker;
         if (title) title.textContent = meta.title;
         if (copy) copy.textContent = meta.copy;
+        if (count) count.textContent = meta.count;
+        if (filter) filter.textContent = meta.filter;
+        el.querySelectorAll('.wildu-travel-swipe-ghost-navitem').forEach(function (item) {
+            item.classList.toggle('is-active', item.getAttribute('data-ghost-tab') === targetTab);
+        });
 
         const progress = Math.max(0, Math.min(1, Number(absX || 0) / 168));
         const side = dx < 0 ? 1 : -1;
-        el.style.left = side > 0 ? 'auto' : '18px';
-        el.style.right = side > 0 ? '18px' : 'auto';
-        el.style.transform = 'translateX(' + (side * (1 - progress) * 112).toFixed(1) + 'px) rotate(' + (side * (1 - progress) * 4.0).toFixed(2) + 'deg) scale(' + (0.90 + progress * 0.10).toFixed(3) + ')';
-        el.style.opacity = String(Math.max(0, Math.min(1, 0.10 + progress * 0.82)));
+        const viewport = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 360);
+        const entryOffset = Math.max(132, Math.min(240, viewport * 0.42));
+        const maxRotate = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.ghostRotate || 4);
+        el.style.left = side > 0 ? 'auto' : '11px';
+        el.style.right = side > 0 ? '11px' : 'auto';
+        el.style.transform = 'translateX(' + (side * (1 - progress) * entryOffset).toFixed(1) + 'px) rotate(' + (side * (1 - progress) * maxRotate).toFixed(2) + 'deg) scale(' + (0.88 + progress * 0.12).toFixed(3) + ')';
+        el.style.opacity = String(Math.max(0, Math.min(1, 0.04 + progress * 0.92)));
         el.setAttribute('data-target-tab', targetTab);
         el.classList.add('is-visible');
     }
@@ -24807,14 +25107,18 @@ if (profKeyEl) {
         if (!el || el.classList.contains('hidden')) return;
 
         const sign = dx < 0 ? 1 : -1;
+        const travelX = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.travelX || 104);
+        const rotate = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.releaseRotate || 3.8);
+        const duration = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.incomingMs || 380);
+        const easing = WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.easing || 'cubic-bezier(.18,.9,.18,1)';
         el.style.transition = 'none';
-        el.style.transform = 'translateX(' + (sign * 118) + 'px) rotate(' + (sign * 4.2) + 'deg)';
+        el.style.transform = 'translateX(' + (sign * travelX) + 'px) rotate(' + (sign * rotate) + 'deg)';
         el.style.opacity = '.42';
         el.style.willChange = 'transform, opacity';
 
         requestAnimationFrame(function () {
             requestAnimationFrame(function () {
-                el.style.transition = 'transform .42s cubic-bezier(.16,.96,.18,1), opacity .34s ease';
+                el.style.transition = 'transform ' + duration + 'ms ' + easing + ', opacity ' + Math.max(260, duration - 70) + 'ms ease';
                 el.style.transform = '';
                 el.style.opacity = '';
             });
@@ -24827,7 +25131,7 @@ if (profKeyEl) {
                 el.style.opacity = '';
                 el.style.willChange = '';
             }
-        }, 470);
+        }, duration + 90);
     }
 
     function installWilduTravelTabSwipe() {
@@ -24887,7 +25191,8 @@ if (profKeyEl) {
                 const visualEl = wilduTravelTabSwipeTouch.visualEl;
                 if (visualEl) {
                     const damped = targetTab ? dx * .32 : dx * .12;
-                    const rotate = Math.max(-4.0, Math.min(4.0, dx / 96));
+                    const maxRotate = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.dragRotate || 4);
+                    const rotate = Math.max(-maxRotate, Math.min(maxRotate, dx / 96));
                     const opacity = Math.max(.72, 1 - (absX / 560));
                     visualEl.style.transition = 'none';
                     visualEl.style.transform = 'translateX(' + damped + 'px) rotate(' + rotate + 'deg)';
@@ -24926,17 +25231,21 @@ if (profKeyEl) {
                 const visualEl = state.visualEl;
                 if (visualEl) {
                     const sign = dx >= 0 ? 1 : -1;
-                    visualEl.style.transition = 'transform .20s cubic-bezier(.25,.85,.2,1), opacity .18s ease';
-                    visualEl.style.transform = 'translateX(' + (sign * 86) + 'px) rotate(' + (sign * 3.1) + 'deg)';
+                    const travelX = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.travelX || 104);
+                    const rotate = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.releaseRotate || 3.8);
+                    const duration = Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.releaseMs || 230);
+                    const easing = WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.easing || 'cubic-bezier(.18,.9,.18,1)';
+                    visualEl.style.transition = 'transform ' + duration + 'ms ' + easing + ', opacity ' + Math.max(180, duration - 40) + 'ms ease';
+                    visualEl.style.transform = 'translateX(' + (sign * travelX) + 'px) rotate(' + (sign * rotate) + 'deg)';
                     visualEl.style.opacity = '.54';
                 }
                 hideWilduSwipeHint();
-                hideWilduTravelSwipePreview();
                 window.setTimeout(function () {
+                    hideWilduTravelSwipePreview();
                     resetWilduTravelTabSwipeVisual(visualEl, false);
                     show(targetTab, { scrollPolicy: 'top', scrollBehavior: 'auto', source: 'travel-tab-swipe' });
                     animateWilduTravelTabIncoming(targetTab, dx);
-                }, 190);
+                }, Number(WILDU_TRAVEL_TAB_SWIPE_CHOREOGRAPHY.overlapMs || 135));
             } else {
                 resetWilduTravelTabSwipeVisual(state.visualEl, true);
             }
@@ -31578,9 +31887,44 @@ window.addEventListener('pageshow', () => {
 <div id="wildu-swipe-hint" class="wildu-swipe-hint" aria-hidden="true">Trascina per chiudere</div>
 <div id="wildu-travel-swipe-preview" class="wildu-travel-swipe-preview" aria-hidden="true">Cambia sezione?</div>
 <div id="wildu-travel-swipe-ghost" class="wildu-travel-swipe-ghost" aria-hidden="true">
-    <span class="wildu-travel-swipe-ghost-kicker">Prossima sezione</span>
-    <strong class="wildu-travel-swipe-ghost-title">Parti con noi</strong>
-    <span class="wildu-travel-swipe-ghost-copy">Rilascia per aprire</span>
+    <div class="wildu-travel-swipe-ghost-navbar" aria-hidden="true">
+        <span class="wildu-travel-swipe-ghost-navitem" data-ghost-tab="events">Viaggi</span>
+        <span class="wildu-travel-swipe-ghost-navitem" data-ghost-tab="free">Open Day</span>
+        <span class="wildu-travel-swipe-ghost-navitem" data-ghost-tab="ondemand">Su richiesta</span>
+    </div>
+    <div class="wildu-travel-swipe-ghost-head">
+        <span class="wildu-travel-swipe-ghost-kicker">Prossima sezione</span>
+        <strong class="wildu-travel-swipe-ghost-title">Parti con noi</strong>
+        <span class="wildu-travel-swipe-ghost-copy">Rilascia per aprire</span>
+    </div>
+    <div class="wildu-travel-swipe-ghost-toolbar" aria-hidden="true">
+        <span class="wildu-travel-swipe-ghost-count">Partenze Wild-U</span>
+        <span class="wildu-travel-swipe-ghost-filter">Apri</span>
+    </div>
+    <div class="wildu-travel-swipe-ghost-cards" aria-hidden="true">
+        <span class="wildu-travel-swipe-ghost-row">
+            <span class="wildu-travel-swipe-ghost-thumb"></span>
+            <span class="wildu-travel-swipe-ghost-lines">
+                <span class="wildu-travel-swipe-ghost-line"></span>
+                <span class="wildu-travel-swipe-ghost-line is-short"></span>
+            </span>
+        </span>
+        <span class="wildu-travel-swipe-ghost-row">
+            <span class="wildu-travel-swipe-ghost-thumb"></span>
+            <span class="wildu-travel-swipe-ghost-lines">
+                <span class="wildu-travel-swipe-ghost-line"></span>
+                <span class="wildu-travel-swipe-ghost-line is-short"></span>
+            </span>
+        </span>
+        <span class="wildu-travel-swipe-ghost-row">
+            <span class="wildu-travel-swipe-ghost-thumb"></span>
+            <span class="wildu-travel-swipe-ghost-lines">
+                <span class="wildu-travel-swipe-ghost-line"></span>
+                <span class="wildu-travel-swipe-ghost-line is-short"></span>
+            </span>
+        </span>
+    </div>
+    <span class="wildu-travel-swipe-ghost-footer">Rilascia per aprire</span>
 </div>
 
 <!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
