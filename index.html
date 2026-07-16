@@ -1529,21 +1529,45 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     padding: 8px 4px 18px 4px;
 }
 
+.wildu-shop-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(8px, 2vw, 13px);
+    min-width: 0;
+    max-width: 100%;
+    padding: 0 8px;
+    box-sizing: border-box;
+}
+
+.wildu-shop-icon {
+    flex: 0 0 auto;
+    font-size: clamp(29px, 7vw, 42px);
+    line-height: 1;
+}
+
 .wildu-shop-title {
     color: var(--w-gold);
     margin: 0;
-    font-size: 26px;
+    font-size: clamp(18px, 6.1vw, 26px);
     line-height: 1.05;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    min-width: 0;
 }
 
 .wildu-shop-subtitle {
     color: #bbb;
-    font-size: 14px;
-    line-height: 1.5;
-    margin: 10px auto 0 auto;
-    max-width: 580px;
+    font-size: clamp(11px, 3.05vw, 14px);
+    line-height: 1.25;
+    margin: 8px auto 0 auto;
+    max-width: min(92vw, 760px);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .wildu-shop-affiliate-note {
@@ -3236,7 +3260,9 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 .wildu-grade-legend-toggle {
     width: 100%;
     border: none;
-    background: transparent;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(212,175,55,.13), transparent 36%),
+        linear-gradient(135deg, rgba(255,255,255,.045), rgba(255,255,255,.014));
     color: #fff;
     padding: 18px 20px;
     display: flex;
@@ -3248,12 +3274,77 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 .wildu-grade-legend-body {
-    display: none;
-    padding: 0 18px 18px 18px;
+    display: block;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    padding: 0 18px;
+    transition: max-height .28s ease, opacity .20s ease, padding .20s ease;
 }
 
 .wildu-grade-legend-card.legend-open .wildu-grade-legend-body {
-    display: block;
+    max-height: 980px;
+    opacity: 1;
+    padding: 0 18px 18px 18px;
+}
+
+#wildu-grade-legend-card .wildu-desktop-toggle-wrap {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#wildu-grade-legend-card .wildu-desktop-toggle-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 52px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(212,175,55,.28);
+    background: rgba(212,175,55,.12);
+    color: #f6d889;
+    font-size: 10px;
+    font-weight: 950;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: .55px;
+    white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+    #wildu-grade-legend-card .wildu-desktop-toggle-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        border: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    #wildu-grade-legend-card .wildu-desktop-toggle-wrap {
+        min-width: 32px;
+        justify-content: flex-end;
+    }
+
+    #wildu-grade-legend-card .wildu-grade-legend-toggle {
+        padding-right: 16px;
+    }
+}
+
+#wildu-grade-legend-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: rgba(0,0,0,.24);
+    transition: transform .22s ease;
 }
 
 .wildu-grade-row {
@@ -5036,6 +5127,39 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     transform: translateX(-50%) translateY(0);
 }
 
+.wildu-travel-swipe-preview {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(.94);
+    z-index: 3090;
+    opacity: 0;
+    pointer-events: none;
+    min-width: min(78vw, 320px);
+    max-width: calc(100vw - 42px);
+    padding: 13px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(212,175,55,.42);
+    background:
+        radial-gradient(circle at 16% 0%, rgba(212,175,55,.18), transparent 42%),
+        linear-gradient(135deg, rgba(17,24,18,.94), rgba(0,0,0,.90));
+    color: #fff6cf;
+    font-size: 13px;
+    font-weight: 1000;
+    line-height: 1.18;
+    letter-spacing: .35px;
+    text-transform: uppercase;
+    text-align: center;
+    box-shadow: 0 18px 54px rgba(0,0,0,.64), inset 0 1px 0 rgba(255,255,255,.08);
+    backdrop-filter: blur(12px);
+    transition: opacity .13s ease, transform .13s ease;
+}
+
+.wildu-travel-swipe-preview.is-visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
 @media (max-width: 520px) {
     .wildu-soft-modal-card {
         max-height: min(82vh, 720px);
@@ -5407,6 +5531,12 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     background: linear-gradient(135deg, #2f9f58, #d4af37);
     color: #09110d;
     border-color: rgba(212,175,55,.72) !important;
+}
+
+.wildu-legal-modal.is-revoke-mode .wildu-legal-accept {
+    background: linear-gradient(135deg, #8f1f1f, #d84343);
+    color: #fff;
+    border-color: rgba(255,95,95,.72) !important;
 }
 
 .wildu-legal-modal-body {
@@ -6323,7 +6453,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
                 <div>
                     <div class="wildu-legal-modal-kicker">Privacy Wild-U</div>
                     <h3 id="wildu-legal-title" class="wildu-legal-modal-title">Consensi, privacy e preferenze</h3>
-                    <p class="wildu-legal-modal-subtitle">Leggi le informazioni essenziali e scegli se dare il consenso. Puoi chiudere senza consenso: se stai prenotando, il flusso prosegue comunque.</p>
+                    <p id="wildu-legal-modal-subtitle" class="wildu-legal-modal-subtitle">Leggi le informazioni essenziali e scegli se dare il consenso. Puoi chiudere senza consenso: se stai prenotando, il flusso prosegue comunque.</p>
                 </div>
                 <button type="button" class="wildu-legal-modal-scroll-btn" onclick="scrollWilduLegalConsentToEnd()">Vai al consenso</button>
             </div>
@@ -6406,8 +6536,10 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     <div id="sec-negozio" class="hidden">
         <section class="wildu-shop-shell">
             <div class="wildu-shop-hero">
-                <div style="font-size:42px; margin-bottom:6px;">🎒</div>
-                <h2 class="wildu-shop-title">Negozio Wild-U</h2>
+                <div class="wildu-shop-title-row">
+                    <div class="wildu-shop-icon" aria-hidden="true">🎒</div>
+                    <h2 class="wildu-shop-title">Negozio Wild-U</h2>
+                </div>
                 <p class="wildu-shop-subtitle">
                     Attrezzatura, libri, manuali e accessori scelti per cammini, trekking e avventure.
                 </p>
@@ -12603,6 +12735,11 @@ function isWilduConsentCurrentInMap(consents, key) {
     return item.accepted === true && item.version === WILDU_LEGAL_CONSENT_VERSIONS[key];
 }
 
+function isWilduConsentRevokedInMap(consents, key) {
+    const item = (consents && typeof consents === 'object' ? consents[key] : null) || {};
+    return item.accepted === false && !!item.revokedAt;
+}
+
 function isWilduConsentCurrent(key) {
     return isWilduConsentCurrentInMap(getWilduLegalConsents(), key);
 }
@@ -12616,6 +12753,7 @@ function getWilduLegalConsentStateFromMap(consents) {
         privacyOk,
         cookiesOk,
         healthOk,
+        revoked: ['privacy', 'cookies', 'healthBooking'].some(key => isWilduConsentRevokedInMap(consents, key)),
         complete: privacyOk && cookiesOk && healthOk
     };
 }
@@ -12686,21 +12824,25 @@ function renderWilduLegalConsentStatus() {
     const allOk = consentState.complete === true;
 
     if (status) {
-        status.innerText = allOk ? 'completo' : 'da completare';
-        status.style.color = allOk ? '#9dffbd' : '#9ed6ff';
-        status.style.borderColor = allOk ? 'rgba(157,255,189,.38)' : 'rgba(158,214,255,.34)';
-        status.style.background = allOk ? 'rgba(49,185,90,.10)' : 'rgba(158,214,255,.10)';
+        const revoked = consentState.revoked === true;
+        status.innerText = allOk ? 'completo' : (revoked ? 'revocato' : 'da completare');
+        status.style.color = allOk ? '#9dffbd' : (revoked ? '#ffb1b1' : '#9ed6ff');
+        status.style.borderColor = allOk ? 'rgba(157,255,189,.38)' : (revoked ? 'rgba(255,95,95,.38)' : 'rgba(158,214,255,.34)');
+        status.style.background = allOk ? 'rgba(49,185,90,.10)' : (revoked ? 'rgba(255,95,95,.10)' : 'rgba(158,214,255,.10)');
     }
 
     if (healthStatus) {
         healthStatus.innerText = allOk
             ? 'Confermata. Non te la richiederemo di nuovo finche il testo resta invariato.'
-            : 'Da confermare per completare privacy, preferenze tecniche e partecipazione outdoor.';
+            : (consentState.revoked === true
+                ? 'Revocata. Puoi ridare il consenso dal Profilo quando vuoi.'
+                : 'Da confermare per completare privacy, preferenze tecniche e partecipazione outdoor.');
     }
 }
 
 let wilduLegalConsentModalState = {
     source: 'profile',
+    mode: 'accept',
     allowContinueWithoutConsent: false,
     confirmingCancel: false,
     resolve: null
@@ -12740,6 +12882,33 @@ function buildWilduLegalConsentPatch(source) {
     };
 }
 
+function buildWilduLegalConsentRevocationPatch(source) {
+    const revokedAt = new Date().toISOString();
+    const revocationSource = source || 'profile';
+    const current = getWilduLegalConsents();
+
+    function revokeEntry(key) {
+        return {
+            ...((current && current[key]) || {}),
+            accepted: false,
+            version: WILDU_LEGAL_CONSENT_VERSIONS[key],
+            revokedAt: revokedAt,
+            revokedSource: revocationSource,
+            revocationNotice: "Consenso revocato dall'utente. La revoca non incide sui trattamenti gia effettuati prima della revoca."
+        };
+    }
+
+    return {
+        privacy: revokeEntry('privacy'),
+        cookies: {
+            ...revokeEntry('cookies'),
+            analytics: false,
+            marketing: false
+        },
+        healthBooking: revokeEntry('healthBooking')
+    };
+}
+
 async function acceptWilduAllLegalConsents(source) {
     try {
         const saved = await saveWilduLegalConsentPatch(buildWilduLegalConsentPatch(source));
@@ -12756,32 +12925,54 @@ async function acceptWilduAllLegalConsents(source) {
     }
 }
 
+async function revokeWilduAllLegalConsents(source) {
+    try {
+        const saved = await saveWilduLegalConsentPatch(buildWilduLegalConsentRevocationPatch(source));
+        if (!saved) return false;
+        showToast("Consenso revocato. Puoi ridarlo quando vuoi dal Profilo.");
+        return true;
+    } catch (err) {
+        console.error("Errore revoca consensi privacy:", err);
+        showToast("Revoca non salvata. Riprova.");
+        return false;
+    }
+}
+
 function openWilduLegalConsentModal(source, options = {}) {
     const modal = document.getElementById('wildu-legal-consent-modal');
     const body = document.getElementById('wildu-legal-modal-body');
+    const subtitle = document.getElementById('wildu-legal-modal-subtitle');
     if (!modal) return Promise.resolve(false);
     if (modal.parentElement !== document.body) {
         document.body.appendChild(modal);
     }
 
     return new Promise(resolve => {
+        const revokeMode = hasWilduCompleteLegalConsent() === true;
         wilduLegalConsentModalState = {
             source: source || 'profile',
-            allowContinueWithoutConsent: options.allowContinueWithoutConsent === true,
+            mode: revokeMode ? 'revoke' : 'accept',
+            allowContinueWithoutConsent: revokeMode ? false : options.allowContinueWithoutConsent === true,
             confirmingCancel: false,
             resolve
         };
 
         modal.classList.add('is-open');
         modal.classList.remove('is-confirming-cancel');
+        modal.classList.toggle('is-revoke-mode', revokeMode);
         modal.setAttribute('aria-hidden', 'false');
 
         modal.querySelectorAll('.wildu-legal-cancel').forEach(btn => {
             btn.innerText = 'Annulla';
         });
         modal.querySelectorAll('.wildu-legal-accept').forEach(btn => {
-            btn.innerText = 'Dai il tuo consenso';
+            btn.innerText = revokeMode ? 'Revoca il tuo consenso' : 'Dai il tuo consenso';
         });
+        if (subtitle) {
+            subtitle.innerText = revokeMode
+                ? 'Hai gia dato il consenso. Da qui puoi leggere le informazioni oppure revocarlo: la revoca non cancella quanto gia trattato prima della revoca.'
+                : 'Leggi le informazioni essenziali e scegli se dare il consenso. Puoi chiudere senza consenso: se stai prenotando, il flusso prosegue comunque.';
+        }
 
         if (body) {
             body.scrollTop = 0;
@@ -12793,13 +12984,14 @@ function openWilduLegalConsentModal(source, options = {}) {
 function closeWilduLegalConsentModal(result) {
     const modal = document.getElementById('wildu-legal-consent-modal');
     if (modal) {
-        modal.classList.remove('is-open', 'is-confirming-cancel');
+        modal.classList.remove('is-open', 'is-confirming-cancel', 'is-revoke-mode');
         modal.setAttribute('aria-hidden', 'true');
     }
 
     const resolver = wilduLegalConsentModalState && wilduLegalConsentModalState.resolve;
     wilduLegalConsentModalState = {
         source: 'profile',
+        mode: 'accept',
         allowContinueWithoutConsent: false,
         confirmingCancel: false,
         resolve: null
@@ -12830,6 +13022,14 @@ function cancelWilduLegalConsentModal() {
 
 async function confirmWilduLegalConsentModal() {
     const state = wilduLegalConsentModalState || {};
+    if (state.mode === 'revoke') {
+        const ok = window.confirm('Revocare il consenso registrato nel profilo Wild-U? Potrai ridarlo in qualsiasi momento dal Profilo.');
+        if (!ok) return;
+        const revoked = await revokeWilduAllLegalConsents(state.source || 'profile');
+        if (revoked) closeWilduLegalConsentModal(false);
+        return;
+    }
+
     const saved = await acceptWilduAllLegalConsents(state.source || 'profile');
     if (saved) closeWilduLegalConsentModal(true);
 }
@@ -13282,6 +13482,61 @@ function loginWithGoogle() {
 
         showToast("Errore accesso Google. Riprova con connessione attiva.");
     });
+}
+
+function installWilduBrowserEdgeHistoryGuard() {
+    if (WILDU_BROWSER_EDGE_HISTORY_GUARD_ENABLED !== true) return;
+    if (window.__wilduBrowserEdgeHistoryGuardInstalled) return;
+    window.__wilduBrowserEdgeHistoryGuardInstalled = true;
+
+    document.addEventListener('touchstart', function (event) {
+        const touch = event.touches && event.touches[0];
+        if (!touch) {
+            WILDU_BROWSER_EDGE_HISTORY_TOUCH = null;
+            return;
+        }
+
+        const width = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+        const edgePx = Math.max(14, Number(WILDU_BROWSER_EDGE_HISTORY_GUARD_PX || 26));
+        const fromLeft = touch.clientX <= edgePx;
+        const fromRight = touch.clientX >= width - edgePx;
+
+        WILDU_BROWSER_EDGE_HISTORY_TOUCH = (fromLeft || fromRight) ? {
+            x: touch.clientX,
+            y: touch.clientY,
+            fromLeft,
+            fromRight
+        } : null;
+    }, { passive: true, capture: true });
+
+    document.addEventListener('touchmove', function (event) {
+        if (!event.cancelable || !WILDU_BROWSER_EDGE_HISTORY_TOUCH) return;
+
+        const touch = event.touches && event.touches[0];
+        if (!touch) return;
+
+        const dx = touch.clientX - WILDU_BROWSER_EDGE_HISTORY_TOUCH.x;
+        const dy = touch.clientY - WILDU_BROWSER_EDGE_HISTORY_TOUCH.y;
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+
+        if (absX < 10 || absX < absY * 1.15) return;
+
+        const horizontalZone = getWilduHorizontalGestureZone(event.target);
+        if (horizontalZone && canWilduScrollElementHorizontally(horizontalZone, dx)) {
+            return;
+        }
+
+        event.preventDefault();
+    }, { passive: false, capture: true });
+
+    document.addEventListener('touchend', function () {
+        WILDU_BROWSER_EDGE_HISTORY_TOUCH = null;
+    }, { passive: true, capture: true });
+
+    document.addEventListener('touchcancel', function () {
+        WILDU_BROWSER_EDGE_HISTORY_TOUCH = null;
+    }, { passive: true, capture: true });
 }
 
 
@@ -23896,9 +24151,43 @@ if (profKeyEl) {
         const index = WILDU_TRAVEL_NAV_TAB_IDS.indexOf(currentTab);
         if (index < 0) return null;
 
-        const nextIndex = dx < 0 ? index + 1 : index - 1;
-        if (nextIndex < 0 || nextIndex >= WILDU_TRAVEL_NAV_TAB_IDS.length) return null;
+        const len = WILDU_TRAVEL_NAV_TAB_IDS.length;
+        if (!len) return null;
+        const nextIndex = (index + (dx < 0 ? 1 : -1) + len) % len;
         return WILDU_TRAVEL_NAV_TAB_IDS[nextIndex];
+    }
+
+    function getWilduTravelTabSwipePreviewText(targetTab, dx) {
+        const icon = dx < 0 ? '→' : '←';
+        const map = {
+            events: '🥾 Vai ai viaggi?',
+            free: '🎁 Vai agli Open Day?',
+            ondemand: '🧭 Vai su richiesta?'
+        };
+        return icon + ' ' + (map[targetTab] || 'Cambia sezione?');
+    }
+
+    function getWilduTravelSwipePreviewEl() {
+        return document.getElementById('wildu-travel-swipe-preview');
+    }
+
+    function showWilduTravelSwipePreview(targetTab, dx, absX) {
+        const el = getWilduTravelSwipePreviewEl();
+        if (!el || !targetTab) return;
+        const progress = Math.max(0, Math.min(1, Number(absX || 0) / 150));
+        const side = dx < 0 ? 1 : -1;
+        el.textContent = getWilduTravelTabSwipePreviewText(targetTab, dx);
+        el.style.transform = 'translate(calc(-50% + ' + (side * (1 - progress) * 18).toFixed(1) + 'px), -50%) scale(' + (0.94 + progress * 0.06).toFixed(3) + ')';
+        el.style.opacity = String(Math.max(0, Math.min(1, 0.18 + progress * 0.82)));
+        el.classList.add('is-visible');
+    }
+
+    function hideWilduTravelSwipePreview() {
+        const el = getWilduTravelSwipePreviewEl();
+        if (!el) return;
+        el.classList.remove('is-visible');
+        el.style.opacity = '';
+        el.style.transform = '';
     }
 
     function getWilduTravelTabSwipeVisualEl() {
@@ -23919,6 +24208,7 @@ if (profKeyEl) {
             el.style.transition = '';
         }
         hideWilduSwipeHint();
+        hideWilduTravelSwipePreview();
     }
 
     function installWilduTravelTabSwipe() {
@@ -23977,13 +24267,14 @@ if (profKeyEl) {
 
                 const visualEl = wilduTravelTabSwipeTouch.visualEl;
                 if (visualEl) {
-                    const damped = targetTab ? dx * .30 : dx * .10;
-                    const rotate = Math.max(-3.2, Math.min(3.2, dx / 95));
-                    const opacity = Math.max(.76, 1 - (absX / 620));
+                    const damped = targetTab ? dx * .36 : dx * .12;
+                    const rotate = Math.max(-4.4, Math.min(4.4, dx / 82));
+                    const opacity = Math.max(.72, 1 - (absX / 560));
                     visualEl.style.transition = 'none';
                     visualEl.style.transform = 'translateX(' + damped + 'px) rotate(' + rotate + 'deg)';
                     visualEl.style.opacity = String(opacity);
                 }
+                showWilduTravelSwipePreview(targetTab, dx, absX);
                 showWilduSwipeHint(targetTab && absX >= 82 ? 'Rilascia per cambiare sezione' : 'Trascina per cambiare sezione');
             }
         }, { passive: false });
@@ -24019,6 +24310,7 @@ if (profKeyEl) {
                     visualEl.style.opacity = '.62';
                 }
                 hideWilduSwipeHint();
+                hideWilduTravelSwipePreview();
                 window.setTimeout(function () {
                     resetWilduTravelTabSwipeVisual(visualEl, false);
                     show(targetTab, { scrollPolicy: 'top', scrollBehavior: 'auto', source: 'travel-tab-swipe' });
@@ -24033,6 +24325,7 @@ if (profKeyEl) {
                 resetWilduTravelTabSwipeVisual(wilduTravelTabSwipeTouch.visualEl, true);
             }
             wilduTravelTabSwipeTouch = null;
+            hideWilduTravelSwipePreview();
         }, { passive: true });
     }
 
@@ -25518,6 +25811,65 @@ function renderDynamicResources(resources) {
     });
 }
 
+function isWilduDiscountRuntimeModule(res) {
+    const haystack = [
+        res && res.Titolo,
+        res && res.title,
+        res && res.Nome,
+        res && res.Descrizione,
+        res && res.Link_Risorsa,
+        res && res.link_risorsa,
+        res && res.url
+    ].join(' ').toLowerCase();
+
+    return haystack.includes('wildu-sconti') ||
+        haystack.includes('sconti wild-u') ||
+        haystack.includes('sconti community') ||
+        haystack.includes('sconti');
+}
+
+function isWilduLibraryRuntimeModule(res) {
+    const haystack = [
+        res && res.Titolo,
+        res && res.title,
+        res && res.Nome,
+        res && res.Descrizione,
+        res && res.Link_Risorsa,
+        res && res.link_risorsa,
+        res && res.url
+    ].join(' ').toLowerCase();
+
+    return haystack.includes('media-biblioteca') ||
+        haystack.includes('biblioteca wild-u') ||
+        haystack.includes('biblioteca') ||
+        haystack.includes('manuali');
+}
+
+function orderWilduRewardModulesForDisplay(modules) {
+    if (!Array.isArray(modules) || modules.length < 2) return modules || [];
+
+    const discountModules = modules.filter(isWilduDiscountRuntimeModule);
+    if (!discountModules.length) return modules;
+
+    const otherModules = modules.filter(function (res) {
+        return !isWilduDiscountRuntimeModule(res);
+    });
+
+    const libraryIndex = otherModules.findIndex(isWilduLibraryRuntimeModule);
+    if (libraryIndex < 0) return modules;
+
+    const alreadyAdjacent = modules.some(function (res, index) {
+        return isWilduDiscountRuntimeModule(res) &&
+            index + 1 < modules.length &&
+            isWilduLibraryRuntimeModule(modules[index + 1]);
+    });
+
+    if (alreadyAdjacent) return modules;
+
+    otherModules.splice(libraryIndex, 0, ...discountModules);
+    return otherModules;
+}
+
 async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapshot) {
     let runtime = null;
     let modules = [];
@@ -25570,17 +25922,19 @@ async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapsh
         return;
     }
 
+    const displayModules = orderWilduRewardModulesForDisplay(modules);
+
     window.WILDU_RESOURCE_BUCKETS = {
         gpx: [],
         libri: [],
         radio: [],
-        mediaSuite: modules,
+        mediaSuite: displayModules,
         hidden: Array.isArray(legacyResourcesSnapshot) ? legacyResourcesSnapshot : [],
-        visible: modules,
+        visible: displayModules,
         source: "module_versions"
     };
 
-    container.innerHTML = modules.map(function (res) {
+    container.innerHTML = displayModules.map(function (res) {
         const safeLinks = btoa(JSON.stringify(Array.isArray(res.link_interni) ? res.link_interni : []));
         const grado = res.Grado_Minimo || "";
 
@@ -25643,7 +25997,7 @@ async function loadAndRenderWilduRuntimeModules(container, legacyResourcesSnapsh
 
     console.log("[WILDU MODULES] Render da module_versions completato", {
         count: modules.length,
-        modules: modules.map(function (m) {
+        modules: displayModules.map(function (m) {
             return {
                 title: m.Titolo || m.title,
                 url: m.Link_Risorsa || m.url,
@@ -30212,8 +30566,11 @@ if (window.visualViewport) {
     window.visualViewport.addEventListener('scroll', syncAmazonFooterViewportOffset);
 }
 
+const WILDU_BROWSER_EDGE_HISTORY_GUARD_ENABLED = true;
+const WILDU_BROWSER_EDGE_HISTORY_GUARD_PX = 26;
 let WILDU_ROOT_OVERSCROLL_TOUCH = null;
 let WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS = typeof WeakSet === 'function' ? new WeakSet() : null;
+let WILDU_BROWSER_EDGE_HISTORY_TOUCH = null;
 
 function getWilduVerticalScrollableAncestor(target) {
     let el = target;
@@ -30235,7 +30592,7 @@ function getWilduHorizontalGestureZone(target) {
 
     // Contratto anti-regressione: ogni nuovo carosello o area con swipe/scroll
     // orizzontale deve dichiararsi qui o usare data-wildu-horizontal-zone="true".
-    return el.closest([
+    const zone = el.closest([
         '[data-wildu-horizontal-zone="true"]',
         '.wildu-horizontal-gesture-zone',
         '.nav',
@@ -30249,6 +30606,45 @@ function getWilduHorizontalGestureZone(target) {
         '#od-details-modal.is-visible #od-details-card',
         '#od-details-modal[style*="display: block"] #od-details-card'
     ].join(','));
+
+    if (!zone) return null;
+    if (isWilduHorizontallyScrollableElement(zone)) return zone;
+
+    const scrollable = findWilduHorizontalScrollerInside(zone);
+    return scrollable || zone;
+}
+
+function isWilduHorizontallyScrollableElement(el) {
+    if (!el) return false;
+    try {
+        const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        const overflowX = style ? String(style.overflowX || '') : '';
+        const canOverflow = /(auto|scroll|overlay)/.test(overflowX) || el.hasAttribute('data-wildu-horizontal-zone');
+        return canOverflow && (el.scrollWidth || 0) > (el.clientWidth || 0) + 2;
+    } catch (e) {
+        return (el.scrollWidth || 0) > (el.clientWidth || 0) + 2;
+    }
+}
+
+function findWilduHorizontalScrollerInside(zone) {
+    if (!zone || typeof zone.querySelectorAll !== 'function') return null;
+    const candidates = zone.querySelectorAll([
+        '[data-wildu-horizontal-zone="true"]',
+        '.wildu-horizontal-gesture-zone',
+        '.wd-carousel',
+        '.wildwall-preview-rail',
+        '.wildu-rewards-video-row',
+        '.wildu-shop-row',
+        '.amazon-slider'
+    ].join(','));
+
+    for (const candidate of candidates) {
+        if (candidate !== zone && isWilduHorizontallyScrollableElement(candidate)) {
+            return candidate;
+        }
+    }
+
+    return null;
 }
 
 function canWilduScrollElementHorizontally(el, touchDeltaX) {
@@ -30462,6 +30858,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncWilduDisplayModeClass();
     syncAmazonFooterViewportOffset();
     installWilduRootOverscrollGuard();
+    installWilduBrowserEdgeHistoryGuard();
     installWilduTopLayerEscapeRouter();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
@@ -30555,6 +30952,7 @@ window.addEventListener('pageshow', () => {
 
 <!-- WILDU V43 — hint swipe condiviso -->
 <div id="wildu-swipe-hint" class="wildu-swipe-hint" aria-hidden="true">Trascina per chiudere</div>
+<div id="wildu-travel-swipe-preview" class="wildu-travel-swipe-preview" aria-hidden="true">Cambia sezione?</div>
 
 <!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
 <div id="wildu-related-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Potrebbe interessarti">
