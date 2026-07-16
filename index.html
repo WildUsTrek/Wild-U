@@ -4,7 +4,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild-U Hub - Master Edition 1 🌲</title>
+    <title>Wild-U Bussola</title>
     <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
     <meta property="og:site_name" content="Wild-U">
     <meta property="og:type" content="website">
@@ -347,6 +347,11 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     left: var(--wildu-travel-menu-left, 12px);
     top: var(--wildu-travel-menu-top, 96px);
     width: min(420px, calc(100vw - 24px));
+    max-height: min(72vh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     display: none;
     padding: 12px;
     border-radius: 20px;
@@ -606,6 +611,34 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 .wildu-travel-nav-choice.is-active {
     border-color: rgba(212,175,55,.45);
     background: linear-gradient(135deg, rgba(45,90,39,.42), rgba(212,175,55,.10));
+}
+
+@media (min-width: 900px) {
+    .wildu-travelhub-section {
+        width: min(100%, 1120px);
+        margin: 0 auto;
+    }
+
+    .wildu-travelhub-carousel {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        justify-content: center;
+        gap: 14px;
+        overflow: visible;
+        scroll-snap-type: none;
+        padding: 2px 0 10px 0;
+    }
+
+    .wildu-travelhub-card {
+        flex: initial;
+        width: 100%;
+        min-width: 0;
+        scroll-snap-align: none;
+    }
+
+    .wildu-travelhub-scroll-hint {
+        display: none;
+    }
 }
 
 /* --- WILDU AUDIO TOGGLE: parte reale della navbar, non più inseguitore fixed --- */
@@ -2560,7 +2593,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 .wildu-rewards-travel-quick-cell {
-    margin: 18px 0 10px 0;
+    margin: 18px 0 24px 0;
     padding: 16px 15px 17px 15px;
     border-radius: 18px;
     border: 1px solid rgba(212,175,55,.18);
@@ -2618,7 +2651,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         order: 3;
         grid-column: 1 / -1;
         padding: 18px 22px 20px 22px;
-        margin: 24px 0 10px 0;
+        margin: 24px 0 32px 0;
     }
 
     .wildu-rewards-travel-links {
@@ -3327,12 +3360,35 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     }
 
     #wildu-grade-legend-card .wildu-desktop-toggle-wrap {
-        min-width: 32px;
-        justify-content: flex-end;
+        display: none;
     }
 
     #wildu-grade-legend-card .wildu-grade-legend-toggle {
         padding-right: 16px;
+    }
+
+    #wildu-grade-legend-card .wildu-grade-legend-toggle::after {
+        content: "Apri +";
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 70px;
+        padding: 8px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(212,175,55,.42);
+        background: rgba(212,175,55,.16);
+        color: #f6d889;
+        font-size: 10px;
+        line-height: 1;
+        font-weight: 950;
+        text-transform: uppercase;
+        letter-spacing: .45px;
+        box-shadow: 0 8px 20px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    #wildu-grade-legend-card.legend-open .wildu-grade-legend-toggle::after {
+        content: "Chiudi -";
     }
 }
 
@@ -4139,12 +4195,14 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         grid-row: 1;
         min-width: 0;
         margin-top: 0 !important;
+        position: relative;
+        z-index: 2;
     }
 
     #profile-data > .wildu-bookings-card {
         grid-column: 2;
-        grid-row: 2 / span 8;
-        margin-top: 0 !important;
+        grid-row: 1 / span 8;
+        margin-top: 58px !important;
         min-width: 0;
         align-self: start;
     }
@@ -23733,6 +23791,8 @@ if (profKeyEl) {
     const WILDU_GROUPED_TRAVEL_NAV_ENABLED = true;
     const WILDU_SCREEN_WAKE_LOCK_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_ENABLED = true;
+    const WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED = true;
+    const WILDU_TRAVEL_NAV_LONGPRESS_ENABLED = true;
     const WILDU_TRAVEL_NAV_TAB_IDS = ['events', 'free', 'ondemand'];
     const WILDU_TRAVEL_NAV_GROUP_TAB_IDS = ['travelhub', 'events', 'free', 'ondemand'];
     const WILDU_TRAVEL_NAV_LABELS = {
@@ -23751,6 +23811,9 @@ if (profKeyEl) {
     let wilduTravelHubAutoScrollResumeTimer = null;
     let wilduTravelNavMenuPositionRaf = null;
     let wilduTravelTabSwipeTouch = null;
+    let wilduTravelNavLongPressTimer = null;
+    let wilduTravelNavLongPressPointer = null;
+    let wilduTravelNavSuppressClickUntil = 0;
 
     function isWilduGroupedTravelNavEnabled() {
         return WILDU_GROUPED_TRAVEL_NAV_ENABLED === true;
@@ -23805,9 +23868,24 @@ if (profKeyEl) {
         return !!(section && !section.classList.contains('hidden'));
     }
 
+    function isWilduTravelHubDesktopStaticLayout() {
+        try {
+            return !!(window.matchMedia && window.matchMedia('(min-width: 900px)').matches);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function resetWilduTravelHubDesktopScroll() {
+        const carousel = getWilduTravelHubCarousel();
+        if (!carousel || !isWilduTravelHubDesktopStaticLayout()) return;
+        if (carousel.scrollLeft) carousel.scrollLeft = 0;
+    }
+
     function shouldRunWilduTravelHubAutoScroll() {
         if (WILDU_TRAVELHUB_AUTOSCROLL_ENABLED !== true) return false;
         if (!isWilduTravelHubVisible()) return false;
+        if (isWilduTravelHubDesktopStaticLayout()) return false;
         if (WILDU_TRAVELHUB_AUTOSCROLL_RESPECT_REDUCED_MOTION !== true) return true;
         try {
             return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -23983,15 +24061,97 @@ if (profKeyEl) {
         }
 
         if (btn) {
-            btn.removeAttribute('aria-expanded');
+            btn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
         }
 
         if (shouldOpen) positionWilduTravelNavMenu();
     }
 
+    function clearWilduTravelNavLongPress() {
+        if (wilduTravelNavLongPressTimer) {
+            clearTimeout(wilduTravelNavLongPressTimer);
+            wilduTravelNavLongPressTimer = null;
+        }
+        wilduTravelNavLongPressPointer = null;
+    }
+
+    function openWilduTravelNavQuickMenu(reason) {
+        if (!isWilduGroupedTravelNavEnabled()) return false;
+        setWilduTravelNavMenuOpen(true);
+        requestWilduScreenWakeLock(reason || 'travel-nav-longpress');
+        setTimeout(scrollWilduTravelHubIntoView, 0);
+        return true;
+    }
+
+    function shouldSuppressWilduTravelNavClick() {
+        return Date.now() < wilduTravelNavSuppressClickUntil;
+    }
+
+    function installWilduTravelNavLongPress() {
+        if (WILDU_TRAVEL_NAV_LONGPRESS_ENABLED !== true) return;
+        if (window.__wilduTravelNavLongPressInstalled) return;
+        window.__wilduTravelNavLongPressInstalled = true;
+
+        const btn = document.getElementById('btn-travel-hub');
+        if (!btn) return;
+
+        btn.addEventListener('pointerdown', function (event) {
+            if (!isWilduGroupedTravelNavEnabled()) return;
+            if (event.button !== undefined && event.button !== 0) return;
+
+            clearWilduTravelNavLongPress();
+            wilduTravelNavLongPressPointer = {
+                x: event.clientX,
+                y: event.clientY
+            };
+
+            wilduTravelNavLongPressTimer = setTimeout(function () {
+                wilduTravelNavLongPressTimer = null;
+                wilduTravelNavSuppressClickUntil = Date.now() + 760;
+                openWilduTravelNavQuickMenu('travel-nav-longpress');
+            }, 520);
+        }, { passive: true });
+
+        btn.addEventListener('pointermove', function (event) {
+            if (!wilduTravelNavLongPressPointer) return;
+            const dx = Math.abs(event.clientX - wilduTravelNavLongPressPointer.x);
+            const dy = Math.abs(event.clientY - wilduTravelNavLongPressPointer.y);
+            if (dx > 10 || dy > 10) clearWilduTravelNavLongPress();
+        }, { passive: true });
+
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (type) {
+            btn.addEventListener(type, clearWilduTravelNavLongPress, { passive: true });
+        });
+
+        btn.addEventListener('contextmenu', function (event) {
+            if (!isWilduGroupedTravelNavEnabled()) return;
+            if (event && event.preventDefault) event.preventDefault();
+            wilduTravelNavSuppressClickUntil = Date.now() + 760;
+            openWilduTravelNavQuickMenu('travel-nav-contextmenu');
+        });
+
+        document.addEventListener('pointerdown', function (event) {
+            const menu = document.getElementById('wildu-travel-nav-menu');
+            const hubBtn = document.getElementById('btn-travel-hub');
+            if (!menu || !menu.classList.contains('is-open')) return;
+            if (event.target && typeof event.target.closest === 'function') {
+                if (event.target.closest('#wildu-travel-nav-menu') || event.target.closest('#btn-travel-hub')) return;
+            }
+            setWilduTravelNavMenuOpen(false);
+        }, { passive: true });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') setWilduTravelNavMenuOpen(false);
+        });
+    }
+
     function toggleWilduTravelNavMenu(event) {
         if (event && event.preventDefault) event.preventDefault();
         if (event && event.stopPropagation) event.stopPropagation();
+
+        if (shouldSuppressWilduTravelNavClick()) {
+            return false;
+        }
 
         setWilduTravelNavMenuOpen(false);
 
@@ -24211,6 +24371,37 @@ if (profKeyEl) {
         hideWilduTravelSwipePreview();
     }
 
+    function animateWilduTravelTabIncoming(targetTab, dx) {
+        if (WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED !== true) return;
+        if (!WILDU_TRAVEL_NAV_TAB_IDS.includes(targetTab)) return;
+
+        const el = document.getElementById('sec-' + targetTab);
+        if (!el || el.classList.contains('hidden')) return;
+
+        const sign = dx < 0 ? 1 : -1;
+        el.style.transition = 'none';
+        el.style.transform = 'translateX(' + (sign * 72) + 'px) rotate(' + (sign * 2.4) + 'deg)';
+        el.style.opacity = '.64';
+        el.style.willChange = 'transform, opacity';
+
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                el.style.transition = 'transform .24s cubic-bezier(.18,.88,.22,1), opacity .22s ease';
+                el.style.transform = '';
+                el.style.opacity = '';
+            });
+        });
+
+        window.setTimeout(function () {
+            if (!el.classList.contains('hidden')) {
+                el.style.transition = '';
+                el.style.transform = '';
+                el.style.opacity = '';
+                el.style.willChange = '';
+            }
+        }, 290);
+    }
+
     function installWilduTravelTabSwipe() {
         if (window.__wilduTravelTabSwipeInstalled) return;
         window.__wilduTravelTabSwipeInstalled = true;
@@ -24314,6 +24505,7 @@ if (profKeyEl) {
                 window.setTimeout(function () {
                     resetWilduTravelTabSwipeVisual(visualEl, false);
                     show(targetTab, { scrollPolicy: 'top', scrollBehavior: 'auto', source: 'travel-tab-swipe' });
+                    animateWilduTravelTabIncoming(targetTab, dx);
                 }, 145);
             } else {
                 resetWilduTravelTabSwipeVisual(state.visualEl, true);
@@ -24332,6 +24524,7 @@ if (profKeyEl) {
     function initWilduTravelNavHub() {
         syncWilduTravelNavHubState(currentTab || 'events');
         initWilduScreenWakeLock();
+        installWilduTravelNavLongPress();
         installWilduTravelTabSwipe();
 
         document.addEventListener('click', function (event) {
@@ -24503,6 +24696,7 @@ if (profKeyEl) {
 
         if (id === 'travelhub') {
             hydrateWilduTravelHubImages(false);
+            resetWilduTravelHubDesktopScroll();
             scheduleWilduTravelHubAutoScrollResume(1800);
         } else {
             stopWilduTravelHubAutoScroll();
