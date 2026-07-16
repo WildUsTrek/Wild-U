@@ -48,6 +48,7 @@
         </div>
 
         <div id="wildu-games-status" style="
+            display:none;
             max-width:560px;
             margin:0 auto 16px auto;
             padding:14px 16px;
@@ -59,7 +60,6 @@
             line-height:1.45;
             text-align:center;
         ">
-            Caricamento giochi...
         </div>
 
         <div id="wildu-games-list" style="
@@ -170,10 +170,11 @@
     function setStatus(message, isError) {
         if (!statusEl) return;
 
-        statusEl.style.display = message ? "block" : "none";
+        const shouldShow = !!message && isError === true;
+        statusEl.style.display = shouldShow ? "block" : "none";
         statusEl.style.borderColor = isError ? "rgba(255,68,68,0.45)" : "rgba(212,175,55,0.28)";
         statusEl.style.color = isError ? "#ffb3b3" : "#aaa";
-        statusEl.innerHTML = message || "";
+        statusEl.innerHTML = shouldShow ? message : "";
     }
 
     function showToastSafe(message) {
