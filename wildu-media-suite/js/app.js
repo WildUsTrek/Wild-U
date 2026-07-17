@@ -1350,18 +1350,18 @@
       youtube_wildwall_shorts_playlist_id: shortsPlaylistId,
       youtube_wildwall_shorts_playlist_raw: shortsRaw,
       youtube_wildwall_shorts_playlist_updatedAt: now,
-      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
-      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+      youtube_wildwall_shorts_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_wildwall_shorts_playlist_updatedByEmail: root.getPublicActorAlias(),
 
       youtube_video_horizontal_playlist_id: horizontalPlaylistId,
       youtube_video_horizontal_playlist_raw: horizontalRaw,
       youtube_video_horizontal_playlist_updatedAt: now,
-      youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+      youtube_video_horizontal_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_video_horizontal_playlist_updatedByEmail: root.getPublicActorAlias(),
 
       youtube_playlists_updatedAt: now,
-      youtube_playlists_updatedByUid: user.uid,
-      youtube_playlists_updatedByEmail: user.email || null
+      youtube_playlists_updatedByUid: root.getPublicActorAlias(),
+      youtube_playlists_updatedByEmail: root.getPublicActorAlias()
     };
 
     await root.db
@@ -1372,16 +1372,16 @@
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
       youtube_wildwall_shorts_playlist_id: shortsPlaylistId,
       youtube_wildwall_shorts_playlist_raw: shortsRaw,
-      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
-      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+      youtube_wildwall_shorts_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_wildwall_shorts_playlist_updatedByEmail: root.getPublicActorAlias(),
 
       youtube_video_horizontal_playlist_id: horizontalPlaylistId,
       youtube_video_horizontal_playlist_raw: horizontalRaw,
-      youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+      youtube_video_horizontal_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_video_horizontal_playlist_updatedByEmail: root.getPublicActorAlias(),
 
-      youtube_playlists_updatedByUid: user.uid,
-      youtube_playlists_updatedByEmail: user.email || null
+      youtube_playlists_updatedByUid: root.getPublicActorAlias(),
+      youtube_playlists_updatedByEmail: root.getPublicActorAlias()
     });
 
     var shortsIdField = document.getElementById('client-youtube-shorts-playlist-id');
@@ -1511,22 +1511,22 @@
       youtube_wildwall_shorts_playlist_id: youtubeShortsPlaylistId,
       youtube_wildwall_shorts_playlist_raw: youtubeShortsRaw,
       youtube_wildwall_shorts_playlist_updatedAt: now,
-      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
-      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+      youtube_wildwall_shorts_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_wildwall_shorts_playlist_updatedByEmail: root.getPublicActorAlias(),
 
       youtube_video_horizontal_playlist_id: youtubePlaylistId,
       youtube_video_horizontal_playlist_raw: youtubeRaw,
       youtube_video_horizontal_playlist_updatedAt: now,
-      youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+      youtube_video_horizontal_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_video_horizontal_playlist_updatedByEmail: root.getPublicActorAlias(),
 
       youtube_playlists_updatedAt: now,
-      youtube_playlists_updatedByUid: user.uid,
-      youtube_playlists_updatedByEmail: user.email || null,
+      youtube_playlists_updatedByUid: root.getPublicActorAlias(),
+      youtube_playlists_updatedByEmail: root.getPublicActorAlias(),
 
       client_content_config_updatedAt: now,
-      client_content_config_updatedByUid: user.uid,
-      client_content_config_updatedByEmail: user.email || null
+      client_content_config_updatedByUid: root.getPublicActorAlias(),
+      client_content_config_updatedByEmail: root.getPublicActorAlias()
     };
 
     await root.db
@@ -1540,19 +1540,19 @@
 
       youtube_wildwall_shorts_playlist_id: youtubeShortsPlaylistId,
       youtube_wildwall_shorts_playlist_raw: youtubeShortsRaw,
-      youtube_wildwall_shorts_playlist_updatedByUid: user.uid,
-      youtube_wildwall_shorts_playlist_updatedByEmail: user.email || null,
+      youtube_wildwall_shorts_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_wildwall_shorts_playlist_updatedByEmail: root.getPublicActorAlias(),
 
       youtube_video_horizontal_playlist_id: youtubePlaylistId,
       youtube_video_horizontal_playlist_raw: youtubeRaw,
-      youtube_video_horizontal_playlist_updatedByUid: user.uid,
-      youtube_video_horizontal_playlist_updatedByEmail: user.email || null,
+      youtube_video_horizontal_playlist_updatedByUid: root.getPublicActorAlias(),
+      youtube_video_horizontal_playlist_updatedByEmail: root.getPublicActorAlias(),
 
-      youtube_playlists_updatedByUid: user.uid,
-      youtube_playlists_updatedByEmail: user.email || null,
+      youtube_playlists_updatedByUid: root.getPublicActorAlias(),
+      youtube_playlists_updatedByEmail: root.getPublicActorAlias(),
 
-      client_content_config_updatedByUid: user.uid,
-      client_content_config_updatedByEmail: user.email || null
+      client_content_config_updatedByUid: root.getPublicActorAlias(),
+      client_content_config_updatedByEmail: root.getPublicActorAlias()
     });
 
     renderClientContentConfigState();
@@ -2108,18 +2108,18 @@
       volumeField: getSystemAudioClientVolumeField(slot.key),
       note: note || null,
       uploadedAt: now,
-      uploadedByUid: user.uid,
-      uploadedByEmail: user.email || null,
+      uploadedByUid: root.getPublicActorAlias(),
+      uploadedByEmail: root.getPublicActorAlias(),
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     };
 
     var runtimePayload = {
       schemaVersion: 1,
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       items: {}
     };
 
@@ -2172,14 +2172,14 @@
     var runtimePayload = {
       schemaVersion: 1,
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       items: {},
       volumes: {
         legacyFormat: true,
         updatedAt: now,
-        updatedByUid: user.uid,
-        updatedByEmail: user.email || null
+        updatedByUid: root.getPublicActorAlias(),
+        updatedByEmail: root.getPublicActorAlias()
       }
     };
 
@@ -2188,8 +2188,8 @@
       volumePercent: volume,
       volumeField: fieldName,
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     };
 
     runtimePayload.volumes[slot.key] = volume;
@@ -2287,24 +2287,24 @@
     await systemAudioRuntimeRef().set({
       schemaVersion: 1,
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       items: {
         audio_musica: {
           volume: volMusica,
           volumePercent: volMusica,
           volumeField: 'audio_musica_volume',
           updatedAt: now,
-          updatedByUid: user.uid,
-          updatedByEmail: user.email || null
+          updatedByUid: root.getPublicActorAlias(),
+          updatedByEmail: root.getPublicActorAlias()
         },
         audio_ambienza: {
           volume: volAmbienza,
           volumePercent: volAmbienza,
           volumeField: 'audio_ambienza_volume',
           updatedAt: now,
-          updatedByUid: user.uid,
-          updatedByEmail: user.email || null
+          updatedByUid: root.getPublicActorAlias(),
+          updatedByEmail: root.getPublicActorAlias()
         }
       },
       volumes: {
@@ -2314,8 +2314,8 @@
         ambience: volAmbienza,
         legacyFormat: true,
         updatedAt: now,
-        updatedByUid: user.uid,
-        updatedByEmail: user.email || null
+        updatedByUid: root.getPublicActorAlias(),
+        updatedByEmail: root.getPublicActorAlias()
       }
     }, { merge: true });
 
@@ -2783,11 +2783,11 @@
     safePatch.mediaVersion = nextVersion;
     safePatch.mediaVersionNote = cleanNote;
     safePatch.mediaVersionUpdatedAt = now;
-    safePatch.mediaVersionUpdatedByUid = user.uid;
-    safePatch.mediaVersionUpdatedByEmail = user.email || null;
+    safePatch.mediaVersionUpdatedByUid = root.getPublicActorAlias();
+    safePatch.mediaVersionUpdatedByEmail = root.getPublicActorAlias();
     safePatch.updatedAt = now;
-    safePatch.updatedByUid = user.uid;
-    safePatch.updatedByEmail = user.email || null;
+    safePatch.updatedByUid = root.getPublicActorAlias();
+    safePatch.updatedByEmail = root.getPublicActorAlias();
 
     await root.db
       .collection(WILDU_MEDIA_CONFIG.collections.catalog)
@@ -3825,26 +3825,26 @@
       .set({
         console_switch: value,
         console_switch_updatedAt: now,
-        console_switch_updatedByUid: user.uid,
-        console_switch_updatedByEmail: user.email || null,
+        console_switch_updatedByUid: root.getPublicActorAlias(),
+        console_switch_updatedByEmail: root.getPublicActorAlias(),
 
         // Switch separato: decide SOLO se mostrare il pannello audio debug nel client.
         // Il client lo userà insieme a console_switch:
         // console_switch=true + audio_debug_panel_switch=true => pannello visibile.
         audio_debug_panel_switch: audioValue,
         audio_debug_panel_updatedAt: now,
-        audio_debug_panel_updatedByUid: user.uid,
-        audio_debug_panel_updatedByEmail: user.email || null
+        audio_debug_panel_updatedByUid: root.getPublicActorAlias(),
+        audio_debug_panel_updatedByEmail: root.getPublicActorAlias()
       }, { merge: true });
 
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
       console_switch: value,
-      console_switch_updatedByUid: user.uid,
-      console_switch_updatedByEmail: user.email || null,
+      console_switch_updatedByUid: root.getPublicActorAlias(),
+      console_switch_updatedByEmail: root.getPublicActorAlias(),
 
       audio_debug_panel_switch: audioValue,
-      audio_debug_panel_updatedByUid: user.uid,
-      audio_debug_panel_updatedByEmail: user.email || null
+      audio_debug_panel_updatedByUid: root.getPublicActorAlias(),
+      audio_debug_panel_updatedByEmail: root.getPublicActorAlias()
     });
 
     renderClientConsoleSwitchCardState();
@@ -3931,16 +3931,16 @@
         global_cache_mode: 'NUCLEAR',
         global_cache_reason: reason,
         global_cache_updatedAt: root.FieldValue.serverTimestamp(),
-        global_cache_updatedByUid: user.uid,
-        global_cache_updatedByEmail: user.email || null
+        global_cache_updatedByUid: root.getPublicActorAlias(),
+        global_cache_updatedByEmail: root.getPublicActorAlias()
       }, { merge: true });
 
     state.partnerClientConfig = Object.assign({}, state.partnerClientConfig || {}, {
       global_cache_epoch: epoch,
       global_cache_mode: 'NUCLEAR',
       global_cache_reason: reason,
-      global_cache_updatedByUid: user.uid,
-      global_cache_updatedByEmail: user.email || null
+      global_cache_updatedByUid: root.getPublicActorAlias(),
+      global_cache_updatedByEmail: root.getPublicActorAlias()
     });
 
     renderGlobalCacheNukeCardState();
@@ -4452,15 +4452,15 @@ tbody.innerHTML = items.map(function (item) {
     bucket[canonicalUrl] = Object.assign({}, entry, {
       url: canonicalUrl,
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     });
 
     var nextDoc = Object.assign({}, read.doc, {
       schemaVersion: 1,
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       appGuardUpdatedAt: root.FieldValue.serverTimestamp(),
       appGuardReason: options.reason || (kind === 'game' ? 'GAME_SAVE_APP_GUARD' : 'MODULE_SAVE_APP_GUARD')
     });
@@ -4483,8 +4483,8 @@ tbody.innerHTML = items.map(function (item) {
     var nextDoc = Object.assign({}, read.doc, {
       schemaVersion: 1,
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       appGuardRepairAt: root.FieldValue.serverTimestamp(),
       appGuardRepairRemovedCount: removedCount
     });
@@ -4517,8 +4517,8 @@ tbody.innerHTML = items.map(function (item) {
     var nextDoc = Object.assign({}, read.doc, {
       schemaVersion: 1,
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       appGuardDeletedAt: root.FieldValue.serverTimestamp(),
       appGuardDeletedKey: rawKey
     });
@@ -4836,8 +4836,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
       readerVersion: patch.readerVersion || light.readerVersion || 1,
       readerSourceMediaVersion: patch.readerSourceMediaVersion || light.readerSourceMediaVersion || item.mediaVersion || 1,
       savedAt: now,
-      savedByUid: user.uid,
-      savedByEmail: user.email || null
+      savedByUid: root.getPublicActorAlias(),
+      savedByEmail: root.getPublicActorAlias()
     };
 
     WILDU_MEDIA_READER_HEAVY_FIELDS.forEach(function (field) {
@@ -4850,8 +4850,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     light.readerStorageMode = 'split-v1';
     light.readerPayloadLocation = 'firestore:' + docPath;
     light.readerUpdatedAt = now;
-    light.readerUpdatedByUid = user.uid;
-    light.readerUpdatedByEmail = user.email || null;
+    light.readerUpdatedByUid = root.getPublicActorAlias();
+    light.readerUpdatedByEmail = root.getPublicActorAlias();
 
     return {
       mediaId: mediaId,
@@ -4973,8 +4973,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
     patch.readerPayloadVerifiedAtClient = root.FieldValue.delete();
     patch.readerPayloadVerifiedBlockCount = root.FieldValue.delete();
     patch.readerUpdatedAt = root.FieldValue.serverTimestamp();
-    patch.readerUpdatedByUid = root.requireCurrentUser().uid;
-    patch.readerUpdatedByEmail = root.requireCurrentUser().email || null;
+    patch.readerUpdatedByUid = root.getPublicActorAlias();
+    patch.readerUpdatedByEmail = root.getPublicActorAlias();
 
     return patch;
   }
@@ -5196,8 +5196,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
         readerPayloadVerifiedAtClient: new Date().toISOString(),
         readerPayloadVerifiedBlockCount: Number(existingVerification && existingVerification.blockCount || 0),
         readerUpdatedAt: root.FieldValue.serverTimestamp(),
-        readerUpdatedByUid: existingUser.uid,
-        readerUpdatedByEmail: existingUser.email || null
+        readerUpdatedByUid: root.getPublicActorAlias(),
+        readerUpdatedByEmail: root.getPublicActorAlias()
       };
       var inferredExistingObjectKey = inferReaderPayloadObjectKeyFromUrl(existingPayloadUrl);
       if (inferredExistingObjectKey) existingPatch.readerPayloadObjectKey = inferredExistingObjectKey;
@@ -5267,8 +5267,8 @@ root.$('#module-description').value = item.description || item.Descrizione || it
         readerPayloadVerifiedAtClient: verifiedAt,
         readerPayloadVerifiedBlockCount: Number(verification && verification.blockCount || 0),
         readerUpdatedAt: root.FieldValue.serverTimestamp(),
-        readerUpdatedByUid: user.uid,
-        readerUpdatedByEmail: user.email || null
+        readerUpdatedByUid: root.getPublicActorAlias(),
+        readerUpdatedByEmail: root.getPublicActorAlias()
       };
 
       await root.MediaService.updateMedia(item.id, patch);

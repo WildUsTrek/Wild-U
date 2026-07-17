@@ -105,12 +105,12 @@
     media.createdAt = now;
     media.updatedAt = now;
     media.mediaVersionUpdatedAt = now;
-    media.createdByUid = user.uid;
-    media.updatedByUid = user.uid;
-    media.mediaVersionUpdatedByUid = user.uid;
-    media.createdByEmail = user.email || null;
-    media.updatedByEmail = user.email || null;
-    media.mediaVersionUpdatedByEmail = user.email || null;
+    media.createdByUid = root.getPublicActorAlias();
+    media.updatedByUid = root.getPublicActorAlias();
+    media.mediaVersionUpdatedByUid = root.getPublicActorAlias();
+    media.createdByEmail = root.getPublicActorAlias();
+    media.updatedByEmail = root.getPublicActorAlias();
+    media.mediaVersionUpdatedByEmail = root.getPublicActorAlias();
 
     var docRef = await catalogCol().add(media);
     media.id = docRef.id;
@@ -237,8 +237,8 @@
     validateMediaRouting(afterCandidate);
 
     safePatch.updatedAt = root.FieldValue.serverTimestamp();
-    safePatch.updatedByUid = user.uid;
-    safePatch.updatedByEmail = user.email || null;
+    safePatch.updatedByUid = root.getPublicActorAlias();
+    safePatch.updatedByEmail = root.getPublicActorAlias();
 
     await mediaRef(id).set(safePatch, { merge: true });
     var after = Object.assign({}, before, safePatch);
@@ -264,22 +264,22 @@
       mediaVersion: nextVersion,
       mediaVersionNote: cleanNote,
       mediaVersionUpdatedAt: now,
-      mediaVersionUpdatedByUid: user.uid,
-      mediaVersionUpdatedByEmail: user.email || null,
+      mediaVersionUpdatedByUid: root.getPublicActorAlias(),
+      mediaVersionUpdatedByEmail: root.getPublicActorAlias(),
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     }, { merge: true });
 
     var after = Object.assign({}, before, {
       mediaVersion: nextVersion,
       mediaVersionNote: cleanNote,
       mediaVersionUpdatedAt: now,
-      mediaVersionUpdatedByUid: user.uid,
-      mediaVersionUpdatedByEmail: user.email || null,
+      mediaVersionUpdatedByUid: root.getPublicActorAlias(),
+      mediaVersionUpdatedByEmail: root.getPublicActorAlias(),
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     });
 
     await root.TagService.bumpTagVersionsForMediaChange(before, after, 'MEDIA_VERSION_BUMP');

@@ -109,10 +109,10 @@
       publicVersion: root.FieldValue.increment(0),
       createdAt: now,
       updatedAt: now,
-      createdByUid: user.uid,
-      updatedByUid: user.uid,
-      createdByEmail: user.email || null,
-      updatedByEmail: user.email || null
+      createdByUid: root.getPublicActorAlias(),
+      updatedByUid: root.getPublicActorAlias(),
+      createdByEmail: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     }, { merge: true });
 
     await syncRuntimePublicVersions();
@@ -141,10 +141,10 @@
         publicVersion: root.FieldValue.increment(0),
         createdAt: now,
         updatedAt: now,
-        createdByUid: user.uid,
-        updatedByUid: user.uid,
-        createdByEmail: user.email || null,
-        updatedByEmail: user.email || null
+        createdByUid: root.getPublicActorAlias(),
+        updatedByUid: root.getPublicActorAlias(),
+        createdByEmail: root.getPublicActorAlias(),
+        updatedByEmail: root.getPublicActorAlias()
       }, { merge: true });
     });
 
@@ -157,8 +157,8 @@
     await tagRef(tagSlug).set({
       status: status,
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     }, { merge: true });
     await syncRuntimePublicVersions();
   }
@@ -387,8 +387,8 @@
         updatedAt: now,
         lastContentChangeAt: now,
         lastContentChangeReason: reason || 'MEDIA_CHANGE',
-        updatedByUid: user.uid,
-        updatedByEmail: user.email || null
+        updatedByUid: root.getPublicActorAlias(),
+        updatedByEmail: root.getPublicActorAlias()
       };
       if (publicChanged && tagAllowsClientPublicVersion(tag)) {
         payload.publicVersion = root.FieldValue.increment(1);
@@ -417,12 +417,12 @@
       real_news: realNews,
 
       updatedAt: now,
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
 
       bibliotecaSettingsUpdatedAt: now,
-      bibliotecaSettingsUpdatedByUid: user.uid,
-      bibliotecaSettingsUpdatedByEmail: user.email || null
+      bibliotecaSettingsUpdatedByUid: root.getPublicActorAlias(),
+      bibliotecaSettingsUpdatedByEmail: root.getPublicActorAlias()
     }, { merge: true });
 
     await syncRuntimePublicVersions();

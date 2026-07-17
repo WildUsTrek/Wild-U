@@ -197,8 +197,8 @@ function cleanupRuntimeBucket(bucket) {
       extraUrls: uniqueList(input.extraUrls),
       clearNeedles: uniqueList(input.clearNeedles),
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: root.requireCurrentUser().uid,
-      updatedByEmail: root.requireCurrentUser().email || null
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias()
     };
   }
 
@@ -282,8 +282,8 @@ async function writeEntry(ref, bucketName, url, entry) {
   bucket[cleanUrl] = Object.assign({}, entry, {
     url: cleanUrl,
     updatedAt: root.FieldValue.serverTimestamp(),
-    updatedByUid: user.uid,
-    updatedByEmail: user.email || null
+    updatedByUid: root.getPublicActorAlias(),
+    updatedByEmail: root.getPublicActorAlias()
   });
 
   /*
@@ -294,8 +294,8 @@ async function writeEntry(ref, bucketName, url, entry) {
   var nextDoc = Object.assign({}, current, {
     schemaVersion: 1,
     updatedAt: root.FieldValue.serverTimestamp(),
-    updatedByUid: user.uid,
-    updatedByEmail: user.email || null
+    updatedByUid: root.getPublicActorAlias(),
+    updatedByEmail: root.getPublicActorAlias()
   });
 
   nextDoc[bucketName] = bucket;
@@ -334,8 +334,8 @@ async function writeEntry(ref, bucketName, url, entry) {
     var nextDoc = Object.assign({}, current, {
       schemaVersion: 1,
       updatedAt: root.FieldValue.serverTimestamp(),
-      updatedByUid: user.uid,
-      updatedByEmail: user.email || null,
+      updatedByUid: root.getPublicActorAlias(),
+      updatedByEmail: root.getPublicActorAlias(),
       lastRepairAt: root.FieldValue.serverTimestamp(),
       lastRepairRemovedCount: removedCount
     });

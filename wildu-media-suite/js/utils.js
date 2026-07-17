@@ -2,6 +2,7 @@
   'use strict';
 
   var root = window.WilduMedia = window.WilduMedia || {};
+  var PUBLIC_ACTOR_ALIAS = 'Amaglia Moris';
 
   function $(selector, parent) {
     return (parent || document).querySelector(selector);
@@ -98,6 +99,10 @@
     return user;
   }
 
+  function getPublicActorAlias() {
+    return PUBLIC_ACTOR_ALIAS;
+  }
+
   function validateFileForKind(file, kind) {
     var cfg = window.WILDU_MEDIA_CONFIG;
     var cleanKind = slugify(kind);
@@ -136,5 +141,6 @@
   root.getSubcategoryLabel = getSubcategoryLabel;
   root.toast = toast;
   root.requireCurrentUser = requireCurrentUser;
+  root.getPublicActorAlias = getPublicActorAlias;
   root.validateFileForKind = validateFileForKind;
 })();
