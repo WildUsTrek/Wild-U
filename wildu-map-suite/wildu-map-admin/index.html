@@ -450,6 +450,11 @@
     
     const WILDU_UPLOAD_WORKER_URL = "https://wildu-upload-manager.baffiwild.workers.dev";
     const WILDU_MEDIA_BASE_URL = "https://media.baffiwild.it/";
+    const WILDU_PUBLIC_ACTOR_ALIAS = "Amaglia Moris";
+
+    function publicActorAlias() {
+      return WILDU_PUBLIC_ACTOR_ALIAS;
+    }
 
     const $ = (id) => document.getElementById(id);
 
@@ -1473,14 +1478,14 @@ function buildItalianRegionAreaPayload(region, user, existsAlready) {
     source: "WILDU_BUILTIN_SIMPLIFIED_ITALY_REGIONS",
     sourceNote: "Poligoni regionali ultra-semplificati, approssimati per eccesso e sovrapposti dove utile. Toscana include esplicitamente l’Isola d’Elba.",
     simplificationLevel: "VERY_ROUGH_EXCESS_OVERLAP",
-    updatedByUid: user.uid,
-    updatedByEmail: user.email || "",
+    updatedByUid: publicActorAlias(),
+    updatedByEmail: publicActorAlias(),
     updatedAt: serverTimestamp()
   };
 
   if (!existsAlready) {
-    payload.createdByUid = user.uid;
-    payload.createdByEmail = user.email || "";
+    payload.createdByUid = publicActorAlias();
+    payload.createdByEmail = publicActorAlias();
     payload.createdAt = serverTimestamp();
   }
 
@@ -1677,14 +1682,14 @@ const payload = {
 coverImageUrl: safeUrl(val("area-cover-image-url")),
 sortOrder: num("area-sort-order", 10),
 ...polygonPayload,
-updatedByUid: user.uid,
-        updatedByEmail: user.email || "",
+updatedByUid: publicActorAlias(),
+        updatedByEmail: publicActorAlias(),
         updatedAt: serverTimestamp()
       };
       const existing = state.areas.find(a => a.id === areaSlug);
       if (!existing) {
-        payload.createdByUid = user.uid;
-        payload.createdByEmail = user.email || "";
+        payload.createdByUid = publicActorAlias();
+        payload.createdByEmail = publicActorAlias();
         payload.createdAt = serverTimestamp();
       }
       await setDoc(doc(db, WILDU_MAP_COLLECTIONS.AREAS, areaSlug), payload, { merge: true });
@@ -1813,8 +1818,8 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
         imageCredit: val("waypoint-image-credit"),
         iconType: val("waypoint-icon-type") || "INFO",
         sortOrder: num("waypoint-sort-order", 10),
-        updatedByUid: user.uid,
-        updatedByEmail: user.email || "",
+        updatedByUid: publicActorAlias(),
+        updatedByEmail: publicActorAlias(),
         updatedAt: serverTimestamp()
       };
       const id = val("waypoint-id");
@@ -1822,8 +1827,8 @@ box.querySelectorAll("[data-delete-waypoint]").forEach(btn => {
         await updateDoc(doc(db, WILDU_MAP_COLLECTIONS.WAYPOINTS, id), payload);
         setStatus("Waypoint aggiornato.");
       } else {
-        payload.createdByUid = user.uid;
-        payload.createdByEmail = user.email || "";
+        payload.createdByUid = publicActorAlias();
+        payload.createdByEmail = publicActorAlias();
         payload.createdAt = serverTimestamp();
         const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.WAYPOINTS), payload);
         $("waypoint-id").value = added.id;
@@ -3344,8 +3349,8 @@ if (id && ((file && replaceR2File) || manualUrlCandidate)) {
     difficulty: val("track-difficulty"),
     sortOrder: num("track-sort-order", 10),
 
-    updatedByUid: user.uid,
-    updatedByEmail: user.email || "",
+    updatedByUid: publicActorAlias(),
+    updatedByEmail: publicActorAlias(),
     updatedAt: serverTimestamp()
   };
 
@@ -3420,8 +3425,8 @@ if (id) {
       : `Traccia aggiornata.${replaceCleanupMessage}`
   );
 } else {
-  payload.createdByUid = user.uid;
-  payload.createdByEmail = user.email || "";
+  payload.createdByUid = publicActorAlias();
+  payload.createdByEmail = publicActorAlias();
   payload.createdAt = serverTimestamp();
 
   const added = await addDoc(collection(db, WILDU_MAP_COLLECTIONS.TRACKS), payload);
@@ -3610,8 +3615,8 @@ async function saveViewerSettings() {
   const user = requireUser();
   const payload = readMapSettingsForm();
 
-  payload.updatedByUid = user.uid;
-  payload.updatedByEmail = user.email || "";
+  payload.updatedByUid = publicActorAlias();
+  payload.updatedByEmail = publicActorAlias();
   payload.updatedAt = serverTimestamp();
 
   await setDoc(getMapSettingsDocRef(), payload, { merge: true });
