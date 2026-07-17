@@ -11801,8 +11801,6 @@ window.WilduMediaClient = WilduMediaClient;
     let isCancellingInProgress = false;
     let isBackpackSyncing = false;
     let backpackOwnerUid = wildUserKey || "";
-    let xpFetchPromise = null;
-    let xpFetchPromiseUid = "";
     const BACKPACK_FOCUS_REFRESH_MS = 60000;
     const BACKPACK_PROFILE_REFRESH_MS = 15000;
 
@@ -13105,7 +13103,6 @@ async function saveProfileData() {
         syncWilduPassportSummary({ nome: newName, telefono: newPhone });
 
         toggleProfileEdit(false);
-        beginBackpackSync('PROFILE_SAVE');
         fetchXP({ showBackpackSync: true, reason: 'PROFILE_SAVE' });
         alert("✅ Profilo aggiornato con successo!");
     } catch (e) {
@@ -14210,7 +14207,6 @@ function updateProfileUI() {
 
     // Se l'utente è davvero loggato secondo il backend, possiamo caricare il profilo
     if (isClientLogged() && wildUserKey) {
-        beginBackpackSync('PROFILE_UI');
         fetchXP({ showBackpackSync: true, reason: 'PROFILE_UI' });
         return;
     }
@@ -16576,7 +16572,6 @@ const publicCachePayload = {
                     myBookedTitles = [];
                 }
                 renderBackpackSyncState();
-                fetchXP({ showBackpackSync: true, reason: 'INITDATA_REMOTE' });
             } else {
                 allBookings = [];
                 evaluateBookings();
@@ -16678,13 +16673,6 @@ async function fetchXP(options = {}) {
     const showBackpackSync = options.showBackpackSync === true;
     if (showBackpackSync) beginBackpackSync(options.reason || 'FETCH_XP');
 
-    if (xpFetchPromise && xpFetchPromiseUid === requestUid) {
-        renderBackpackSyncState();
-        return xpFetchPromise;
-    }
-
-    xpFetchPromiseUid = requestUid;
-    xpFetchPromise = (async () => {
     const backupKey = 'wildLastSafeProfile_' + requestUid;
 
     try {
@@ -16866,16 +16854,6 @@ async function fetchXP(options = {}) {
                 if (currentTab === 'profile') renderProfile(cachedXPData);
                 showToast("Errore rete sugli XP. Mostro l’ultimo stato locale salvato.");
             } catch (_) {}
-        }
-    }
-    })();
-
-    try {
-        return await xpFetchPromise;
-    } finally {
-        if (xpFetchPromiseUid === requestUid) {
-            xpFetchPromise = null;
-            xpFetchPromiseUid = "";
         }
     }
 }
@@ -25285,8 +25263,14 @@ if (profKeyEl) {
                 renderProfile(cachedXPData);
             }
 
-            if (wildUserKey && (isBackpackSyncing || Date.now() - lastFetchTime > BACKPACK_PROFILE_REFRESH_MS)) {
-                beginBackpackSync('PROFILE_TAB');
+            const profileSource = String(options.source || '');
+            const isXpRewardProfileFlow =
+                wilduPostBookingFlowActive === true ||
+                /xp|reward/i.test(profileSource) ||
+                isLockedXP === true ||
+                isAnimatingXP === true;
+
+            if (!isXpRewardProfileFlow && wildUserKey && (isBackpackSyncing || Date.now() - lastFetchTime > BACKPACK_PROFILE_REFRESH_MS)) {
                 fetchXP({ showBackpackSync: true, reason: 'PROFILE_TAB' });
             }
         }
