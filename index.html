@@ -11799,6 +11799,12 @@ window.WilduMediaClient = WilduMediaClient;
     let isBanned = false; let canBook = true; let banReason = ""; let viaggiRiscattati = [];
     let isBookingInProgress = false;
     let isCancellingInProgress = false;
+    let isBackpackSyncing = false;
+    let backpackOwnerUid = wildUserKey || "";
+    let xpFetchPromise = null;
+    let xpFetchPromiseUid = "";
+    const BACKPACK_FOCUS_REFRESH_MS = 60000;
+    const BACKPACK_PROFILE_REFRESH_MS = 15000;
 
     // LO SCUDO E L'IDENTITA'
     let tempGoogleUser = null;
@@ -12758,7 +12764,7 @@ function requireLoggedAccess(reason, options = {}) {
     });
 
     window.onfocus = () => {
-        if(wildUserKey && (Date.now() - lastFetchTime > 300000)) fetchXP();
+        if(wildUserKey && (Date.now() - lastFetchTime > BACKPACK_FOCUS_REFRESH_MS)) fetchXP({ showBackpackSync: currentTab === 'profile', reason: 'WINDOW_FOCUS' });
     };
 
     window.addEventListener("pagehide", hardStopWilduAudio);
@@ -13098,8 +13104,10 @@ async function saveProfileData() {
         rememberWilduLastKnownPhone(newPhone);
         syncWilduPassportSummary({ nome: newName, telefono: newPhone });
 
-        alert("✅ Profilo aggiornato con successo!");
         toggleProfileEdit(false);
+        beginBackpackSync('PROFILE_SAVE');
+        fetchXP({ showBackpackSync: true, reason: 'PROFILE_SAVE' });
+        alert("✅ Profilo aggiornato con successo!");
     } catch (e) {
         console.error("Errore salvataggio profilo:", e);
         alert("❌ Errore durante il salvataggio. Riprova.");
@@ -14101,6 +14109,8 @@ function logout() {
     tempTelegramUser = null;
     cachedXPData = null;
     wildUserKey = null;
+    isBackpackSyncing = false;
+    backpackOwnerUid = "";
     allBookings = [];
     myBookedTitles = [];
     pendingBookings = [];
@@ -14146,6 +14156,43 @@ function logout() {
 // UI PROFILE
 // ==========================================
 
+function getBackpackSyncHtml() {
+    return '<div class="wildu-booking-item wildu-booking-ghost">' +
+        '<div class="wildu-booking-main">' +
+            '<div class="wildu-booking-title">Sincronizzo il tuo zaino...</div>' +
+            '<div class="wildu-booking-meta">Le prenotazioni salvate stanno tornando dal server. Attendi qualche secondo.</div>' +
+        '</div>' +
+    '</div>';
+}
+
+function renderBackpackSyncState() {
+    if (!isBackpackSyncing || !isClientLogged() || !wildUserKey) return;
+    if (Array.isArray(allBookings) && allBookings.length > 0) return;
+
+    const bookingsBox = document.getElementById('my-bookings-list');
+    if (bookingsBox) bookingsBox.innerHTML = getBackpackSyncHtml();
+}
+
+function beginBackpackSync(reason) {
+    if (!wildUserKey) return;
+    isBackpackSyncing = true;
+
+    if (typeof pageDebug === 'function') {
+        pageDebug('BACKPACK_SYNC_START', { reason: reason || 'unknown', uid: wildUserKey });
+    }
+
+    renderBackpackSyncState();
+}
+
+function finishBackpackSync(reason) {
+    if (!isBackpackSyncing) return;
+    isBackpackSyncing = false;
+
+    if (typeof pageDebug === 'function') {
+        pageDebug('BACKPACK_SYNC_END', { reason: reason || 'unknown', uid: wildUserKey || '' });
+    }
+}
+
 function updateProfileUI() {
     reconcileProfileShellWithClientSession();
 
@@ -14163,7 +14210,8 @@ function updateProfileUI() {
 
     // Se l'utente è davvero loggato secondo il backend, possiamo caricare il profilo
     if (isClientLogged() && wildUserKey) {
-        fetchXP();
+        beginBackpackSync('PROFILE_UI');
+        fetchXP({ showBackpackSync: true, reason: 'PROFILE_UI' });
         return;
     }
 
@@ -16518,9 +16566,21 @@ const publicCachePayload = {
             allOnDemandTrips = data.onDemandTrips || [];
             /// 🛡️ TAGLIO DEL CORDONE COL GATEWAY (SHEET):
             // L'app da ora in poi ignorerà le prenotazioni provenienti dallo Sheet.
-            // La variabile allBookings verrà riempita ESCLUSIVAMENTE da Firestore.
-            allBookings = []; 
-            evaluateBookings(); 
+            // La variabile allBookings viene riempita ESCLUSIVAMENTE da Firestore.
+            // Se l'utente e' loggato, non mostriamo un falso "zaino vuoto" mentre
+            // arriva la rilettura identity-aware da utenti/{uid}.zaino.
+            if (isClientLogged() && wildUserKey) {
+                beginBackpackSync('INITDATA_REMOTE');
+                if (backpackOwnerUid && backpackOwnerUid !== wildUserKey) {
+                    allBookings = [];
+                    myBookedTitles = [];
+                }
+                renderBackpackSyncState();
+                fetchXP({ showBackpackSync: true, reason: 'INITDATA_REMOTE' });
+            } else {
+                allBookings = [];
+                evaluateBookings();
+            }
              //NEEEWWWWWW
 
                         configureWilduSystemAudioFromAssets('INITDATA_REMOTE');
@@ -16547,7 +16607,7 @@ const publicCachePayload = {
             buildPDFilters();
 
             if (isClientLogged() && wildUserKey) {
-                evaluateBookings();
+                renderBackpackSyncState();
             } else {
                 allBookings = [];
                 myBookedTitles = [];
@@ -16611,14 +16671,30 @@ const publicCachePayload = {
     // ==========================================
     // LOGICA XP E CONTROLLO TIME-TRAVEL
     // ==========================================
-async function fetchXP() {
+async function fetchXP(options = {}) {
     if (!wildUserKey || isLockedXP || isAnimatingXP) return;
 
-    const backupKey = 'wildLastSafeProfile_' + wildUserKey;
+    const requestUid = wildUserKey;
+    const showBackpackSync = options.showBackpackSync === true;
+    if (showBackpackSync) beginBackpackSync(options.reason || 'FETCH_XP');
+
+    if (xpFetchPromise && xpFetchPromiseUid === requestUid) {
+        renderBackpackSyncState();
+        return xpFetchPromise;
+    }
+
+    xpFetchPromiseUid = requestUid;
+    xpFetchPromise = (async () => {
+    const backupKey = 'wildLastSafeProfile_' + requestUid;
 
     try {
-        const docSnap = await FS.getUtente(wildUserKey);
+        const docSnap = await FS.getUtente(requestUid);
         lastFetchTime = Date.now();
+
+        if (wildUserKey !== requestUid) {
+            finishBackpackSync('FETCH_XP_STALE_USER');
+            return;
+        }
 
         if (!docSnap.exists) {
             const backupRaw = localStorage.getItem(backupKey);
@@ -16651,6 +16727,7 @@ async function fetchXP() {
                 showToast("Profilo XP non trovato.");
             }
 
+            finishBackpackSync('FETCH_XP_MISSING_PROFILE');
             return;
         }
 
@@ -16661,6 +16738,7 @@ async function fetchXP() {
         // 🛡️ FIRESTORE SOURCE OF TRUTH: Allineiamo lo zaino con il DB reale (UID-Specific)
         // Questo distrugge definitivamente i residui dello Sheet o di altri profili.
         allBookings = Array.isArray(data.zaino) ? data.zaino : [];
+        backpackOwnerUid = requestUid;
         
         // Pulizia lavori in corso: ora che Firestore ha risposto, i sospesi non servono più
         pendingBookings = [];
@@ -16740,6 +16818,7 @@ async function fetchXP() {
         if (phoneInput) phoneInput.value = userData.telefono;
         rememberWilduLastKnownPhone(userData.telefono);
 
+        finishBackpackSync('FETCH_XP_SERVER');
         evaluateBookings();
 
         if (userData.xp < lastVXP) {
@@ -16770,6 +16849,7 @@ async function fetchXP() {
         }
     } catch (e) {
         console.error("Errore FetchXP:", e);
+        finishBackpackSync('FETCH_XP_ERROR');
 
         const backupRaw = localStorage.getItem(backupKey);
         if (backupRaw) {
@@ -16786,6 +16866,16 @@ async function fetchXP() {
                 if (currentTab === 'profile') renderProfile(cachedXPData);
                 showToast("Errore rete sugli XP. Mostro l’ultimo stato locale salvato.");
             } catch (_) {}
+        }
+    }
+    })();
+
+    try {
+        return await xpFetchPromise;
+    } finally {
+        if (xpFetchPromiseUid === requestUid) {
+            xpFetchPromise = null;
+            xpFetchPromiseUid = "";
         }
     }
 }
@@ -17012,9 +17102,14 @@ if (tripOrig) {
         }
     }
 
-    document.getElementById('my-bookings-list').innerHTML = (activeHtml === '') 
-        ? '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>' 
-        : activeHtml;
+    const bookingsList = document.getElementById('my-bookings-list');
+    if (bookingsList) {
+        const emptyBackpackHtml = (isBackpackSyncing && isClientLogged() && wildUserKey)
+            ? getBackpackSyncHtml()
+            : '<p style="color:#aaa; font-size: 14px; text-align: center; padding: 20px;">Zaino vuoto! 🎒</p>';
+
+        bookingsList.innerHTML = (activeHtml === '') ? emptyBackpackHtml : activeHtml;
+    }
 
     const totalOccupied = occupiedSlots.size;
     if (debugZainoEnabled()) wilduConsoleLog(`6. RISULTATO FINALE ZAINO: Occupati = ${totalOccupied}, Contenuto =`, Array.from(occupiedSlots));
@@ -25188,8 +25283,11 @@ if (profKeyEl) {
         if (id === 'profile') { 
             if (cachedXPData) {
                 renderProfile(cachedXPData);
-            } else if (wildUserKey) {
-                fetchXP();
+            }
+
+            if (wildUserKey && (isBackpackSyncing || Date.now() - lastFetchTime > BACKPACK_PROFILE_REFRESH_MS)) {
+                beginBackpackSync('PROFILE_TAB');
+                fetchXP({ showBackpackSync: true, reason: 'PROFILE_TAB' });
             }
         }
 
