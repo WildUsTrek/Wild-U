@@ -121,6 +121,18 @@
             transition: opacity .18s ease, transform .18s ease;
         "></div>
 
+        <div id="wildu-game-chrome-hotspot" aria-hidden="true" style="
+            position:absolute;
+            top:0;
+            left:0;
+            right:0;
+            height:calc(108px + env(safe-area-inset-top, 0px));
+            z-index:30001;
+            background:transparent;
+            pointer-events:auto;
+            touch-action:pan-y;
+        "></div>
+
         <div id="wildu-game-frame-shell" style="
             position: absolute;
             inset: 0;
@@ -168,6 +180,7 @@
     const frameEl = document.getElementById("wildu-game-frame");
     const frameTitleEl = document.getElementById("wildu-game-frame-title");
     const frameShellEl = document.getElementById("wildu-game-frame-shell");
+    const frameChromeHotspotEl = document.getElementById("wildu-game-chrome-hotspot");
     const closeBtn = document.getElementById("wildu-close-game-fullscreen");
 
     let games = [];
@@ -272,6 +285,38 @@
 
         setFrameChromeVisible(true);
         scheduleFrameChromeHide();
+    }
+
+    function bindFrameChromeRevealEvents(target) {
+        if (!target) return;
+
+        target.addEventListener("pointermove", function (event) {
+            if (activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
+            if (event && typeof event.clientY === "number" && event.clientY <= 118) {
+                revealFrameChrome();
+            }
+        });
+
+        target.addEventListener("touchstart", function (event) {
+            const touch = event.touches && event.touches[0];
+            frameTouchStartY = touch ? touch.clientY : 0;
+
+            if (frameTouchStartY <= 128) {
+                revealFrameChrome();
+            }
+        }, { passive: true });
+
+        target.addEventListener("touchmove", function (event) {
+            const touch = event.touches && event.touches[0];
+            if (!touch || activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
+
+            const movedUp = frameTouchStartY && (frameTouchStartY - touch.clientY) > 18;
+            const nearTop = touch.clientY <= 128;
+
+            if (movedUp || nearTop) {
+                revealFrameChrome();
+            }
+        }, { passive: true });
     }
 
     function applyFrameLayout(game) {
@@ -901,37 +946,17 @@
 
             if (data.type === "WILDU_GAME_CLOSE_REQUEST") {
                 closeGameFrame();
+                return;
+            }
+
+            if (data.type === "WILDU_GAME_FRAME_CHROME_REVEAL_REQUEST") {
+                revealFrameChrome();
             }
         });
 
         if (overlayEl) {
-            overlayEl.addEventListener("pointermove", function (event) {
-                if (activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
-                if (event && typeof event.clientY === "number" && event.clientY <= 96) {
-                    revealFrameChrome();
-                }
-            });
-
-            overlayEl.addEventListener("touchstart", function (event) {
-                const touch = event.touches && event.touches[0];
-                frameTouchStartY = touch ? touch.clientY : 0;
-
-                if (frameTouchStartY <= 110) {
-                    revealFrameChrome();
-                }
-            }, { passive: true });
-
-            overlayEl.addEventListener("touchmove", function (event) {
-                const touch = event.touches && event.touches[0];
-                if (!touch || activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
-
-                const movedUp = frameTouchStartY && (frameTouchStartY - touch.clientY) > 18;
-                const nearTop = touch.clientY <= 110;
-
-                if (movedUp || nearTop) {
-                    revealFrameChrome();
-                }
-            }, { passive: true });
+            bindFrameChromeRevealEvents(overlayEl);
+            bindFrameChromeRevealEvents(frameChromeHotspotEl);
         }
 
         document.addEventListener("keydown", function (e) {
