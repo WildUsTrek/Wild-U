@@ -99,6 +99,8 @@
             box-shadow: 0 8px 26px rgba(0,0,0,0.8);
             backdrop-filter: blur(8px);
             z-index: 30002;
+            transition: opacity .18s ease, transform .18s ease;
+            touch-action: manipulation;
         ">×</button>
 
         <div id="wildu-game-frame-title" style="
@@ -116,6 +118,7 @@
             text-overflow:ellipsis;
             pointer-events:none;
             opacity:.86;
+            transition: opacity .18s ease, transform .18s ease;
         "></div>
 
         <div id="wildu-game-frame-shell" style="
@@ -155,17 +158,24 @@
     const SECURE_BRIDGE_PREFIX = "wildu_secure_launch_bridge:";
     const SECURE_BRIDGE_TTL_MS = 2 * 60 * 1000;
     const DEFAULT_OPEN_MODE = "secure_iframe";
+    const DEFAULT_FRAME_LAYOUT = "classic";
+    const IMMERSIVE_FRAME_LAYOUT = "immersive";
+    const FRAME_CHROME_AUTO_HIDE_MS = 2300;
 
     const statusEl = document.getElementById("wildu-games-status");
     const listEl = document.getElementById("wildu-games-list");
     const overlayEl = document.getElementById("wildu-game-fullscreen");
     const frameEl = document.getElementById("wildu-game-frame");
     const frameTitleEl = document.getElementById("wildu-game-frame-title");
+    const frameShellEl = document.getElementById("wildu-game-frame-shell");
     const closeBtn = document.getElementById("wildu-close-game-fullscreen");
 
     let games = [];
     let previousBodyOverflow = "";
     let previousHtmlOverflow = "";
+    let activeFrameLayout = DEFAULT_FRAME_LAYOUT;
+    let frameChromeHideTimer = 0;
+    let frameTouchStartY = 0;
 
     function setStatus(message, isError) {
         if (!statusEl) return;
@@ -183,6 +193,110 @@
         } else {
             console.log("[WILDU GIOCHI]", message);
         }
+    }
+
+    function normalizeFrameLayout(value, game) {
+        const raw = String(value || "").trim().toLowerCase().replace(/-/g, "_");
+
+        if (raw === IMMERSIVE_FRAME_LAYOUT || raw === "fullscreen" || raw === "fullscreen_game") {
+            return IMMERSIVE_FRAME_LAYOUT;
+        }
+
+        if (raw === DEFAULT_FRAME_LAYOUT) {
+            return DEFAULT_FRAME_LAYOUT;
+        }
+
+        const url = String(game && game.url || "").toLowerCase();
+        if (url.indexOf("giochi/arcomage/") >= 0 || url.indexOf("giochi/arcomage/index.html") >= 0) {
+            return IMMERSIVE_FRAME_LAYOUT;
+        }
+
+        return DEFAULT_FRAME_LAYOUT;
+    }
+
+    function getGameFrameLayout(game) {
+        return normalizeFrameLayout(
+            game && (
+                game.frameLayout ||
+                game.frame_layout ||
+                game.iframeLayout ||
+                game.iframe_layout ||
+                game.layoutMode ||
+                game.layout_mode
+            ),
+            game
+        );
+    }
+
+    function setFrameChromeVisible(visible) {
+        const show = visible !== false || activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT;
+
+        if (overlayEl) {
+            overlayEl.setAttribute("data-chrome-visible", show ? "true" : "false");
+        }
+
+        if (closeBtn) {
+            closeBtn.style.opacity = show ? "1" : "0";
+            closeBtn.style.transform = show ? "translateY(0)" : "translateY(-18px)";
+            closeBtn.style.pointerEvents = show ? "auto" : "none";
+        }
+
+        if (frameTitleEl) {
+            frameTitleEl.style.opacity = show ? ".86" : "0";
+            frameTitleEl.style.transform = show ? "translateY(0)" : "translateY(-12px)";
+        }
+    }
+
+    function clearFrameChromeHideTimer() {
+        if (frameChromeHideTimer) {
+            clearTimeout(frameChromeHideTimer);
+            frameChromeHideTimer = 0;
+        }
+    }
+
+    function scheduleFrameChromeHide() {
+        clearFrameChromeHideTimer();
+
+        if (activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) {
+            setFrameChromeVisible(true);
+            return;
+        }
+
+        frameChromeHideTimer = setTimeout(function () {
+            setFrameChromeVisible(false);
+        }, FRAME_CHROME_AUTO_HIDE_MS);
+    }
+
+    function revealFrameChrome() {
+        if (activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
+
+        setFrameChromeVisible(true);
+        scheduleFrameChromeHide();
+    }
+
+    function applyFrameLayout(game) {
+        activeFrameLayout = getGameFrameLayout(game);
+
+        if (overlayEl) {
+            overlayEl.setAttribute("data-frame-layout", activeFrameLayout);
+        }
+
+        if (!frameShellEl) return;
+
+        if (activeFrameLayout === IMMERSIVE_FRAME_LAYOUT) {
+            frameShellEl.style.inset = "0";
+            frameShellEl.style.paddingTop = "0";
+            frameShellEl.style.paddingBottom = "0";
+            frameShellEl.style.paddingLeft = "0";
+            frameShellEl.style.paddingRight = "0";
+            return;
+        }
+
+        frameShellEl.style.inset = "0";
+        frameShellEl.style.paddingTop = "calc(70px + env(safe-area-inset-top, 0px))";
+        frameShellEl.style.paddingBottom = "env(safe-area-inset-bottom, 0px)";
+        frameShellEl.style.paddingLeft = "env(safe-area-inset-left, 0px)";
+        frameShellEl.style.paddingRight = "env(safe-area-inset-right, 0px)";
     }
 
     function escapeHtml(value) {
@@ -392,6 +506,7 @@
             url,
             rev,
             openMode: normalizeOpenMode(data.openMode || data.open_mode || data.mode || DEFAULT_OPEN_MODE),
+            frameLayout: normalizeFrameLayout(data.frameLayout || data.frame_layout || data.iframeLayout || data.iframe_layout || data.layoutMode || data.layout_mode, { url }),
             grade: String(data.Grado_Minimo || data.gradeRequired || data.requiredGrade || "").trim(),
             duration: String(data.duration || data.durata || data.Durata || "").trim(),
             label: String(data.label || data.badge || data.tipo || "Gioco").trim(),
@@ -674,8 +789,11 @@
             frameTitleEl.textContent = game.title || "Gioco Wildu";
         }
 
+        applyFrameLayout(game);
         overlayEl.style.display = "block";
         overlayEl.setAttribute("aria-hidden", "false");
+        setFrameChromeVisible(true);
+        scheduleFrameChromeHide();
         frameEl.setAttribute("title", game.title || "Gioco Wildu");
         frameEl.setAttribute("src", url);
 
@@ -762,6 +880,8 @@
         document.documentElement.style.overflow = previousHtmlOverflow;
 
         if (frameTitleEl) frameTitleEl.textContent = "";
+        clearFrameChromeHideTimer();
+        setFrameChromeVisible(true);
 
         console.log("[WILDU GIOCHI] gioco chiuso");
     }
@@ -769,6 +889,49 @@
     function bindCloseEvents() {
         if (closeBtn) {
             closeBtn.addEventListener("click", closeGameFrame);
+        }
+
+        window.closeWilduGameFrame = closeGameFrame;
+
+        window.addEventListener("message", function (event) {
+            if (event && event.origin && event.origin !== window.location.origin) return;
+
+            const data = event && event.data;
+            if (!data || typeof data !== "object") return;
+
+            if (data.type === "WILDU_GAME_CLOSE_REQUEST") {
+                closeGameFrame();
+            }
+        });
+
+        if (overlayEl) {
+            overlayEl.addEventListener("pointermove", function (event) {
+                if (activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
+                if (event && typeof event.clientY === "number" && event.clientY <= 96) {
+                    revealFrameChrome();
+                }
+            });
+
+            overlayEl.addEventListener("touchstart", function (event) {
+                const touch = event.touches && event.touches[0];
+                frameTouchStartY = touch ? touch.clientY : 0;
+
+                if (frameTouchStartY <= 110) {
+                    revealFrameChrome();
+                }
+            }, { passive: true });
+
+            overlayEl.addEventListener("touchmove", function (event) {
+                const touch = event.touches && event.touches[0];
+                if (!touch || activeFrameLayout !== IMMERSIVE_FRAME_LAYOUT) return;
+
+                const movedUp = frameTouchStartY && (frameTouchStartY - touch.clientY) > 18;
+                const nearTop = touch.clientY <= 110;
+
+                if (movedUp || nearTop) {
+                    revealFrameChrome();
+                }
+            }, { passive: true });
         }
 
         document.addEventListener("keydown", function (e) {

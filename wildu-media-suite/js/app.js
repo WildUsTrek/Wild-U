@@ -4110,7 +4110,7 @@
 
     var items = state.gameRuntime && Array.isArray(state.gameRuntime.items) ? state.gameRuntime.items : [];
     if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="muted">Nessun gioco registrato. Usa “Preset giochi noti” oppure salva un URL gioco.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="muted">Nessun gioco registrato. Usa “Preset giochi noti” oppure salva un URL gioco.</td></tr>';
       return;
     }
 
@@ -4119,6 +4119,7 @@ tbody.innerHTML = items.map(function (item) {
     '<td><strong>' + root.escapeHtml(item.title || item.url) + '</strong><br><span class="small-text">' + root.escapeHtml(cleanAdminDumpText(item.description || item.notes || '')) + '</span></td>' +
     '<td><code>' + root.escapeHtml(item.url || '') + '</code><br><span class="small-text">Modulo: ' + root.escapeHtml(item.moduleUrl || '—') + '</span></td>' +
     '<td><span class="badge">' + root.escapeHtml(item.openMode || 'secure_iframe') + '</span></td>' +
+    '<td><span class="badge">' + root.escapeHtml(item.frameLayout || item.frame_layout || 'classic') + '</span></td>' +
     '<td><strong>' + Number(item.rev || 1) + '</strong></td>' +
     '<td>' + (item.enabled === false ? '<span class="badge warn">NO</span>' : '<span class="badge good">SÌ</span>') + '</td>' +
     '<td><code>' + root.escapeHtml(item.cacheScope || '') + '</code></td>' +
@@ -4365,6 +4366,8 @@ tbody.innerHTML = items.map(function (item) {
 
     var mode = String(input.openMode || input.open_mode || 'secure_iframe').trim();
     if (['secure_iframe', 'secure_redirect', 'iframe', 'redirect'].indexOf(mode) < 0) mode = 'secure_iframe';
+    var frameLayout = String(input.frameLayout || input.frame_layout || input.iframeLayout || input.iframe_layout || 'classic').trim();
+    if (['classic', 'immersive'].indexOf(frameLayout) < 0) frameLayout = 'classic';
 
     return {
       title: String(input.title || '').trim() || url,
@@ -4372,6 +4375,7 @@ tbody.innerHTML = items.map(function (item) {
       rev: baseRev,
       enabled: input.enabled !== false && input.enabled !== 'false',
       openMode: mode,
+      frameLayout: frameLayout,
       moduleUrl: normalizeAdminRuntimeUrl(input.moduleUrl || ''),
       description: String(input.description || input.notes || '').trim(),
       notes: String(input.notes || input.description || '').trim(),
@@ -4547,6 +4551,7 @@ function readGameForm() {
       // Decide come il launcher giochi aprirà questo gioco.
       // Default consigliato: secure_iframe.
       openMode: root.$('#game-open-mode') ? root.$('#game-open-mode').value : 'secure_iframe',
+      frameLayout: root.$('#game-frame-layout') ? root.$('#game-frame-layout').value : 'classic',
 
       moduleUrl: moduleUrl,
       description: root.$('#game-description').value,
@@ -4565,6 +4570,10 @@ function fillGameForm(item) {
 
     if (root.$('#game-open-mode')) {
       root.$('#game-open-mode').value = item.openMode || item.open_mode || 'secure_iframe';
+    }
+
+    if (root.$('#game-frame-layout')) {
+      root.$('#game-frame-layout').value = item.frameLayout || item.frame_layout || item.iframeLayout || item.iframe_layout || 'classic';
     }
 
     root.$('#game-module-url').value = normalizeAdminRuntimeUrl(item.moduleUrl || '');

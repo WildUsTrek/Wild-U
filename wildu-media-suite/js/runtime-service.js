@@ -214,6 +214,9 @@ function normalizeGame(input) {
       'redirect'
     ].indexOf(mode) >= 0 ? mode : 'secure_iframe';
 
+    var frameLayout = String(input.frameLayout || input.frame_layout || input.iframeLayout || input.iframe_layout || 'classic').trim();
+    entry.frameLayout = ['classic', 'immersive'].indexOf(frameLayout) >= 0 ? frameLayout : 'classic';
+
     return entry;
   }
 
