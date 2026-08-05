@@ -6043,6 +6043,38 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         padding-right: 14px !important;
     }
 }
+
+.wildu-booking-contact-card {
+    width: min(92vw, 420px);
+    max-height: min(82vh, 620px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 24px;
+    border: 1px solid rgba(212,175,55,.72);
+    border-radius: 8px;
+    background: #171917;
+    color: #fff;
+    box-shadow: 0 18px 48px rgba(0,0,0,.62);
+    text-align: left;
+}
+
+.wildu-booking-contact-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.wildu-booking-contact-actions button {
+    width: 100%;
+    min-height: 48px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 420px) {
+    .wildu-booking-contact-card { padding: 18px; }
+}
 </style>
     
 </head>
@@ -6149,6 +6181,17 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         <div style="display: flex; gap: 10px;">
             <button onclick="closeCustomBooking()" style="flex: 1; padding: 12px; border-radius: 8px; background: #333; color: white; border: none; font-weight: bold; cursor: pointer;">Indietro</button>
             <button onclick="sendCustomBooking()" style="flex: 2; padding: 12px; border-radius: 8px; background: var(--w-gold); color: black; font-weight: bold; border: none; cursor: pointer; text-transform: uppercase;">Conferma</button>
+        </div>
+    </div>
+</div>
+
+<div id="wildu-booking-contact-modal" class="modal-overlay" style="display:none; z-index:10020; padding:16px; box-sizing:border-box;" role="dialog" aria-modal="true" aria-labelledby="wildu-booking-contact-title">
+    <div class="wildu-booking-contact-card">
+        <h2 id="wildu-booking-contact-title" style="margin:0 0 10px; color:var(--w-gold); font-size:22px;">Prenotazione salvata</h2>
+        <p style="margin:0; color:#d8d8d8; line-height:1.5;">Vuoi chiedere subito informazioni sulla prenotazione appena confermata?</p>
+        <div class="wildu-booking-contact-actions">
+            <button id="wildu-booking-contact-open" type="button" class="btn-book">Richiedi info sulla tua prenotazione</button>
+            <button id="wildu-booking-contact-exit" type="button" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:700; cursor:pointer;">Esci</button>
         </div>
     </div>
 </div>
@@ -16862,6 +16905,121 @@ let myBookedTitles = [];
 let pendingBookings = [];
 let pendingCancels = [];
 let currentBookingDraft = null;
+let pendingBookingContactOffer = null;
+let pendingBookingContactTimer = null;
+
+function waitWilduBookingContact(ms) {
+    return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function closeWilduBookingContactModal() {
+    if (pendingBookingContactTimer) {
+        window.clearTimeout(pendingBookingContactTimer);
+        pendingBookingContactTimer = null;
+    }
+    const modal = document.getElementById('wildu-booking-contact-modal');
+    if (modal) modal.style.display = 'none';
+    pendingBookingContactOffer = null;
+}
+
+function isWilduBlockingModalVisible() {
+    const ids = [
+        'custom-booking-modal',
+        'reward-overlay',
+        'levelup-overlay',
+        'wildu-legal-consent-modal',
+        'registration-cta-modal'
+    ];
+    return ids.some(id => {
+        const element = document.getElementById(id);
+        if (!element) return false;
+        const style = window.getComputedStyle(element);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+}
+
+function buildWilduBookingContactUrl(reference) {
+    const message = `Ciao, richiedo informazioni sulla mia prenotazione Wild-U. Riferimento: ${reference}`;
+    const assets = typeof WILD_ASSETS === 'object' && WILD_ASSETS ? WILD_ASSETS : {};
+    const configured = String(assets.link_chat_wa || 'https://wa.me/393931326733').trim();
+    try {
+        const url = new URL(configured, window.location.href);
+        if (!/^https:$/.test(url.protocol) || !/(^|\.)wa\.me$|(^|\.)whatsapp\.com$/i.test(url.hostname)) return '';
+        url.searchParams.set('text', message);
+        return url.toString();
+    } catch (_) {
+        return '';
+    }
+}
+
+function openWilduBookingContactModalWhenSafe(offer, attempt) {
+    attempt = parseInt(attempt || 0, 10) || 0;
+    if (!offer || !/^WU-[A-Za-z0-9_-]{32}$/.test(String(offer.reference || ''))) return false;
+    if (!auth.currentUser || auth.currentUser.uid !== offer.requestingUid) return false;
+    if (isWilduBlockingModalVisible()) {
+        if (attempt >= 120) return false;
+        pendingBookingContactTimer = window.setTimeout(() => openWilduBookingContactModalWhenSafe(offer, attempt + 1), 1000);
+        return false;
+    }
+    const url = buildWilduBookingContactUrl(offer.reference);
+    if (!url) return false;
+    const modal = document.getElementById('wildu-booking-contact-modal');
+    const openButton = document.getElementById('wildu-booking-contact-open');
+    const exitButton = document.getElementById('wildu-booking-contact-exit');
+    if (!modal || !openButton || !exitButton) return false;
+    pendingBookingContactOffer = { url, expiresAtIso: String(offer.expiresAtIso || '') };
+    openButton.onclick = () => {
+        const target = pendingBookingContactOffer && pendingBookingContactOffer.url;
+        closeWilduBookingContactModal();
+        if (target) window.open(target, '_blank', 'noopener,noreferrer');
+    };
+    exitButton.onclick = closeWilduBookingContactModal;
+    modal.style.display = 'flex';
+    openButton.focus();
+    return true;
+}
+
+async function requestWilduBookingContactOffer(booking) {
+    if (!booking || !booking.bookingId || !auth.currentUser) return false;
+    const requestingUid = auth.currentUser.uid;
+    const delays = [0, 1500, 3500, 7000, 12000];
+    for (let attempt = 0; attempt < delays.length; attempt += 1) {
+        if (delays[attempt]) await waitWilduBookingContact(delays[attempt]);
+        if (!auth.currentUser || auth.currentUser.uid !== requestingUid) return false;
+        try {
+            const safeToken = await getVerifiedClientToken();
+            const response = await fetch(MOTORE_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${safeToken}`,
+                    'X-WILDU-CHANNEL': clientSession.channel
+                },
+                body: JSON.stringify({
+                    action: 'getBookingContactOffer',
+                    bookingKind: booking.bookingKind,
+                    bookingId: booking.bookingId,
+                    collection: booking.collection || '',
+                    eventDocId: booking.eventDocId || '',
+                    clientContext: { channel: clientSession.channel }
+                })
+            });
+            const result = await response.json();
+            if (!response.ok || result.status !== 'success') return false;
+            const offer = result.offer || {};
+            if (offer.enabled === true) {
+                offer.requestingUid = requestingUid;
+                window.setTimeout(() => openWilduBookingContactModalWhenSafe(offer, 0), 350);
+                return true;
+            }
+            if (offer.reason !== 'AUTOMATION_NOT_READY') return false;
+        } catch (error) {
+            console.warn('Offerta contatto post-prenotazione non disponibile:', error);
+            return false;
+        }
+    }
+    return false;
+}
 
 function normalizeBookingText(v) {
     return String(v || "").toLowerCase().trim();
@@ -21947,6 +22105,14 @@ async function sendOnDemandBookingFromModal(options) {
             reason: 'ondemand-booking-success',
             consentSource: 'ondemand_booking_success'
         });
+        if (result.alreadyBooked !== true) {
+            requestWilduBookingContactOffer({
+                bookingKind: 'ondemand',
+                bookingId: result.bookingId,
+                collection: result.collection,
+                eventDocId: result.eventDocId
+            });
+        }
     } catch (err) {
         console.error("Errore prenotazione su richiesta:", err);
         alert("Errore invio richiesta: " + err.message);
@@ -22110,6 +22276,12 @@ if (result.alreadyBooked === true) {
                 earnedXP: earnedXpToCelebrate,
                 reason: 'standard-booking-success',
                 consentSource: 'standard_booking_success'
+            });
+            requestWilduBookingContactOffer({
+                bookingKind: 'event',
+                bookingId: result.bookingId,
+                collection: result.collection,
+                eventDocId: result.eventDocId
             });
         }
 
