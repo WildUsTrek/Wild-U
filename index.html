@@ -16979,14 +16979,22 @@ function openWilduBookingContactModalWhenSafe(offer, attempt) {
     return true;
 }
 
+const wilduBookingContactOfferRequests = new Map();
+
 async function requestWilduBookingContactOffer(booking) {
     if (!booking || !booking.bookingId || !auth.currentUser) return false;
     const requestingUid = auth.currentUser.uid;
+    const requestKey = [requestingUid, booking.bookingKind, booking.collection, booking.eventDocId, booking.bookingId]
+        .map(value => String(value || '').trim()).join('|');
+    const previousRequestAt = Number(wilduBookingContactOfferRequests.get(requestKey) || 0);
+    if (previousRequestAt && Date.now() - previousRequestAt < 5 * 60 * 1000) return false;
+    wilduBookingContactOfferRequests.set(requestKey, Date.now());
     const delays = [0, 1500, 3500, 7000, 12000];
-    for (let attempt = 0; attempt < delays.length; attempt += 1) {
-        if (delays[attempt]) await waitWilduBookingContact(delays[attempt]);
-        if (!auth.currentUser || auth.currentUser.uid !== requestingUid) return false;
-        try {
+    let retainRequestCooldown = false;
+    try {
+        for (let attempt = 0; attempt < delays.length; attempt += 1) {
+            if (delays[attempt]) await waitWilduBookingContact(delays[attempt]);
+            if (!auth.currentUser || auth.currentUser.uid !== requestingUid) return false;
             const safeToken = await getVerifiedClientToken();
             const response = await fetch(MOTORE_API_URL, {
                 method: 'POST',
@@ -17008,15 +17016,22 @@ async function requestWilduBookingContactOffer(booking) {
             if (!response.ok || result.status !== 'success') return false;
             const offer = result.offer || {};
             if (offer.enabled === true) {
+                retainRequestCooldown = true;
                 offer.requestingUid = requestingUid;
                 window.setTimeout(() => openWilduBookingContactModalWhenSafe(offer, 0), 350);
                 return true;
             }
+            if (offer.reason === 'OFFER_RECENTLY_ISSUED') {
+                retainRequestCooldown = true;
+                return false;
+            }
             if (offer.reason !== 'AUTOMATION_NOT_READY') return false;
-        } catch (error) {
-            console.warn('Offerta contatto post-prenotazione non disponibile:', error);
-            return false;
         }
+    } catch (error) {
+        console.warn('Offerta contatto post-prenotazione non disponibile:', error);
+        return false;
+    } finally {
+        if (!retainRequestCooldown) wilduBookingContactOfferRequests.delete(requestKey);
     }
     return false;
 }
