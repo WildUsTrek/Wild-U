@@ -6116,6 +6116,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     width: min(92vw, 430px);
     max-height: min(86dvh, 620px);
     overflow-y: auto;
+    position: relative;
     box-sizing: border-box;
     padding: 24px;
     border: 1px solid rgba(212,175,55,.72);
@@ -6124,6 +6125,31 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     color: #fff;
     box-shadow: 0 18px 48px rgba(0,0,0,.62);
     text-align: left;
+}
+
+.wildu-program-confirm-close {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    float: right;
+    width: 44px;
+    height: 44px;
+    margin: -10px -10px 4px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,.26);
+    border-radius: 50%;
+    background: #a82323;
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(0,0,0,.38);
+    font-size: 19px;
+    cursor: pointer;
+}
+
+.wildu-program-confirm-close:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
 }
 
 .wildu-program-confirm-icon {
@@ -6167,6 +6193,36 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     box-sizing: border-box;
     white-space: normal;
     overflow-wrap: anywhere;
+}
+
+.wildu-program-reader-status {
+    margin-top: 18px;
+    padding: 14px;
+    border: 1px solid rgba(114,213,255,.28);
+    border-radius: 8px;
+    background: rgba(114,213,255,.07);
+    color: #dceef5;
+    line-height: 1.5;
+}
+
+.wildu-program-reader-content {
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid rgba(212,175,55,.28);
+    border-radius: 8px;
+    background: #101110;
+    color: #efefef;
+    font-size: 15px;
+    line-height: 1.65;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.wildu-program-reader-meta {
+    margin-top: 10px;
+    color: #9ca3a0;
+    font-size: 11px;
+    line-height: 1.45;
 }
 
 @media (max-width: 420px) {
@@ -6297,15 +6353,23 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 <div id="wildu-program-confirm-modal" class="modal-overlay wildu-program-confirm-overlay" style="display:none;" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="wildu-program-confirm-title" aria-describedby="wildu-program-confirm-copy" onclick="if(event.target===this) closeWilduOfficialProgramConfirmation();">
     <div class="wildu-program-confirm-card" onclick="event.stopPropagation()">
+        <button id="wildu-program-confirm-close" type="button" class="wildu-program-confirm-close" onclick="closeWilduOfficialProgramConfirmation()" aria-label="Chiudi programma completo" title="Chiudi">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
             <span class="wildu-program-confirm-icon" aria-hidden="true"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
             <h2 id="wildu-program-confirm-title" style="margin:0; color:var(--w-gold); font-size:21px; line-height:1.2;">Programma completo</h2>
         </div>
-        <p id="wildu-program-confirm-copy" style="margin:0; color:#e3e3e3; font-size:15px; line-height:1.55;">Leggi tutto il programma sul sito ufficiale e <strong class="wildu-program-confirm-return">torna qui</strong> per la prenotazione a <strong class="wildu-program-confirm-price">prezzo riservato community</strong>.</p>
-        <p style="margin:10px 0 0; color:#a9a9a9; font-size:12px; line-height:1.45;">Il sito ufficiale si apre in una nuova scheda: Wild-U resta aperta qui.</p>
-        <div class="wildu-program-confirm-actions">
-            <button id="wildu-program-confirm-cancel" type="button" onclick="closeWilduOfficialProgramConfirmation()" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:800; cursor:pointer;">Resta nell'app</button>
-            <a id="wildu-program-confirm-open" href="#" target="_blank" rel="noopener" onclick="closeWilduOfficialProgramConfirmation(false)" class="btn-book" style="margin:0; text-decoration:none;">Apri il sito</a>
+        <div id="wildu-program-confirm-intro">
+            <p id="wildu-program-confirm-copy" style="margin:0; color:#e3e3e3; font-size:15px; line-height:1.55;">Puoi leggere il programma completo qui nell'app oppure sul sito ufficiale. Dopo la lettura, <strong class="wildu-program-confirm-return">torna qui</strong> per la prenotazione a <strong class="wildu-program-confirm-price">prezzo riservato community</strong>.</p>
+            <p style="margin:10px 0 0; color:#a9a9a9; font-size:12px; line-height:1.45;">Il sito ufficiale si apre in una nuova scheda: Wild-U resta aperta qui.</p>
+        </div>
+        <div id="wildu-program-reader-status" class="wildu-program-reader-status" role="status" aria-live="polite" style="display:none;"></div>
+        <div id="wildu-program-reader-content" class="wildu-program-reader-content" tabindex="0" style="display:none;"></div>
+        <div id="wildu-program-reader-meta" class="wildu-program-reader-meta" style="display:none;"></div>
+        <div id="wildu-program-confirm-actions" class="wildu-program-confirm-actions">
+            <button id="wildu-program-confirm-read" type="button" onclick="loadWilduOfficialProgram(false)" style="padding:12px; border:1px solid rgba(114,213,255,.55); border-radius:8px; background:#173744; color:#fff; font-weight:900; cursor:pointer;">Leggi da qui</button>
+            <a id="wildu-program-confirm-open" href="#" target="_blank" rel="noopener" onclick="closeWilduOfficialProgramConfirmation(false)" class="btn-book" style="margin:0; text-decoration:none;">Apri sito ufficiale</a>
         </div>
     </div>
 </div>
@@ -17822,7 +17886,15 @@ function openCommercialLink(rawUrl) {
 }
 
 let wilduOfficialProgramPendingUrl = "";
+let wilduOfficialProgramPendingId = "";
 let wilduOfficialProgramTrigger = null;
+let wilduOfficialProgramAbortController = null;
+let wilduOfficialProgramLoadPromise = null;
+let wilduOfficialProgramLoadEventDocId = "";
+
+const WILDU_OFFICIAL_PROGRAM_CACHE_PREFIX = "wilduOfficialProgram:v1:";
+const WILDU_OFFICIAL_PROGRAM_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const WILDU_OFFICIAL_PROGRAM_CACHE_MAX = 20;
 
 function normalizeWilduOfficialProgramUrl(rawUrl) {
     const normalized = normalizeWilduCommercialUrl(rawUrl);
@@ -17833,7 +17905,11 @@ function normalizeWilduOfficialProgramUrl(rawUrl) {
         const hostname = url.hostname.toLowerCase();
         const allowedHost = hostname === "wildu.it" || hostname === "www.wildu.it";
         const allowedPath = url.pathname.toLowerCase().startsWith("/prodotti/");
-        return allowedHost && allowedPath ? url.toString() : "";
+        const allowedPort = !url.port || url.port === "443";
+        const safeCredentials = !url.username && !url.password;
+        return url.protocol === "https:" && allowedHost && allowedPath && allowedPort && safeCredentials
+            ? url.toString()
+            : "";
     } catch (e) {
         return "";
     }
@@ -17845,26 +17921,277 @@ function handleWilduOfficialProgramEscape(event) {
     }
 }
 
-function openWilduOfficialProgramConfirmation(rawUrl, triggerElement) {
-    const url = normalizeWilduOfficialProgramUrl(rawUrl);
-    const modal = document.getElementById("wildu-program-confirm-modal");
-    const cancelButton = document.getElementById("wildu-program-confirm-cancel");
+function getWilduOfficialProgramCacheKey(eventDocId) {
+    return WILDU_OFFICIAL_PROGRAM_CACHE_PREFIX + String(eventDocId || "").trim();
+}
+
+function getCachedWilduOfficialProgram(eventDocId, requestedSourceUrl) {
+    try {
+        const raw = localStorage.getItem(getWilduOfficialProgramCacheKey(eventDocId));
+        if (!raw) return null;
+
+        const cached = JSON.parse(raw);
+        const age = Date.now() - Number(cached.cachedAt || 0);
+        const sameEvent = cached.eventDocId === eventDocId;
+        const sameSource = cached.requestedSourceUrl === requestedSourceUrl;
+        const validText = typeof cached.programText === "string" && cached.programText.length >= 120 && cached.programText.length <= 20000;
+
+        if (age < 0 || age > WILDU_OFFICIAL_PROGRAM_CACHE_TTL_MS || !sameEvent || !sameSource || !validText) {
+            localStorage.removeItem(getWilduOfficialProgramCacheKey(eventDocId));
+            return null;
+        }
+
+        return cached;
+    } catch (e) {
+        try { localStorage.removeItem(getWilduOfficialProgramCacheKey(eventDocId)); } catch (_) {}
+        return null;
+    }
+}
+
+function storeWilduOfficialProgramCache(payload, requestedSourceUrl) {
+    try {
+        const entry = {
+            eventDocId: payload.eventDocId,
+            requestedSourceUrl,
+            title: String(payload.title || ""),
+            programText: String(payload.programText || ""),
+            sourceUrl: String(payload.sourceUrl || ""),
+            contentHash: String(payload.contentHash || ""),
+            fetchedAt: String(payload.fetchedAt || ""),
+            truncated: payload.truncated === true,
+            paragraphCount: Number(payload.paragraphCount || 0),
+            cachedAt: Date.now()
+        };
+
+        localStorage.setItem(getWilduOfficialProgramCacheKey(payload.eventDocId), JSON.stringify(entry));
+
+        const cacheEntries = [];
+        for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+            if (!key || !key.startsWith(WILDU_OFFICIAL_PROGRAM_CACHE_PREFIX)) continue;
+            try {
+                const value = JSON.parse(localStorage.getItem(key) || "{}");
+                cacheEntries.push({ key, cachedAt: Number(value.cachedAt || 0) });
+            } catch (_) {
+                cacheEntries.push({ key, cachedAt: 0 });
+            }
+        }
+
+        cacheEntries
+            .sort((a, b) => b.cachedAt - a.cachedAt)
+            .slice(WILDU_OFFICIAL_PROGRAM_CACHE_MAX)
+            .forEach(entryToRemove => localStorage.removeItem(entryToRemove.key));
+    } catch (e) {
+        console.warn("Cache programma Official non disponibile.", e);
+    }
+}
+
+function resetWilduOfficialProgramReader() {
+    const intro = document.getElementById("wildu-program-confirm-intro");
+    const title = document.getElementById("wildu-program-confirm-title");
+    const status = document.getElementById("wildu-program-reader-status");
+    const content = document.getElementById("wildu-program-reader-content");
+    const meta = document.getElementById("wildu-program-reader-meta");
+    const readButton = document.getElementById("wildu-program-confirm-read");
+    const actions = document.getElementById("wildu-program-confirm-actions");
+
+    if (intro) intro.style.display = "block";
+    if (title) title.textContent = "Programma completo";
+    if (status) { status.style.display = "none"; status.textContent = ""; }
+    if (content) { content.style.display = "none"; content.textContent = ""; }
+    if (meta) { meta.style.display = "none"; meta.textContent = ""; }
+    if (readButton) {
+        readButton.style.display = "inline-flex";
+        readButton.disabled = false;
+        readButton.textContent = "Leggi da qui";
+    }
+    if (actions) actions.style.gridTemplateColumns = "";
+}
+
+function renderWilduOfficialProgram(payload, fromClientCache) {
+    const intro = document.getElementById("wildu-program-confirm-intro");
+    const title = document.getElementById("wildu-program-confirm-title");
+    const status = document.getElementById("wildu-program-reader-status");
+    const content = document.getElementById("wildu-program-reader-content");
+    const meta = document.getElementById("wildu-program-reader-meta");
+    const readButton = document.getElementById("wildu-program-confirm-read");
+    const actions = document.getElementById("wildu-program-confirm-actions");
     const openLink = document.getElementById("wildu-program-confirm-open");
 
-    if (!url || !modal || !openLink) {
+    if (intro) intro.style.display = "none";
+    if (title && payload.title) title.textContent = payload.title;
+    if (status) { status.style.display = "none"; status.textContent = ""; }
+    if (content) {
+        content.textContent = payload.programText;
+        content.style.display = "block";
+    }
+    if (meta) {
+        const fetchedAt = payload.fetchedAt ? new Date(payload.fetchedAt) : null;
+        const validDate = fetchedAt && !Number.isNaN(fetchedAt.getTime());
+        const sourceLabel = fromClientCache || payload.cacheHit ? "Lettura recente in cache" : "Lettura aggiornata";
+        meta.textContent = `${sourceLabel}${validDate ? ` - ${fetchedAt.toLocaleString("it-IT")}` : ""}${payload.truncated ? " - contenuto abbreviato al limite di sicurezza" : ""}`;
+        meta.style.display = "block";
+    }
+    if (readButton) readButton.style.display = "none";
+    if (actions) actions.style.gridTemplateColumns = "minmax(0, 1fr)";
+    if (openLink) {
+        const safeSourceUrl = normalizeWilduOfficialProgramUrl(payload.sourceUrl);
+        if (safeSourceUrl) openLink.href = safeSourceUrl;
+    }
+
+    requestAnimationFrame(() => {
+        try { content.focus({ preventScroll: false }); } catch (e) {}
+    });
+}
+
+function renderWilduOfficialProgramError() {
+    const status = document.getElementById("wildu-program-reader-status");
+    const readButton = document.getElementById("wildu-program-confirm-read");
+
+    if (status) {
+        status.textContent = "Non riesco a caricare il programma qui in questo momento. Puoi riprovare oppure aprire il sito ufficiale.";
+        status.style.display = "block";
+    }
+    if (readButton) {
+        readButton.disabled = false;
+        readButton.textContent = "Riprova da qui";
+    }
+}
+
+async function loadWilduOfficialProgram(forceRefresh = false) {
+    const eventDocId = String(wilduOfficialProgramPendingId || "").trim();
+    const requestedSourceUrl = normalizeWilduOfficialProgramUrl(wilduOfficialProgramPendingUrl);
+    const status = document.getElementById("wildu-program-reader-status");
+    const readButton = document.getElementById("wildu-program-confirm-read");
+
+    if (!/^[A-Za-z0-9_-]{1,180}$/.test(eventDocId) || !requestedSourceUrl) {
+        renderWilduOfficialProgramError();
+        return;
+    }
+
+    if (!forceRefresh) {
+        const cached = getCachedWilduOfficialProgram(eventDocId, requestedSourceUrl);
+        if (cached) {
+            renderWilduOfficialProgram(cached, true);
+            return;
+        }
+    }
+
+    if (
+        wilduOfficialProgramLoadPromise &&
+        wilduOfficialProgramLoadEventDocId === eventDocId &&
+        wilduOfficialProgramAbortController &&
+        !wilduOfficialProgramAbortController.signal.aborted
+    ) {
+        return wilduOfficialProgramLoadPromise;
+    }
+
+    if (wilduOfficialProgramAbortController) {
+        wilduOfficialProgramAbortController.abort();
+    }
+
+    if (status) {
+        status.textContent = "Caricamento del programma completo...";
+        status.style.display = "block";
+    }
+    if (readButton) {
+        readButton.disabled = true;
+        readButton.textContent = "Caricamento...";
+    }
+
+    const requestEventDocId = eventDocId;
+    const requestAbortController = new AbortController();
+    wilduOfficialProgramAbortController = requestAbortController;
+    wilduOfficialProgramLoadEventDocId = requestEventDocId;
+    const timeoutId = setTimeout(() => requestAbortController.abort(), 18000);
+
+    const requestPromise = (async () => {
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                "X-WILDU-CHANNEL": isTelegramContext() ? "TELEGRAM" : "WEB"
+            };
+            if (auth.currentUser) {
+                try {
+                    const token = await auth.currentUser.getIdToken();
+                    if (token) headers.Authorization = `Bearer ${token}`;
+                } catch (e) {
+                    console.warn("Token opzionale non disponibile per il programma Official.", e);
+                }
+            }
+
+            const response = await fetch(MOTORE_API_URL, {
+                method: "POST",
+                headers,
+                signal: requestAbortController.signal,
+                body: JSON.stringify({
+                    action: "getOfficialProgram",
+                    eventDocId: requestEventDocId
+                })
+            });
+            const payload = await response.json().catch(() => ({}));
+            const safeResponseUrl = normalizeWilduOfficialProgramUrl(payload.sourceUrl);
+            const validPayload =
+                response.ok &&
+                payload.success === true &&
+                payload.schemaVersion === 1 &&
+                payload.eventDocId === requestEventDocId &&
+                typeof payload.programText === "string" &&
+                payload.programText.length >= 120 &&
+                payload.programText.length <= 20000 &&
+                !!safeResponseUrl;
+
+            if (!validPayload) throw new Error(payload.code || "PROGRAM_PAYLOAD_INVALID");
+
+            storeWilduOfficialProgramCache(payload, requestedSourceUrl);
+            if (wilduOfficialProgramPendingId === requestEventDocId) {
+                renderWilduOfficialProgram(payload, false);
+            }
+        } catch (error) {
+            if (error && error.name === "AbortError" && !wilduOfficialProgramPendingId) return;
+            console.warn("Lettura programma Official non riuscita.", error);
+            if (wilduOfficialProgramPendingId === requestEventDocId) {
+                renderWilduOfficialProgramError();
+            }
+        } finally {
+            clearTimeout(timeoutId);
+            if (wilduOfficialProgramAbortController === requestAbortController) {
+                wilduOfficialProgramAbortController = null;
+            }
+            if (wilduOfficialProgramLoadPromise === requestPromise) {
+                wilduOfficialProgramLoadPromise = null;
+                wilduOfficialProgramLoadEventDocId = "";
+            }
+        }
+    })();
+
+    wilduOfficialProgramLoadPromise = requestPromise;
+    return requestPromise;
+}
+
+function openWilduOfficialProgramConfirmation(rawUrl, eventDocId, triggerElement) {
+    const url = normalizeWilduOfficialProgramUrl(rawUrl);
+    const modal = document.getElementById("wildu-program-confirm-modal");
+    const closeButton = document.getElementById("wildu-program-confirm-close");
+    const openLink = document.getElementById("wildu-program-confirm-open");
+    const cleanEventDocId = String(eventDocId || "").trim();
+
+    if (!url || !/^[A-Za-z0-9_-]{1,180}$/.test(cleanEventDocId) || !modal || !openLink) {
         showToast("Link al programma non valido.");
         return;
     }
 
     wilduOfficialProgramPendingUrl = url;
+    wilduOfficialProgramPendingId = cleanEventDocId;
     wilduOfficialProgramTrigger = triggerElement || document.activeElement;
+    resetWilduOfficialProgramReader();
     openLink.href = url;
     modal.style.display = "flex";
     modal.setAttribute("aria-hidden", "false");
     document.addEventListener("keydown", handleWilduOfficialProgramEscape);
 
     requestAnimationFrame(() => {
-        try { cancelButton.focus({ preventScroll: true }); } catch (e) {}
+        try { closeButton.focus({ preventScroll: true }); } catch (e) {}
     });
 }
 
@@ -17878,7 +18205,9 @@ function closeWilduOfficialProgramConfirmation(restoreFocus = true) {
     }
 
     document.removeEventListener("keydown", handleWilduOfficialProgramEscape);
+    if (wilduOfficialProgramAbortController) wilduOfficialProgramAbortController.abort();
     wilduOfficialProgramPendingUrl = "";
+    wilduOfficialProgramPendingId = "";
     wilduOfficialProgramTrigger = null;
 
     if (restoreFocus && triggerElement && typeof triggerElement.focus === "function") {
@@ -21412,8 +21741,9 @@ function showTripDetails(id, detailContext = null) {
     document.getElementById('od-modal-region-display').innerText = reg ? `🗺️ AREA: ${reg}` : "";
     const rawDesc = (ev.descrizione || "Nessuna descrizione disponibile.").replace(/\n/g, '<br>');
     const modalProgramUrl = normalizeWilduOfficialProgramUrl(modalLinkSito);
+    const modalProgramEventDocId = String(ev.eventDocId || ev.id || id || '').trim();
     const officialProgramLinkHtml = modalProgramUrl
-        ? `<button id="official-program-full-link" type="button" onclick="openWilduOfficialProgramConfirmation(this.dataset.programUrl, this)" aria-haspopup="dialog" aria-controls="wildu-program-confirm-modal" style="display:none; align-items:center; gap:8px; width:fit-content; max-width:100%; margin-top:12px; padding:0; border:0; background:none; color:var(--w-gold); font-weight:900; font-size:14px; text-decoration:underline; text-underline-offset:4px; text-transform:uppercase; text-align:left; cursor:pointer;">
+        ? `<button id="official-program-full-link" type="button" onclick="openWilduOfficialProgramConfirmation(this.dataset.programUrl, this.dataset.eventDocId, this)" aria-haspopup="dialog" aria-controls="wildu-program-confirm-modal" style="display:none; align-items:center; gap:8px; width:fit-content; max-width:100%; margin-top:12px; padding:0; border:0; background:none; color:var(--w-gold); font-weight:900; font-size:14px; text-decoration:underline; text-underline-offset:4px; text-transform:uppercase; text-align:left; cursor:pointer;">
                 <span>Leggi programma completo</span>
                 <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" style="font-size:12px;"></i>
             </button>`
@@ -21426,7 +21756,10 @@ function showTripDetails(id, detailContext = null) {
         if (fullProgramLink) fullProgramLink.style.display = 'inline-flex';
     }
     const fullProgramLink = document.getElementById('official-program-full-link');
-    if (fullProgramLink) fullProgramLink.dataset.programUrl = modalProgramUrl;
+    if (fullProgramLink) {
+        fullProgramLink.dataset.programUrl = modalProgramUrl;
+        fullProgramLink.dataset.eventDocId = modalProgramEventDocId;
+    }
 
 
     // --- ⚙️ MOTORE FOMO NEL MODAL ---
