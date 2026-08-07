@@ -5372,10 +5372,18 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     }
 }
 
-#custom-booking-modal .modal-content {
-    max-height: calc(100dvh - 30px);
+#custom-booking-modal {
+    align-items: flex-start !important;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding-top: max(30px, calc(env(safe-area-inset-top) + 30px)) !important;
+    padding-bottom: max(15px, env(safe-area-inset-bottom)) !important;
+}
+
+#custom-booking-modal .modal-content {
+    max-height: none;
+    overflow: visible;
+    margin: auto 0;
 }
 
 #custom-booking-modal #cb-ondemand-date-fields {
@@ -5520,11 +5528,8 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 #custom-booking-modal.wildu-booking-ondemand-mode {
-    align-items: flex-start !important;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
     height: 100dvh !important;
-    padding-top: max(14px, env(safe-area-inset-top)) !important;
+    padding-top: max(30px, calc(env(safe-area-inset-top) + 30px)) !important;
     padding-bottom: max(22px, env(safe-area-inset-bottom)) !important;
 }
 
@@ -6072,8 +6077,64 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     overflow-wrap: anywhere;
 }
 
+.wildu-program-confirm-overlay {
+    z-index: 12020;
+    padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.wildu-program-confirm-card {
+    width: min(92vw, 430px);
+    max-height: min(86dvh, 620px);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 24px;
+    border: 1px solid rgba(212,175,55,.72);
+    border-radius: 8px;
+    background: #171917;
+    color: #fff;
+    box-shadow: 0 18px 48px rgba(0,0,0,.62);
+    text-align: left;
+}
+
+.wildu-program-confirm-icon {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(212,175,55,.35);
+    border-radius: 8px;
+    background: rgba(212,175,55,.12);
+    color: var(--w-gold);
+    font-size: 18px;
+}
+
+.wildu-program-confirm-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.wildu-program-confirm-actions button,
+.wildu-program-confirm-actions a {
+    width: 100%;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 420px) {
     .wildu-booking-contact-card { padding: 18px; }
+    .wildu-program-confirm-card { padding: 18px; }
+    .wildu-program-confirm-actions { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
     
@@ -6192,6 +6253,21 @@ html.wildu-grouped-travel-nav #btn-ondemand {
         <div class="wildu-booking-contact-actions">
             <button id="wildu-booking-contact-open" type="button" class="btn-book">Richiedi info sulla tua prenotazione</button>
             <button id="wildu-booking-contact-exit" type="button" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:700; cursor:pointer;">Esci</button>
+        </div>
+    </div>
+</div>
+
+<div id="wildu-program-confirm-modal" class="modal-overlay wildu-program-confirm-overlay" style="display:none;" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="wildu-program-confirm-title" aria-describedby="wildu-program-confirm-copy" onclick="if(event.target===this) closeWilduOfficialProgramConfirmation();">
+    <div class="wildu-program-confirm-card" onclick="event.stopPropagation()">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+            <span class="wildu-program-confirm-icon" aria-hidden="true"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+            <h2 id="wildu-program-confirm-title" style="margin:0; color:var(--w-gold); font-size:21px; line-height:1.2;">Programma completo</h2>
+        </div>
+        <p id="wildu-program-confirm-copy" style="margin:0; color:#e3e3e3; font-size:15px; line-height:1.55;">Leggi tutto il programma sul sito ufficiale e torna qui per la prenotazione a prezzo riservato community.</p>
+        <p style="margin:10px 0 0; color:#a9a9a9; font-size:12px; line-height:1.45;">Il sito ufficiale si apre in una nuova scheda: Wild-U resta aperta qui.</p>
+        <div class="wildu-program-confirm-actions">
+            <button id="wildu-program-confirm-cancel" type="button" onclick="closeWilduOfficialProgramConfirmation()" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:800; cursor:pointer;">Resta nell'app</button>
+            <a id="wildu-program-confirm-open" href="#" target="_blank" rel="noopener" onclick="closeWilduOfficialProgramConfirmation(false)" class="btn-book" style="margin:0; text-decoration:none;">Apri il sito</a>
         </div>
     </div>
 </div>
@@ -7242,12 +7318,15 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 // --- FUNZIONE TOGGLE DESCRIZIONE ---
     function toggleModalDesc(btn) {
         const wrapper = document.getElementById('modal-desc-wrapper');
+        const fullProgramLink = document.getElementById('official-program-full-link');
         if (wrapper.classList.contains('text-truncate-custom')) {
             wrapper.classList.remove('text-truncate-custom');
             btn.innerHTML = '− Riduci testo';
+            if (fullProgramLink) fullProgramLink.style.display = 'inline-flex';
         } else {
             wrapper.classList.add('text-truncate-custom');
             btn.innerHTML = '+ Leggi tutto';
+            if (fullProgramLink) fullProgramLink.style.display = 'none';
         }
     }    
 
@@ -17704,6 +17783,71 @@ function openCommercialLink(rawUrl) {
     window.open(url, "_blank", "noopener");
 }
 
+let wilduOfficialProgramPendingUrl = "";
+let wilduOfficialProgramTrigger = null;
+
+function normalizeWilduOfficialProgramUrl(rawUrl) {
+    const normalized = normalizeWilduCommercialUrl(rawUrl);
+    if (!normalized) return "";
+
+    try {
+        const url = new URL(normalized);
+        const hostname = url.hostname.toLowerCase();
+        const allowedHost = hostname === "wildu.it" || hostname === "www.wildu.it";
+        const allowedPath = url.pathname.toLowerCase().startsWith("/prodotti/");
+        return allowedHost && allowedPath ? url.toString() : "";
+    } catch (e) {
+        return "";
+    }
+}
+
+function handleWilduOfficialProgramEscape(event) {
+    if (event && event.key === "Escape") {
+        closeWilduOfficialProgramConfirmation();
+    }
+}
+
+function openWilduOfficialProgramConfirmation(rawUrl, triggerElement) {
+    const url = normalizeWilduOfficialProgramUrl(rawUrl);
+    const modal = document.getElementById("wildu-program-confirm-modal");
+    const cancelButton = document.getElementById("wildu-program-confirm-cancel");
+    const openLink = document.getElementById("wildu-program-confirm-open");
+
+    if (!url || !modal || !openLink) {
+        showToast("Link al programma non valido.");
+        return;
+    }
+
+    wilduOfficialProgramPendingUrl = url;
+    wilduOfficialProgramTrigger = triggerElement || document.activeElement;
+    openLink.href = url;
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
+    document.addEventListener("keydown", handleWilduOfficialProgramEscape);
+
+    requestAnimationFrame(() => {
+        try { cancelButton.focus({ preventScroll: true }); } catch (e) {}
+    });
+}
+
+function closeWilduOfficialProgramConfirmation(restoreFocus = true) {
+    const modal = document.getElementById("wildu-program-confirm-modal");
+    const triggerElement = wilduOfficialProgramTrigger;
+
+    if (modal) {
+        modal.style.display = "none";
+        modal.setAttribute("aria-hidden", "true");
+    }
+
+    document.removeEventListener("keydown", handleWilduOfficialProgramEscape);
+    wilduOfficialProgramPendingUrl = "";
+    wilduOfficialProgramTrigger = null;
+
+    if (restoreFocus && triggerElement && typeof triggerElement.focus === "function") {
+        try { triggerElement.focus({ preventScroll: true }); } catch (e) {}
+    }
+}
+
 function cleanWilduMapPlace(raw) {
     let place = String(raw || "").trim();
 
@@ -21139,14 +21283,21 @@ function showTripDetails(id, detailContext = null) {
                         z-index:2;
                     ">
                         <span id="trip-modal-services-summary-label">Mostra servizi</span>
-                        <span style="
-                            color:#000;
-                            background:var(--w-gold);
-                            border-radius:999px;
-                            padding:4px 9px;
-                            font-size:11px;
-                            white-space:nowrap;
-                        ">${serviziSummaryBadge}</span>
+                        <span style="display:inline-flex; align-items:center; gap:8px; flex-shrink:0;">
+                            <span style="
+                                color:#000;
+                                background:var(--w-gold);
+                                border-radius:999px;
+                                padding:4px 9px;
+                                font-size:11px;
+                                white-space:nowrap;
+                            ">${serviziSummaryBadge}</span>
+                            <i id="trip-modal-services-chevron" class="fas fa-chevron-down" aria-hidden="true" style="
+                                color:var(--w-gold);
+                                font-size:13px;
+                                transition:transform .2s ease;
+                            "></i>
+                        </span>
                     </summary>
 
                     <ul style="
@@ -21178,9 +21329,13 @@ function showTripDetails(id, detailContext = null) {
 
         const servicesDetailsEl = gearListEl.querySelector('#trip-modal-services-details');
         const servicesSummaryLabelEl = gearListEl.querySelector('#trip-modal-services-summary-label');
+        const servicesSummaryEl = servicesDetailsEl ? servicesDetailsEl.querySelector('summary') : null;
+        const servicesChevronEl = gearListEl.querySelector('#trip-modal-services-chevron');
         if (servicesDetailsEl && servicesSummaryLabelEl) {
             const syncServicesSummaryLabel = () => {
                 servicesSummaryLabelEl.textContent = servicesDetailsEl.open ? 'Chiudi servizi' : 'Mostra servizi';
+                if (servicesSummaryEl) servicesSummaryEl.setAttribute('aria-expanded', String(servicesDetailsEl.open));
+                if (servicesChevronEl) servicesChevronEl.style.transform = servicesDetailsEl.open ? 'rotate(180deg)' : 'rotate(0deg)';
                 requestAnimationFrame(positionWilduOfficialPriceTypeChip);
             };
             servicesDetailsEl.addEventListener('toggle', syncServicesSummaryLabel, { passive: true });
@@ -21207,11 +21362,22 @@ function showTripDetails(id, detailContext = null) {
     document.getElementById('od-modal-place').innerText = luogoPulito;
     document.getElementById('od-modal-region-display').innerText = reg ? `🗺️ AREA: ${reg}` : "";
     const rawDesc = (ev.descrizione || "Nessuna descrizione disponibile.").replace(/\n/g, '<br>');
+    const modalProgramUrl = normalizeWilduOfficialProgramUrl(modalLinkSito);
+    const officialProgramLinkHtml = modalProgramUrl
+        ? `<button id="official-program-full-link" type="button" onclick="openWilduOfficialProgramConfirmation(this.dataset.programUrl, this)" aria-haspopup="dialog" aria-controls="wildu-program-confirm-modal" style="display:none; align-items:center; gap:8px; width:fit-content; max-width:100%; margin-top:12px; padding:0; border:0; background:none; color:var(--w-gold); font-weight:900; font-size:14px; text-decoration:underline; text-underline-offset:4px; text-transform:uppercase; text-align:left; cursor:pointer;">
+                <span>Leggi programma completo</span>
+                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" style="font-size:12px;"></i>
+            </button>`
+        : '';
     if (rawDesc.length > 180) {
-        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span><span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:inline-block; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
+        document.getElementById('od-modal-desc').innerHTML = `<span id="modal-desc-wrapper" class="text-truncate-custom" style="display:-webkit-box;">${rawDesc}</span>${officialProgramLinkHtml}<span onclick="toggleModalDesc(this)" style="color:var(--w-gold); font-weight:900; font-size:14px; cursor:pointer; display:block; width:fit-content; margin-top:8px; text-transform:uppercase;">+ Leggi tutto</span>`;
     } else {
-        document.getElementById('od-modal-desc').innerHTML = rawDesc;
+        document.getElementById('od-modal-desc').innerHTML = `${rawDesc}${officialProgramLinkHtml}`;
+        const fullProgramLink = document.getElementById('official-program-full-link');
+        if (fullProgramLink) fullProgramLink.style.display = 'inline-flex';
     }
+    const fullProgramLink = document.getElementById('official-program-full-link');
+    if (fullProgramLink) fullProgramLink.dataset.programUrl = modalProgramUrl;
 
 
     // --- ⚙️ MOTORE FOMO NEL MODAL ---
