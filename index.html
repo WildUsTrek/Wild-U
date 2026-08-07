@@ -2934,6 +2934,34 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     overflow: visible;
 }
 
+.wildu-company-footer {
+    max-width: 760px;
+    margin: 16px auto 0;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.10);
+    color: #aaa;
+    font-size: 10px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.wildu-company-footer-name {
+    display: block;
+    color: #d7d7d7;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.wildu-company-footer-vat,
+.wildu-company-footer-insurance {
+    display: block;
+    margin-top: 3px;
+}
+
+.wildu-company-footer-insurance {
+    white-space: pre-line;
+}
+
 .amazon-slider {
     width: calc(100vw + (var(--amazon-bleed) * 2));
     max-width: none;
@@ -6112,6 +6140,16 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     font-size: 18px;
 }
 
+.wildu-program-confirm-return {
+    color: #72d5ff;
+    font-weight: 900;
+}
+
+.wildu-program-confirm-price {
+    color: var(--w-gold);
+    font-weight: 950;
+}
+
 .wildu-program-confirm-actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
@@ -6263,7 +6301,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
             <span class="wildu-program-confirm-icon" aria-hidden="true"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
             <h2 id="wildu-program-confirm-title" style="margin:0; color:var(--w-gold); font-size:21px; line-height:1.2;">Programma completo</h2>
         </div>
-        <p id="wildu-program-confirm-copy" style="margin:0; color:#e3e3e3; font-size:15px; line-height:1.55;">Leggi tutto il programma sul sito ufficiale e torna qui per la prenotazione a prezzo riservato community.</p>
+        <p id="wildu-program-confirm-copy" style="margin:0; color:#e3e3e3; font-size:15px; line-height:1.55;">Leggi tutto il programma sul sito ufficiale e <strong class="wildu-program-confirm-return">torna qui</strong> per la prenotazione a <strong class="wildu-program-confirm-price">prezzo riservato community</strong>.</p>
         <p style="margin:10px 0 0; color:#a9a9a9; font-size:12px; line-height:1.45;">Il sito ufficiale si apre in una nuova scheda: Wild-U resta aperta qui.</p>
         <div class="wildu-program-confirm-actions">
             <button id="wildu-program-confirm-cancel" type="button" onclick="closeWilduOfficialProgramConfirmation()" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:800; cursor:pointer;">Resta nell'app</button>
@@ -19540,6 +19578,24 @@ function resetWilduOverlayScrollPosition(root) {
     } catch (e) {}
 }
 
+function openWilduSoftModalAtTop(modal) {
+    if (!modal) return false;
+
+    resetWilduOverlayScrollPosition(modal);
+    modal.classList.add('is-visible');
+    modal.setAttribute('aria-hidden', 'false');
+    lockWilduOverlayScroll();
+
+    requestAnimationFrame(function () {
+        resetWilduOverlayScrollPosition(modal);
+    });
+    window.setTimeout(function () {
+        resetWilduOverlayScrollPosition(modal);
+    }, 80);
+
+    return true;
+}
+
 function wilduAnimateSwipeClose(el, dx, done) {
     if (!el) {
         if (typeof done === 'function') done();
@@ -19833,11 +19889,7 @@ function showWilduRelatedModal(items) {
     const list = document.getElementById('wildu-related-list');
     if (!modal || !list || !Array.isArray(items) || !items.length) return false;
     list.innerHTML = items.map(function (ref) { return wilduBuildSoftCardHtml(ref); }).join('');
-    resetWilduOverlayScrollPosition(modal);
-    modal.classList.add('is-visible');
-    modal.setAttribute('aria-hidden', 'false');
-    lockWilduOverlayScroll();
-    return true;
+    return openWilduSoftModalAtTop(modal);
 }
 
 function closeWilduRelatedModal(closeDetail) {
@@ -20010,10 +20062,7 @@ function openWilduDateOptions(type, id, evt) {
         const extra = ref.id === currentId ? 'questa data' : '';
         return wilduBuildSoftCardHtml(ref, extra);
     }).join('');
-    resetWilduOverlayScrollPosition(modal);
-    modal.classList.add('is-visible');
-    modal.setAttribute('aria-hidden', 'false');
-    lockWilduOverlayScroll();
+    openWilduSoftModalAtTop(modal);
 }
 
 function closeWilduDateOptionsModal() {
@@ -31912,6 +31961,88 @@ function bindWilduStickyNavSafeArea() {
     requestStickyUpdate();
 }
 
+const WILDU_PUBLIC_COMPANY_CACHE_KEY = 'wilduPublicCompanyInfo:v1';
+const WILDU_PUBLIC_COMPANY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const WILDU_PUBLIC_COMPANY_FALLBACK = Object.freeze({
+    companyName: 'Wildu srl',
+    vat: 'P.IVA 0253 677 0502',
+    insuranceDetails: [
+        'Polizza assicurativa responsabilita civile RC, RCT e RCO NOBIS n. 203961095',
+        'Polizza assicurativa contro insolvenza e fallimento NOBIS n. 20396110',
+        'Assicurate presso Frigo Assicurazioni SNC, P.IVA 04566870236'
+    ].join('\n')
+});
+
+function wilduCleanCompanyFooterValue(value) {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeWilduPublicCompanyInfo(data) {
+    const source = data && typeof data === 'object' ? data : {};
+    const issuer = source.issuer && typeof source.issuer === 'object' ? source.issuer : {};
+    const legal = source.legal && typeof source.legal === 'object' ? source.legal : {};
+
+    return {
+        companyName: wilduCleanCompanyFooterValue(issuer.companyName || source.companyName),
+        vat: wilduCleanCompanyFooterValue(issuer.vat || issuer.piva || source.vat || source.piva),
+        insuranceDetails: wilduCleanCompanyFooterValue(
+            legal.insuranceDetails || source.insuranceDetails || source.insurance
+        )
+    };
+}
+
+function renderWilduCompanyFooter(data) {
+    const root = document.getElementById('wildu-company-footer');
+    const name = document.getElementById('wildu-company-footer-name');
+    const vat = document.getElementById('wildu-company-footer-vat');
+    const insurance = document.getElementById('wildu-company-footer-insurance');
+    if (!root || !name || !vat || !insurance) return;
+
+    const normalized = normalizeWilduPublicCompanyInfo(data);
+    name.textContent = normalized.companyName || WILDU_PUBLIC_COMPANY_FALLBACK.companyName;
+    vat.textContent = normalized.vat || WILDU_PUBLIC_COMPANY_FALLBACK.vat;
+    insurance.textContent = normalized.insuranceDetails || WILDU_PUBLIC_COMPANY_FALLBACK.insuranceDetails;
+    root.hidden = false;
+}
+
+function readWilduPublicCompanyCache() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(WILDU_PUBLIC_COMPANY_CACHE_KEY) || 'null');
+        if (!parsed || typeof parsed !== 'object' || !parsed.data || !Number.isFinite(parsed.cachedAt)) return null;
+        return parsed;
+    } catch (error) {
+        return null;
+    }
+}
+
+function writeWilduPublicCompanyCache(data) {
+    try {
+        localStorage.setItem(WILDU_PUBLIC_COMPANY_CACHE_KEY, JSON.stringify({
+            cachedAt: Date.now(),
+            data: normalizeWilduPublicCompanyInfo(data)
+        }));
+    } catch (error) {
+        // Il footer legale resta disponibile tramite il fallback auditato.
+    }
+}
+
+async function initWilduCompanyFooter() {
+    const cached = readWilduPublicCompanyCache();
+    renderWilduCompanyFooter(cached ? cached.data : WILDU_PUBLIC_COMPANY_FALLBACK);
+
+    if (cached && Date.now() - cached.cachedAt < WILDU_PUBLIC_COMPANY_CACHE_TTL_MS) return;
+
+    try {
+        const snapshot = await db.collection('PARAMETERS_PARTNER').doc('public_company_info').get();
+        if (!snapshot.exists) return;
+        const publicInfo = normalizeWilduPublicCompanyInfo(snapshot.data() || {});
+        renderWilduCompanyFooter(publicInfo);
+        writeWilduPublicCompanyCache(publicInfo);
+    } catch (error) {
+        console.warn('[WILDU] Info aziendali pubbliche non aggiornate; uso cache/fallback.', error && error.code ? error.code : 'read_failed');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     scheduleWilduBootVeilFailOpen('DOMContentLoaded');
     syncWilduDisplayModeClass();
@@ -31930,6 +32061,7 @@ installWilduSoftModalHorizontalDismiss();
 
     init();
     initAmazonSponsors();
+    initWilduCompanyFooter();
     installWilduDesktopAmazonWheelPassThrough();
 });
 
@@ -32071,6 +32203,11 @@ window.addEventListener('pageshow', () => {
         <a href="https://www.amazon.it/dp/B07HSZXCC2?th=1&linkCode=ll2&tag=andreawildu02-21&linkId=e8d9322cc8882cd1bb4db7d939fbd04e&ref_=as_li_ss_tl" style="color: var(--w-gold); text-decoration: none; font-weight: bold;">Tenda Hike</a> <span style="color: #444; margin: 0 5px;">|</span> 
         <a href="https://www.amazon.it/dp/B09JS3F3Y4?th=1&linkCode=ll2&tag=andreawildu02-21&linkId=3766ce830c195be07e6eeeb125125ebd&ref_=as_li_ss_tl" style="color: var(--w-gold); text-decoration: none; font-weight: bold;">Filtro Acqua</a> <span style="color: #444; margin: 0 5px;">|</span> 
         <a href="https://www.amazon.it/Active-Era-soccorso-lavaggio-emergenza/dp/B0D9HHQ7ZR?th=1&linkCode=ll2&tag=andreawildu02-21&linkId=07e5bbab3ee86aa88e9040736bcb218b&ref_=as_li_ss_tl" style="color: var(--w-gold); text-decoration: none; font-weight: bold;">Kit Primo Soccorso Pro</a>
+        <div id="wildu-company-footer" class="wildu-company-footer" hidden>
+            <strong id="wildu-company-footer-name" class="wildu-company-footer-name"></strong>
+            <span id="wildu-company-footer-vat" class="wildu-company-footer-vat"></span>
+            <span id="wildu-company-footer-insurance" class="wildu-company-footer-insurance"></span>
+        </div>
     </div>
     <!-- FINE AGGIUNTA AMAZON STATIC LINKS -->
 
