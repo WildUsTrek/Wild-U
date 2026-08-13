@@ -12035,6 +12035,7 @@ window.WilduMediaClient = WilduMediaClient;
 
     // Bootstrap / anti-doppio-fetch
     let initDataPromise = null;
+    let initDataRequestSequence = 0;
     let initBootCompleted = false;
     let authRefreshLock = false;
     let authProbeInProgress = false;
@@ -16605,7 +16606,15 @@ async function fetchInitData(options = {}) {
         return initDataPromise;
     }
 
-    initDataPromise = (async () => {
+    const requestSequence = ++initDataRequestSequence;
+    const requestAuthUid = String(auth.currentUser?.uid || '');
+    const isStaleInitRequest = function () {
+        return requestSequence !== initDataRequestSequence ||
+            String(auth.currentUser?.uid || '') !== requestAuthUid;
+    };
+    let requestPromise = null;
+
+    requestPromise = Promise.resolve().then(async () => {
         const bypassPublicCache =
     force ||
     consumePublicCacheBypassOnce() ||
@@ -16708,6 +16717,8 @@ if (cachedPublicData && !bypassPublicCache) {
 
         // 3. FETCH FRESCO IDENTITY-AWARE
         try {
+            if (isStaleInitRequest()) return null;
+
             const headers = {
                 'Content-Type': 'application/json',
                 'X-WILDU-CHANNEL': isTelegramContext() ? 'TELEGRAM' : 'WEB'
@@ -16718,10 +16729,14 @@ if (cachedPublicData && !bypassPublicCache) {
                     const token = await auth.currentUser.getIdToken();
                     if (token) headers.Authorization = `Bearer ${token}`;
                 } catch (e) {
-                    console.warn("Token non disponibile per getInitData, continuo come guest.", e);
+                    const tokenError = new Error('Token autenticazione non disponibile per getInitData.');
+                    tokenError.code = 'INIT_AUTH_TOKEN_UNAVAILABLE';
+                    tokenError.cause = e;
+                    throw tokenError;
                 }
             }
 
+            if (isStaleInitRequest()) return null;
 
             
             pageDebug('INITDATA_REMOTE_FETCH', {
@@ -16744,8 +16759,22 @@ if (cachedPublicData && !bypassPublicCache) {
 
             const data = await res.json();
 
+            if (isStaleInitRequest()) {
+                pageDebug('INITDATA_STALE_RESPONSE_IGNORED', {
+                    requestSequence,
+                    currentSequence: initDataRequestSequence
+                });
+                return null;
+            }
+
             if (!res.ok || data?.success === false) {
                 throw new Error(data?.error || data?.message || "Errore getInitData");
+            }
+
+            if (requestAuthUid && data?.authState !== 'LOGGED') {
+                const downgradeError = new Error('Risposta guest rifiutata durante una sessione autenticata.');
+                downgradeError.code = 'INIT_AUTH_DOWNGRADE_BLOCKED';
+                throw downgradeError;
             }
 
             markConfirmedRemoteSuccess();
@@ -16854,6 +16883,7 @@ const publicCachePayload = {
             return data;
 
         } catch (e) {
+            if (isStaleInitRequest()) return null;
             console.error("Errore Mega-Pacchetto:", e);
 
             // I moduli runtime non dipendono da getInitData/gateway:
@@ -16880,11 +16910,14 @@ const publicCachePayload = {
 
             throw e;
         } finally {
-            initDataPromise = null;
+            if (initDataPromise === requestPromise) {
+                initDataPromise = null;
+            }
         }
-    })();
+    });
 
-    return initDataPromise;
+    initDataPromise = requestPromise;
+    return requestPromise;
 }
     
     // ==========================================
@@ -19587,7 +19620,7 @@ let WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
 
 function wilduCleanTitleForMatching(value) {
     return String(value || '')
-        .split(' - ')[0]
+        .replace(/\s*[-\u2013\u2014]\s*WILDU\d+\s*$/i, '')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -19627,6 +19660,15 @@ function wilduGetDetailItemTitle(type, item) {
 
 function wilduGetDetailItemDate(type, item) {
     item = item || {};
+    if (type === 'trip') {
+        const start = getTripSafeDateString(item);
+        let end = String(item['Data fine'] || item['Data Fine'] || item.dataFine || '').trim();
+        if (end && end.split('/').length === 2) {
+            const year = String(item.Anno || start.split('/')[2] || new Date().getFullYear());
+            end = end + '/' + year;
+        }
+        return end && end !== start ? (start + ' - ' + end) : start;
+    }
     const start = String(item['Data inizio'] || item['Data Inizio'] || item.dataInizio || '').trim();
     const end = String(item['Data fine'] || item['Data Fine'] || item.dataFine || '').trim();
     return end && end !== start ? (start + ' - ' + end) : start;
@@ -19634,6 +19676,7 @@ function wilduGetDetailItemDate(type, item) {
 
 function wilduGetDetailItemStartDate(type, item) {
     item = item || {};
+    if (type === 'trip') return getTripSafeDateString(item);
     return String(item['Data inizio'] || item['Data Inizio'] || item.dataInizio || '').trim();
 }
 
@@ -32009,6 +32052,7 @@ if (window.visualViewport) {
 
 const WILDU_BROWSER_EDGE_HISTORY_GUARD_ENABLED = true;
 const WILDU_BROWSER_EDGE_HISTORY_GUARD_PX = 26;
+const WILDU_ROOT_OVERSCROLL_GESTURE_THRESHOLD_PX = 10;
 let WILDU_ROOT_OVERSCROLL_TOUCH = null;
 let WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS = typeof WeakSet === 'function' ? new WeakSet() : null;
 let WILDU_BROWSER_EDGE_HISTORY_TOUCH = null;
@@ -32144,6 +32188,12 @@ function installWilduRootOverscrollGuard() {
 
         const dx = touch.clientX - WILDU_ROOT_OVERSCROLL_TOUCH.x;
         const dy = touch.clientY - WILDU_ROOT_OVERSCROLL_TOUCH.y;
+
+        // Un normale tap iOS include spesso pochi pixel di deriva. Non deve
+        // diventare un touchmove cancellato dal guard anti-overscroll.
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < WILDU_ROOT_OVERSCROLL_GESTURE_THRESHOLD_PX) {
+            return;
+        }
 
         if (Math.abs(dx) > Math.abs(dy)) {
             const horizontalZone = getWilduHorizontalGestureZone(event.target);
