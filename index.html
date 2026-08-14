@@ -14275,7 +14275,29 @@ async function completeRegistration() {
 
         if (mode === 'WEB') {
             tempTelegramUser = null;
-            await fetchInitData({ force: true });
+            try {
+                let refreshedData = await fetchInitData({ force: true, reason: 'REGISTRATION_COMPLETE' });
+                if (!refreshedData) {
+                    refreshedData = await fetchInitData({ force: false, reason: 'REGISTRATION_STALE_RETRY' });
+                }
+
+                const currentAuthUid = String(auth.currentUser?.uid || '');
+                const sessionConfirmed =
+                    currentAuthUid === String(userId) &&
+                    refreshedData?.authState === 'LOGGED' &&
+                    isClientLogged();
+
+                if (!sessionConfirmed) {
+                    const sessionError = new Error('Sessione registrata non confermata dal bootstrap autenticato.');
+                    sessionError.code = 'REGISTRATION_SESSION_NOT_CONFIRMED';
+                    throw sessionError;
+                }
+            } catch (refreshError) {
+                console.error("Profilo salvato, ma aggiornamento dati fallito:", refreshError);
+                updateProfileUI();
+                showToast("Profilo salvato. Ricarica l'app per aggiornare i dati.");
+                return;
+            }
             updateProfileUI();
             showToast(existingSnap.exists ? "Profilo completato senza toccare i progressi." : "Avventura iniziata! Benvenuto.");
             return;
