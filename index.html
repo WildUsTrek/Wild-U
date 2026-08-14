@@ -18025,21 +18025,12 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             return;
         }
 
-        // Compatibilita di rollout: il nuovo backend applica la penalita nella
-        // stessa transazione della cancellazione. Se risponde una revisione
-        // precedente, conserviamo temporaneamente il comportamento storico.
+        // La cancellazione e la penalita devono essere confermate dalla stessa
+        // transazione backend. Il client non modifica piu direttamente gli XP.
         if (result.penaltyAppliedByServer !== true) {
-            appliedPenaltyPercent = percentualePenale;
-            appliedPenalty = penalty;
-            if (appliedPenalty > 0) {
-                assertBookingAuthContext(cancellationAuthContext);
-                await FS.setUtente(cancellationAuthContext.uid, {
-                    xp: FV.increment(-appliedPenalty),
-                    ultimo_aggiornamento: FV.serverTimestamp()
-                });
-                assertBookingAuthContext(cancellationAuthContext);
-            }
-            resolvedXpAfter = Math.max(0, currentXP - appliedPenalty);
+            const confirmationError = new Error('Il server non ha confermato la penalita atomica. Ricarica l app prima di riprovare.');
+            confirmationError.code = 'CANCELLATION_PENALTY_NOT_CONFIRMED';
+            throw confirmationError;
         }
 
         if (cachedXPData && Number.isFinite(resolvedXpAfter)) {
@@ -18096,6 +18087,11 @@ async function requestCancel(encodedBookingPayload, btnElement) {
         if (e.code === 'BOOKING_PROFILE_REQUIRED') {
             show('profile');
             alert("Profilo non ancora sincronizzato. Controlla i dati e riprova.");
+            return;
+        }
+
+        if (e.code === 'CLIENT_UPDATE_REQUIRED' || e.code === 'CANCELLATION_PENALTY_NOT_CONFIRMED') {
+            alert("Aggiorna l'app e riapri il profilo prima di annullare la prenotazione.");
             return;
         }
 
