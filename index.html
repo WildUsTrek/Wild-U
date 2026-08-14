@@ -12039,6 +12039,8 @@ window.WilduMediaClient = WilduMediaClient;
     let initBootCompleted = false;
     let authRefreshLock = false;
     let authProbeInProgress = false;
+    let authProbeSequence = 0;
+    let profileCompletionRequired = false;
 
     // ==========================================
     // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
@@ -12108,7 +12110,25 @@ function reconcileProfileShellWithClientSession() {
 
     if (!loginScreen || !completeScreen || !profileData) return;
 
+    if (authProbeInProgress) {
+        loginScreen.classList.add('hidden');
+        completeScreen.classList.add('hidden');
+        profileData.classList.add('hidden');
+        if (loadingScreen) loadingScreen.classList.remove('hidden');
+        updateWilduGuestProfileCarouselLifecycle();
+        return;
+    }
+
     if (loadingScreen) loadingScreen.classList.add('hidden');
+
+    if (profileCompletionRequired) {
+        loginScreen.classList.add('hidden');
+        completeScreen.classList.remove('hidden');
+        profileData.classList.add('hidden');
+        suggestRegistrationPhone('profile-completion-required');
+        updateWilduGuestProfileCarouselLifecycle();
+        return;
+    }
 
     if (clientSession.authState === 'LOGGED') {
         loginScreen.classList.add('hidden');
@@ -12128,20 +12148,10 @@ function reconcileProfileShellWithClientSession() {
         return;
     }
 
-    if (authProbeInProgress) {
-        loginScreen.classList.add('hidden');
-        completeScreen.classList.add('hidden');
-        profileData.classList.add('hidden');
-
-        if (loadingScreen) loadingScreen.classList.remove('hidden');
-        updateWilduGuestProfileCarouselLifecycle();
-        return;
-    }
-
     profileData.classList.add('hidden');
 
     // Se l'utente è nel flusso di completamento registrazione, non lo interrompiamo
-    if (tempGoogleUser || tempTelegramUser) {
+    if (tempTelegramUser) {
         loginScreen.classList.add('hidden');
         completeScreen.classList.remove('hidden');
         suggestRegistrationPhone('profile-shell');
@@ -13849,11 +13859,13 @@ auth.onAuthStateChanged(async (user) => {
         return;
     }
 
-    if (authRefreshLock) return;
+    if (authRefreshLock && user) return;
+    const probeSequence = ++authProbeSequence;
 
     if (user) {
         tempGoogleUser = user;
         tempTelegramUser = null;
+        profileCompletionRequired = false;
         wildUserKey = user.uid;
         localStorage.setItem('wildUserKey', wildUserKey);
         authProbeInProgress = true;
@@ -13864,6 +13876,7 @@ reconcileProfileShellWithClientSession();
         // OFFLINE: non proviamo a capire se è un nuovo utente.
         // Niente complete-profile-screen, niente deduzioni sul DB.
 if (!navigator.onLine) {
+    profileCompletionRequired = false;
     tempGoogleUser = null;
     tempTelegramUser = null;
     wildUserKey = null;
@@ -13899,12 +13912,40 @@ authProbeInProgress = false;
 
         try {
             let docSnap;
+            let canonicalInitData = null;
 
             try {
                 // IMPORTANTE:
                 // l'esistenza del profilo va verificata SOLO dal server.
                 // Se siamo offline/non raggiungiamo Firestore, non dobbiamo mai dedurre "utente nuovo".
                 docSnap = await FS.getUtente(user.uid, { source: 'server' });
+
+                if (!docSnap.exists) {
+                    authRefreshLock = true;
+                    try {
+                        canonicalInitData = await fetchInitData({
+                            reason: 'AUTH_STATE_CANONICAL_PROFILE',
+                            force: true
+                        });
+                    } finally {
+                        authRefreshLock = false;
+                    }
+
+                    const canonicalProfile = canonicalInitData?.userOverlay?.profile || null;
+                    const canonicalProfileExists =
+                        canonicalProfile?.exists === true ||
+                        (
+                            typeof canonicalProfile?.exists !== 'boolean' &&
+                            !!String(canonicalProfile?.nome || canonicalProfile?.telefono || '').trim()
+                        );
+
+                    if (canonicalProfileExists) {
+                        docSnap = {
+                            exists: true,
+                            data: function () { return canonicalProfile; }
+                        };
+                    }
+                }
             } catch (verifyErr) {
                 const errCode = String(verifyErr?.code || '').toLowerCase();
                 const errMsg = String(verifyErr?.message || '').toLowerCase();
@@ -13952,33 +13993,34 @@ authProbeInProgress = false;
                 throw verifyErr;
             }
 
+if (
+    probeSequence !== authProbeSequence ||
+    String(auth.currentUser?.uid || '') !== String(user.uid)
+) {
+    return;
+}
+
 if (docSnap.exists) {
+    profileCompletionRequired = false;
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('complete-profile-screen').classList.add('hidden');
 
-    authRefreshLock = true;
-    try {
-        await fetchInitData({ reason: 'AUTH_STATE', force: true });
-    } finally {
-        authRefreshLock = false;
+    if (!canonicalInitData) {
+        authRefreshLock = true;
+        try {
+            await fetchInitData({ reason: 'AUTH_STATE', force: true });
+        } finally {
+            authRefreshLock = false;
+        }
     }
 
     authProbeInProgress = false;
     updateProfileUI();
 } else {
-                // Qui arriviamo SOLO se il server ha davvero confermato che il profilo non esiste.
-                clientSession = {
-                    authState: 'GUEST',
-                    channel: 'WEB',
-                    tokenStatus: 'VALID',
-                    capabilities: getDefaultClientCapabilities('WEB')
-                };
-
+                // Il backend canonico ha confermato che il profilo non esiste.
+                profileCompletionRequired = true;
                 authProbeInProgress = false;
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('profile-data').classList.add('hidden');
-                document.getElementById('complete-profile-screen').classList.remove('hidden');
-                suggestRegistrationPhone('google-new-user');
+                reconcileProfileShellWithClientSession();
             }
 
         } catch (e) {
@@ -14029,6 +14071,7 @@ if (docSnap.exists) {
                 return;
             }
 
+            profileCompletionRequired = false;
             authProbeInProgress = false;
             reconcileProfileShellWithClientSession();
             showToast("Errore: " + e.message);
@@ -14036,6 +14079,7 @@ if (docSnap.exists) {
 } else {
     tempGoogleUser = null;
     tempTelegramUser = null;
+    profileCompletionRequired = false;
     authProbeInProgress = false;
 
     clientSession = {
@@ -14203,6 +14247,9 @@ function loginWithGoogleRedirect() {
 async function completeRegistration() {
     const phone = document.getElementById('reg-phone').value.trim();
     if (phone.length < 8) {
+        authProbeInProgress = false;
+        profileCompletionRequired = true;
+        reconcileProfileShellWithClientSession();
         showToast("Inserisci un numero valido per le prenotazioni.");
         return;
     }
@@ -14259,7 +14306,9 @@ async function completeRegistration() {
 
         await FS.setUtente(userId, payload);
 
-        document.getElementById('complete-profile-screen').classList.add('hidden');
+        profileCompletionRequired = false;
+        authProbeInProgress = mode === 'WEB';
+        reconcileProfileShellWithClientSession();
 
         if (existingSnap.exists) {
             cachedXPData = {
@@ -14294,10 +14343,12 @@ async function completeRegistration() {
                 }
             } catch (refreshError) {
                 console.error("Profilo salvato, ma aggiornamento dati fallito:", refreshError);
+                authProbeInProgress = false;
                 updateProfileUI();
                 showToast("Profilo salvato. Ricarica l'app per aggiornare i dati.");
                 return;
             }
+            authProbeInProgress = false;
             updateProfileUI();
             showToast(existingSnap.exists ? "Profilo completato senza toccare i progressi." : "Avventura iniziata! Benvenuto.");
             return;
@@ -14332,6 +14383,9 @@ async function completeRegistration() {
 
     } catch (e) {
         console.error("Errore registrazione:", e);
+        authProbeInProgress = false;
+        profileCompletionRequired = true;
+        reconcileProfileShellWithClientSession();
         showToast("Errore durante la registrazione. Riprova.");
     }
 }
