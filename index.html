@@ -663,7 +663,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
     background: linear-gradient(90deg, rgba(0,0,0,0), rgba(0,0,0,.88) 34%, #000 100%);
 
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 #wildu-audio-nav-dock #wildu-audio-unlock-button {
@@ -690,6 +690,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     cursor: pointer;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
+    pointer-events: auto;
 }
 
 #wildu-audio-nav-dock #wildu-audio-unlock-button:active {
@@ -12038,6 +12039,8 @@ window.WilduMediaClient = WilduMediaClient;
     let initDataRequestSequence = 0;
     let initBootCompleted = false;
     let authRefreshLock = false;
+    let pendingAuthStateUser;
+    let authStateReplayTimer = null;
     let authProbeInProgress = false;
     let authProbeSequence = 0;
     let profileCompletionRequired = false;
@@ -12100,6 +12103,47 @@ window.WilduMediaClient = WilduMediaClient;
             wildUserKey = null;
             localStorage.removeItem('wildUserKey');
         }
+    }
+
+    function applyAuthenticatedUserOverlayFromInitData(data, expectedUid = '') {
+        const profile = data?.userOverlay?.profile || null;
+        const overlayBookings = data?.userOverlay?.bookings;
+        const overlayUid = String(profile?.uid || '').trim();
+        const currentUid = String(auth.currentUser?.uid || '').trim();
+        const requiredUid = String(expectedUid || currentUid || '').trim();
+
+        if (
+            data?.authState !== 'LOGGED' ||
+            !overlayUid ||
+            (requiredUid && overlayUid !== requiredUid) ||
+            (currentUid && overlayUid !== currentUid)
+        ) {
+            return false;
+        }
+
+        cachedXPData = {
+            ...(cachedXPData || {}),
+            xp: parseInt(profile.xp || 0, 10),
+            grado: profile.grado || cachedXPData?.grado || 'Socio Novizio',
+            nome: profile.nome || cachedXPData?.nome || '',
+            telefono: profile.telefono || cachedXPData?.telefono || '',
+            config: data.config || config || {}
+        };
+
+        if (Array.isArray(overlayBookings)) {
+            allBookings = overlayBookings;
+            backpackOwnerUid = overlayUid;
+            finishBackpackSync('INITDATA_AUTHENTICATED_OVERLAY');
+            evaluateBookings();
+        }
+
+        const nameInput = document.getElementById('user-name-input');
+        const phoneInput = document.getElementById('user-phone-input');
+        if (nameInput) nameInput.value = cachedXPData.nome;
+        if (phoneInput) phoneInput.value = cachedXPData.telefono;
+        rememberWilduLastKnownPhone(cachedXPData.telefono);
+
+        return true;
     }
 
 function reconcileProfileShellWithClientSession() {
@@ -12703,12 +12747,90 @@ function requireLoggedAccess(reason, options = {}) {
     return false;
 }
 
-    async function getVerifiedClientToken() {
-        if (!isClientLogged() || !auth.currentUser) {
+    function createBookingAuthContext() {
+        const firebaseUser = auth.currentUser;
+        const uid = String(firebaseUser?.uid || '');
+        if (!isClientLogged() || !firebaseUser || !uid) {
             openRegistrationCTA('AUTH_FALLBACK', { force: true });
             throw new Error('AUTH_REQUIRED');
         }
-        return await auth.currentUser.getIdToken();
+
+        return { firebaseUser, uid };
+    }
+
+    function assertBookingAuthContext(context) {
+        const currentUser = auth.currentUser;
+        if (
+            !context?.firebaseUser ||
+            !context?.uid ||
+            currentUser !== context.firebaseUser ||
+            String(currentUser?.uid || '') !== String(context.uid)
+        ) {
+            const error = new Error('Il profilo autenticato e cambiato durante la prenotazione. Riapri il profilo e riprova.');
+            error.code = 'AUTH_CONTEXT_CHANGED';
+            throw error;
+        }
+        return currentUser;
+    }
+
+    async function getVerifiedClientToken(options = {}) {
+        const context = options.authContext || createBookingAuthContext();
+        const firebaseUser = assertBookingAuthContext(context);
+        const token = await firebaseUser.getIdToken(options.forceRefresh === true);
+        assertBookingAuthContext(context);
+        return token;
+    }
+
+    async function postWilduBookingRequest(payload, authContext) {
+        const requestAuthContext = authContext || createBookingAuthContext();
+        let lastError = null;
+
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                assertBookingAuthContext(requestAuthContext);
+                const safeToken = await getVerifiedClientToken({
+                    forceRefresh: attempt > 0,
+                    authContext: requestAuthContext
+                });
+                const response = await fetch(MOTORE_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${safeToken}`,
+                        'X-WILDU-CHANNEL': clientSession.channel
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                let result = null;
+                try {
+                    result = await response.json();
+                } catch (parseError) {
+                    result = { status: 'error', message: 'Risposta server non leggibile' };
+                }
+                assertBookingAuthContext(requestAuthContext);
+
+                const retryableStatus = response.status === 401 || [502, 503, 504].includes(response.status);
+                if (attempt === 0 && retryableStatus) {
+                    await new Promise(resolve => window.setTimeout(resolve, 350));
+                    assertBookingAuthContext(requestAuthContext);
+                    continue;
+                }
+
+                return { response, result };
+            } catch (error) {
+                lastError = error;
+                if (
+                    error?.message === 'AUTH_REQUIRED' ||
+                    error?.code === 'AUTH_CONTEXT_CHANGED' ||
+                    attempt > 0
+                ) throw error;
+                await new Promise(resolve => window.setTimeout(resolve, 350));
+                assertBookingAuthContext(requestAuthContext);
+            }
+        }
+
+        throw lastError || new Error('Prenotazione non inviata');
     }
 
     // --- AUDIO NATIVO / WEB AUDIO SAFE ---
@@ -13843,7 +13965,26 @@ async function handleTelegramAuth(tgUser) {
 // LISTENER AUTH GOOGLE (POST-REDIRECT SAFE)
 // ==========================================
 
-auth.onAuthStateChanged(async (user) => {
+function schedulePendingClientAuthState(user) {
+    pendingAuthStateUser = user;
+    if (authStateReplayTimer) return;
+
+    const replayWhenUnlocked = function () {
+        if (authRefreshLock) {
+            authStateReplayTimer = window.setTimeout(replayWhenUnlocked, 50);
+            return;
+        }
+
+        authStateReplayTimer = null;
+        const queuedUser = auth.currentUser;
+        pendingAuthStateUser = undefined;
+        handleClientAuthStateChanged(queuedUser);
+    };
+
+    authStateReplayTimer = window.setTimeout(replayWhenUnlocked, 50);
+}
+
+async function handleClientAuthStateChanged(user) {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
@@ -13859,7 +14000,10 @@ auth.onAuthStateChanged(async (user) => {
         return;
     }
 
-    if (authRefreshLock && user) return;
+    if (authRefreshLock) {
+        schedulePendingClientAuthState(user);
+        return;
+    }
     const probeSequence = ++authProbeSequence;
 
     if (user) {
@@ -14096,7 +14240,9 @@ if (docSnap.exists) {
     const loginDesc = document.getElementById('login-desc');
     if (loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
 }
-});
+}
+
+auth.onAuthStateChanged(handleClientAuthStateChanged);
 
 // ==========================================
 // LOGIN GOOGLE (CROSS-SITE FIX / POPUP SAFE)
@@ -16889,18 +17035,17 @@ const publicCachePayload = {
             allOpenDays = data.opendays || [];
             allPayDays = data.paydays || [];
             allOnDemandTrips = data.onDemandTrips || [];
-            /// 🛡️ TAGLIO DEL CORDONE COL GATEWAY (SHEET):
-            // L'app da ora in poi ignorerà le prenotazioni provenienti dallo Sheet.
-            // La variabile allBookings viene riempita ESCLUSIVAMENTE da Firestore.
-            // Se l'utente e' loggato, non mostriamo un falso "zaino vuoto" mentre
-            // arriva la rilettura identity-aware da utenti/{uid}.zaino.
+            // Lo zaino autenticato arriva dal backend Cloud, che lo ha appena letto
+            // da Firestore per l'UID canonico. Lo applichiamo subito e manteniamo
+            // fetchXP come successiva verifica diretta, senza usare dati Sheet.
             if (isClientLogged() && wildUserKey) {
                 beginBackpackSync('INITDATA_REMOTE');
                 if (backpackOwnerUid && backpackOwnerUid !== wildUserKey) {
                     allBookings = [];
                     myBookedTitles = [];
                 }
-                renderBackpackSyncState();
+                const overlayApplied = applyAuthenticatedUserOverlayFromInitData(data, requestAuthUid);
+                if (!overlayApplied) renderBackpackSyncState();
             } else {
                 allBookings = [];
                 evaluateBookings();
@@ -17009,7 +17154,10 @@ async function fetchXP(options = {}) {
     const backupKey = 'wildLastSafeProfile_' + requestUid;
 
     try {
-        const docSnap = await FS.getUtente(requestUid);
+        const docSnap = await FS.getUtente(
+            requestUid,
+            options.source === 'server' ? { source: 'server' } : {}
+        );
         lastFetchTime = Date.now();
 
         if (wildUserKey !== requestUid) {
@@ -17197,6 +17345,36 @@ let pendingCancels = [];
 let currentBookingDraft = null;
 let pendingBookingContactOffer = null;
 let pendingBookingContactTimer = null;
+
+function mergeConfirmedBookingIntoBackpack(booking, authContext) {
+    if (!booking || typeof booking !== 'object') return false;
+    assertBookingAuthContext(authContext);
+
+    const bookingKey = buildClientBookingKey({
+        bookingId: booking.bookingId,
+        titolo: booking.titolo || booking.productTitleSnapshot,
+        data: booking.data || booking.requestedStartDateIso
+    });
+    if (!bookingKey) return false;
+
+    const existingIndex = allBookings.findIndex(item => buildClientBookingKey({
+        bookingId: item?.bookingId,
+        titolo: item?.titolo || item?.productTitleSnapshot,
+        data: item?.data || item?.requestedStartDateIso
+    }) === bookingKey);
+
+    if (existingIndex >= 0) {
+        allBookings[existingIndex] = { ...allBookings[existingIndex], ...booking };
+    } else {
+        allBookings = [...allBookings, booking];
+    }
+
+    backpackOwnerUid = String(authContext.uid);
+    finishBackpackSync('BOOKING_RESPONSE_CONFIRMED');
+    evaluateBookings();
+    if (currentTab === 'profile' && cachedXPData) renderProfile(cachedXPData);
+    return true;
+}
 
 function waitWilduBookingContact(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
@@ -17457,7 +17635,7 @@ function evaluateBookings() {
             bookingId: b.bookingId || '',
             collection: b.collection || '',
             eventDocId: b.eventDocId || ''
-        }));
+        })).replace(/'/g, '%27');
         
         const tripOrig = allTrips.find(t => buildClientBookingKey({bookingId: t.bookingId, titolo: t.Titolo, data: t["Data inizio"] ? `${t["Data inizio"]}/${t.Anno}` : ""}) === bookingKey);
         const odOrig = allOpenDays.find(od => buildClientBookingKey({bookingId: od.bookingId, titolo: od["Titolo"], data: od["Data Inizio"]}) === bookingKey);
@@ -17485,7 +17663,7 @@ if (tripOrig) {
     const linkSito = normalizeWilduCommercialUrl(firstNonEmptyValue(tripOrig.Link, tripOrig.link));
 
     if (linkSito) {
-        const safeLinkSito = encodeURIComponent(linkSito);
+        const safeLinkSito = encodeURIComponent(linkSito).replace(/'/g, '%27');
 
         siteBtn = `<button onclick="openCommercialLink(decodeURIComponent('${safeLinkSito}'))" style="background: #333; color: #fff; border: 1px solid #555; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; margin-right: 8px; font-size: 11px;">SITO 🔗</button>`;
     }
@@ -17500,7 +17678,7 @@ if (tripOrig) {
             bookingKind: b.bookingKind || '',
             productId: b.productId || '',
             requestedStartDateIso: b.requestedStartDateIso || ''
-        }));
+        })).replace(/'/g, '%27');
 
         activeHtml += `
         <div class="wildu-booking-item">
@@ -17734,6 +17912,8 @@ async function requestCancel(encodedBookingPayload, btnElement) {
     if (!requireLoggedAccess('CANCEL_ATTEMPT')) return;
     if (isCancellingInProgress) return;
 
+    const cancellationAuthContext = createBookingAuthContext();
+
     let bookingIdentity = null;
 
     try {
@@ -17760,7 +17940,10 @@ async function requestCancel(encodedBookingPayload, btnElement) {
     });
 
     const currentXP = cachedXPData ? parseInt(cachedXPData.xp || 0, 10) : 0;
-    const percentualePenale = parseInt(config.penale_annullamento) || 40;
+    const configuredPenalty = Number(config?.penale_annullamento);
+    const percentualePenale = Number.isFinite(configuredPenalty)
+        ? Math.min(100, Math.max(0, Math.round(configuredPenalty)))
+        : 35;
     const penalty = Math.max(0, Math.floor(currentXP * (percentualePenale / 100)));
 
     const confirmOk = await showWilduCancelPenaltyModal({
@@ -17771,6 +17954,7 @@ async function requestCancel(encodedBookingPayload, btnElement) {
     });
 
     if (!confirmOk) return;
+    assertBookingAuthContext(cancellationAuthContext);
 
     isCancellingInProgress = true;
 
@@ -17786,11 +17970,9 @@ async function requestCancel(encodedBookingPayload, btnElement) {
         btnElement.style.cursor = "not-allowed";
     }
 
-    let cancelCompleted = false;
+    let penaltyOverlayShown = false;
 
     try {
-        const safeToken = await getVerifiedClientToken();
-
         const payload = {
             action: bookingKind === "ondemand" ? "cancelOnDemandBooking" : "cancelBooking",
             titolo: titolo,
@@ -17801,49 +17983,79 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             productId: productId,
             requestedStartDateIso: requestedStartDateIso,
             clientContext: {
-                channel: clientSession.channel
+                channel: clientSession.channel,
+                atomicCancellationPenalty: true
             }
         };
 
-        const response = await fetch(MOTORE_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${safeToken}`,
-                'X-WILDU-CHANNEL': clientSession.channel
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
+        const { response, result } = await postWilduBookingRequest(payload, cancellationAuthContext);
 
         if (!response.ok || result.status !== "success") {
-            throw new Error(result.message || result.error || "Errore sconosciuto in annullamento");
+            const cancellationError = new Error(result.message || result.error || "Errore sconosciuto in annullamento");
+            cancellationError.code = result.code || '';
+            throw cancellationError;
         }
 
-        cancelCompleted = true;
+        assertBookingAuthContext(cancellationAuthContext);
 
-        if (penalty > 0 && wildUserKey) {
-            await FS.setUtente(wildUserKey, {
-                xp: FV.increment(-penalty),
-                ultimo_aggiornamento: FV.serverTimestamp()
-            });
+        const didCancel = result.removedFromZaino === true ||
+            result.removedFromEvent === true ||
+            result.cancelledBooking === true;
+        let appliedPenaltyPercent = Number.isFinite(Number(result.penaltyPercent))
+            ? Number(result.penaltyPercent)
+            : percentualePenale;
+        let appliedPenalty = Number.isFinite(Number(result.penaltyPoints))
+            ? Math.max(0, Number(result.penaltyPoints))
+            : 0;
+        let resolvedXpAfter = Number.isFinite(Number(result.xpAfter))
+            ? Math.max(0, Number(result.xpAfter))
+            : null;
 
-            if (cachedXPData) {
-                cachedXPData.xp = Math.max(0, (parseInt(cachedXPData.xp || 0, 10) - penalty));
-                lastCelXP = cachedXPData.xp;
-                lastVXP = cachedXPData.xp;
-                localStorage.setItem('lastCelebratedXP', lastCelXP);
-                localStorage.setItem('lastViewedXP', lastVXP);
+        if (!didCancel) {
+            pendingCancels = bookingKey
+                ? pendingCancels.filter(k => k !== bookingKey)
+                : pendingCancels;
+            try {
+                await fetchInitData({ force: true, reason: 'CANCEL_ALREADY_RECONCILED' });
+                await fetchXP({ source: 'server', reason: 'CANCEL_ALREADY_RECONCILED' });
+            } catch (refreshError) {
+                console.warn("Cancellazione gia riconciliata; refresh differito:", refreshError);
+            }
+            showToast("Prenotazione gia rimossa o non piu presente.");
+            return;
+        }
 
-                if (currentTab === 'profile') {
-                    renderProfile(cachedXPData);
-                }
+        // Compatibilita di rollout: il nuovo backend applica la penalita nella
+        // stessa transazione della cancellazione. Se risponde una revisione
+        // precedente, conserviamo temporaneamente il comportamento storico.
+        if (result.penaltyAppliedByServer !== true) {
+            appliedPenaltyPercent = percentualePenale;
+            appliedPenalty = penalty;
+            if (appliedPenalty > 0) {
+                assertBookingAuthContext(cancellationAuthContext);
+                await FS.setUtente(cancellationAuthContext.uid, {
+                    xp: FV.increment(-appliedPenalty),
+                    ultimo_aggiornamento: FV.serverTimestamp()
+                });
+                assertBookingAuthContext(cancellationAuthContext);
+            }
+            resolvedXpAfter = Math.max(0, currentXP - appliedPenalty);
+        }
+
+        if (cachedXPData && Number.isFinite(resolvedXpAfter)) {
+            cachedXPData.xp = resolvedXpAfter;
+            lastCelXP = cachedXPData.xp;
+            lastVXP = cachedXPData.xp;
+            localStorage.setItem('lastCelebratedXP', lastCelXP);
+            localStorage.setItem('lastViewedXP', lastVXP);
+
+            if (currentTab === 'profile') {
+                renderProfile(cachedXPData);
             }
         }
 
         const warningSuffix = result.warning ? ` Nota sistema: ${result.warning}` : "";
-        const msgWa = `Ciao Admin, ho annullato la mia presenza a *${titolo}*${data ? ` del *${data}*` : ""}. La prenotazione è stata rimossa dall'app e la penale del ${percentualePenale}% (-${penalty} XP) è stata applicata.${warningSuffix} Wild-Key: *${wildUserKey || 'N/D'}*.`;
+        const msgWa = `Ciao Admin, ho annullato la mia presenza a *${titolo}*${data ? ` del *${data}*` : ""}. La prenotazione è stata rimossa dall'app e la penale del ${appliedPenaltyPercent}% (-${appliedPenalty} XP) è stata applicata.${warningSuffix} Wild-Key: *${cancellationAuthContext.uid}*.`;
 
         const phone = WILD_ASSETS['numero_admin'] || '393931326733';
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -17852,8 +18064,9 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             ? `whatsapp://send?phone=${phone}&text=${encodeURIComponent(msgWa)}`
             : `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msgWa)}`;
 
-        document.getElementById('penalty-msg').innerText = "-" + penalty + " XP";
+        document.getElementById('penalty-msg').innerText = "-" + appliedPenalty + " XP";
         document.getElementById('penalty-overlay').style.display = 'flex';
+        penaltyOverlayShown = true;
 
         if (bookingKey) {
             setTimeout(() => {
@@ -17874,6 +18087,18 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             return;
         }
 
+        if (e.code === 'AUTH_CONTEXT_CHANGED') {
+            show('profile');
+            alert(e.message);
+            return;
+        }
+
+        if (e.code === 'BOOKING_PROFILE_REQUIRED') {
+            show('profile');
+            alert("Profilo non ancora sincronizzato. Controlla i dati e riprova.");
+            return;
+        }
+
         alert("❌ Impossibile annullare la prenotazione adesso. Riprova tra un attimo.");
     } finally {
         if (btnElement) {
@@ -17883,7 +18108,7 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             btnElement.style.cursor = "pointer";
         }
 
-        if (!cancelCompleted) {
+        if (!penaltyOverlayShown) {
             isCancellingInProgress = false;
         }
     }
@@ -21000,7 +21225,7 @@ function renderTrips(trips, targetId) {
         // Link commerciale ufficiale del viaggio.
         // NON è un link Maps e NON va filtrato dal motore mappe.
         const linkSito = normalizeWilduCommercialUrl(firstNonEmptyValue(ev.Link, ev.link));
-        const safeLinkSito = encodeURIComponent(linkSito);
+        const safeLinkSito = encodeURIComponent(linkSito).replace(/'/g, '%27');
 
         const miniLinkBtn = (linkSito && !isHike) ? 
             `<button onclick="event.stopPropagation(); openCommercialLink(decodeURIComponent('${safeLinkSito}'))" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">LINK AL SITO</button>` 
@@ -22691,6 +22916,8 @@ function closeCustomBooking() {
 
 async function sendOnDemandBookingFromModal(options) {
     options = options || {};
+    const bookingAuthContext = options.authContext || createBookingAuthContext();
+    assertBookingAuthContext(bookingAuthContext);
     const btn = options.btn || document.querySelector('#custom-booking-modal button[onclick="sendCustomBooking()"]');
     const originalText = options.originalText || (btn ? btn.innerText : 'Conferma');
     const telefono = String(options.telefono || '').trim();
@@ -22752,34 +22979,27 @@ async function sendOnDemandBookingFromModal(options) {
     let bookingCompleted = false;
 
     try {
-        const safeToken = await getVerifiedClientToken();
-        const response = await fetch(MOTORE_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${safeToken}`,
-                'X-WILDU-CHANNEL': clientSession.channel
-            },
-            body: JSON.stringify({
-                action: 'bookOnDemandTrip',
-                productId,
-                requestedStartDateIso,
-                requestedEndDateIso,
-                nome,
-                telefono,
-                participantsCount: 1,
-                clientContext: {
-                    channel: clientSession.channel
-                }
-            })
-        });
-
-        const result = await response.json();
+        const { response, result } = await postWilduBookingRequest({
+            action: 'bookOnDemandTrip',
+            productId,
+            requestedStartDateIso,
+            requestedEndDateIso,
+            nome,
+            telefono,
+            participantsCount: 1,
+            clientContext: {
+                channel: clientSession.channel
+            }
+        }, bookingAuthContext);
         if (!response.ok || result.status !== "success") {
-            throw new Error(result.message || result.error || "Errore sconosciuto dal server");
+            const bookingError = new Error(result.message || result.error || "Errore sconosciuto dal server");
+            bookingError.code = result.code || '';
+            throw bookingError;
         }
 
+        assertBookingAuthContext(bookingAuthContext);
         bookingCompleted = true;
+        mergeConfirmedBookingIntoBackpack(result.booking, bookingAuthContext);
         closeCustomBooking();
         showToast(result.alreadyBooked ? "Richiesta gia presente nello zaino." : "Richiesta inviata. Ti ricontatteremo per confermare.");
         await completeWilduBookingSuccessFlow({
@@ -22797,6 +23017,7 @@ async function sendOnDemandBookingFromModal(options) {
         }
     } catch (err) {
         console.error("Errore prenotazione su richiesta:", err);
+        if (err.code === 'BOOKING_PROFILE_REQUIRED' || err.code === 'AUTH_CONTEXT_CHANGED') show('profile');
         alert("Errore invio richiesta: " + err.message);
     } finally {
         isBookingInProgress = false;
@@ -22819,6 +23040,8 @@ async function sendOnDemandBookingFromModal(options) {
 async function sendCustomBooking() {
     if (!requireLoggedAccess('BOOKING_ATTEMPT', { closeModalId: 'custom-booking-modal' })) return;
 
+    const bookingAuthContext = createBookingAuthContext();
+
     if (isBookingInProgress) return;
     isBookingInProgress = true;
 
@@ -22838,7 +23061,13 @@ async function sendCustomBooking() {
     const nomeRaw = document.getElementById('cb-nome').value;
 
     if (document.getElementById('cb-tipo-evento').value === 'ONDEMAND') {
-        await sendOnDemandBookingFromModal({ btn, originalText, telefono, nome: nomeRaw });
+        await sendOnDemandBookingFromModal({
+            btn,
+            originalText,
+            telefono,
+            nome: nomeRaw,
+            authContext: bookingAuthContext
+        });
         return;
     }
 
@@ -22866,8 +23095,6 @@ async function sendCustomBooking() {
     let bookingCompleted = false;
 
     try {
-        const safeToken = await getVerifiedClientToken();
-
         const payload = {
             action: "bookCustom",
             tipo: document.getElementById('cb-tipo-evento').value,
@@ -22877,7 +23104,7 @@ async function sendCustomBooking() {
             prezzo: prezzoRaw,
             nome: nomeRaw,
             telefono: telefono,
-            wildKey: auth.currentUser ? auth.currentUser.uid : wildUserKey, // Prende l'ID reale da Google, non dalla memoria cache
+            wildKey: bookingAuthContext.uid,
             bookingId: bookingIdRaw,
             collection: bookingCollectionRaw,
             eventDocId: bookingEventDocIdRaw,
@@ -22886,23 +23113,17 @@ async function sendCustomBooking() {
             }
         };
 
-        const response = await fetch(MOTORE_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${safeToken}`,
-                'X-WILDU-CHANNEL': clientSession.channel
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
+        const { response, result } = await postWilduBookingRequest(payload, bookingAuthContext);
 
         if (!response.ok || result.status !== "success") {
-            throw new Error(result.message || result.error || "Errore sconosciuto dal server");
+            const bookingError = new Error(result.message || result.error || "Errore sconosciuto dal server");
+            bookingError.code = result.code || '';
+            throw bookingError;
         }
 
+        assertBookingAuthContext(bookingAuthContext);
         bookingCompleted = true;
+        mergeConfirmedBookingIntoBackpack(result.booking, bookingAuthContext);
 
         closeCustomBooking();
 
@@ -22934,10 +23155,11 @@ if (result.alreadyBooked === true) {
 
             const earnedXP = parseInt(document.getElementById('cb-xp').value) || 0;
             let earnedXpToCelebrate = 0;
-            const xpUserKey = wildUserKey || (auth.currentUser ? auth.currentUser.uid : '');
+            const xpUserKey = bookingAuthContext.uid;
 
             if (earnedXP > 0 && xpUserKey) {
                 try {
+                    assertBookingAuthContext(bookingAuthContext);
                     await FS.setUtente(xpUserKey, {
                         xp: FV.increment(earnedXP),
                         ultimo_aggiornamento: FV.serverTimestamp()
@@ -22976,6 +23198,18 @@ if (result.alreadyBooked === true) {
         }
 
         if (error.message === 'AUTH_REQUIRED') {
+            return;
+        }
+
+        if (error.code === 'AUTH_CONTEXT_CHANGED') {
+            show('profile');
+            alert(error.message);
+            return;
+        }
+
+        if (error.code === 'BOOKING_PROFILE_REQUIRED') {
+            show('profile');
+            alert("Profilo non ancora sincronizzato. Controlla i dati e riprova.");
             return;
         }
 
@@ -24999,12 +25233,21 @@ if (profKeyEl) {
         let flowWarning = null;
         try {
             if (typeof fetchInitData === 'function') {
-                try { await fetchInitData({ force: true }); } catch (e) { console.warn("Aggiornamento dati post-prenotazione non riuscito:", e); }
+                try {
+                    const refreshedData = await fetchInitData({ force: true, reason: 'POST_BOOKING' });
+                    if (refreshedData) applyAuthenticatedUserOverlayFromInitData(refreshedData, flowUserKey);
+                } catch (e) {
+                    console.warn("Aggiornamento dati post-prenotazione non riuscito:", e);
+                }
             }
             restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, 'after-initdata');
 
             if (typeof fetchXP === 'function') {
-                try { await fetchXP(); } catch (e) { console.warn("Aggiornamento XP post-prenotazione non riuscito:", e); }
+                try {
+                    await fetchXP({ source: 'server', showBackpackSync: true, reason: 'POST_BOOKING_SERVER_CONFIRM' });
+                } catch (e) {
+                    console.warn("Aggiornamento XP post-prenotazione non riuscito:", e);
+                }
             }
             restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, 'after-fetchxp');
 
