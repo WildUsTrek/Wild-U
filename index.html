@@ -7514,6 +7514,12 @@ const WILDU_FIREBASE = (() => {
 
         window.addEventListener('online', () => {
             setFirestoreLogLevelByConnectivity();
+            if (auth.currentUser) {
+                scheduleClientAuthRecovery('NETWORK_ONLINE', {
+                    reset: true,
+                    immediate: true
+                });
+            }
         });
     }
 
@@ -7525,7 +7531,10 @@ const WILDU_FIREBASE = (() => {
             .then((result) => {
                 if (result.user) {
                     console.log("Login redirect OK", result.user);
-                    // NON fare troppo qui, ci pensa onAuthStateChanged
+                    scheduleClientAuthRecovery('REDIRECT_RESULT', {
+                        reset: true,
+                        immediate: true
+                    });
                 }
             })
             .catch((error) => {
@@ -12044,6 +12053,9 @@ window.WilduMediaClient = WilduMediaClient;
     let authProbeInProgress = false;
     let authProbeSequence = 0;
     let profileCompletionRequired = false;
+    let authRecoveryTimer = null;
+    let authRecoveryAttempt = 0;
+    const AUTH_RECOVERY_DELAYS_MS = [250, 1000, 3000, 8000];
 
     // ==========================================
     // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
@@ -12154,7 +12166,10 @@ function reconcileProfileShellWithClientSession() {
 
     if (!loginScreen || !completeScreen || !profileData) return;
 
-    if (authProbeInProgress) {
+    if (
+        authProbeInProgress ||
+        (clientSession.authState === 'AUTH_PENDING' && !!auth.currentUser)
+    ) {
         loginScreen.classList.add('hidden');
         completeScreen.classList.add('hidden');
         profileData.classList.add('hidden');
@@ -13885,17 +13900,27 @@ function checkAuthEnvironment() {
 
     tempTelegramUser = null;
 
-    clientSession = {
-        authState: 'GUEST',
-        channel: 'WEB',
-        tokenStatus: clientSession.tokenStatus === 'VALID' ? 'VALID' : 'NONE',
-        capabilities: getDefaultClientCapabilities('WEB')
-    };
+    const hasFirebaseUser = !!auth.currentUser;
+    const hasAuthSessionInFlight =
+        authProbeInProgress ||
+        clientSession.authState === 'LOGGED' ||
+        clientSession.authState === 'AUTH_PENDING';
+
+    // Il bootstrap UI non deve retrocedere una sessione che Firebase ha gia'
+    // ripristinato o che il backend sta ancora verificando.
+    if (!hasFirebaseUser && !hasAuthSessionInFlight) {
+        clientSession = {
+            authState: 'GUEST',
+            channel: 'WEB',
+            tokenStatus: clientSession.tokenStatus === 'VALID' ? 'VALID' : 'NONE',
+            capabilities: getDefaultClientCapabilities('WEB')
+        };
+    }
 
     if (telegramBox) telegramBox.classList.add('hidden');
     if (googleBox) googleBox.classList.remove('hidden');
     if (fallbackBtn) fallbackBtn.classList.remove('hidden');
-    if (loginDesc) {
+    if (loginDesc && !hasFirebaseUser && !hasAuthSessionInFlight) {
         loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
     }
 }
@@ -13965,6 +13990,83 @@ async function handleTelegramAuth(tgUser) {
 // LISTENER AUTH GOOGLE (POST-REDIRECT SAFE)
 // ==========================================
 
+function clearClientAuthRecovery(options = {}) {
+    if (authRecoveryTimer) {
+        window.clearTimeout(authRecoveryTimer);
+        authRecoveryTimer = null;
+    }
+    if (options.keepAttempt !== true) {
+        authRecoveryAttempt = 0;
+    }
+}
+
+function scheduleClientAuthRecovery(reason, options = {}) {
+    if (isTelegramContext() || !auth.currentUser) return;
+
+    if (options.reset === true) {
+        clearClientAuthRecovery();
+    } else if (authRecoveryTimer) {
+        return;
+    }
+
+    if (authRecoveryAttempt >= AUTH_RECOVERY_DELAYS_MS.length) return;
+
+    const delay = options.immediate === true
+        ? 0
+        : AUTH_RECOVERY_DELAYS_MS[authRecoveryAttempt];
+
+    authRecoveryTimer = window.setTimeout(async function replayAuthenticatedUser() {
+        authRecoveryTimer = null;
+        const currentUser = auth.currentUser;
+        if (!currentUser || isTelegramContext()) return;
+
+        if (authRefreshLock || authProbeInProgress) {
+            scheduleClientAuthRecovery(reason || 'AUTH_RECOVERY_BUSY');
+            return;
+        }
+
+        authRecoveryAttempt += 1;
+        await handleClientAuthStateChanged(currentUser, reason || 'AUTH_RECOVERY');
+    }, delay);
+}
+
+function holdClientAuthPending(user, message, reason) {
+    tempGoogleUser = user;
+    tempTelegramUser = null;
+    profileCompletionRequired = false;
+    // Firebase conserva l'identita' autenticata, ma l'UID operativo resta
+    // disattivato finche' il backend non conferma LOGGED.
+    wildUserKey = null;
+    backpackOwnerUid = '';
+    localStorage.removeItem('wildUserKey');
+
+    clientSession = {
+        authState: 'AUTH_PENDING',
+        channel: 'WEB',
+        tokenStatus: navigator.onLine ? 'PENDING' : 'OFFLINE',
+        capabilities: {
+            ...getDefaultClientCapabilities('WEB'),
+            canBook: false,
+            canUseBackpack: false,
+            canAuthenticateHere: false
+        }
+    };
+
+    allBookings = [];
+    myBookedTitles = [];
+    pendingBookings = [];
+    pendingCancels = [];
+    authProbeInProgress = false;
+
+    const loginDesc = document.getElementById('login-desc');
+    if (loginDesc) {
+        loginDesc.innerText = message || "Accesso Google riuscito. Sincronizzazione del profilo in corso...";
+    }
+
+    reconcileProfileShellWithClientSession();
+    scheduleClientAuthRecovery(reason || 'AUTH_PENDING');
+}
+
 function schedulePendingClientAuthState(user) {
     pendingAuthStateUser = user;
     if (authStateReplayTimer) return;
@@ -13978,13 +14080,13 @@ function schedulePendingClientAuthState(user) {
         authStateReplayTimer = null;
         const queuedUser = auth.currentUser;
         pendingAuthStateUser = undefined;
-        handleClientAuthStateChanged(queuedUser);
+        handleClientAuthStateChanged(queuedUser, 'AUTH_LOCK_REPLAY');
     };
 
     authStateReplayTimer = window.setTimeout(replayWhenUnlocked, 50);
 }
 
-async function handleClientAuthStateChanged(user) {
+async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
@@ -14020,34 +14122,11 @@ reconcileProfileShellWithClientSession();
         // OFFLINE: non proviamo a capire se è un nuovo utente.
         // Niente complete-profile-screen, niente deduzioni sul DB.
 if (!navigator.onLine) {
-    profileCompletionRequired = false;
-    tempGoogleUser = null;
-    tempTelegramUser = null;
-    wildUserKey = null;
-    localStorage.removeItem('wildUserKey');
-
-    clientSession = {
-        authState: 'OFFLINE',
-        channel: 'WEB',
-        tokenStatus: 'OFFLINE',
-        capabilities: {
-            ...getDefaultClientCapabilities('WEB'),
-            canBook: false,
-            canUseBackpack: false,
-            canAuthenticateHere: false
-        }
-    };
-
-    allBookings = [];
-    myBookedTitles = [];
-    pendingBookings = [];
-    pendingCancels = [];
-
-    if (loginDesc) {
-        loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
-    }
-authProbeInProgress = false;
-    updateProfileUI();
+    holdClientAuthPending(
+        user,
+        "Accesso Google riuscito. Attendo la connessione per sincronizzare il profilo.",
+        'AUTH_INITIAL_OFFLINE'
+    );
     return;
 }
         
@@ -14104,33 +14183,17 @@ authProbeInProgress = false;
                     errMsg.includes('client is offline');
 
                 if (looksOffline) {
-                    tempGoogleUser = null;
-                    tempTelegramUser = null;
-                    wildUserKey = null;
-                    localStorage.removeItem('wildUserKey');
-
-                    clientSession = {
-                        authState: 'OFFLINE',
-                        channel: 'WEB',
-                        tokenStatus: 'OFFLINE',
-                        capabilities: {
-                            ...getDefaultClientCapabilities('WEB'),
-                            canBook: false,
-                            canUseBackpack: false,
-                            canAuthenticateHere: false
-                        }
-                    };
-
-                    allBookings = [];
-                    myBookedTitles = [];
-                    pendingBookings = [];
-                    pendingCancels = [];
-
-                    if (loginDesc) {
-                        loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+                    if (
+                        probeSequence !== authProbeSequence ||
+                        String(auth.currentUser?.uid || '') !== String(user.uid)
+                    ) {
+                        return;
                     }
-authProbeInProgress = false;
-                    updateProfileUI();
+                    holdClientAuthPending(
+                        user,
+                        "Accesso Google riuscito. Sincronizzazione sospesa dalla rete; riprovo automaticamente.",
+                        'AUTH_PROFILE_NETWORK_RETRY'
+                    );
                     return;
                 }
 
@@ -14158,10 +14221,12 @@ if (docSnap.exists) {
         }
     }
 
+    clearClientAuthRecovery();
     authProbeInProgress = false;
     updateProfileUI();
 } else {
                 // Il backend canonico ha confermato che il profilo non esiste.
+                clearClientAuthRecovery();
                 profileCompletionRequired = true;
                 authProbeInProgress = false;
                 reconcileProfileShellWithClientSession();
@@ -14184,43 +14249,35 @@ if (docSnap.exists) {
                 errMsg.includes('client is offline');
 
             if (looksOffline) {
-                tempGoogleUser = null;
-                tempTelegramUser = null;
-                wildUserKey = null;
-                localStorage.removeItem('wildUserKey');
-
-                clientSession = {
-                    authState: 'OFFLINE',
-                    channel: 'WEB',
-                    tokenStatus: 'OFFLINE',
-                    capabilities: {
-                        ...getDefaultClientCapabilities('WEB'),
-                        canBook: false,
-                        canUseBackpack: false,
-                        canAuthenticateHere: false
-                    }
-                };
-
-                allBookings = [];
-                myBookedTitles = [];
-                pendingBookings = [];
-                pendingCancels = [];
-
-                if (loginDesc) {
-                    loginDesc.innerText = "Sei offline. Alcune funzioni torneranno disponibili quando la connessione rientra.";
+                if (
+                    probeSequence !== authProbeSequence ||
+                    String(auth.currentUser?.uid || '') !== String(user.uid)
+                ) {
+                    return;
                 }
-
-                authProbeInProgress = false;
-                updateProfileUI();
+                holdClientAuthPending(
+                    user,
+                    "Accesso Google riuscito. Sincronizzazione sospesa dalla rete; riprovo automaticamente.",
+                    'AUTH_BOOTSTRAP_NETWORK_RETRY'
+                );
                 return;
             }
 
-            profileCompletionRequired = false;
-            authProbeInProgress = false;
-            reconcileProfileShellWithClientSession();
+            if (
+                probeSequence !== authProbeSequence ||
+                String(auth.currentUser?.uid || '') !== String(user.uid)
+            ) {
+                return;
+            }
+            holdClientAuthPending(
+                user,
+                "Accesso Google riuscito, ma il profilo non e' ancora sincronizzato. Riprovo automaticamente.",
+                'AUTH_BOOTSTRAP_RETRY'
+            );
             showToast("Errore: " + e.message);
         }
 } else {
+    clearClientAuthRecovery();
     tempGoogleUser = null;
     tempTelegramUser = null;
     profileCompletionRequired = false;
@@ -14242,7 +14299,9 @@ if (docSnap.exists) {
 }
 }
 
-auth.onAuthStateChanged(handleClientAuthStateChanged);
+auth.onAuthStateChanged((user) => {
+    handleClientAuthStateChanged(user, 'AUTH_LISTENER');
+});
 
 // ==========================================
 // LOGIN GOOGLE (CROSS-SITE FIX / POPUP SAFE)
@@ -14261,7 +14320,14 @@ function loginWithGoogle() {
         prompt: 'select_account'
     });
 
-    auth.signInWithPopup(provider).catch((error) => {
+    auth.signInWithPopup(provider).then((result) => {
+        if (result?.user || auth.currentUser) {
+            scheduleClientAuthRecovery('POPUP_SUCCESS', {
+                reset: true,
+                immediate: true
+            });
+        }
+    }).catch((error) => {
         console.error("Errore login Google Popup:", error);
 
         const code = String(error?.code || '').toLowerCase();
@@ -14543,6 +14609,20 @@ async function completeRegistration() {
 function logout() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = !!(tgUser && tgUser.id);
+
+    // Invalida prima ogni verifica/ripresa asincrona ancora legata all'utente
+    // precedente, poi pulisce lo stato visibile.
+    authProbeSequence += 1;
+    initDataRequestSequence += 1;
+    clearClientAuthRecovery();
+    if (authStateReplayTimer) {
+        window.clearTimeout(authStateReplayTimer);
+        authStateReplayTimer = null;
+    }
+    pendingAuthStateUser = undefined;
+    authRefreshLock = false;
+    authProbeInProgress = false;
+    profileCompletionRequired = false;
 
     // 1. PULIZIA NUCLEARE DELLO STORAGE (Nessun residuo tra profili)
     localStorage.clear();
@@ -32766,6 +32846,12 @@ installWilduSoftModalHorizontalDismiss();
 window.addEventListener('pageshow', () => {
     reconcileWilduModuleAudioModeFromDom("pageshow");
     updateWilduAudioToggleButton();
+    if (auth.currentUser && clientSession.authState !== 'LOGGED') {
+        scheduleClientAuthRecovery('PAGE_SHOW_AUTH_RESUME', {
+            reset: true,
+            immediate: true
+        });
+    }
 });
 
 
