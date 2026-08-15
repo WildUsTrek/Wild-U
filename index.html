@@ -14655,6 +14655,23 @@ async function completeRegistration() {
 // LOGOUT
 // ==========================================
 
+function consumeWilduLegacyLogoutUrlOnce() {
+    try {
+        const currentUrl = new URL(window.location.href);
+        if (currentUrl.searchParams.get('logout') !== 'true') return false;
+
+        currentUrl.searchParams.delete('logout');
+        currentUrl.searchParams.delete('nocache');
+        currentUrl.searchParams.delete('shellv');
+
+        const cleanRelativeUrl = currentUrl.pathname + currentUrl.search + currentUrl.hash;
+        window.history.replaceState(window.history.state, '', cleanRelativeUrl);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function logout() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = !!(tgUser && tgUser.id);
@@ -14713,15 +14730,17 @@ function logout() {
     }
 
     // 4. USCITA DEFINITIVA
-    const targetUrl = window.location.pathname + '?logout=true&nocache=' + Date.now();
+    // Il reload post-logout non deve lasciare parametri transitori che un
+    // successivo refresh della shell potrebbe replicare.
+    const targetUrl = window.location.pathname;
 
     if (isTelegram) {
-        window.location.href = targetUrl;
+        window.location.replace(targetUrl);
     } else {
         auth.signOut().then(() => {
-            window.location.href = targetUrl;
+            window.location.replace(targetUrl);
         }).catch(() => {
-            window.location.href = targetUrl;
+            window.location.replace(targetUrl);
         });
     }
 }
@@ -16563,6 +16582,18 @@ async function clearWilduShellCaches() {
     await Promise.all(keys.map(key => caches.delete(key)));
 }
 
+function buildWilduCanonicalShellReloadUrl(remoteVersion, rawHref) {
+    const nextUrl = new URL(String(rawHref || window.location.href));
+    const legacyLogoutUrl = nextUrl.searchParams.get('logout') === 'true';
+
+    nextUrl.searchParams.delete('logout');
+    if (legacyLogoutUrl) {
+        nextUrl.searchParams.delete('nocache');
+    }
+    nextUrl.searchParams.set('shellv', String(remoteVersion || '').trim());
+    return nextUrl.toString();
+}
+
 async function ensureFreshShellVersion() {
     const remoteVersion = await fetchShellVersion();
     const meta = readShellMeta();
@@ -16622,14 +16653,13 @@ setShellReloadLock(remoteVersion);
         lastReloadAt: Date.now()
     });
 
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set('shellv', remoteVersion);
+    const nextUrl = buildWilduCanonicalShellReloadUrl(remoteVersion);
 
     pageDebug('SHELL_RELOAD_TRIGGERED', {
-        targetUrl: nextUrl.toString()
+        targetUrl: nextUrl
     });
 
-    window.location.replace(nextUrl.toString());
+    window.location.replace(nextUrl);
     throw new Error('SHELL_REFRESH_TRIGGERED');
 }    
 
@@ -16903,6 +16933,10 @@ async function init() {
         window.Telegram.WebApp.ready();
         window.Telegram.WebApp.expand();
     }
+
+    // Bonifica gli URL prodotti dalle versioni storiche prima che il controllo
+    // versione possa copiarli in un nuovo redirect della shell.
+    consumeWilduLegacyLogoutUrlOnce();
 
     try {
         await ensureFreshShellVersion();
