@@ -12055,6 +12055,7 @@ window.WilduMediaClient = WilduMediaClient;
     let profileCompletionRequired = false;
     let authRecoveryTimer = null;
     let authRecoveryAttempt = 0;
+    let lastBackendVerifiedUid = '';
     const AUTH_RECOVERY_DELAYS_MS = [250, 1000, 3000, 8000];
 
     // ==========================================
@@ -12110,8 +12111,10 @@ window.WilduMediaClient = WilduMediaClient;
         // Fonte di verità lato client: solo il backend può dichiarare LOGGED
         if (authState === 'LOGGED' && data?.userOverlay?.profile?.uid) {
             wildUserKey = data.userOverlay.profile.uid;
+            lastBackendVerifiedUid = String(wildUserKey);
             localStorage.setItem('wildUserKey', wildUserKey);
         } else {
+            lastBackendVerifiedUid = '';
             wildUserKey = null;
             localStorage.removeItem('wildUserKey');
         }
@@ -14030,7 +14033,18 @@ function scheduleClientAuthRecovery(reason, options = {}) {
     }, delay);
 }
 
-function holdClientAuthPending(user, message, reason) {
+function clearClientPrivateRuntimeState() {
+    backpackOwnerUid = '';
+    allBookings = [];
+    myBookedTitles = [];
+    pendingBookings = [];
+    pendingCancels = [];
+    cachedXPData = null;
+}
+
+function holdClientAuthPending(user, message, reason, options = {}) {
+    const pendingUid = String(user?.uid || '').trim();
+    const retainSameVerifiedUser = !!pendingUid && pendingUid === lastBackendVerifiedUid;
     tempGoogleUser = user;
     tempTelegramUser = null;
     profileCompletionRequired = false;
@@ -14052,11 +14066,11 @@ function holdClientAuthPending(user, message, reason) {
         }
     };
 
-    allBookings = [];
-    myBookedTitles = [];
-    pendingBookings = [];
-    pendingCancels = [];
-    authProbeInProgress = false;
+    if (!retainSameVerifiedUser) {
+        lastBackendVerifiedUid = '';
+        clearClientPrivateRuntimeState();
+    }
+    authProbeInProgress = options.probeInProgress === true;
 
     const loginDesc = document.getElementById('login-desc');
     if (loginDesc) {
@@ -14064,7 +14078,9 @@ function holdClientAuthPending(user, message, reason) {
     }
 
     reconcileProfileShellWithClientSession();
-    scheduleClientAuthRecovery(reason || 'AUTH_PENDING');
+    if (options.scheduleRecovery !== false) {
+        scheduleClientAuthRecovery(reason || 'AUTH_PENDING');
+    }
 }
 
 function schedulePendingClientAuthState(user) {
@@ -14112,10 +14128,12 @@ async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
         tempGoogleUser = user;
         tempTelegramUser = null;
         profileCompletionRequired = false;
-        wildUserKey = user.uid;
-        localStorage.setItem('wildUserKey', wildUserKey);
-        authProbeInProgress = true;
-reconcileProfileShellWithClientSession();
+        holdClientAuthPending(
+            user,
+            "Verifica identita' in corso...",
+            'AUTH_PROBE_START',
+            { probeInProgress: true, scheduleRecovery: false }
+        );
 
         const loginDesc = document.getElementById('login-desc');
 
@@ -14227,6 +14245,8 @@ if (docSnap.exists) {
 } else {
                 // Il backend canonico ha confermato che il profilo non esiste.
                 clearClientAuthRecovery();
+                lastBackendVerifiedUid = '';
+                clearClientPrivateRuntimeState();
                 profileCompletionRequired = true;
                 authProbeInProgress = false;
                 reconcileProfileShellWithClientSession();
@@ -14278,6 +14298,7 @@ if (docSnap.exists) {
         }
 } else {
     clearClientAuthRecovery();
+    lastBackendVerifiedUid = '';
     tempGoogleUser = null;
     tempTelegramUser = null;
     profileCompletionRequired = false;
@@ -14291,6 +14312,7 @@ if (docSnap.exists) {
     };
 
     wildUserKey = null;
+    clearClientPrivateRuntimeState();
     localStorage.removeItem('wildUserKey');
     reconcileProfileShellWithClientSession();
 
@@ -14623,6 +14645,7 @@ function logout() {
     authRefreshLock = false;
     authProbeInProgress = false;
     profileCompletionRequired = false;
+    lastBackendVerifiedUid = '';
 
     // 1. PULIZIA NUCLEARE DELLO STORAGE (Nessun residuo tra profili)
     localStorage.clear();
@@ -20641,20 +20664,28 @@ function showWilduRelatedModal(items) {
     return openWilduSoftModalAtTop(modal);
 }
 
-function closeWilduRelatedModal(closeDetail) {
+function consumeWilduSoftModalDismissEvent(evt) {
+    if (!evt || typeof evt !== 'object') return;
+    if (typeof evt.preventDefault === 'function') evt.preventDefault();
+    if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+    else if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+}
+
+function closeWilduRelatedModal(closeDetail, evt) {
+    consumeWilduSoftModalDismissEvent(evt);
     const modal = document.getElementById('wildu-related-modal');
     const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
     if (card) wilduResetSwipeTarget(card);
     hideWilduSwipeHint();
+    if (closeDetail !== false) {
+        wilduCloseDetailModalOnly();
+        WILDU_ACTIVE_DETAIL_CONTEXT = null;
+    }
     if (modal) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
     unlockWilduOverlayScrollIfIdle();
-    if (closeDetail !== false) {
-        wilduCloseDetailModalOnly();
-        WILDU_ACTIVE_DETAIL_CONTEXT = null;
-    }
 }
 
 function handleWilduDetailClose(source) {
@@ -20814,7 +20845,8 @@ function openWilduDateOptions(type, id, evt) {
     openWilduSoftModalAtTop(modal);
 }
 
-function closeWilduDateOptionsModal() {
+function closeWilduDateOptionsModal(evt) {
+    consumeWilduSoftModalDismissEvent(evt);
     const modal = document.getElementById('wildu-date-options-modal');
     const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
     if (card) wilduResetSwipeTarget(card);
@@ -32937,26 +32969,26 @@ window.addEventListener('pageshow', () => {
 <!-- WILDU V38 — MODAL SUGGERIMENTI E DATE DISPONIBILI -->
 <div id="wildu-related-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Potrebbe interessarti">
     <div class="wildu-soft-modal-card">
-        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduRelatedModal(true)" aria-label="Chiudi suggerimenti">×</button>
+        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduRelatedModal(true, event)" aria-label="Chiudi suggerimenti">×</button>
         <div class="wildu-soft-modal-kicker">🧭 Radar</div>
         <h3 class="wildu-soft-modal-title">Potrebbe interessarti</h3>
         <p class="wildu-soft-modal-subtitle">Avventure simili a quella che stavi guardando, scelte fra le prossime date disponibili.</p>
         <div id="wildu-related-list" class="wildu-soft-list"></div>
         <div class="wildu-soft-modal-bottom-bar">
-            <button type="button" class="wildu-soft-bottom-close-btn" onclick="closeWilduRelatedModal(true)">No grazie</button>
+            <button type="button" class="wildu-soft-bottom-close-btn" onclick="closeWilduRelatedModal(true, event)">No grazie</button>
         </div>
     </div>
 </div>
 
 <div id="wildu-date-options-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Date disponibili">
     <div class="wildu-soft-modal-card">
-        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduDateOptionsModal()" aria-label="Chiudi date disponibili">×</button>
+        <button type="button" class="wildu-soft-modal-close" onclick="closeWilduDateOptionsModal(event)" aria-label="Chiudi date disponibili">×</button>
         <div class="wildu-soft-modal-kicker">📅 Date disponibili</div>
         <h3 id="wildu-date-options-title" class="wildu-soft-modal-title">Scegli una data</h3>
         <p class="wildu-soft-modal-subtitle">Stessa avventura, date diverse. Tocca una card per aprire i dettagli.</p>
         <div id="wildu-date-options-list" class="wildu-soft-list"></div>
         <div class="wildu-soft-modal-bottom-bar">
-            <button type="button" class="wildu-soft-bottom-close-btn" onclick="closeWilduDateOptionsModal()">Chiudi</button>
+            <button type="button" class="wildu-soft-bottom-close-btn" onclick="closeWilduDateOptionsModal(event)">Chiudi</button>
         </div>
     </div>
 </div>
