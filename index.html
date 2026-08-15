@@ -14821,6 +14821,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.19';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16540,20 +16541,22 @@ function readShellReloadLock() {
     }
 }
 
-function hasRecentShellReloadLock(targetVersion) {
+function hasRecentShellReloadLock(targetVersion, sourceVersion) {
     const lock = readShellReloadLock();
     if (!lock || !lock.ts || !lock.version) return false;
 
     const isRecent = (Date.now() - Number(lock.ts)) < SHELL_RELOAD_LOCK_MS;
     const isSameTargetVersion = String(lock.version) === String(targetVersion);
+    const isSameSourceVersion = String(lock.sourceVersion || '') === String(sourceVersion || '');
 
-    return isRecent && isSameTargetVersion;
+    return isRecent && isSameTargetVersion && isSameSourceVersion;
 }
 
-function setShellReloadLock(targetVersion) {
+function setShellReloadLock(targetVersion, sourceVersion) {
     sessionStorage.setItem(SHELL_RELOAD_LOCK_KEY, JSON.stringify({
         ts: Date.now(),
-        version: String(targetVersion || '')
+        version: String(targetVersion || ''),
+        sourceVersion: String(sourceVersion || '')
     }));
 }
 
@@ -16597,39 +16600,34 @@ function buildWilduCanonicalShellReloadUrl(remoteVersion, rawHref) {
 async function ensureFreshShellVersion() {
     const remoteVersion = await fetchShellVersion();
     const meta = readShellMeta();
+    const embeddedVersion = String(WILDU_EMBEDDED_SHELL_VERSION || '').trim();
 
     pageDebug('SHELL_VERSION_CHECK', {
         remoteVersion,
-        localVersion: meta.version || null
+        localVersion: meta.version || null,
+        embeddedVersion: embeddedVersion || null
     });
 
-    if (!meta.version) {
+    // La versione realmente in esecuzione e' quella incorporata nel documento.
+    // Su iOS una pagina ripristinata da WebKit puo' essere vecchia anche quando
+    // localStorage e' gia' stato aggiornato da un caricamento piu' recente.
+    if (embeddedVersion === remoteVersion) {
         writeShellMeta({
             version: remoteVersion,
             lastCheckAt: Date.now()
         });
 
-        pageDebug('SHELL_FIRST_SEEN', {
-            version: remoteVersion
-        });
-        return;
-    }
-
-    if (meta.version === remoteVersion) {
-        writeShellMeta({
+        pageDebug('SHELL_EXECUTABLE_CURRENT', {
             version: remoteVersion,
-            lastCheckAt: Date.now()
-        });
-
-        pageDebug('SHELL_ALREADY_CURRENT', {
-            version: remoteVersion
+            previousMetaVersion: meta.version || null
         });
         return;
     }
 
-if (hasRecentShellReloadLock(remoteVersion)) {
+if (hasRecentShellReloadLock(remoteVersion, embeddedVersion)) {
     pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
         oldVersion: meta.version,
+        embeddedVersion: embeddedVersion || null,
         newVersion: remoteVersion
     });
     return;
@@ -16637,20 +16635,23 @@ if (hasRecentShellReloadLock(remoteVersion)) {
 
 pageDebug('SHELL_VERSION_CHANGED', {
     oldVersion: meta.version,
+    embeddedVersion: embeddedVersion || null,
     newVersion: remoteVersion
 });
 
-setShellReloadLock(remoteVersion);
+setShellReloadLock(remoteVersion, embeddedVersion);
     await clearWilduShellCaches();
 
     pageDebug('SHELL_CACHES_CLEARED', {
         newVersion: remoteVersion
     });
 
+    // Non dichiarare corrente la nuova versione prima che sia davvero il
+    // documento eseguibile: sara' il caricamento successivo a confermarlo.
     writeShellMeta({
-        version: remoteVersion,
         lastCheckAt: Date.now(),
-        lastReloadAt: Date.now()
+        lastReloadAt: Date.now(),
+        pendingVersion: remoteVersion
     });
 
     const nextUrl = buildWilduCanonicalShellReloadUrl(remoteVersion);

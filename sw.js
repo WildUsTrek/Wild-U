@@ -175,6 +175,15 @@ if (!isSameOrigin) {
     
     if (url.origin !== self.location.origin) return;
 
+    // Le versioni storiche del client usavano ?logout=true per ricaricare la
+    // shell. Su iOS/WebKit quell'URL puo' essere ripristinato dalla cronologia
+    // prima che il JavaScript nuovo riesca a bonificarlo. Il service worker lo
+    // converte quindi in una navigazione pulita prima di servire la pagina.
+    if (isLegacyLogoutShellNavigation(req, url)) {
+        e.respondWith(redirectLegacyLogoutShellNavigation(url));
+        return;
+    }
+
 
 // version.json deve arrivare sempre fresco anche con querystring (?t=..., ?bust=...)
 // ma offline non deve generare errore rumoroso in console
@@ -342,6 +351,27 @@ function isShellRequest(req, url) {
     if (isStandaloneRuntimePath(url) && hasFileExtension) return false;
 
     return req.mode === 'navigate' && !hasFileExtension;
+}
+
+function isLegacyLogoutShellNavigation(req, url) {
+    return (
+        req.mode === 'navigate' &&
+        url.searchParams.get('logout') === 'true' &&
+        isShellRequest(req, url)
+    );
+}
+
+function redirectLegacyLogoutShellNavigation(url) {
+    const cleanUrl = new URL(url.toString());
+    cleanUrl.searchParams.delete('logout');
+    cleanUrl.searchParams.delete('nocache');
+    cleanUrl.searchParams.delete('shellv');
+
+    swDebug('LEGACY_LOGOUT_URL_REDIRECTED', {
+        target: cleanUrl.pathname + cleanUrl.search + cleanUrl.hash
+    });
+
+    return Promise.resolve(Response.redirect(cleanUrl.toString(), 302));
 }
 
 function isModuleRequest(url) {
