@@ -12566,6 +12566,34 @@ function reconcileProfileShellWithClientSession() {
         return clientSession.authState === 'LOGGED';
     }
 
+    function isBackendVerifiedClientUid(expectedUid = '') {
+        const firebaseUid = String(auth.currentUser?.uid || '').trim();
+        const requiredUid = String(expectedUid || '').trim();
+        return clientSession.authState === 'LOGGED' &&
+            !!firebaseUid &&
+            firebaseUid === String(lastBackendVerifiedUid || '').trim() &&
+            (!requiredUid || firebaseUid === requiredUid);
+    }
+
+    function isCurrentVerifiedClientIdentity(expectedUid = '') {
+        const firebaseUid = String(auth.currentUser?.uid || '').trim();
+        return isBackendVerifiedClientUid(expectedUid) &&
+            firebaseUid === String(wildUserKey || '').trim();
+    }
+
+    function isRetainedVerifiedAuthPending() {
+        const firebaseUid = String(auth.currentUser?.uid || '').trim();
+        const ownerUid = String(backpackOwnerUid || '').trim();
+        return clientSession.authState === 'AUTH_PENDING' &&
+            !!firebaseUid &&
+            firebaseUid === String(lastBackendVerifiedUid || '').trim() &&
+            (!ownerUid || ownerUid === firebaseUid);
+    }
+
+    function shouldPreservePrivateClientRuntimeState() {
+        return isCurrentVerifiedClientIdentity() || isRetainedVerifiedAuthPending();
+    }
+
     function closeModalById(id) {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -14051,7 +14079,6 @@ function holdClientAuthPending(user, message, reason, options = {}) {
     // Firebase conserva l'identita' autenticata, ma l'UID operativo resta
     // disattivato finche' il backend non conferma LOGGED.
     wildUserKey = null;
-    backpackOwnerUid = '';
     localStorage.removeItem('wildUserKey');
 
     clientSession = {
@@ -16994,7 +17021,7 @@ if (cachedPublicData && !bypassPublicCache) {
         // La cache pubblica non deve sporcare lo stato utente.
         // Se siamo guest, puliamo lo zaino runtime.
         // Se siamo loggati, lasciamo stare: arriverà il refresh fresco identity-aware.
-        if (!isClientLogged()) {
+        if (!shouldPreservePrivateClientRuntimeState()) {
             allBookings = [];
             myBookedTitles = [];
         }
@@ -17149,7 +17176,7 @@ const publicCachePayload = {
                 }
                 const overlayApplied = applyAuthenticatedUserOverlayFromInitData(data, requestAuthUid);
                 if (!overlayApplied) renderBackpackSyncState();
-            } else {
+            } else if (!shouldPreservePrivateClientRuntimeState()) {
                 allBookings = [];
                 evaluateBookings();
             }
@@ -17178,9 +17205,9 @@ const publicCachePayload = {
             buildODFilters();
             buildPDFilters();
 
-            if (isClientLogged() && wildUserKey) {
+            if (isCurrentVerifiedClientIdentity()) {
                 renderBackpackSyncState();
-            } else {
+            } else if (!isRetainedVerifiedAuthPending()) {
                 allBookings = [];
                 myBookedTitles = [];
                 pendingBookings = []; // <--- SVUOTA I FANTASMI
@@ -17248,7 +17275,7 @@ const publicCachePayload = {
     // LOGICA XP E CONTROLLO TIME-TRAVEL
     // ==========================================
 async function fetchXP(options = {}) {
-    if (!wildUserKey || isLockedXP || isAnimatingXP) return;
+    if (!isCurrentVerifiedClientIdentity() || isLockedXP || isAnimatingXP) return;
 
     const requestUid = wildUserKey;
     const showBackpackSync = options.showBackpackSync === true;
@@ -17263,7 +17290,7 @@ async function fetchXP(options = {}) {
         );
         lastFetchTime = Date.now();
 
-        if (wildUserKey !== requestUid) {
+        if (!isCurrentVerifiedClientIdentity(requestUid)) {
             finishBackpackSync('FETCH_XP_STALE_USER');
             return;
         }
@@ -17422,6 +17449,10 @@ async function fetchXP(options = {}) {
     } catch (e) {
         console.error("Errore FetchXP:", e);
         finishBackpackSync('FETCH_XP_ERROR');
+
+        if (!isCurrentVerifiedClientIdentity(requestUid)) {
+            return;
+        }
 
         const backupRaw = localStorage.getItem(backupKey);
         if (backupRaw) {
@@ -17632,6 +17663,33 @@ function buildClientBookingKey(payload = {}) {
 
     if (titolo && data) return `${titolo}__${data}`;
     return titolo || "";
+}
+
+function removeConfirmedBookingFromBackpack(bookingIdentity = {}) {
+    const targetKey = buildClientBookingKey(bookingIdentity);
+    if (!targetKey) return false;
+
+    const previousLength = allBookings.length;
+    allBookings = allBookings.filter(item => buildClientBookingKey({
+        bookingId: item?.bookingId,
+        titolo: item?.titolo || item?.productTitleSnapshot,
+        data: item?.data || item?.requestedStartDateIso
+    }) !== targetKey);
+
+    pendingCancels = pendingCancels.filter(key => key !== targetKey);
+    evaluateBookings();
+    return allBookings.length !== previousLength;
+}
+
+function scheduleWilduCancellationRefresh(reason) {
+    window.setTimeout(async () => {
+        try {
+            await fetchInitData({ force: true, reason: reason || 'CANCEL_SUCCESS' });
+            await fetchXP({ source: 'server', reason: reason || 'CANCEL_SUCCESS' });
+        } catch (refreshError) {
+            console.warn("Refresh post-annullamento differito:", refreshError);
+        }
+    }, 1200);
 }
 
 function setCurrentBookingDraft(payload = {}) {
@@ -18073,8 +18131,6 @@ async function requestCancel(encodedBookingPayload, btnElement) {
         btnElement.style.cursor = "not-allowed";
     }
 
-    let penaltyOverlayShown = false;
-
     try {
         const payload = {
             action: bookingKind === "ondemand" ? "cancelOnDemandBooking" : "cancelBooking",
@@ -18148,6 +18204,13 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             }
         }
 
+        removeConfirmedBookingFromBackpack({
+            bookingId,
+            titolo,
+            data
+        });
+        scheduleWilduCancellationRefresh('CANCEL_SUCCESS');
+
         const warningSuffix = result.warning ? ` Nota sistema: ${result.warning}` : "";
         const msgWa = `Ciao Admin, ho annullato la mia presenza a *${titolo}*${data ? ` del *${data}*` : ""}. La prenotazione è stata rimossa dall'app e la penale del ${appliedPenaltyPercent}% (-${appliedPenalty} XP) è stata applicata.${warningSuffix} Wild-Key: *${cancellationAuthContext.uid}*.`;
 
@@ -18160,13 +18223,6 @@ async function requestCancel(encodedBookingPayload, btnElement) {
 
         document.getElementById('penalty-msg').innerText = "-" + appliedPenalty + " XP";
         document.getElementById('penalty-overlay').style.display = 'flex';
-        penaltyOverlayShown = true;
-
-        if (bookingKey) {
-            setTimeout(() => {
-                pendingCancels = pendingCancels.filter(k => k !== bookingKey);
-            }, 15000);
-        }
 
     } catch (e) {
         console.error("Errore annullamento:", e);
@@ -18207,9 +18263,7 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             btnElement.style.cursor = "pointer";
         }
 
-        if (!penaltyOverlayShown) {
-            isCancellingInProgress = false;
-        }
+        isCancellingInProgress = false;
     }
 }
 
@@ -18223,12 +18277,6 @@ function executePenaltyRedirect() {
     showToast("Prenotazione annullata. Penale applicata.");
     setTimeout(() => show('profile'), 500);
     
-    // 🛡️ AGGIORNAMENTO SEQUENZIALE DOPO ANNULLAMENTO
-    setTimeout(async () => {
-        await fetchInitData({ force: true });
-        await fetchXP(); 
-    }, 1200);
-
     isCancellingInProgress = false;
 }
     
@@ -25169,7 +25217,7 @@ if (profKeyEl) {
     }
 
     function restoreWilduPostBookingUserKeyIfNeeded(flowUserKey, reason) {
-        if (wildUserKey || !flowUserKey || !auth.currentUser || auth.currentUser.uid !== flowUserKey) return;
+        if (wildUserKey || !flowUserKey || !isBackendVerifiedClientUid(flowUserKey)) return false;
 
         wildUserKey = flowUserKey;
         try {
@@ -25184,6 +25232,7 @@ if (profKeyEl) {
                 uid: flowUserKey
             });
         }
+        return true;
     }
 
     function openWilduPostBookingConsentModalWhenSafe(options, attempt) {
