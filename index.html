@@ -13495,7 +13495,13 @@ async function saveProfileData() {
             telefono: newPhone,
             ultimo_aggiornamento: FV.serverTimestamp()
         });
+    } catch (e) {
+        console.error("Errore salvataggio profilo:", e);
+        alert("❌ Errore durante il salvataggio. Riprova.");
+        return;
+    }
 
+    try {
         // Aggiorniamo la cache locale per riflettere i cambiamenti subito
         if (cachedXPData) {
             cachedXPData.nome = newName;
@@ -13508,9 +13514,9 @@ async function saveProfileData() {
         toggleProfileEdit(false);
         fetchXP({ showBackpackSync: true, reason: 'PROFILE_SAVE' });
         alert("✅ Profilo aggiornato con successo!");
-    } catch (e) {
-        console.error("Errore salvataggio profilo:", e);
-        alert("❌ Errore durante il salvataggio. Riprova.");
+    } catch (uiError) {
+        console.warn("Profilo salvato, ma aggiornamento UI locale non completato:", uiError);
+        showToast("Profilo salvato. Riapri il profilo per aggiornare la schermata.");
     }
 }
 
@@ -13606,7 +13612,11 @@ async function saveWilduLegalConsentPatch(patch) {
         legalConsents: finalConsents,
         ultimo_aggiornamento: FV.serverTimestamp()
     });
-    mergeWilduLegalConsentPatch(finalConsents);
+    try {
+        mergeWilduLegalConsentPatch(finalConsents);
+    } catch (uiError) {
+        console.warn("Consensi salvati, ma stato UI locale non aggiornato:", uiError);
+    }
     return true;
 }
 
@@ -14821,7 +14831,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.20';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.21';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17540,8 +17550,18 @@ function mergeConfirmedBookingIntoBackpack(booking, authContext) {
 
     backpackOwnerUid = String(authContext.uid);
     finishBackpackSync('BOOKING_RESPONSE_CONFIRMED');
-    evaluateBookings();
-    if (currentTab === 'profile' && cachedXPData) renderProfile(cachedXPData);
+    try {
+        evaluateBookings();
+    } catch (renderError) {
+        console.warn("Prenotazione confermata, ma zaino non ridisegnato:", renderError);
+    }
+    if (currentTab === 'profile' && cachedXPData) {
+        try {
+            renderProfile(cachedXPData);
+        } catch (profileError) {
+            console.warn("Prenotazione confermata, ma profilo non ridisegnato:", profileError);
+        }
+    }
     return true;
 }
 
@@ -23244,6 +23264,13 @@ async function sendOnDemandBookingFromModal(options) {
         }
     } catch (err) {
         console.error("Errore prenotazione su richiesta:", err);
+        if (bookingCompleted) {
+            console.warn("Richiesta confermata dal server; completamento UI locale non riuscito:", err);
+            try { closeCustomBooking(); } catch (_) {}
+            try { evaluateBookings(); } catch (_) {}
+            showToast("Richiesta registrata nello zaino. Aggiorna il profilo se non compare subito.");
+            return;
+        }
         if (err.code === 'BOOKING_PROFILE_REQUIRED' || err.code === 'AUTH_CONTEXT_CHANGED') show('profile');
         alert("Errore invio richiesta: " + err.message);
     } finally {
@@ -23269,7 +23296,10 @@ async function sendCustomBooking() {
 
     const bookingAuthContext = createBookingAuthContext();
 
-    if (isBookingInProgress) return;
+    if (isBookingInProgress) {
+        showToast("Una prenotazione e gia in corso. Attendi la conferma prima di riprovare.");
+        return;
+    }
     isBookingInProgress = true;
 
     const btn = document.querySelector('#custom-booking-modal button[onclick="sendCustomBooking()"]');
@@ -23418,6 +23448,14 @@ if (result.alreadyBooked === true) {
 
     } catch (error) {
         console.error("Errore di spedizione:", error);
+
+        if (bookingCompleted) {
+            console.warn("Prenotazione confermata dal server; completamento UI locale non riuscito:", error);
+            try { closeCustomBooking(); } catch (_) {}
+            try { evaluateBookings(); } catch (_) {}
+            showToast("Prenotazione registrata nello zaino. Aggiorna il profilo se non compare subito.");
+            return;
+        }
 
         if (bookingKey) {
             pendingBookings = pendingBookings.filter(k => k !== bookingKey);
