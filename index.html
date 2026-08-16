@@ -14848,7 +14848,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.22';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.23';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -20173,18 +20173,57 @@ function formatWilduExternalCardTimeRange(start, end) {
 // =========================================================
 let WILDU_ACTIVE_DETAIL_CONTEXT = null;
 let WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
-let WILDU_DETAIL_OPEN_LOCK_KEY = '';
-let WILDU_DETAIL_OPEN_LOCK_UNTIL = 0;
+let WILDU_DATE_RETURN_DETAIL_REF = null;
+const WILDU_DETAIL_RUNTIME = {
+    phase: 'closed',
+    key: '',
+    generation: 0,
+    scrollFrame: 0,
+    scrollTimer: 0,
+    transitionTimer: 0,
+    transitionToken: 0
+};
+
+function wilduIsDetailModalVisible() {
+    const modal = document.getElementById('od-details-modal');
+    return !!(modal && modal.classList.contains('is-visible') && modal.style.display !== 'none');
+}
+
+function wilduCancelDetailScrollResets() {
+    if (WILDU_DETAIL_RUNTIME.scrollFrame) {
+        cancelAnimationFrame(WILDU_DETAIL_RUNTIME.scrollFrame);
+        WILDU_DETAIL_RUNTIME.scrollFrame = 0;
+    }
+    if (WILDU_DETAIL_RUNTIME.scrollTimer) {
+        clearTimeout(WILDU_DETAIL_RUNTIME.scrollTimer);
+        WILDU_DETAIL_RUNTIME.scrollTimer = 0;
+    }
+}
+
+function wilduCancelScheduledDetailOpen() {
+    WILDU_DETAIL_RUNTIME.transitionToken += 1;
+    if (WILDU_DETAIL_RUNTIME.transitionTimer) {
+        clearTimeout(WILDU_DETAIL_RUNTIME.transitionTimer);
+        WILDU_DETAIL_RUNTIME.transitionTimer = 0;
+    }
+}
 
 function wilduAcceptDetailOpen(type, id) {
     const key = String(type || '') + ':' + String(id || '');
-    const now = Date.now();
-    if (key && key === WILDU_DETAIL_OPEN_LOCK_KEY && now < WILDU_DETAIL_OPEN_LOCK_UNTIL) {
-        return false;
-    }
+    if (!key || key === ':') return false;
+    if (WILDU_DETAIL_RUNTIME.phase === 'opening') return false;
+    if (wilduIsDetailModalVisible()) return false;
 
-    WILDU_DETAIL_OPEN_LOCK_KEY = key;
-    WILDU_DETAIL_OPEN_LOCK_UNTIL = now + 650;
+    wilduCancelScheduledDetailOpen();
+    WILDU_DETAIL_RUNTIME.phase = 'opening';
+    WILDU_DETAIL_RUNTIME.key = key;
+    WILDU_DETAIL_RUNTIME.generation += 1;
+    const generation = WILDU_DETAIL_RUNTIME.generation;
+    Promise.resolve().then(function () {
+        if (WILDU_DETAIL_RUNTIME.phase !== 'opening' || generation !== WILDU_DETAIL_RUNTIME.generation) return;
+        WILDU_DETAIL_RUNTIME.phase = 'closed';
+        WILDU_DETAIL_RUNTIME.key = '';
+    });
     return true;
 }
 
@@ -20670,6 +20709,7 @@ function wilduSetDetailModalVisible(visible) {
     if (!modal) return null;
 
     const isVisible = visible === true;
+    wilduCancelDetailScrollResets();
     if (isVisible) {
         resetWilduOverlayScrollPosition(modal);
     }
@@ -20677,14 +20717,42 @@ function wilduSetDetailModalVisible(visible) {
     modal.classList.toggle('is-visible', isVisible);
     modal.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
     if (isVisible) {
-        requestAnimationFrame(function () {
+        WILDU_DETAIL_RUNTIME.phase = 'open';
+        const generation = WILDU_DETAIL_RUNTIME.generation;
+        WILDU_DETAIL_RUNTIME.scrollFrame = requestAnimationFrame(function () {
+            WILDU_DETAIL_RUNTIME.scrollFrame = 0;
+            if (generation !== WILDU_DETAIL_RUNTIME.generation || !wilduIsDetailModalVisible()) return;
             resetWilduOverlayScrollPosition(modal);
         });
-        window.setTimeout(function () {
+        WILDU_DETAIL_RUNTIME.scrollTimer = window.setTimeout(function () {
+            WILDU_DETAIL_RUNTIME.scrollTimer = 0;
+            if (generation !== WILDU_DETAIL_RUNTIME.generation || !wilduIsDetailModalVisible()) return;
             resetWilduOverlayScrollPosition(modal);
         }, 80);
+    } else {
+        WILDU_DETAIL_RUNTIME.phase = 'closed';
+        WILDU_DETAIL_RUNTIME.key = '';
+        WILDU_DETAIL_RUNTIME.generation += 1;
+        wilduReleaseDetailMedia();
     }
     return modal;
+}
+
+function wilduReleaseDetailMedia() {
+    const mapIframe = document.getElementById('od-map-iframe');
+    const mapContainer = document.getElementById('od-map-container');
+    const modalImg = document.getElementById('trip-modal-img');
+    const modalImgContainer = document.getElementById('trip-modal-img-container');
+    const mapOverlay = document.getElementById('wildu-map-confirm-overlay');
+
+    if (mapOverlay) mapOverlay.remove();
+    if (mapIframe) {
+        mapIframe.removeAttribute('src');
+        mapIframe.style.pointerEvents = 'none';
+    }
+    if (mapContainer) mapContainer.style.display = 'none';
+    if (modalImg) modalImg.removeAttribute('src');
+    if (modalImgContainer) modalImgContainer.style.display = 'none';
 }
 
 function wilduCloseDetailModalOnly() {
@@ -20693,6 +20761,18 @@ function wilduCloseDetailModalOnly() {
     if (card) wilduResetSwipeTarget(card);
     hideWilduSwipeHint();
     if (modal) wilduSetDetailModalVisible(false);
+    else wilduReleaseDetailMedia();
+}
+
+function wilduScheduleDetailOpen(ref, options) {
+    if (!ref || !ref.type || !ref.id) return;
+    wilduCancelScheduledDetailOpen();
+    const token = WILDU_DETAIL_RUNTIME.transitionToken;
+    WILDU_DETAIL_RUNTIME.transitionTimer = window.setTimeout(function () {
+        WILDU_DETAIL_RUNTIME.transitionTimer = 0;
+        if (token !== WILDU_DETAIL_RUNTIME.transitionToken) return;
+        wilduOpenDetailByRef(ref, options || {});
+    }, 32);
 }
 
 function wilduOpenDetailByRef(ref, options) {
@@ -20815,15 +20895,16 @@ function wilduBuildSoftCardHtml(ref, extraMeta) {
 }
 
 function openWilduSoftCardDetail(type, id) {
-    closeWilduRelatedModal(false);
-    closeWilduDateOptionsModal(false);
-    wilduCloseDetailModalOnly();
     const item = wilduFindDetailItem(type, id);
     if (!item) {
         showToast('⚠️ Dettagli non trovati.');
         return;
     }
-    wilduOpenDetailByRef(wilduBuildDetailRef(type, item), { skipSuggestions: true });
+    const ref = wilduBuildDetailRef(type, item);
+    closeWilduRelatedModal(false);
+    closeWilduDateOptionsModal(null, false);
+    wilduCloseDetailModalOnly();
+    wilduScheduleDetailOpen(ref, { skipSuggestions: true });
 }
 
 function showWilduRelatedModal(items) {
@@ -20844,6 +20925,7 @@ function consumeWilduSoftModalDismissEvent(evt) {
 function closeWilduRelatedModal(closeDetail, evt) {
     consumeWilduSoftModalDismissEvent(evt);
     const modal = document.getElementById('wildu-related-modal');
+    const list = document.getElementById('wildu-related-list');
     const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
     if (card) wilduResetSwipeTarget(card);
     hideWilduSwipeHint();
@@ -20855,6 +20937,7 @@ function closeWilduRelatedModal(closeDetail, evt) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
+    if (list) list.innerHTML = '';
     unlockWilduOverlayScrollIfIdle();
 }
 
@@ -20875,9 +20958,9 @@ function handleWilduDetailClose(source) {
     }
 
     const related = wilduBuildRelatedDetails(current);
+    wilduCloseDetailModalOnly();
     if (!related.length || !showWilduRelatedModal(related)) {
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
-        wilduCloseDetailModalOnly();
     }
 }
 
@@ -21006,6 +21089,11 @@ function openWilduDateOptions(type, id, evt) {
     const title = document.getElementById('wildu-date-options-title');
     if (!modal || !list || !title) return;
 
+    WILDU_DATE_RETURN_DETAIL_REF = wilduIsDetailModalVisible() && WILDU_ACTIVE_DETAIL_CONTEXT
+        ? Object.assign({}, WILDU_ACTIVE_DETAIL_CONTEXT)
+        : null;
+    if (WILDU_DATE_RETURN_DETAIL_REF) wilduCloseDetailModalOnly();
+
     title.innerText = wilduCleanTitleForMatching(wilduGetDetailItemTitle(type, item));
     const currentId = String(id || '').trim();
     list.innerHTML = refs.map(function (ref) {
@@ -21015,17 +21103,24 @@ function openWilduDateOptions(type, id, evt) {
     openWilduSoftModalAtTop(modal);
 }
 
-function closeWilduDateOptionsModal(evt) {
+function closeWilduDateOptionsModal(evt, restoreDetail) {
     consumeWilduSoftModalDismissEvent(evt);
     const modal = document.getElementById('wildu-date-options-modal');
+    const list = document.getElementById('wildu-date-options-list');
     const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
+    const returnRef = WILDU_DATE_RETURN_DETAIL_REF;
+    WILDU_DATE_RETURN_DETAIL_REF = null;
     if (card) wilduResetSwipeTarget(card);
     hideWilduSwipeHint();
     if (modal) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
+    if (list) list.innerHTML = '';
     unlockWilduOverlayScrollIfIdle();
+    if (restoreDetail !== false && returnRef) {
+        wilduScheduleDetailOpen(returnRef, { skipSuggestions: false });
+    }
 }
 
 function escapeOnDemandHtml(value) {
@@ -22614,7 +22709,7 @@ configureWilduDetailDateOptions('trip', ev, id);
 
         bookBtn.onclick = () => {
             wilduSetDetailModalVisible(false);
-            openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id);
+            openBook(titolo, dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id);
         };
     }
 
@@ -22633,7 +22728,7 @@ configureWilduDetailDateOptions('trip', ev, id);
     if(!clonedBtn.disabled) {
         clonedBtn.onclick = () => {
             wilduSetDetailModalVisible(false);
-            openBook(titolo.replace(/'/g, "\\'"), dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id, "TOP_SENZA_IMPEGNO");
+            openBook(titolo, dataPura, prezzoFinale, xpReward, ev.bookingId || "", ev.collection || "", ev.eventDocId || ev.id, "TOP_SENZA_IMPEGNO");
         };
     }
     
@@ -23636,7 +23731,7 @@ if (profKeyEl) {
         if (miniXpFill) miniXpFill.style.width = p + "%";
         if (miniXpLabel) miniXpLabel.innerText = Math.floor(p) + "%";
         profGrado.innerText = currentLevel.nome; profIcon.innerText = GRADI_MAP[currentLevel.nome] ? GRADI_MAP[currentLevel.nome].ico : "🌿";
-        profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "-" + (nextLevel.punti - finalXP) + " XP";
+        profMissing.innerText = finalXP >= nextLevel.punti ? "STATO DIVINO" : "Mancano " + (nextLevel.punti - finalXP) + " XP";
         if(!isAnimatingXP){ lastVXP = finalXP; localStorage.setItem('lastViewedXP', finalXP); localStorage.setItem('lastG_' + wildUserKey, currentLevel.nome); }
         renderWilduLegalConsentStatus();
         maybePromptWilduLegalNotice();
