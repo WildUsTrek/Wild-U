@@ -14821,7 +14821,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.19';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.20';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17376,7 +17376,7 @@ async function fetchXP(options = {}) {
         
         // Pulizia lavori in corso: ora che Firestore ha risposto, i sospesi non servono più
         pendingBookings = [];
-        pendingCancels = [];
+        if (!isCancellingInProgress) pendingCancels = [];
 
         const userData = {
             xp: parseInt(data.xp || 0, 10),
@@ -17716,8 +17716,17 @@ function removeConfirmedBookingFromBackpack(bookingIdentity = {}) {
     return allBookings.length !== previousLength;
 }
 
-function scheduleWilduCancellationRefresh(reason) {
+function scheduleWilduCancellationRefresh(reason, deferredAttempts = 0) {
     window.setTimeout(async () => {
+        if (isCancellingInProgress) {
+            if (deferredAttempts < 10) {
+                scheduleWilduCancellationRefresh(reason, deferredAttempts + 1);
+            } else {
+                console.warn("Refresh post-annullamento saltato: altra cancellazione ancora in corso.");
+            }
+            return;
+        }
+
         try {
             await fetchInitData({ force: true, reason: reason || 'CANCEL_SUCCESS' });
             await fetchXP({ source: 'server', reason: reason || 'CANCEL_SUCCESS' });
@@ -17803,6 +17812,7 @@ function evaluateBookings() {
         const dateStr = b.data || b["Data Inizio (non modificare)"] || "";
         const displayDateStr = formatBookingDateForZaino(dateStr, b.bookingKind || '');
         const bookingKey = buildClientBookingKey({ bookingId: b.bookingId || "", titolo: title, data: dateStr });
+        const isCancelPending = !!bookingKey && pendingCancels.includes(bookingKey);
 
         if (debugZainoEnabled()) wilduConsoleLog(`-> Aggiungo in Zaino REALE: [${title}] con Chiave: [${bookingKey}]`);
 
@@ -17875,9 +17885,12 @@ if (tripOrig) {
             productId: b.productId || '',
             requestedStartDateIso: b.requestedStartDateIso || ''
         })).replace(/'/g, '%27');
+        const cancelButton = isCancelPending
+            ? `<button type="button" disabled aria-busy="true" style="background:#713535; color:#ffd7d7; border:1px solid rgba(255,120,120,0.34); padding:8px 12px; border-radius:8px; font-weight:bold; cursor:not-allowed; font-size:11px; opacity:.82;">ANNULLAMENTO...</button>`
+            : `<button type="button" onclick="requestCancel('${cP}', this)" style="background:#ff4444; color:#fff; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:11px;">ANNULLA</button>`;
 
         activeHtml += `
-        <div class="wildu-booking-item">
+        <div class="wildu-booking-item"${isCancelPending ? ' aria-busy="true"' : ''}>
             <div class="wildu-booking-main">
                 <div class="wildu-booking-title">${title}</div>
                 <div class="wildu-booking-meta">📅 Partenza: ${displayDateStr}</div>
@@ -17886,7 +17899,7 @@ if (tripOrig) {
             <div class="wildu-booking-actions">
                 ${siteBtn}
                 ${infoBtn}
-                <button onclick="requestCancel('${cP}', this)" style="background: #ff4444; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 11px;">ANNULLA</button>
+                ${cancelButton}
             </div>
         </div>`;
     }
@@ -18106,7 +18119,10 @@ function showWilduCancelPenaltyModal(options) {
 // IL MANGANELLO CON SCUDO E OVERLAY DRAMMATICO
 async function requestCancel(encodedBookingPayload, btnElement) {
     if (!requireLoggedAccess('CANCEL_ATTEMPT')) return;
-    if (isCancellingInProgress) return;
+    if (isCancellingInProgress) {
+        showToast("Un annullamento e gia in corso. Attendi la conferma prima di procedere con il successivo.");
+        return;
+    }
 
     const cancellationAuthContext = createBookingAuthContext();
 
@@ -18154,17 +18170,17 @@ async function requestCancel(encodedBookingPayload, btnElement) {
 
     isCancellingInProgress = true;
 
+    if (btnElement) {
+        btnElement.disabled = true;
+        btnElement.innerText = "ANNULLAMENTO...";
+        btnElement.style.opacity = "0.5";
+        btnElement.style.cursor = "not-allowed";
+    }
+
     if (bookingKey && !pendingCancels.includes(bookingKey)) {
         pendingCancels.push(bookingKey);
     }
     evaluateBookings();
-
-    if (btnElement) {
-        btnElement.disabled = true;
-        btnElement.innerText = "ELIMINO...";
-        btnElement.style.opacity = "0.5";
-        btnElement.style.cursor = "not-allowed";
-    }
 
     try {
         const payload = {
@@ -18227,23 +18243,36 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             throw confirmationError;
         }
 
-        if (cachedXPData && Number.isFinite(resolvedXpAfter)) {
-            cachedXPData.xp = resolvedXpAfter;
-            lastCelXP = cachedXPData.xp;
-            lastVXP = cachedXPData.xp;
-            localStorage.setItem('lastCelebratedXP', lastCelXP);
-            localStorage.setItem('lastViewedXP', lastVXP);
-
-            if (currentTab === 'profile') {
-                renderProfile(cachedXPData);
-            }
-        }
-
+        // Il commit backend e' gia concluso: rimuoviamo prima la card dalla
+        // memoria visibile. Storage e render accessori non devono poter
+        // lasciare nello zaino una prenotazione che il server ha cancellato.
         removeConfirmedBookingFromBackpack({
             bookingId,
             titolo,
             data
         });
+
+        if (cachedXPData && Number.isFinite(resolvedXpAfter)) {
+            cachedXPData.xp = resolvedXpAfter;
+            lastCelXP = cachedXPData.xp;
+            lastVXP = cachedXPData.xp;
+
+            try {
+                localStorage.setItem('lastCelebratedXP', lastCelXP);
+                localStorage.setItem('lastViewedXP', lastVXP);
+            } catch (storageError) {
+                console.warn("Cache XP post-annullamento non aggiornata:", storageError);
+            }
+
+            if (currentTab === 'profile') {
+                try {
+                    renderProfile(cachedXPData);
+                } catch (renderError) {
+                    console.warn("Profilo post-annullamento non ridisegnato:", renderError);
+                    evaluateBookings();
+                }
+            }
+        }
         scheduleWilduCancellationRefresh('CANCEL_SUCCESS');
 
         const warningSuffix = result.warning ? ` Nota sistema: ${result.warning}` : "";
@@ -18256,8 +18285,15 @@ async function requestCancel(encodedBookingPayload, btnElement) {
             ? `whatsapp://send?phone=${phone}&text=${encodeURIComponent(msgWa)}`
             : `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msgWa)}`;
 
-        document.getElementById('penalty-msg').innerText = "-" + appliedPenalty + " XP";
-        document.getElementById('penalty-overlay').style.display = 'flex';
+        const penaltyMessage = document.getElementById('penalty-msg');
+        const penaltyOverlay = document.getElementById('penalty-overlay');
+        if (penaltyMessage && penaltyOverlay) {
+            penaltyMessage.innerText = "-" + appliedPenalty + " XP";
+            penaltyOverlay.style.display = 'flex';
+        } else {
+            showToast("Prenotazione annullata. Penale applicata.");
+            window.setTimeout(() => show('profile'), 300);
+        }
 
     } catch (e) {
         console.error("Errore annullamento:", e);
