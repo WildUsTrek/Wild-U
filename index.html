@@ -14157,6 +14157,13 @@ function schedulePendingClientAuthState(user) {
 }
 
 async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
+    try {
+        await ensureWilduGlobalCacheBootGate('AUTH_STATE');
+    } catch (e) {
+        if (e && e.message === 'GLOBAL_CACHE_REFRESH_TRIGGERED') return;
+        console.warn('Global cache auth gate skipped:', e);
+    }
+
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
@@ -14848,7 +14855,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.23';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.24';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -14895,6 +14902,9 @@ const WILDU_GLOBAL_CACHE_RELOAD_LOCK_MS = 5 * 60 * 1000; // anti-loop 5 minuti
 const WILDU_GLOBAL_CACHE_NOTICE_KEY = 'wildGlobalCacheNotice';
 const WILDU_GLOBAL_CACHE_RELOAD_DELAY_MS = 650;
 let WILDU_GLOBAL_CACHE_PROMISE = null;
+let WILDU_GLOBAL_CACHE_BOOT_GATE = null;
+let WILDU_GLOBAL_CACHE_RELOAD_TIMER = null;
+let WILDU_GLOBAL_CACHE_NAVIGATION_STARTED = false;
 
 function wilduConsoleIsEnabled() {
     return WILDU_SW_CONSOLE_ALLOWED === true;
@@ -16300,10 +16310,22 @@ function consumeWilduOpenProfileUrlParamOnce(source) {
 function triggerWilduGlobalCacheReload(targetUrl) {
     const finalUrl = String(targetUrl || window.location.href);
 
+    if (WILDU_GLOBAL_CACHE_NAVIGATION_STARTED || WILDU_GLOBAL_CACHE_RELOAD_TIMER !== null) {
+        pageDebug('GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED', {
+            targetUrl: finalUrl
+        });
+        return false;
+    }
+
     updateWilduGlobalCacheOverlay('Pulizia completata. Ricarico l’app...');
 
-    // Primo tentativo: normale replace dopo mezzo secondo, così l’utente vede l’avviso.
-    setTimeout(() => {
+    // Una sola navigazione: timer multipli possono sopravvivere a page freeze/BFCache
+    // su WebKit e riattivare un ciclo di reload quando la pagina viene ripristinata.
+    WILDU_GLOBAL_CACHE_RELOAD_TIMER = setTimeout(() => {
+        WILDU_GLOBAL_CACHE_RELOAD_TIMER = null;
+        if (WILDU_GLOBAL_CACHE_NAVIGATION_STARTED) return;
+        WILDU_GLOBAL_CACHE_NAVIGATION_STARTED = true;
+
         try {
             window.location.replace(finalUrl);
         } catch (e) {
@@ -16311,21 +16333,7 @@ function triggerWilduGlobalCacheReload(targetUrl) {
         }
     }, WILDU_GLOBAL_CACHE_RELOAD_DELAY_MS);
 
-    // Secondo tentativo: se un browser mobile “dorme” e non naviga, riprova.
-    setTimeout(() => {
-        try {
-            window.location.assign(finalUrl);
-        } catch (e) {
-            window.location.href = finalUrl;
-        }
-    }, 2500);
-
-    // Terzo paracadute: se siamo ancora qui, forza reload della pagina corrente.
-    setTimeout(() => {
-        try {
-            window.location.reload();
-        } catch (e) {}
-    }, 4500);
+    return true;
 }
 
 function clearWilduKnownLocalCachesForGlobalNuke() {
@@ -16522,6 +16530,16 @@ async function checkWilduGlobalCacheEpoch(options = {}) {
     })();
 
     return WILDU_GLOBAL_CACHE_PROMISE;
+}
+
+function ensureWilduGlobalCacheBootGate(reason) {
+    if (!WILDU_GLOBAL_CACHE_BOOT_GATE) {
+        WILDU_GLOBAL_CACHE_BOOT_GATE = checkWilduGlobalCacheEpoch({
+            reason: reason || 'BOOT'
+        });
+    }
+
+    return WILDU_GLOBAL_CACHE_BOOT_GATE;
 }
 
 
@@ -16981,7 +16999,7 @@ async function init() {
     checkAuthEnvironment();
 
     try {
-        await checkWilduGlobalCacheEpoch({ reason: 'BOOT' });
+        await ensureWilduGlobalCacheBootGate('BOOT');
     } catch (e) {
         if (e && e.message === 'GLOBAL_CACHE_REFRESH_TRIGGERED') {
             return;
