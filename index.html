@@ -3,6 +3,23 @@
 <head>
     <meta name="mobile-web-app-capable" content="yes">
     <meta charset="UTF-8">
+    <script>
+        (function sanitizeLegacyWilduShellUrlBeforeBoot() {
+            try {
+                const url = new URL(window.location.href);
+                if (url.searchParams.get('logout') !== 'true') return;
+
+                url.searchParams.delete('logout');
+                url.searchParams.delete('nocache');
+                url.searchParams.delete('shellv');
+                window.history.replaceState(
+                    window.history.state,
+                    '',
+                    url.pathname + url.search + url.hash
+                );
+            } catch (e) {}
+        })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Wild-U Bussola</title>
     <meta name="description" content="Wild-U: viaggi outdoor, cammini, open day e avventure da vivere insieme.">
@@ -14831,7 +14848,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.21';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.22';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -20156,6 +20173,20 @@ function formatWilduExternalCardTimeRange(start, end) {
 // =========================================================
 let WILDU_ACTIVE_DETAIL_CONTEXT = null;
 let WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
+let WILDU_DETAIL_OPEN_LOCK_KEY = '';
+let WILDU_DETAIL_OPEN_LOCK_UNTIL = 0;
+
+function wilduAcceptDetailOpen(type, id) {
+    const key = String(type || '') + ':' + String(id || '');
+    const now = Date.now();
+    if (key && key === WILDU_DETAIL_OPEN_LOCK_KEY && now < WILDU_DETAIL_OPEN_LOCK_UNTIL) {
+        return false;
+    }
+
+    WILDU_DETAIL_OPEN_LOCK_KEY = key;
+    WILDU_DETAIL_OPEN_LOCK_UNTIL = now + 650;
+    return true;
+}
 
 function wilduCleanTitleForMatching(value) {
     return String(value || '')
@@ -21216,7 +21247,7 @@ function renderOnDemandTrips() {
             (serviceHtml ? '<ul style="margin:0 0 16px 18px; padding:0; color:#ddd; font-size:13px; line-height:1.35;">' + serviceHtml + '</ul>' : '') +
             '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:auto;">' +
                 '<div style="color:var(--w-gold); font-weight:950; font-size:20px; white-space:nowrap;">' + escapeOnDemandHtml(getOnDemandPriceDisplay(trip.priceFrom || trip.prezzoDa || trip.prezzo, trip)) + '</div>' +
-                '<button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); openOnDemandDetails(&quot;' + escapeOnDemandHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Scopri dettagli</button>' +
+                '<button type="button" class="wildu-adventure-details-btn" onclick="consumeWilduSoftModalDismissEvent(event); openOnDemandDetails(&quot;' + escapeOnDemandHtml(safeId) + '&quot;)" style="background:var(--w-gold); color:#000; border:none; padding:11px 13px; border-radius:10px; font-weight:950; cursor:pointer; text-transform:uppercase;">Scopri dettagli</button>' +
             '</div>' +
         '</article>';
     }).join('');
@@ -21228,6 +21259,7 @@ function openOnDemandDetails(productId) {
         showToast("Viaggio su richiesta non trovato.");
         return;
     }
+    if (!wilduAcceptDetailOpen('ondemand', productId)) return;
 
     WILDU_ACTIVE_DETAIL_CONTEXT = null;
     WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
@@ -21475,7 +21507,7 @@ function renderTrips(trips, targetId) {
         const safeLinkSito = encodeURIComponent(linkSito).replace(/'/g, '%27');
 
         const miniLinkBtn = (linkSito && !isHike) ? 
-            `<button onclick="event.stopPropagation(); openCommercialLink(decodeURIComponent('${safeLinkSito}'))" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">LINK AL SITO</button>` 
+            `<button type="button" onclick="consumeWilduSoftModalDismissEvent(event); openCommercialLink(decodeURIComponent('${safeLinkSito}'))" style="background: var(--w-gold); color: #000; border: none; padding: 4px 8px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 6px; font-size: 10px; display: block; width: fit-content;">LINK AL SITO</button>`
             : "";
 
         // --- MOTORE FOMO ---
@@ -21513,7 +21545,7 @@ function renderTrips(trips, targetId) {
                     <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 26px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 42px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
                 </div>
                 
-                <button class="btn-book wildu-adventure-details-btn" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="event.stopPropagation(); showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
+                <button type="button" class="btn-book wildu-adventure-details-btn" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="consumeWilduSoftModalDismissEvent(event); showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
             </div>`;
         } else {
             // 🌲 ESTETICA OFFICIAL
@@ -21551,7 +21583,7 @@ function renderTrips(trips, targetId) {
                     </div>
                 </div>
 
-                <button class="btn-book wildu-adventure-details-btn" style="width:100%; margin-top:15px; background:rgba(212, 175, 55, 0.1); color:var(--w-gold); border: 2px solid var(--w-gold);" onclick="event.stopPropagation(); showTripDetails('${safeId}')">SCOPRI DETTAGLI</button>
+                <button type="button" class="btn-book wildu-adventure-details-btn" style="width:100%; margin-top:15px; background:rgba(212, 175, 55, 0.1); color:var(--w-gold); border: 2px solid var(--w-gold);" onclick="consumeWilduSoftModalDismissEvent(event); showTripDetails('${safeId}')">SCOPRI DETTAGLI</button>
             </div>`;
         }
     }).join('');
@@ -22102,6 +22134,7 @@ function showTripDetails(id, detailContext = null) {
         showToast("⚠️ Dettagli non trovati.");
         return;
     }
+    if (!wilduAcceptDetailOpen('trip', id)) return;
 
     wilduSetActiveDetailContext('trip', ev, id);
     prepareWilduDetailModalMode('official');
@@ -22925,7 +22958,7 @@ configureWilduDetailDateOptions('trip', ev, id);
                     ${km ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${km}</span>` : ''}
                     ${dsl ? `<span style="background: #222; color: #fff; padding: 5px 10px; border-radius: 6px; font-size: 13px;">${dsl}</span>` : ''}
                 </div>
-                <button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); showOpenDayDetails('${safeId}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+                <button type="button" class="wildu-adventure-details-btn" onclick="consumeWilduSoftModalDismissEvent(event); showOpenDayDetails('${safeId}')" style="width: 100%; background: rgba(0, 170, 255, 0.1); color: #00aaff; border: 2px solid #00aaff; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
             </div>`;
         }
         container.innerHTML = html;
@@ -23047,7 +23080,7 @@ function renderPayDays() {
                 ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
                 <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;"> ${prezzo}€</div>
             </div>
-            <button class="wildu-adventure-details-btn" onclick="event.stopPropagation(); showPayDayDetails('${safeId}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
+            <button type="button" class="wildu-adventure-details-btn" onclick="consumeWilduSoftModalDismissEvent(event); showPayDayDetails('${safeId}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
         </div>`;
     }
 
@@ -30586,8 +30619,12 @@ function syncWilduAudioNavDockPosition() {
 
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js')
-                .then(() => {
+            const serviceWorkerUrl = 'sw.js?v=' + encodeURIComponent(WILDU_EMBEDDED_SHELL_VERSION);
+            navigator.serviceWorker.register(serviceWorkerUrl, { updateViaCache: 'none' })
+                .then((registration) => {
+                    if (registration && typeof registration.update === 'function') {
+                        registration.update().catch(() => {});
+                    }
                     refreshClientConsoleSwitch({ reason: 'SW_REGISTERED' }).catch(() => {
                         sendClientConsoleSwitchToServiceWorker(false, 'SW_REGISTERED_EXCEPTION');
                     });
@@ -30605,6 +30642,7 @@ function showOpenDayDetails(id) {
         showToast("⚠️ Dettagli non trovati nel calendario.");
         return;
     }
+    if (!wilduAcceptDetailOpen('openday', id)) return;
 
     wilduSetActiveDetailContext('openday', od, id);
     prepareWilduDetailModalMode('openday');
@@ -30810,6 +30848,7 @@ function showPayDayDetails(id) {
         showToast("⚠️ Dettagli non trovati nel calendario.");
         return;
     }
+    if (!wilduAcceptDetailOpen('payday', id)) return;
 
     wilduSetActiveDetailContext('payday', pd, id);
     prepareWilduDetailModalMode('payday');
@@ -33033,7 +33072,27 @@ installWilduSoftModalHorizontalDismiss();
     installWilduDesktopAmazonWheelPassThrough();
 });
 
-window.addEventListener('pageshow', () => {
+let WILDU_RESTORED_SHELL_RECONCILIATION = null;
+
+function reconcileWilduRestoredShellState(event) {
+    consumeWilduLegacyLogoutUrlOnce();
+    if (!event || event.persisted !== true) return;
+    if (WILDU_RESTORED_SHELL_RECONCILIATION) return;
+
+    WILDU_RESTORED_SHELL_RECONCILIATION = ensureFreshShellVersion()
+        .catch((error) => {
+            if (error && error.message === 'SHELL_REFRESH_TRIGGERED') return;
+            pageDebug('SHELL_PAGESHOW_RECONCILIATION_FAILED', {
+                error: error && error.message ? error.message : String(error)
+            });
+        })
+        .finally(() => {
+            WILDU_RESTORED_SHELL_RECONCILIATION = null;
+        });
+}
+
+window.addEventListener('pageshow', (event) => {
+    reconcileWilduRestoredShellState(event);
     reconcileWilduModuleAudioModeFromDom("pageshow");
     updateWilduAudioToggleButton();
     if (auth.currentUser && clientSession.authState !== 'LOGGED') {
@@ -33051,7 +33110,7 @@ window.addEventListener('pageshow', () => {
 
 <div id="od-details-modal" aria-hidden="true" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:2000; overflow-y:auto; padding:20px; box-sizing:border-box;">
     <div id="od-details-card" style="background:radial-gradient(circle at 18% 0%, rgba(212,175,55,0.11), transparent 34%), radial-gradient(circle at 100% 14%, rgba(0,170,255,0.10), transparent 30%), linear-gradient(145deg, #1b1b1b, #111); width:100%; max-width:600px; display:block; margin:40px auto 80px auto; border-radius:24px; border:1px solid rgba(212,175,55,0.28); padding:25px; box-sizing:border-box; position:relative; box-shadow:0 24px 70px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);">
-        <button onclick="handleWilduDetailClose('x')" aria-label="Chiudi scheda" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
+        <button type="button" onclick="consumeWilduSoftModalDismissEvent(event); handleWilduDetailClose('x')" aria-label="Chiudi scheda" style="position:absolute; top:-15px; right:-15px; background:#ff4444; color:white; border:none; border-radius:50%; width:40px; height:40px; font-weight:bold; font-size:18px; cursor:pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.5); z-index:10;">X</button>
         
         <div id="trip-modal-img-container" style="position:relative; width:100%; height:200px; border-radius:10px; overflow:hidden; margin-bottom:20px; display:none; border:1px solid #333;">
             <img id="trip-modal-img" src="" style="width:100%; height:100%; object-fit:cover;">
