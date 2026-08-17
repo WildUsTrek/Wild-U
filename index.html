@@ -4887,6 +4887,12 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     display: flex;
 }
 
+/* Durante il passaggio popup -> dettaglio il primo tap deve vincere.
+   Impedisce ai tap gia' accodati di raggiungere la pagina sottostante. */
+html.wildu-detail-transition-busy body {
+    pointer-events: none !important;
+}
+
 .wildu-soft-modal-card {
     width: min(560px, 100%);
     max-height: min(78vh, 720px);
@@ -14870,7 +14876,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.28';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.29';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -20406,6 +20412,17 @@ const WILDU_DETAIL_RUNTIME = {
     transitionToken: 0
 };
 
+function wilduSetDetailTransitionBusy(busy) {
+    if (!document.documentElement) return;
+    document.documentElement.classList.toggle('wildu-detail-transition-busy', busy === true);
+}
+
+function wilduResetDetailRuntimePhase() {
+    WILDU_DETAIL_RUNTIME.phase = 'closed';
+    WILDU_DETAIL_RUNTIME.key = '';
+    wilduSetDetailTransitionBusy(false);
+}
+
 function wilduIsDetailModalVisible() {
     const modal = document.getElementById('od-details-modal');
     return !!(modal && modal.classList.contains('is-visible') && modal.style.display !== 'none');
@@ -20428,13 +20445,18 @@ function wilduCancelScheduledDetailOpen() {
         clearTimeout(WILDU_DETAIL_RUNTIME.transitionTimer);
         WILDU_DETAIL_RUNTIME.transitionTimer = 0;
     }
+    if (WILDU_DETAIL_RUNTIME.phase === 'scheduled') {
+        WILDU_DETAIL_RUNTIME.phase = 'closed';
+        WILDU_DETAIL_RUNTIME.key = '';
+    }
+    wilduSetDetailTransitionBusy(false);
 }
 
 function wilduAcceptDetailOpen(type, id) {
     const key = String(type || '') + ':' + String(id || '');
     if (!key || key === ':') return false;
-    if (WILDU_DETAIL_RUNTIME.phase === 'opening') return false;
-    if (wilduIsDetailModalVisible()) return false;
+    if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return false;
+    if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return false;
 
     wilduCancelScheduledDetailOpen();
     WILDU_DETAIL_RUNTIME.phase = 'opening';
@@ -20443,8 +20465,7 @@ function wilduAcceptDetailOpen(type, id) {
     const generation = WILDU_DETAIL_RUNTIME.generation;
     Promise.resolve().then(function () {
         if (WILDU_DETAIL_RUNTIME.phase !== 'opening' || generation !== WILDU_DETAIL_RUNTIME.generation) return;
-        WILDU_DETAIL_RUNTIME.phase = 'closed';
-        WILDU_DETAIL_RUNTIME.key = '';
+        wilduResetDetailRuntimePhase();
     });
     return true;
 }
@@ -20944,6 +20965,7 @@ function wilduSetDetailModalVisible(visible) {
     modal.classList.toggle('is-visible', isVisible);
     modal.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
     if (isVisible) {
+        wilduSetDetailTransitionBusy(false);
         WILDU_DETAIL_RUNTIME.phase = 'open';
         const generation = WILDU_DETAIL_RUNTIME.generation;
         WILDU_DETAIL_RUNTIME.scrollFrame = requestAnimationFrame(function () {
@@ -20960,8 +20982,8 @@ function wilduSetDetailModalVisible(visible) {
             resetWilduOverlayScrollPosition(modal);
         }, 80);
     } else {
-        WILDU_DETAIL_RUNTIME.phase = 'closed';
-        WILDU_DETAIL_RUNTIME.key = '';
+        wilduCancelScheduledDetailOpen();
+        wilduResetDetailRuntimePhase();
         WILDU_DETAIL_RUNTIME.generation += 1;
         wilduReleaseDetailMedia();
     }
@@ -21007,14 +21029,35 @@ function wilduCloseDetailModalOnly() {
 }
 
 function wilduScheduleDetailOpen(ref, options) {
-    if (!ref || !ref.type || !ref.id) return;
+    if (!ref || !ref.type || !ref.id) return false;
+    const key = String(ref.type) + ':' + String(ref.id);
+    if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return false;
+    if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return false;
+
     wilduCancelScheduledDetailOpen();
     const token = WILDU_DETAIL_RUNTIME.transitionToken;
+    WILDU_DETAIL_RUNTIME.phase = 'scheduled';
+    WILDU_DETAIL_RUNTIME.key = key;
+    wilduSetDetailTransitionBusy(true);
     WILDU_DETAIL_RUNTIME.transitionTimer = window.setTimeout(function () {
         WILDU_DETAIL_RUNTIME.transitionTimer = 0;
         if (token !== WILDU_DETAIL_RUNTIME.transitionToken) return;
-        wilduOpenDetailByRef(ref, options || {});
+        if (WILDU_DETAIL_RUNTIME.phase !== 'scheduled' || WILDU_DETAIL_RUNTIME.key !== key) {
+            wilduSetDetailTransitionBusy(false);
+            return;
+        }
+
+        WILDU_DETAIL_RUNTIME.phase = 'closed';
+        WILDU_DETAIL_RUNTIME.key = '';
+        try {
+            wilduOpenDetailByRef(ref, options || {});
+        } finally {
+            if (!wilduIsDetailModalVisible() && WILDU_DETAIL_RUNTIME.phase !== 'opening' && WILDU_DETAIL_RUNTIME.phase !== 'open') {
+                wilduResetDetailRuntimePhase();
+            }
+        }
     }, 32);
+    return true;
 }
 
 function wilduOpenDetailByRef(ref, options) {
@@ -21127,7 +21170,7 @@ function wilduBuildSoftCardHtml(ref, extraMeta) {
     ].filter(Boolean).join('');
 
     return '' +
-        '<button type="button" class="wildu-soft-card" onclick="openWilduSoftCardDetail(\'' + escapeWilduJsString(ref.type) + '\',\'' + escapeWilduJsString(ref.id) + '\')">' +
+        '<button type="button" class="wildu-soft-card" onclick="openWilduSoftCardDetail(\'' + escapeWilduJsString(ref.type) + '\',\'' + escapeWilduJsString(ref.id) + '\',event)">' +
             media +
             '<span style="min-width:0; display:block;">' +
                 '<span class="wildu-soft-card-title">' + escapeWilduHtml(ref.title) + '</span>' +
@@ -21136,17 +21179,28 @@ function wilduBuildSoftCardHtml(ref, extraMeta) {
         '</button>';
 }
 
-function openWilduSoftCardDetail(type, id) {
+function openWilduSoftCardDetail(type, id, evt) {
+    consumeWilduSoftModalDismissEvent(evt);
+    if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return;
+
     const item = wilduFindDetailItem(type, id);
     if (!item) {
         showToast('⚠️ Dettagli non trovati.');
         return;
     }
     const ref = wilduBuildDetailRef(type, item);
+    const sourceButton = evt && evt.currentTarget;
+    if (sourceButton) {
+        sourceButton.disabled = true;
+        sourceButton.setAttribute('aria-busy', 'true');
+    }
     closeWilduRelatedModal(false);
     closeWilduDateOptionsModal(null, false);
     wilduCloseDetailModalOnly();
-    wilduScheduleDetailOpen(ref, { skipSuggestions: true });
+    if (!wilduScheduleDetailOpen(ref, { skipSuggestions: true }) && sourceButton) {
+        sourceButton.disabled = false;
+        sourceButton.removeAttribute('aria-busy');
+    }
 }
 
 function showWilduRelatedModal(items) {
