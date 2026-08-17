@@ -5274,7 +5274,6 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     -ms-overflow-style: none;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    will-change: transform, opacity;
     transition: transform .20s cubic-bezier(.2,.85,.2,1), opacity .20s ease;
 }
 
@@ -5302,7 +5301,6 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
 
 #od-details-card {
-    will-change: transform, opacity;
     transition: transform .20s cubic-bezier(.2,.85,.2,1), opacity .20s ease;
 }
 
@@ -14862,7 +14860,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.25';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.26';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -19224,12 +19222,118 @@ function extractUnifiedMapDataFromItem(item) {
     };
 }
 
+const WILDU_DETAIL_MAP_RUNTIME = {
+    generation: 0,
+    observer: null,
+    pendingUrl: '',
+    scrollRoot: null,
+    scrollHandler: null,
+    check: null
+};
+
+function wilduCancelPendingDetailMapLoad() {
+    WILDU_DETAIL_MAP_RUNTIME.generation += 1;
+    WILDU_DETAIL_MAP_RUNTIME.pendingUrl = '';
+    if (WILDU_DETAIL_MAP_RUNTIME.observer) {
+        try { WILDU_DETAIL_MAP_RUNTIME.observer.disconnect(); } catch (e) {}
+        WILDU_DETAIL_MAP_RUNTIME.observer = null;
+    }
+    if (WILDU_DETAIL_MAP_RUNTIME.scrollRoot && WILDU_DETAIL_MAP_RUNTIME.scrollHandler) {
+        try {
+            WILDU_DETAIL_MAP_RUNTIME.scrollRoot.removeEventListener('scroll', WILDU_DETAIL_MAP_RUNTIME.scrollHandler);
+        } catch (e) {}
+    }
+    WILDU_DETAIL_MAP_RUNTIME.scrollRoot = null;
+    WILDU_DETAIL_MAP_RUNTIME.scrollHandler = null;
+    WILDU_DETAIL_MAP_RUNTIME.check = null;
+}
+
+function wilduResetDetailMapIframe() {
+    wilduCancelPendingDetailMapLoad();
+    const current = document.getElementById('od-map-iframe');
+    if (!current || !current.parentNode) return current;
+
+    // Rimuovere e ricreare il nodo distrugge il browsing context di Google Maps.
+    // Il solo removeAttribute('src') non libera in modo affidabile WebKit/iOS.
+    const clean = current.cloneNode(false);
+    clean.removeAttribute('src');
+    clean.removeAttribute('srcdoc');
+    clean.removeAttribute('data-wildu-map-src');
+    clean.setAttribute('loading', 'lazy');
+    current.parentNode.replaceChild(clean, current);
+    return clean;
+}
+
+function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
+    const cleanUrl = String(iframeUrl || '').trim();
+    if (!mapContainer || !mapIframe || !cleanUrl) return;
+
+    const generation = WILDU_DETAIL_MAP_RUNTIME.generation;
+    const detailModal = document.getElementById('od-details-modal');
+    WILDU_DETAIL_MAP_RUNTIME.pendingUrl = cleanUrl;
+    mapIframe.setAttribute('loading', 'lazy');
+    mapIframe.setAttribute('data-wildu-map-src', cleanUrl);
+
+    const loadMap = function () {
+        if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return;
+        if (!wilduIsDetailModalVisible()) return;
+        if (mapIframe.getAttribute('src')) return;
+
+        mapIframe.setAttribute('src', cleanUrl);
+        WILDU_DETAIL_MAP_RUNTIME.pendingUrl = '';
+        if (WILDU_DETAIL_MAP_RUNTIME.observer) {
+            try { WILDU_DETAIL_MAP_RUNTIME.observer.disconnect(); } catch (e) {}
+            WILDU_DETAIL_MAP_RUNTIME.observer = null;
+        }
+        if (WILDU_DETAIL_MAP_RUNTIME.scrollRoot && WILDU_DETAIL_MAP_RUNTIME.scrollHandler) {
+            try {
+                WILDU_DETAIL_MAP_RUNTIME.scrollRoot.removeEventListener('scroll', WILDU_DETAIL_MAP_RUNTIME.scrollHandler);
+            } catch (e) {}
+        }
+        WILDU_DETAIL_MAP_RUNTIME.scrollRoot = null;
+        WILDU_DETAIL_MAP_RUNTIME.scrollHandler = null;
+        WILDU_DETAIL_MAP_RUNTIME.check = null;
+    };
+
+    const checkNearViewport = function () {
+        if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return;
+        if (!detailModal || !wilduIsDetailModalVisible()) return;
+
+        const mapRect = mapContainer.getBoundingClientRect();
+        const modalRect = detailModal.getBoundingClientRect();
+        const margin = 120;
+        if (mapRect.bottom >= modalRect.top - margin && mapRect.top <= modalRect.bottom + margin) {
+            loadMap();
+        }
+    };
+
+    WILDU_DETAIL_MAP_RUNTIME.check = checkNearViewport;
+    if (detailModal) {
+        WILDU_DETAIL_MAP_RUNTIME.scrollRoot = detailModal;
+        WILDU_DETAIL_MAP_RUNTIME.scrollHandler = checkNearViewport;
+        detailModal.addEventListener('scroll', checkNearViewport, { passive: true });
+    }
+
+    if (typeof IntersectionObserver === 'function') {
+        WILDU_DETAIL_MAP_RUNTIME.observer = new IntersectionObserver(function (entries) {
+            if (entries.some(function (entry) { return entry.isIntersecting; })) loadMap();
+        }, { root: detailModal || null, rootMargin: '120px 0px', threshold: 0.01 });
+        WILDU_DETAIL_MAP_RUNTIME.observer.observe(mapContainer);
+        requestAnimationFrame(checkNearViewport);
+        return;
+    }
+
+    // Compatibilita' per browser molto vecchi: il controllo sullo scroll
+    // mantiene il caricamento differito anche senza IntersectionObserver.
+    requestAnimationFrame(checkNearViewport);
+}
+
 function renderUnifiedDetailMap(payload) {
     payload = payload || {};
 
     const mapsBtn = document.getElementById('od-modal-maps');
     const mapContainer = document.getElementById('od-map-container');
-    const mapIframe = document.getElementById('od-map-iframe');
+    const mapIframe = wilduResetDetailMapIframe();
 
     if (!mapsBtn || !mapContainer || !mapIframe) return;
 
@@ -19473,9 +19577,9 @@ function renderUnifiedDetailMap(payload) {
     }
 
     if (iframeUrl) {
-        mapIframe.src = iframeUrl;
         mapIframe.style.pointerEvents = "none";
         mapContainer.style.display = "block";
+        wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl);
 
         if (buttonUrl) {
             const overlay = document.createElement("button");
@@ -20642,6 +20746,7 @@ function wilduResetSwipeTarget(el) {
     el.style.transition = 'transform .20s cubic-bezier(.2,.85,.2,1), opacity .20s ease';
     el.style.transform = '';
     el.style.opacity = '';
+    el.style.willChange = '';
 }
 
 function resetWilduScrollableTop(el) {
@@ -20684,6 +20789,7 @@ function wilduAnimateSwipeClose(el, dx, done) {
     }
 
     const sign = dx >= 0 ? 1 : -1;
+    el.style.willChange = 'transform, opacity';
     el.style.transition = 'transform .18s ease, opacity .18s ease';
     el.style.transform = 'translateX(' + (sign * 115) + '%) rotate(' + (sign * 5) + 'deg)';
     el.style.opacity = '.18';
@@ -20722,6 +20828,7 @@ function wilduInstallPhysicalSwipe(card, options) {
         card.style.transition = 'transform .22s cubic-bezier(.2,.85,.2,1), opacity .18s ease';
         card.style.transform = '';
         card.style.opacity = '';
+        card.style.willChange = '';
         hideWilduSwipeHint();
     }
 
@@ -20737,6 +20844,7 @@ function wilduInstallPhysicalSwipe(card, options) {
         startX = touch.clientX;
         startY = touch.clientY;
         lastDx = 0;
+        card.style.willChange = 'transform, opacity';
         card.style.transition = 'none';
     }, { passive: true });
 
@@ -20756,6 +20864,7 @@ function wilduInstallPhysicalSwipe(card, options) {
                 horizontal = true;
             } else if (absY > absX * 1.05) {
                 tracking = false;
+                card.style.willChange = '';
                 hideWilduSwipeHint();
                 return;
             } else {
@@ -20823,6 +20932,9 @@ function wilduSetDetailModalVisible(visible) {
             WILDU_DETAIL_RUNTIME.scrollFrame = 0;
             if (generation !== WILDU_DETAIL_RUNTIME.generation || !wilduIsDetailModalVisible()) return;
             resetWilduOverlayScrollPosition(modal);
+            if (typeof WILDU_DETAIL_MAP_RUNTIME.check === 'function') {
+                WILDU_DETAIL_MAP_RUNTIME.check();
+            }
         });
         WILDU_DETAIL_RUNTIME.scrollTimer = window.setTimeout(function () {
             WILDU_DETAIL_RUNTIME.scrollTimer = 0;
@@ -20838,20 +20950,32 @@ function wilduSetDetailModalVisible(visible) {
     return modal;
 }
 
+function wilduReleaseImageNodes(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    root.querySelectorAll('img').forEach(function (img) {
+        try {
+            img.removeAttribute('src');
+            img.removeAttribute('srcset');
+            img.removeAttribute('sizes');
+        } catch (e) {}
+    });
+}
+
 function wilduReleaseDetailMedia() {
-    const mapIframe = document.getElementById('od-map-iframe');
     const mapContainer = document.getElementById('od-map-container');
     const modalImg = document.getElementById('trip-modal-img');
     const modalImgContainer = document.getElementById('trip-modal-img-container');
     const mapOverlay = document.getElementById('wildu-map-confirm-overlay');
 
     if (mapOverlay) mapOverlay.remove();
-    if (mapIframe) {
-        mapIframe.removeAttribute('src');
-        mapIframe.style.pointerEvents = 'none';
-    }
+    const mapIframe = wilduResetDetailMapIframe();
+    if (mapIframe) mapIframe.style.pointerEvents = 'none';
     if (mapContainer) mapContainer.style.display = 'none';
-    if (modalImg) modalImg.removeAttribute('src');
+    if (modalImg) {
+        modalImg.removeAttribute('src');
+        modalImg.removeAttribute('srcset');
+        modalImg.removeAttribute('sizes');
+    }
     if (modalImgContainer) modalImgContainer.style.display = 'none';
 }
 
@@ -21037,7 +21161,10 @@ function closeWilduRelatedModal(closeDetail, evt) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
-    if (list) list.innerHTML = '';
+    if (list) {
+        wilduReleaseImageNodes(list);
+        list.innerHTML = '';
+    }
     unlockWilduOverlayScrollIfIdle();
 }
 
@@ -21216,7 +21343,10 @@ function closeWilduDateOptionsModal(evt, restoreDetail) {
         modal.classList.remove('is-visible');
         modal.setAttribute('aria-hidden', 'true');
     }
-    if (list) list.innerHTML = '';
+    if (list) {
+        wilduReleaseImageNodes(list);
+        list.innerHTML = '';
+    }
     unlockWilduOverlayScrollIfIdle();
     if (restoreDetail !== false && returnRef) {
         wilduScheduleDetailOpen(returnRef, { skipSuggestions: false });
@@ -33362,7 +33492,7 @@ window.addEventListener('pageshow', (event) => {
         <div id="od-modal-region-display" style="color: #00aaff; font-size: 14px; font-weight: 900; margin-top: 25px; text-transform: uppercase; letter-spacing: 1px;"></div>
         
         <div id="od-map-container" style="width:100%; height:180px; border-radius:10px; overflow:hidden; margin-top:25px; display:none; border:2px solid #333;">
-            <iframe id="od-map-iframe" width="100%" height="100%" frameborder="0" style="border:0" allowfullscreen></iframe>
+            <iframe id="od-map-iframe" width="100%" height="100%" frameborder="0" style="border:0" loading="lazy" allowfullscreen></iframe>
         </div>
 
         <div style="margin-top:25px; display:flex; gap:15px; flex-direction:column;">
