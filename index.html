@@ -2980,6 +2980,13 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     white-space: pre-line;
 }
 
+.wildu-client-build-version {
+    display: block;
+    margin-top: 7px;
+    color: #777;
+    font-size: 9px;
+}
+
 .amazon-slider {
     width: calc(100vw + (var(--amazon-bleed) * 2));
     max-width: none;
@@ -14158,10 +14165,10 @@ function schedulePendingClientAuthState(user) {
 
 async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
     try {
-        await ensureWilduGlobalCacheBootGate('AUTH_STATE');
+        await ensureWilduClientInteractionBootGate('AUTH_STATE');
     } catch (e) {
-        if (e && e.message === 'GLOBAL_CACHE_REFRESH_TRIGGERED') return;
-        console.warn('Global cache auth gate skipped:', e);
+        if (isWilduBootstrapNavigationError(e)) return;
+        console.warn('Client auth bootstrap gate skipped:', e);
     }
 
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -14855,10 +14862,11 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.24';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.25';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
+const SHELL_VERSION_FETCH_TIMEOUT_MS = 3000;
 
 const DEBUG_WILDU_PAGE = true;
 
@@ -14901,10 +14909,35 @@ const WILDU_GLOBAL_CACHE_RELOAD_LOCK_KEY = 'wildGlobalCacheReloadLock';
 const WILDU_GLOBAL_CACHE_RELOAD_LOCK_MS = 5 * 60 * 1000; // anti-loop 5 minuti
 const WILDU_GLOBAL_CACHE_NOTICE_KEY = 'wildGlobalCacheNotice';
 const WILDU_GLOBAL_CACHE_RELOAD_DELAY_MS = 650;
+const WILDU_GLOBAL_CACHE_EPOCH_TIMEOUT_MS = 5000;
 let WILDU_GLOBAL_CACHE_PROMISE = null;
 let WILDU_GLOBAL_CACHE_BOOT_GATE = null;
 let WILDU_GLOBAL_CACHE_RELOAD_TIMER = null;
 let WILDU_GLOBAL_CACHE_NAVIGATION_STARTED = false;
+let WILDU_CLIENT_INTERACTION_BOOT_GATE = null;
+
+function isWilduBootstrapNavigationError(error) {
+    const code = error && error.message ? String(error.message) : '';
+    return code === 'SHELL_REFRESH_TRIGGERED' ||
+        code === 'SHELL_REFRESH_PENDING' ||
+        code === 'GLOBAL_CACHE_REFRESH_TRIGGERED';
+}
+
+function withWilduBootstrapTimeout(promise, timeoutMs, errorCode) {
+    let timeoutId = null;
+    const timeoutPromise = new Promise((resolve, reject) => {
+        timeoutId = window.setTimeout(() => {
+            const error = new Error(String(errorCode || 'BOOTSTRAP_TIMEOUT'));
+            error.code = String(errorCode || 'BOOTSTRAP_TIMEOUT');
+            reject(error);
+        }, Math.max(1, Number(timeoutMs) || 1));
+    });
+
+    return Promise.race([Promise.resolve(promise), timeoutPromise])
+        .finally(() => {
+            if (timeoutId !== null) window.clearTimeout(timeoutId);
+        });
+}
 
 function wilduConsoleIsEnabled() {
     return WILDU_SW_CONSOLE_ALLOWED === true;
@@ -16486,10 +16519,14 @@ async function checkWilduGlobalCacheEpoch(options = {}) {
         }
 
         try {
-            const snap = await db
-                .collection('PARAMETERS_PARTNER')
-                .doc('client_config')
-                .get({ source: 'server' });
+            const snap = await withWilduBootstrapTimeout(
+                db
+                    .collection('PARAMETERS_PARTNER')
+                    .doc('client_config')
+                    .get({ source: 'server' }),
+                WILDU_GLOBAL_CACHE_EPOCH_TIMEOUT_MS,
+                'GLOBAL_CACHE_EPOCH_TIMEOUT'
+            );
 
             const data = snap.exists ? (snap.data() || {}) : {};
             const remoteEpoch = normalizeWilduGlobalCacheEpoch(data.global_cache_epoch);
@@ -16606,22 +16643,44 @@ function setShellReloadLock(targetVersion, sourceVersion) {
 }
 
 async function fetchShellVersion() {
-    const res = await fetch(`${SHELL_VERSION_URL}?t=${Date.now()}`, {
-        cache: 'no-store'
-    });
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timeoutId = window.setTimeout(() => {
+        if (controller) controller.abort();
+    }, SHELL_VERSION_FETCH_TIMEOUT_MS);
 
-    if (!res.ok) {
-        throw new Error(`Version file non leggibile (${res.status})`);
+    try {
+        return await withWilduBootstrapTimeout((async () => {
+            const res = await fetch(`${SHELL_VERSION_URL}?t=${Date.now()}`, {
+                cache: 'no-store',
+                signal: controller ? controller.signal : undefined
+            });
+
+            if (!res.ok) {
+                throw new Error(`Version file non leggibile (${res.status})`);
+            }
+
+            const data = await res.json();
+            const version = String(data.version || '').trim();
+
+            if (!version) {
+                throw new Error('version.json senza campo version valido');
+            }
+
+            return version;
+        })(),
+            SHELL_VERSION_FETCH_TIMEOUT_MS,
+            'SHELL_VERSION_TIMEOUT'
+        );
+    } catch (error) {
+        if (error && error.name === 'AbortError') {
+            const timeoutError = new Error('SHELL_VERSION_TIMEOUT');
+            timeoutError.code = 'SHELL_VERSION_TIMEOUT';
+            throw timeoutError;
+        }
+        throw error;
+    } finally {
+        window.clearTimeout(timeoutId);
     }
-
-    const data = await res.json();
-    const version = String(data.version || '').trim();
-
-    if (!version) {
-        throw new Error('version.json senza campo version valido');
-    }
-
-    return version;
 }
 
 async function clearWilduShellCaches() {
@@ -16666,25 +16725,29 @@ async function ensureFreshShellVersion() {
             version: remoteVersion,
             previousMetaVersion: meta.version || null
         });
-        return;
+        return true;
     }
 
-if (hasRecentShellReloadLock(remoteVersion, embeddedVersion)) {
-    pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
+    if (hasRecentShellReloadLock(remoteVersion, embeddedVersion)) {
+        pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
+            oldVersion: meta.version,
+            embeddedVersion: embeddedVersion || null,
+            newVersion: remoteVersion
+        });
+        showWilduGlobalCacheOverlay(
+            'Aggiornamento app in corso',
+            'La nuova versione e\' in caricamento. Non chiudere questa schermata.'
+        );
+        throw new Error('SHELL_REFRESH_PENDING');
+    }
+
+    pageDebug('SHELL_VERSION_CHANGED', {
         oldVersion: meta.version,
         embeddedVersion: embeddedVersion || null,
         newVersion: remoteVersion
     });
-    return;
-}
 
-pageDebug('SHELL_VERSION_CHANGED', {
-    oldVersion: meta.version,
-    embeddedVersion: embeddedVersion || null,
-    newVersion: remoteVersion
-});
-
-setShellReloadLock(remoteVersion, embeddedVersion);
+    setShellReloadLock(remoteVersion, embeddedVersion);
     await clearWilduShellCaches();
 
     pageDebug('SHELL_CACHES_CLEARED', {
@@ -16707,7 +16770,37 @@ setShellReloadLock(remoteVersion, embeddedVersion);
 
     window.location.replace(nextUrl);
     throw new Error('SHELL_REFRESH_TRIGGERED');
-}    
+}
+
+function ensureWilduClientInteractionBootGate(reason) {
+    if (!WILDU_CLIENT_INTERACTION_BOOT_GATE) {
+        WILDU_CLIENT_INTERACTION_BOOT_GATE = (async () => {
+            try {
+                await ensureFreshShellVersion();
+            } catch (error) {
+                if (isWilduBootstrapNavigationError(error)) throw error;
+                pageDebug('SHELL_VERSION_GATE_FAIL_OPEN', {
+                    reason: String(reason || 'BOOT'),
+                    error: error && error.message ? error.message : String(error)
+                });
+            }
+
+            try {
+                await ensureWilduGlobalCacheBootGate(reason || 'BOOT');
+            } catch (error) {
+                if (isWilduBootstrapNavigationError(error)) throw error;
+                pageDebug('GLOBAL_CACHE_GATE_FAIL_OPEN', {
+                    reason: String(reason || 'BOOT'),
+                    error: error && error.message ? error.message : String(error)
+                });
+            }
+
+            return true;
+        })();
+    }
+
+    return WILDU_CLIENT_INTERACTION_BOOT_GATE;
+}
 
 
 const PUBLIC_CACHE_KEY = 'wildCachePublic';
@@ -16985,27 +17078,16 @@ async function init() {
     consumeWilduLegacyLogoutUrlOnce();
 
     try {
-        await ensureFreshShellVersion();
+        await ensureWilduClientInteractionBootGate('BOOT');
     } catch (e) {
-        if (e.message === 'SHELL_REFRESH_TRIGGERED') {
-            return;
-        }
-        console.warn('Shell version check skipped:', e);
+        if (isWilduBootstrapNavigationError(e)) return;
+        console.warn('Client bootstrap gate skipped:', e);
     }
 
     maybeShowWilduGlobalCacheNotice();
     consumeWilduGlobalCacheUrlParamsOnce();
 
     checkAuthEnvironment();
-
-    try {
-        await ensureWilduGlobalCacheBootGate('BOOT');
-    } catch (e) {
-        if (e && e.message === 'GLOBAL_CACHE_REFRESH_TRIGGERED') {
-            return;
-        }
-        console.warn('Global cache epoch check skipped:', e);
-    }
 
     consumeWilduReturnTabUrlParamOnce();
 
@@ -33116,12 +33198,14 @@ function renderWilduCompanyFooter(data) {
     const name = document.getElementById('wildu-company-footer-name');
     const vat = document.getElementById('wildu-company-footer-vat');
     const insurance = document.getElementById('wildu-company-footer-insurance');
+    const build = document.getElementById('wildu-client-build-version');
     if (!root || !name || !vat || !insurance) return;
 
     const normalized = normalizeWilduPublicCompanyInfo(data);
     name.textContent = normalized.companyName || WILDU_PUBLIC_COMPANY_FALLBACK.companyName;
     vat.textContent = normalized.vat || WILDU_PUBLIC_COMPANY_FALLBACK.vat;
     insurance.textContent = normalized.insuranceDetails || WILDU_PUBLIC_COMPANY_FALLBACK.insuranceDetails;
+    if (build) build.textContent = 'Build ' + String(WILDU_EMBEDDED_SHELL_VERSION || 'n/d');
     root.hidden = false;
 }
 
@@ -33189,31 +33273,36 @@ let WILDU_RESTORED_SHELL_RECONCILIATION = null;
 
 function reconcileWilduRestoredShellState(event) {
     consumeWilduLegacyLogoutUrlOnce();
-    if (!event || event.persisted !== true) return;
-    if (WILDU_RESTORED_SHELL_RECONCILIATION) return;
+    if (!event || event.persisted !== true) return Promise.resolve(true);
+    if (WILDU_RESTORED_SHELL_RECONCILIATION) return WILDU_RESTORED_SHELL_RECONCILIATION;
 
     WILDU_RESTORED_SHELL_RECONCILIATION = ensureFreshShellVersion()
+        .then(() => true)
         .catch((error) => {
-            if (error && error.message === 'SHELL_REFRESH_TRIGGERED') return;
+            if (isWilduBootstrapNavigationError(error)) return false;
             pageDebug('SHELL_PAGESHOW_RECONCILIATION_FAILED', {
                 error: error && error.message ? error.message : String(error)
             });
+            return true;
         })
         .finally(() => {
             WILDU_RESTORED_SHELL_RECONCILIATION = null;
         });
+
+    return WILDU_RESTORED_SHELL_RECONCILIATION;
 }
 
 window.addEventListener('pageshow', (event) => {
-    reconcileWilduRestoredShellState(event);
     reconcileWilduModuleAudioModeFromDom("pageshow");
     updateWilduAudioToggleButton();
-    if (auth.currentUser && clientSession.authState !== 'LOGGED') {
-        scheduleClientAuthRecovery('PAGE_SHOW_AUTH_RESUME', {
-            reset: true,
-            immediate: true
-        });
-    }
+    reconcileWilduRestoredShellState(event).then((shellReady) => {
+        if (shellReady && auth.currentUser && clientSession.authState !== 'LOGGED') {
+            scheduleClientAuthRecovery('PAGE_SHOW_AUTH_RESUME', {
+                reset: true,
+                immediate: true
+            });
+        }
+    });
 });
 
 
@@ -33353,6 +33442,7 @@ window.addEventListener('pageshow', (event) => {
             <strong id="wildu-company-footer-name" class="wildu-company-footer-name"></strong>
             <span id="wildu-company-footer-vat" class="wildu-company-footer-vat"></span>
             <span id="wildu-company-footer-insurance" class="wildu-company-footer-insurance"></span>
+            <span id="wildu-client-build-version" class="wildu-client-build-version"></span>
         </div>
     </div>
     <!-- FINE AGGIUNTA AMAZON STATIC LINKS -->
