@@ -14870,7 +14870,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.27';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.28';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21114,7 +21114,7 @@ function wilduBuildRelatedDetails(current) {
 function wilduBuildSoftCardHtml(ref, extraMeta) {
     const img = ref.image ? formatAssetLink(ref.image) : '';
     const media = img
-        ? '<img class="wildu-soft-card-img" src="' + escapeWilduHtml(img) + '" loading="lazy" alt="">'
+        ? '<img class="wildu-soft-card-img" src="' + escapeWilduHtml(img) + '" loading="lazy" decoding="async" fetchpriority="low" width="76" height="58" alt="">'
         : '<div class="wildu-soft-card-fallback" aria-hidden="true">' + wilduGetDetailTypeIcon(ref.type) + '</div>';
     const type = wilduGetDetailTypeLabel(ref.type);
     const date = ref.date || 'Data da definire';
@@ -31418,6 +31418,29 @@ let currentAmazonProducts = [];
 let lastAmazonRemoteFetchAt = 0;
 const AMAZON_REMOTE_MIN_GAP_MS = 60000;    
 
+function wilduGetAmazonCardImageUrl(rawUrl) {
+    const original = String(rawUrl || '').trim();
+    if (!original) return '';
+
+    try {
+        const parsed = new URL(original, window.location.href);
+        const host = parsed.hostname.toLowerCase();
+        const isAmazonImageHost = host === 'm.media-amazon.com' || host.endsWith('.ssl-images-amazon.com');
+
+        if (!isAmazonImageHost) return original;
+
+        const existingTransform = /\._[^./]+_\.(jpe?g|png|webp)$/i;
+        if (existingTransform.test(parsed.pathname)) {
+            parsed.pathname = parsed.pathname.replace(existingTransform, '._AC_SL320_.$1');
+        } else {
+            parsed.pathname = parsed.pathname.replace(/\.(jpe?g|png|webp)$/i, '._AC_SL320_.$1');
+        }
+        return parsed.toString();
+    } catch (e) {
+        return original;
+    }
+}
+
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 let amazonSliderEventsBound = false;
 let amazonInitInFlight = false;
@@ -32241,11 +32264,14 @@ function renderAmazonSponsors(products) {
     // 4. Rendering Unificato
     let html = '';
     mixedList.forEach((p, index) => {
+        const cardImageUrl = p.isTravel ? String(p.img_url || '') : wilduGetAmazonCardImageUrl(p.img_url);
+        const cardImageHtml = `<img src="${escapeWilduShopHtml(cardImageUrl)}" alt="${escapeWilduShopHtml(p.title)}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58" style="object-fit: cover !important; background: #111 !important;">`;
+
         if (p.isTravel) {
             // ✈️ CARD IBRIDA: VIAGGIO / HIKE
             html += `
                 <div class="amazon-card" onclick="showTripDetailsFromCarousel('${p.safeId}', ${p.isHike})" style="border-color: ${p.isHike ? 'var(--w-gold)' : 'var(--w-green)'}; background: rgba(0,0,0,0.4);">
-                    <img src="${p.img_url}" alt="${p.title}" style="object-fit: cover !important; background: #111 !important;">
+                    ${cardImageHtml}
                     <div class="amazon-info">
                         <p class="amazon-title" style="color:${p.isHike ? 'var(--w-gold)' : '#fff'};">${p.title}</p>
                         <p class="amazon-desc" style="color:#eee;">📅 Partenza: ${p.dateText}</p>
@@ -32258,7 +32284,7 @@ function renderAmazonSponsors(products) {
 // 📦 CARD STANDARD: AMAZON (Mantiene la tua logica intatta col parametro index esatto)
             html += `
                 <div class="amazon-card" onclick="openAmazonDetail(${index})">
-                    <img src="${p.img_url}" alt="${p.title}" style="object-fit: cover !important; background: #111 !important;">
+                    ${cardImageHtml}
                     <div class="amazon-info">
                         <p class="amazon-title">${p.title}</p>
                         <p class="amazon-desc">${p.description}</p>
@@ -32278,13 +32304,8 @@ function renderAmazonSponsors(products) {
         wrapper.insertAdjacentHTML('afterbegin', '<div class="amazon-ad-pill">Amazon Ad</div>');
     }   */
 
-    // 5. IL TUO PRELOAD DELLE IMMAGINI (Recuperato e applicato a tutta la mixedList)
-    mixedList.forEach(p => {
-        if (p.img_url) {
-            const imgPreload = new Image();
-            imgPreload.src = p.img_url;
-        }
-    });
+    // Le card caricano solo le immagini prossime al viewport. Il dettaglio continua
+    // a usare l'URL originale conservato in currentAmazonProducts.
 
     bindAmazonSliderEventsOnce(slider);
 
