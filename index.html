@@ -12921,8 +12921,10 @@ function requireLoggedAccess(reason, options = {}) {
 
     aAmb.volume = 0;
     aMus.volume = 0;
-    aAmb.preload = "auto";
-    aMus.preload = "auto";
+    // Le due tracce ambientali durano diversi minuti: restano stream nativi.
+    // Su iOS non vengono precaricate perché il volume software non è affidabile.
+    aAmb.preload = isWilduLongBackgroundAudioDisabled() ? "none" : "metadata";
+    aMus.preload = isWilduLongBackgroundAudioDisabled() ? "none" : "metadata";
 
     let audioInited = false;
     let FIXED_VOL_AMB = 0;
@@ -13267,6 +13269,14 @@ function requireLoggedAccess(reason, options = {}) {
         // Dentro moduli STOP o moduli con audio proprio, i click NON devono riaccendere
         // la musica/ambienza naturale della app.
         if (wildModuleAudioMode !== "default") return;
+
+        // Le tracce background complete occupano circa 174 MB una volta decodificate.
+        // Su iOS i gesti generici non devono attivare questo percorso: effetti
+        // brevi e audio dei moduli restano gestiti dai rispettivi comandi espliciti.
+        if (isWilduLongBackgroundAudioDisabled()) {
+            stopWildDefaultBackgroundAudio("ios-long-background-gesture-blocked");
+            return;
+        }
 
         // Se TUTTI i rami default richiesti sono già attivi, non richiamare startAudioMixer a ogni click.
         // Se invece è attiva solo musica o solo ambienza, lasciamo passare il retry conservativo.
@@ -14860,7 +14870,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.26';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.27';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -15611,9 +15621,13 @@ function renderWilduAudioDebugPanel() {
         });
 
         try {
-            if (aMus && aMus.src && isWilduSystemAudioUrl(aMus.src)) {
+            if (
+                aMus && aMus.src &&
+                isWilduSystemAudioUrl(aMus.src) &&
+                isWilduLongBackgroundAudioDisabled()
+            ) {
                 silenceNativeSystemAudioElement(aMus);
-                await startWilduBufferLoop("music", aMus.src, FIXED_VOL_MUS || 0.01);
+                wilduAudioDebugLog("MANUAL_MUSIC_SKIPPED_IOS_LONG_BACKGROUND", {});
             } else {
                 const ok = await playWilduAudioElement(aMus, "manual-music");
                 if (ok) fadeAudio(aMus, FIXED_VOL_MUS || 0.01);
@@ -15640,9 +15654,13 @@ function renderWilduAudioDebugPanel() {
         });
 
         try {
-            if (aAmb && aAmb.src && isWilduSystemAudioUrl(aAmb.src)) {
+            if (
+                aAmb && aAmb.src &&
+                isWilduSystemAudioUrl(aAmb.src) &&
+                isWilduLongBackgroundAudioDisabled()
+            ) {
                 silenceNativeSystemAudioElement(aAmb);
-                await startWilduBufferLoop("ambience", aAmb.src, FIXED_VOL_AMB || 0.001);
+                wilduAudioDebugLog("MANUAL_AMBIENCE_SKIPPED_IOS_LONG_BACKGROUND", {});
             } else {
                 const ok = await playWilduAudioElement(aAmb, "manual-ambience");
                 if (ok) fadeAudio(aAmb, FIXED_VOL_AMB || 0.001);
@@ -24242,6 +24260,10 @@ if (profKeyEl) {
         }
     }
 
+    function isWilduLongBackgroundAudioDisabled() {
+        return isWilduIOSAudioDevice();
+    }
+
     function getWilduSystemSoundCanonicalUrl(audio) {
         try {
             return stripWilduAudioRuntimeQuery(String(audio && audio.src ? audio.src : "").trim());
@@ -29123,6 +29145,14 @@ async function loadWilduAudioBuffer(url) {
         const safeVolume = clampWildVolume(targetVolume);
         const isDefaultBackgroundKey = key === "music" || key === "ambience";
 
+        if (isDefaultBackgroundKey) {
+            stopWilduBufferLoop(key);
+            wilduAudioDebugLog("BUFFER_LOOP_SKIPPED_LONG_BACKGROUND_STREAM_ONLY", {
+                key: key
+            });
+            return false;
+        }
+
         if (!url || safeVolume <= 0) {
             stopWilduBufferLoop(key);
             return false;
@@ -29242,10 +29272,17 @@ async function loadWilduAudioBuffer(url) {
         if (!audio || !rawUrl) return "";
 
         const nextSrc = formatAssetLink(rawUrl);
+        const isLongBackground = !!(
+            (audio === aMus || audio === aAmb) &&
+            isWilduSystemAudioUrl(nextSrc)
+        );
+        const disableIOSLongBackground = !!(
+            isLongBackground && isWilduLongBackgroundAudioDisabled()
+        );
 
         try {
-            // Gli audio di sistema R2 vengono riprodotti dal nuovo ramo WebAudio one-shot.
-            // Manteniamo comunque il sorgente nativo come fallback desktop/Android, ma non su iOS.
+            // Le tracce lunghe restano stream nativi su desktop/Android.
+            // Su iOS manteniamo il riferimento ma evitiamo preload e avvio automatico.
             if (isWilduSystemAudioUrl(nextSrc)) {
                 audio.removeAttribute("crossorigin");
                 audio.crossOrigin = null;
@@ -29253,7 +29290,9 @@ async function loadWilduAudioBuffer(url) {
                 audio.crossOrigin = "anonymous";
             }
 
-            audio.preload = "auto";
+            audio.preload = isLongBackground
+                ? (disableIOSLongBackground ? "none" : "metadata")
+                : "auto";
             audio.playsInline = true;
 
             if (options.loop === true) {
@@ -29262,7 +29301,11 @@ async function loadWilduAudioBuffer(url) {
 
             if (audio.src !== nextSrc) {
                 audio.src = nextSrc;
-                try { audio.load(); } catch (e) {}
+                if (disableIOSLongBackground) {
+                    silenceNativeSystemAudioElement(audio);
+                } else {
+                    try { audio.load(); } catch (e) {}
+                }
             }
         } catch (e) {}
 
@@ -29658,26 +29701,35 @@ async function resumeWildAudioContextWithTimeout(reason, timeoutMs = 2200) {
             reconcileWilduModuleAudioModeFromDom("update-toggle-button");
 
             const blockedByModuleStop = isWilduModuleStopReallyActive();
+            const iosLongBackgroundDisabled = !!(
+                wildModuleAudioMode === "default" &&
+                isWilduLongBackgroundAudioDisabled()
+            );
             const muted = wildAudioUserMutedForSession === true || blockedByModuleStop;
 
-            btn.textContent = muted ? '🔇' : '🔊';
+            btn.disabled = iosLongBackgroundDisabled;
+            btn.textContent = (muted || iosLongBackgroundDisabled) ? '🔇' : '🔊';
 
-            btn.title = blockedByModuleStop
-                ? 'Audio disattivato in questo modulo'
-                : (wildAudioUserMutedForSession === true
-                    ? 'Audio spento per questa sessione'
-                    : 'Audio acceso');
+            btn.title = iosLongBackgroundDisabled
+                ? 'Musica ambientale disattivata su iPhone e iPad per stabilità'
+                : (blockedByModuleStop
+                    ? 'Audio disattivato in questo modulo'
+                    : (wildAudioUserMutedForSession === true
+                        ? 'Audio spento per questa sessione'
+                        : 'Audio acceso'));
 
             btn.setAttribute(
                 'aria-label',
-                muted ? 'Riattiva audio Wild-U' : 'Spegni audio Wild-U'
+                iosLongBackgroundDisabled
+                    ? 'Musica ambientale non disponibile su iPhone e iPad'
+                    : (muted ? 'Riattiva audio Wild-U' : 'Spegni audio Wild-U')
             );
 
-            btn.style.opacity = muted ? '0.72' : '1';
-            btn.style.borderColor = muted
+            btn.style.opacity = (muted || iosLongBackgroundDisabled) ? '0.72' : '1';
+            btn.style.borderColor = (muted || iosLongBackgroundDisabled)
                 ? 'rgba(160,160,160,.55)'
                 : 'rgba(214,175,55,.72)';
-            btn.style.color = muted ? '#cfcfcf' : '#d4af37';
+            btn.style.color = (muted || iosLongBackgroundDisabled) ? '#cfcfcf' : '#d4af37';
         } catch (e) {}
     }
 
@@ -29717,6 +29769,15 @@ function stopWilduUserSessionAudio(reason) {
                 userMuted: wildAudioUserMutedForSession === true
             });
 
+            updateWilduAudioToggleButton();
+            return;
+        }
+
+        if (
+            wildModuleAudioMode === "default" &&
+            isWilduLongBackgroundAudioDisabled()
+        ) {
+            stopWildDefaultBackgroundAudio("button-ios-long-background-blocked");
             updateWilduAudioToggleButton();
             return;
         }
@@ -30002,6 +30063,28 @@ function syncWilduAudioNavDockPosition() {
         return false;
     }
 
+    // Gli asset attuali richiedono un volume software molto basso che iOS non
+    // applica in modo affidabile agli stream nativi. Evitiamo sia il volume pieno
+    // sia la decodifica integrale in RAM; gli audio modulo restano separati.
+    if (
+        wildModuleAudioMode === "default" &&
+        isWilduLongBackgroundAudioDisabled()
+    ) {
+        stopWildDefaultBackgroundAudio("start-mixer-ios-long-background-blocked");
+        audioInited = true;
+        wildAudioNeedsUserStart = false;
+        wildAudioStartDeferredUntilAssetsReady = false;
+        wildAudioNeedsUserResume = false;
+        updateWilduAudioToggleButton();
+
+        wilduAudioDebugLog("START_MIXER_SKIPPED_IOS_LONG_BACKGROUND", {
+            reason: options.reason || "",
+            mode: wildModuleAudioMode
+        });
+
+        return true;
+    }
+
     // Fuori modulo: salta il lavoro solo se TUTTI i rami richiesti sono già attivi.
     // Caso corretto dal microfix: se ambienza è attiva ma musica no, NON dichiarare already-active.
     if (
@@ -30081,18 +30164,12 @@ function syncWilduAudioNavDockPosition() {
             }
         } else {
             if (aMus && aMus.src && FIXED_VOL_MUS > 0) {
-                if (isWilduSystemAudioUrl(aMus.src)) {
+                if (
+                    isWilduSystemAudioUrl(aMus.src) &&
+                    isWilduLongBackgroundAudioDisabled()
+                ) {
                     silenceNativeSystemAudioElement(aMus);
-
-                    try {
-                        const okMus = await startWilduBufferLoop("music", aMus.src, FIXED_VOL_MUS);
-                        playedSomething = okMus || playedSomething;
-                    } catch (e) {
-                        wilduAudioDebugLog("BUFFER_MUSIC_FAILED", {
-                            error: e && e.message ? e.message : String(e)
-                        });
-                        markWilduAudioNeedsUserStart("buffer-music-failed", e);
-                    }
+                    wilduAudioDebugLog("MUSIC_SKIPPED_IOS_LONG_BACKGROUND", {});
                 } else {
                     const okMus = await playWilduAudioElement(aMus, 'music');
                     if (okMus) {
@@ -30105,18 +30182,12 @@ function syncWilduAudioNavDockPosition() {
             }
 
             if (aAmb && aAmb.src && FIXED_VOL_AMB > 0) {
-                if (isWilduSystemAudioUrl(aAmb.src)) {
+                if (
+                    isWilduSystemAudioUrl(aAmb.src) &&
+                    isWilduLongBackgroundAudioDisabled()
+                ) {
                     silenceNativeSystemAudioElement(aAmb);
-
-                    try {
-                        const okAmb = await startWilduBufferLoop("ambience", aAmb.src, FIXED_VOL_AMB);
-                        playedSomething = okAmb || playedSomething;
-                    } catch (e) {
-                        wilduAudioDebugLog("BUFFER_AMBIENCE_FAILED", {
-                            error: e && e.message ? e.message : String(e)
-                        });
-                        markWilduAudioNeedsUserStart("buffer-ambience-failed", e);
-                    }
+                    wilduAudioDebugLog("AMBIENCE_SKIPPED_IOS_LONG_BACKGROUND", {});
                 } else {
                     const okAmb = await playWilduAudioElement(aAmb, 'ambience');
                     if (okAmb) {
@@ -30170,40 +30241,6 @@ function syncWilduAudioNavDockPosition() {
 
 
     function fadeAudio(audio, targetVolume, callback) {
-      const bufferKey = getWilduBufferLoopKeyForAudio(audio);
-        if (bufferKey && isWilduSystemAudioUrl(audio && audio.src)) {
-            const safeTarget = clampWildVolume(targetVolume);
-
-            if (safeTarget <= 0) {
-                stopWilduBufferLoop(bufferKey);
-                silenceNativeSystemAudioElement(audio);
-                if (callback) callback();
-                return;
-            }
-
-            if (wildBufferAudioLoops.has(bufferKey)) {
-                setWilduBufferLoopVolume(bufferKey, safeTarget);
-                silenceNativeSystemAudioElement(audio);
-                if (callback) callback();
-                return;
-            }
-
-            startWilduBufferLoop(bufferKey, audio.src, safeTarget)
-                .then(() => {
-                    silenceNativeSystemAudioElement(audio);
-                    if (callback) callback();
-                })
-                .catch((e) => {
-                    wilduAudioDebugLog("BUFFER_FADE_START_FAILED", {
-                        key: bufferKey,
-                        error: e && e.message ? e.message : String(e)
-                    });
-                    markWilduAudioNeedsUserStart("buffer-fade-start-failed", e);
-                    if (callback) callback();
-                });
-
-            return;
-        }
         if (!audio) return;
 
         try {
@@ -30324,6 +30361,17 @@ function syncWilduAudioNavDockPosition() {
                 });
             } catch (e) {}
 
+            return;
+        }
+
+        if (
+            wildModuleAudioMode === "default" &&
+            isWilduLongBackgroundAudioDisabled()
+        ) {
+            stopWildDefaultBackgroundAudio("resume-ios-long-background-blocked");
+            wildAudioPausedByHidden = false;
+            wildAudioNeedsUserResume = false;
+            updateWilduAudioToggleButton();
             return;
         }
 
