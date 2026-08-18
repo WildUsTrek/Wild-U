@@ -12623,7 +12623,13 @@ function reconcileProfileShellWithClientSession() {
     }
 
     function closeModalById(id) {
-        const el = document.getElementById(id);
+        const cleanId = String(id || '').trim();
+        if (cleanId === 'od-details-modal' && typeof wilduSetDetailModalVisible === 'function') {
+            wilduSetDetailModalVisible(false);
+            return;
+        }
+
+        const el = document.getElementById(cleanId);
         if (el) el.style.display = 'none';
     }
 
@@ -14876,7 +14882,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.29';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.30';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
