@@ -15026,7 +15026,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.33';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.34';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -27017,7 +27017,9 @@ if (profKeyEl) {
     function wilduIsTravelTabSwipeBlockedTarget(target) {
         if (!target || typeof target.closest !== 'function') return true;
 
-        if (target.closest('button,a,input,textarea,select,iframe,[role="button"],details,summary,[contenteditable="true"]')) return true;
+        if (target.closest('button,a,input,textarea,select,iframe,details,summary,[contenteditable="true"]')) return true;
+        const roleButton = target.closest('[role="button"]');
+        if (roleButton && !roleButton.matches('.wildu-adventure-card')) return true;
         if (target.closest('.nav,#wildu-travel-nav-menu,.wildu-travelhub-carousel,.wildu-rewards-video-row,.wildu-shop-row,.amazon-slider,.wildu-trip-active-chips,.wildu-guest-profile-carousel')) return true;
         if (target.closest('.wildu-soft-modal-card,#od-details-card,#custom-booking-modal,.wildu-legal-modal-card')) return true;
 
