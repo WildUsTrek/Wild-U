@@ -5370,6 +5370,12 @@ html.wildu-detail-transition-busy body {
     transform: translate(-50%, -50%) scale(1);
 }
 
+.wildu-travel-swipe-preview.is-dismissing {
+    opacity: 0 !important;
+    transform: translate(-50%, -50%) scale(.96) !important;
+    transition: opacity .24s ease, transform .24s cubic-bezier(.4,0,.2,1) !important;
+}
+
 .wildu-travel-swipe-ghost {
     position: fixed;
     top: 49%;
@@ -5397,6 +5403,12 @@ html.wildu-detail-transition-busy body {
 
 .wildu-travel-swipe-ghost.is-visible {
     opacity: 1;
+}
+
+.wildu-travel-swipe-ghost.is-dismissing {
+    opacity: 0 !important;
+    transform: scale(.96) !important;
+    transition: opacity .24s ease, transform .24s cubic-bezier(.4,0,.2,1) !important;
 }
 
 .wildu-travel-swipe-ghost-kicker {
@@ -14966,7 +14978,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.31';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.32';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -26082,6 +26094,9 @@ if (profKeyEl) {
     const WILDU_SCREEN_WAKE_LOCK_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED = true;
+    const WILDU_TRAVEL_TAB_SWIPE_SWITCH_DELAY_MS = 190;
+    const WILDU_TRAVEL_TAB_SWIPE_FEEDBACK_MIN_MS = 360;
+    const WILDU_TRAVEL_TAB_SWIPE_UNLOCK_MS = 680;
     const WILDU_TRAVEL_NAV_LONGPRESS_ENABLED = true;
     const WILDU_TRAVEL_NAV_TAB_IDS = ['events', 'free', 'ondemand'];
     const WILDU_TRAVEL_NAV_GROUP_TAB_IDS = ['travelhub', 'events', 'free', 'ondemand'];
@@ -26101,6 +26116,8 @@ if (profKeyEl) {
     let wilduTravelHubAutoScrollResumeTimer = null;
     let wilduTravelNavMenuPositionRaf = null;
     let wilduTravelTabSwipeTouch = null;
+    let wilduTravelTabSwipeTransitionInProgress = false;
+    let wilduTravelSwipeFeedbackDismissTimer = null;
     let wilduTravelNavLongPressTimer = null;
     let wilduTravelNavLongPressPointer = null;
     let wilduTravelNavLongPressMenuArmed = false;
@@ -26624,6 +26641,7 @@ if (profKeyEl) {
 
     function canWilduStartTravelTabSwipe(target) {
         return WILDU_TRAVEL_TAB_SWIPE_ENABLED === true &&
+            !wilduTravelTabSwipeTransitionInProgress &&
             isWilduGroupedTravelNavEnabled() &&
             WILDU_TRAVEL_NAV_TAB_IDS.includes(currentTab) &&
             !wilduIsTravelTabSwipeTopLayerOpen() &&
@@ -26657,6 +26675,11 @@ if (profKeyEl) {
     function showWilduTravelSwipePreview(targetTab, dx, absX) {
         const el = getWilduTravelSwipePreviewEl();
         if (!el || !targetTab) return;
+        if (wilduTravelSwipeFeedbackDismissTimer) {
+            window.clearTimeout(wilduTravelSwipeFeedbackDismissTimer);
+            wilduTravelSwipeFeedbackDismissTimer = null;
+        }
+        el.classList.remove('is-dismissing');
         const progress = Math.max(0, Math.min(1, Number(absX || 0) / 150));
         const side = dx < 0 ? 1 : -1;
         el.textContent = getWilduTravelTabSwipePreviewText(targetTab, dx);
@@ -26666,13 +26689,38 @@ if (profKeyEl) {
     }
 
     function hideWilduTravelSwipePreview() {
+        if (wilduTravelSwipeFeedbackDismissTimer) {
+            window.clearTimeout(wilduTravelSwipeFeedbackDismissTimer);
+            wilduTravelSwipeFeedbackDismissTimer = null;
+        }
         const el = getWilduTravelSwipePreviewEl();
         if (el) {
+            el.classList.remove('is-dismissing');
             el.classList.remove('is-visible');
             el.style.opacity = '';
             el.style.transform = '';
         }
         hideWilduTravelSwipeGhost();
+    }
+
+    function dismissWilduTravelSwipeFeedback() {
+        const preview = getWilduTravelSwipePreviewEl();
+        const ghost = getWilduTravelSwipeGhostEl();
+        if (!preview && !ghost) return;
+
+        if (preview) {
+            preview.classList.add('is-dismissing');
+            preview.classList.remove('is-visible');
+        }
+        if (ghost) {
+            ghost.classList.add('is-dismissing');
+            ghost.classList.remove('is-visible');
+        }
+
+        wilduTravelSwipeFeedbackDismissTimer = window.setTimeout(function () {
+            wilduTravelSwipeFeedbackDismissTimer = null;
+            hideWilduTravelSwipePreview();
+        }, 250);
     }
 
     function getWilduTravelSwipeGhostEl() {
@@ -26707,6 +26755,7 @@ if (profKeyEl) {
     function showWilduTravelSwipeGhost(targetTab, dx, absX) {
         const el = getWilduTravelSwipeGhostEl();
         if (!el || !targetTab) return;
+        el.classList.remove('is-dismissing');
 
         const meta = getWilduTravelSwipeGhostMeta(targetTab);
         const kicker = el.querySelector('.wildu-travel-swipe-ghost-kicker');
@@ -26729,6 +26778,7 @@ if (profKeyEl) {
     function hideWilduTravelSwipeGhost() {
         const el = getWilduTravelSwipeGhostEl();
         if (!el) return;
+        el.classList.remove('is-dismissing');
         el.classList.remove('is-visible');
         el.style.opacity = '';
         el.style.transform = '';
@@ -26742,7 +26792,7 @@ if (profKeyEl) {
         return section && !section.classList.contains('hidden') ? section : null;
     }
 
-    function resetWilduTravelTabSwipeVisual(el, animated) {
+    function resetWilduTravelTabSwipeVisual(el, animated, options = {}) {
         if (!el) return;
         el.style.transition = animated === false ? 'none' : 'transform .22s cubic-bezier(.2,.85,.2,1), opacity .18s ease';
         el.style.transform = '';
@@ -26756,7 +26806,7 @@ if (profKeyEl) {
             el.style.transition = '';
         }
         hideWilduSwipeHint();
-        hideWilduTravelSwipePreview();
+        if (options.keepTravelFeedback !== true) hideWilduTravelSwipePreview();
     }
 
     function animateWilduTravelTabIncoming(targetTab, dx) {
@@ -26807,6 +26857,7 @@ if (profKeyEl) {
                 tracking: true,
                 horizontal: false,
                 consumed: false,
+                feedbackShownAt: 0,
                 target: event.target,
                 visualEl: getWilduTravelTabSwipeVisualEl()
             };
@@ -26842,6 +26893,11 @@ if (profKeyEl) {
             const targetTab = getWilduTravelTabSwipeTarget(dx);
             if (targetTab || wilduTravelTabSwipeTouch.horizontal) {
                 wilduTravelTabSwipeTouch.consumed = true;
+                if (!wilduTravelTabSwipeTouch.feedbackShownAt) {
+                    wilduTravelTabSwipeTouch.feedbackShownAt = typeof performance !== 'undefined' && performance.now
+                        ? performance.now()
+                        : Date.now();
+                }
                 event.preventDefault();
 
                 const visualEl = wilduTravelTabSwipeTouch.visualEl;
@@ -26883,6 +26939,7 @@ if (profKeyEl) {
 
             const targetTab = getWilduTravelTabSwipeTarget(dx);
             if (targetTab) {
+                wilduTravelTabSwipeTransitionInProgress = true;
                 const visualEl = state.visualEl;
                 if (visualEl) {
                     const sign = dx >= 0 ? 1 : -1;
@@ -26891,12 +26948,31 @@ if (profKeyEl) {
                     visualEl.style.opacity = '.54';
                 }
                 hideWilduSwipeHint();
-                hideWilduTravelSwipePreview();
+                showWilduTravelSwipePreview(targetTab, dx, 168);
+                showWilduTravelSwipeGhost(targetTab, dx, 168);
+
+                const feedbackNow = typeof performance !== 'undefined' && performance.now
+                    ? performance.now()
+                    : Date.now();
+                const feedbackElapsed = Math.max(0, feedbackNow - Number(state.feedbackShownAt || feedbackNow));
+                const feedbackHideDelay = Math.max(
+                    WILDU_TRAVEL_TAB_SWIPE_SWITCH_DELAY_MS,
+                    WILDU_TRAVEL_TAB_SWIPE_FEEDBACK_MIN_MS - feedbackElapsed
+                );
+
                 window.setTimeout(function () {
-                    resetWilduTravelTabSwipeVisual(visualEl, false);
+                    dismissWilduTravelSwipeFeedback();
+                }, feedbackHideDelay);
+
+                window.setTimeout(function () {
+                    resetWilduTravelTabSwipeVisual(visualEl, false, { keepTravelFeedback: true });
                     show(targetTab, { scrollPolicy: 'top', scrollBehavior: 'auto', source: 'travel-tab-swipe' });
                     animateWilduTravelTabIncoming(targetTab, dx);
-                }, 190);
+                }, WILDU_TRAVEL_TAB_SWIPE_SWITCH_DELAY_MS);
+
+                window.setTimeout(function () {
+                    wilduTravelTabSwipeTransitionInProgress = false;
+                }, WILDU_TRAVEL_TAB_SWIPE_UNLOCK_MS);
             } else {
                 resetWilduTravelTabSwipeVisual(state.visualEl, true);
             }
