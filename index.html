@@ -6953,7 +6953,7 @@ html.wildu-detail-transition-busy body {
                 <div id="reg-phone-hint" style="font-size:12px; color:#999; line-height:1.4; margin:-8px 0 15px 0; text-align:center;">
                     Se il dispositivo lo permette, ti suggerirà il numero salvato. Puoi modificarlo prima di continuare.
                 </div>
-                <button onclick="completeRegistration()" class="btn-book btn-action-glow" style="width:100%;">INIZIA L'AVVENTURA</button>
+                <button id="complete-registration-btn" onclick="completeRegistration()" class="btn-book btn-action-glow" style="width:100%;">INIZIA L'AVVENTURA</button>
             </div>
         </div>
 
@@ -12084,7 +12084,9 @@ window.WilduMediaClient = WilduMediaClient;
     let authRecoveryTimer = null;
     let authRecoveryAttempt = 0;
     let lastBackendVerifiedUid = '';
+    let isRegistrationCompletionInProgress = false;
     const AUTH_RECOVERY_DELAYS_MS = [250, 1000, 3000, 8000];
+    const REGISTRATION_PROFILE_CONFIRM_DELAYS_MS = [0, 450];
 
     // ==========================================
     // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
@@ -14568,6 +14570,7 @@ function loginWithGoogleRedirect() {
 
 async function completeRegistration() {
     const phone = document.getElementById('reg-phone').value.trim();
+    const submitButton = document.getElementById('complete-registration-btn');
     if (phone.length < 8) {
         authProbeInProgress = false;
         profileCompletionRequired = true;
@@ -14575,6 +14578,10 @@ async function completeRegistration() {
         showToast("Inserisci un numero valido per le prenotazioni.");
         return;
     }
+
+    if (isRegistrationCompletionInProgress) return;
+    isRegistrationCompletionInProgress = true;
+    if (submitButton) submitButton.disabled = true;
 
     rememberWilduLastKnownPhone(phone);
 
@@ -14598,7 +14605,7 @@ async function completeRegistration() {
             return showToast("Errore di sessione. Ricarica l'app.");
         }
 
-        const existingSnap = await FS.getUtente(userId);
+        const existingSnap = await FS.getUtente(userId, { source: 'server' });
         const existingData = existingSnap.exists ? (existingSnap.data() || {}) : {};
 
         let payload;
@@ -14628,46 +14635,120 @@ async function completeRegistration() {
 
         await FS.setUtente(userId, payload);
 
+        // Il set completato e' gia' una conferma server. La rilettura canonica
+        // rafforza la verifica, ma una sua indisponibilita' temporanea non deve
+        // riaprire il wizard ne' richiedere un secondo salvataggio manuale.
+        let persistedData = {
+            ...existingData,
+            ...payload,
+            nome: userName,
+            telefono: phone
+        };
+        let persistedPhone = phone;
+        let readbackError = null;
+
+        try {
+            const persistedSnap = await FS.getUtente(userId, { source: 'server' });
+            const canonicalData = persistedSnap.exists ? (persistedSnap.data() || {}) : {};
+            const canonicalPhone = String(canonicalData.telefono || '').trim();
+
+            if (!persistedSnap.exists || canonicalPhone !== phone) {
+                const persistenceError = new Error('Profilo non confermato dalla rilettura Firestore.');
+                persistenceError.code = 'REGISTRATION_PROFILE_NOT_PERSISTED';
+                throw persistenceError;
+            }
+
+            persistedData = canonicalData;
+            persistedPhone = canonicalPhone;
+        } catch (error) {
+            if (error?.code === 'REGISTRATION_PROFILE_NOT_PERSISTED') throw error;
+            readbackError = error;
+            console.warn('Profilo scritto; rilettura Firestore rinviata:', error);
+        }
+
+        if (mode === 'WEB' && String(auth.currentUser?.uid || '') !== String(userId)) {
+            authProbeInProgress = false;
+            reconcileProfileShellWithClientSession();
+            return;
+        }
+
+        cachedXPData = {
+            ...(cachedXPData || {}),
+            xp: parseInt(persistedData.xp ?? existingData.xp ?? 0, 10),
+            grado: persistedData.grado || existingData.grado || "Socio Novizio",
+            nome: persistedData.nome || userName,
+            telefono: persistedPhone,
+            legalConsents: persistedData.legalConsents || existingData.legalConsents || {},
+            config: config
+        };
+
+        const nameInput = document.getElementById('user-name-input');
+        const phoneInput = document.getElementById('user-phone-input');
+        if (nameInput) nameInput.value = cachedXPData.nome;
+        if (phoneInput) phoneInput.value = cachedXPData.telefono;
+        syncWilduPassportSummary({
+            nome: cachedXPData.nome,
+            telefono: cachedXPData.telefono
+        });
+
         profileCompletionRequired = false;
         authProbeInProgress = mode === 'WEB';
         reconcileProfileShellWithClientSession();
 
-        if (existingSnap.exists) {
-            cachedXPData = {
-                ...(cachedXPData || {}),
-                xp: parseInt(existingData.xp || 0, 10),
-                grado: existingData.grado || "Socio Novizio",
-                nome: userName,
-                telefono: phone,
-                legalConsents: existingData.legalConsents || {},
-                config: config
-            };
-        }
-
         if (mode === 'WEB') {
             tempTelegramUser = null;
             try {
-                let refreshedData = await fetchInitData({ force: true, reason: 'REGISTRATION_COMPLETE' });
-                if (!refreshedData) {
-                    refreshedData = await fetchInitData({ force: false, reason: 'REGISTRATION_STALE_RETRY' });
+                let refreshedData = null;
+                let refreshError = null;
+                let sessionConfirmed = false;
+
+                for (let attempt = 0; attempt < REGISTRATION_PROFILE_CONFIRM_DELAYS_MS.length; attempt += 1) {
+                    const delayMs = REGISTRATION_PROFILE_CONFIRM_DELAYS_MS[attempt];
+                    if (delayMs > 0) {
+                        await new Promise(resolve => window.setTimeout(resolve, delayMs));
+                    }
+
+                    try {
+                        refreshedData = await fetchInitData({
+                            force: true,
+                            reason: attempt === 0 ? 'REGISTRATION_COMPLETE' : 'REGISTRATION_CANONICAL_RETRY'
+                        });
+                    } catch (attemptError) {
+                        refreshError = attemptError;
+                        continue;
+                    }
+
+                    const currentAuthUid = String(auth.currentUser?.uid || '');
+                    const canonicalProfile = refreshedData?.userOverlay?.profile || null;
+                    sessionConfirmed =
+                        currentAuthUid === String(userId) &&
+                        refreshedData?.authState === 'LOGGED' &&
+                        canonicalProfile?.exists === true &&
+                        String(canonicalProfile.uid || '') === String(userId) &&
+                        String(canonicalProfile.telefono || '').trim() === phone &&
+                        isClientLogged();
+
+                    if (sessionConfirmed) break;
                 }
 
-                const currentAuthUid = String(auth.currentUser?.uid || '');
-                const sessionConfirmed =
-                    currentAuthUid === String(userId) &&
-                    refreshedData?.authState === 'LOGGED' &&
-                    isClientLogged();
-
                 if (!sessionConfirmed) {
-                    const sessionError = new Error('Sessione registrata non confermata dal bootstrap autenticato.');
+                    const sessionError = refreshError || readbackError || new Error('Profilo registrato non confermato dal bootstrap autenticato.');
                     sessionError.code = 'REGISTRATION_SESSION_NOT_CONFIRMED';
                     throw sessionError;
                 }
             } catch (refreshError) {
                 console.error("Profilo salvato, ma aggiornamento dati fallito:", refreshError);
                 authProbeInProgress = false;
-                updateProfileUI();
-                showToast("Profilo salvato. Ricarica l'app per aggiornare i dati.");
+                if (auth.currentUser && String(auth.currentUser.uid || '') === String(userId)) {
+                    holdClientAuthPending(
+                        auth.currentUser,
+                        "Profilo salvato. Completo automaticamente la sincronizzazione...",
+                        'REGISTRATION_BACKEND_RETRY'
+                    );
+                } else {
+                    reconcileProfileShellWithClientSession();
+                }
+                showToast("Profilo salvato. Sincronizzazione automatica in corso.");
                 return;
             }
             authProbeInProgress = false;
@@ -14709,6 +14790,9 @@ async function completeRegistration() {
         profileCompletionRequired = true;
         reconcileProfileShellWithClientSession();
         showToast("Errore durante la registrazione. Riprova.");
+    } finally {
+        isRegistrationCompletionInProgress = false;
+        if (submitButton) submitButton.disabled = false;
     }
 }
 
@@ -14882,7 +14966,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.30';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.31';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
