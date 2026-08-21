@@ -3739,6 +3739,51 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     border-radius: 15px !important;
     box-shadow: 0 8px 22px rgba(0,0,0,.36) !important;
 }
+
+/* WILDU PERF P4 - containment progressivo, con fallback CSS nativo. */
+@supports (content-visibility: auto) {
+    #event-list > .wildu-adventure-card:not(:focus-within),
+    #openday-list > .wildu-adventure-card:not(:focus-within),
+    #payday-list > .wildu-adventure-card:not(:focus-within) {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 473px;
+    }
+
+    #ondemand-list > .wildu-adventure-card:not(:focus-within) {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 420px;
+    }
+}
+
+/* Durante il solo drag evitiamo di ridipingere effetti costosi su decine di card. */
+html.wildu-travel-swipe-active #event-list > .wildu-adventure-card,
+html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card,
+html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card,
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card {
+    box-shadow: 0 3px 10px rgba(0,0,0,.28) !important;
+}
+
+html.wildu-travel-swipe-active #event-list > .wildu-adventure-card::before,
+html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card::before,
+html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card::before,
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card::before {
+    opacity: 0 !important;
+}
+
+html.wildu-travel-swipe-active #event-list > .wildu-adventure-card img,
+html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card img,
+html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card img,
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card img {
+    box-shadow: none !important;
+}
+
+html.wildu-travel-swipe-active #event-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card [style*="backdrop-filter"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
 .wildu-adventure-title {
     display: block !important;
     min-width: 0 !important;
@@ -6469,7 +6514,7 @@ html.wildu-detail-transition-busy body {
 
             <div class="wildu-travelhub-carousel" aria-label="Scelte di partenza Wild-U">
                 <button type="button" class="wildu-travelhub-card" onclick="showWilduNavTab('events')">
-                    <img data-wildu-travelhub-image-slot="0" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg" alt="" loading="lazy" aria-hidden="true">
+                    <img data-wildu-travelhub-image-slot="0" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg" alt="" loading="lazy" decoding="async" width="760" height="520" aria-hidden="true">
                     <span class="wildu-travelhub-card-cta">Apri viaggi</span>
                     <span class="wildu-travelhub-card-body">
                         <span class="wildu-travelhub-card-label">Catalogo viaggi</span>
@@ -6479,7 +6524,7 @@ html.wildu-detail-transition-busy body {
                 </button>
 
                 <button type="button" class="wildu-travelhub-card" onclick="showWilduNavTab('free')">
-                    <img data-wildu-travelhub-image-slot="1" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1783868857/PARTNER/qrqhaczo4drtjfdjtdyq.jpg" alt="" loading="lazy" aria-hidden="true">
+                    <img data-wildu-travelhub-image-slot="1" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1783868857/PARTNER/qrqhaczo4drtjfdjtdyq.jpg" alt="" loading="lazy" decoding="async" width="760" height="520" aria-hidden="true">
                     <span class="wildu-travelhub-card-cta">Apri eventi gratis</span>
                     <span class="wildu-travelhub-card-body">
                         <span class="wildu-travelhub-card-label">Gratis Open Day</span>
@@ -6489,7 +6534,7 @@ html.wildu-detail-transition-busy body {
                 </button>
 
                 <button type="button" class="wildu-travelhub-card" onclick="showWilduNavTab('ondemand')">
-                    <img data-wildu-travelhub-image-slot="2" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg" alt="" loading="lazy" aria-hidden="true">
+                    <img data-wildu-travelhub-image-slot="2" src="https://res.cloudinary.com/daiyrgmbb/image/upload/c_fill,g_auto,w_760,h_520,q_auto,f_auto/v1774447606/PARTNER/unkdnn9ytfazkuuzjtnt.jpg" alt="" loading="lazy" decoding="async" width="760" height="520" aria-hidden="true">
                     <span class="wildu-travelhub-card-cta">Apri su richiesta</span>
                     <span class="wildu-travelhub-card-body">
                         <span class="wildu-travelhub-card-label">Su richiesta</span>
@@ -13211,6 +13256,9 @@ function requireLoggedAccess(reason, options = {}) {
         }
 
         if (isPageActive && xpCelebrationBuffer > 0) processXPBuffer();
+        if (typeof resumeWilduCatalogCoverPreload === 'function') {
+            resumeWilduCatalogCoverPreload();
+        }
         resumeWilduAudioAfterHiddenPage();
     });
 
@@ -14978,7 +15026,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.32';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.33';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16961,6 +17009,279 @@ function isPublicCacheStillValid(envelope) {
     return (Date.now() - envelope.savedAt) < getWilduPublicCacheTtlMs();
 }
 
+const WILDU_CATALOG_COVER_PRELOAD_CONCURRENCY = 3;
+const WILDU_CATALOG_COLD_CRITICAL_LIMIT = 1;
+const WILDU_CATALOG_COLD_WAIT_MS = 500;
+const WILDU_CATALOG_COVER_LOAD_TIMEOUT_MS = 8000;
+const WILDU_CATALOG_COVER_PRELOAD_RUNTIME = {
+    queue: [],
+    queued: new Set(),
+    inFlight: new Map(),
+    outcomes: new Map(),
+    scheduled: false,
+    active: 0
+};
+
+function getWilduCatalogCoverRaw(item) {
+    if (!item || typeof item !== 'object') return '';
+    return item.immagine || item.imageUrl || item.fotoUrl || item.image || item.foto || '';
+}
+
+function normalizeWilduCatalogCoverUrl(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+
+    try {
+        const parsed = new URL(formatAssetLink(value), window.location.href);
+        const isLocalHttp = parsed.protocol === 'http:' &&
+            (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+        if (parsed.protocol !== 'https:' && !isLocalHttp) return '';
+        return parsed.href;
+    } catch (e) {
+        return '';
+    }
+}
+
+function collectWilduCatalogCoverUrls() {
+    const result = [];
+    const seen = new Set();
+    const catalogs = [allTrips, allOpenDays, allPayDays, allOnDemandTrips];
+
+    catalogs.forEach(function (items) {
+        if (!Array.isArray(items)) return;
+        items.forEach(function (item) {
+            const url = normalizeWilduCatalogCoverUrl(getWilduCatalogCoverRaw(item));
+            if (!url || seen.has(url)) return;
+            seen.add(url);
+            result.push(url);
+        });
+    });
+
+    return result;
+}
+
+function collectWilduCriticalBootImageUrls(covers) {
+    const result = [];
+    const seen = new Set();
+    const hero = normalizeWilduCatalogCoverUrl(WILD_ASSETS && WILD_ASSETS.img_header);
+
+    [hero].concat(Array.isArray(covers) ? covers : []).some(function (url) {
+        if (!url || seen.has(url)) return false;
+        seen.add(url);
+        result.push(url);
+        return result.length >= WILDU_CATALOG_COLD_CRITICAL_LIMIT;
+    });
+
+    return result;
+}
+
+function getWilduCatalogCoverPreloadConcurrency() {
+    try {
+        const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        const effectiveType = String(connection && connection.effectiveType || '').toLowerCase();
+        if (connection && connection.saveData === true) return 1;
+        if (effectiveType === 'slow-2g' || effectiveType === '2g') return 1;
+        if (effectiveType === '3g') return 2;
+    } catch (e) {}
+
+    return WILDU_CATALOG_COVER_PRELOAD_CONCURRENCY;
+}
+
+function preloadWilduCatalogCoverUrl(url, options) {
+    options = options || {};
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    if (!url) return Promise.resolve('skipped');
+    if (runtime.outcomes.has(url)) return Promise.resolve(runtime.outcomes.get(url));
+    if (runtime.inFlight.has(url)) return runtime.inFlight.get(url);
+
+    runtime.queued.delete(url);
+
+    const promise = new Promise(function (resolve) {
+        let settled = false;
+        let timer = null;
+        const image = new Image();
+
+        function finish(outcome) {
+            if (settled) return;
+            settled = true;
+            if (timer) clearTimeout(timer);
+            image.onload = null;
+            image.onerror = null;
+            if (outcome === 'timeout') {
+                try { image.removeAttribute('src'); } catch (e) {}
+            }
+            runtime.outcomes.set(url, outcome);
+            resolve(outcome);
+        }
+
+        image.decoding = 'async';
+        image.loading = 'eager';
+        image.referrerPolicy = 'no-referrer';
+        if ('fetchPriority' in image) image.fetchPriority = options.critical === true ? 'high' : 'low';
+        image.onload = function () {
+            if (options.critical !== true || typeof image.decode !== 'function') {
+                finish('loaded');
+                return;
+            }
+
+            Promise.race([
+                image.decode().catch(function () {}),
+                new Promise(function (done) { setTimeout(done, 450); })
+            ]).then(function () {
+                finish('loaded');
+            });
+        };
+        image.onerror = function () { finish('failed'); };
+        timer = setTimeout(function () { finish('timeout'); }, WILDU_CATALOG_COVER_LOAD_TIMEOUT_MS);
+        image.src = url;
+    });
+
+    runtime.inFlight.set(url, promise);
+    promise.finally(function () {
+        runtime.inFlight.delete(url);
+    });
+    return promise;
+}
+
+function runWilduCatalogCoverPreloadBatch() {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    runtime.scheduled = false;
+    if (document.hidden) return;
+
+    const concurrency = getWilduCatalogCoverPreloadConcurrency();
+    while (runtime.active < concurrency && runtime.queue.length) {
+        const url = runtime.queue.shift();
+        if (!runtime.queued.delete(url)) continue;
+        if (runtime.outcomes.has(url) || runtime.inFlight.has(url)) continue;
+
+        runtime.active += 1;
+        preloadWilduCatalogCoverUrl(url).finally(function () {
+            runtime.active = Math.max(0, runtime.active - 1);
+            scheduleWilduCatalogCoverPreload();
+        });
+    }
+
+    if (runtime.queue.length && runtime.active < concurrency) {
+        scheduleWilduCatalogCoverPreload();
+    }
+}
+
+function scheduleWilduCatalogCoverPreload() {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    if (runtime.scheduled || document.hidden || !runtime.queue.length) return;
+    runtime.scheduled = true;
+
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(runWilduCatalogCoverPreloadBatch, { timeout: 300 });
+    } else {
+        setTimeout(runWilduCatalogCoverPreloadBatch, 40);
+    }
+}
+
+function resumeWilduCatalogCoverPreload() {
+    scheduleWilduCatalogCoverPreload();
+}
+
+function queueWilduCatalogCoverPreload(reason) {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    const covers = collectWilduCatalogCoverUrls();
+    let added = 0;
+
+    covers.forEach(function (url) {
+        if (runtime.outcomes.has(url) || runtime.inFlight.has(url) || runtime.queued.has(url)) return;
+        runtime.queued.add(url);
+        runtime.queue.push(url);
+        added += 1;
+    });
+
+    try {
+        pageDebug('CATALOG_COVER_PRELOAD_QUEUED', {
+            reason: String(reason || ''),
+            added,
+            totalUnique: covers.length,
+            pending: runtime.queue.length
+        });
+    } catch (e) {}
+
+    scheduleWilduCatalogCoverPreload();
+    return covers;
+}
+
+function waitForWilduCriticalBootImages(covers) {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    const criticalUrls = collectWilduCriticalBootImageUrls(covers);
+    if (!criticalUrls.length) return Promise.resolve();
+
+    const concurrency = getWilduCatalogCoverPreloadConcurrency();
+    let offset = 0;
+
+    criticalUrls.forEach(function (url) {
+        runtime.queued.delete(url);
+    });
+
+    function loadNextBatch() {
+        if (offset >= criticalUrls.length) return Promise.resolve();
+        const availableSlots = Math.max(0, concurrency - runtime.active);
+
+        if (!availableSlots) {
+            const activeRequests = Array.from(runtime.inFlight.values());
+            if (activeRequests.length) {
+                return Promise.race(activeRequests).catch(function () {}).then(loadNextBatch);
+            }
+            return new Promise(function (resolve) {
+                setTimeout(resolve, 40);
+            }).then(loadNextBatch);
+        }
+
+        const batch = criticalUrls.slice(offset, offset + availableSlots);
+        offset += batch.length;
+        return Promise.all(batch.map(function (url) {
+            if (runtime.outcomes.has(url) || runtime.inFlight.has(url)) {
+                return preloadWilduCatalogCoverUrl(url, { critical: true });
+            }
+
+            runtime.active += 1;
+            return preloadWilduCatalogCoverUrl(url, { critical: true }).finally(function () {
+                runtime.active = Math.max(0, runtime.active - 1);
+                scheduleWilduCatalogCoverPreload();
+            });
+        })).then(loadNextBatch);
+    }
+
+    const criticalLoad = loadNextBatch();
+    const bootElapsed = Math.max(0, Date.now() - Number(WILDU_BOOT_VEIL_STARTED_AT || Date.now()));
+    const remainingBudget = Math.max(0, WILDU_CATALOG_COLD_WAIT_MS - bootElapsed);
+
+    if (!remainingBudget) return Promise.resolve();
+
+    return Promise.race([
+        criticalLoad,
+        new Promise(function (resolve) {
+            setTimeout(resolve, remainingBudget);
+        })
+    ]);
+}
+
+function markWilduBootVeilStableWithCatalogCovers(reason, options) {
+    options = options || {};
+    const cold = options.cold === true;
+    const covers = collectWilduCatalogCoverUrls();
+
+    if (!cold) {
+        queueWilduCatalogCoverPreload(reason);
+        markWilduBootVeilStable(reason);
+        return;
+    }
+
+    updateWilduBootVeilStatus('Preparo le prime immagini del viaggio...');
+    waitForWilduCriticalBootImages(covers)
+        .catch(function () {})
+        .finally(function () {
+            queueWilduCatalogCoverPreload(reason);
+            markWilduBootVeilStable(reason);
+        });
+}
+
 function armPublicCacheBypassOnce() {
     sessionStorage.setItem(PUBLIC_CACHE_BYPASS_KEY, String(Date.now()));
 }
@@ -17326,6 +17647,7 @@ if (cachedPublicData && !bypassPublicCache) {
         renderPayDays();
         renderOnDemandTrips();
         hydrateWilduTravelHubImages(true);
+        queueWilduCatalogCoverPreload('PUBLIC_CACHE_RENDER');
         reconcileProfileShellWithClientSession();
         if (!consumeWilduSharedExperienceUrlParamOnce('PUBLIC_CACHE_RENDER')) {
             consumeWilduOpenProfileUrlParamOnce('PUBLIC_CACHE_RENDER');
@@ -17348,7 +17670,9 @@ if (cachedPublicData && !bypassPublicCache) {
     mode: 'CACHE_ONLY_NO_REMOTE_FETCH'
 });
 
-            markWilduBootVeilStable('PUBLIC_CACHE_SHORT_CIRCUIT');
+            markWilduBootVeilStableWithCatalogCovers('PUBLIC_CACHE_SHORT_CIRCUIT', {
+                cold: false
+            });
             
             return cachedPublicData;
         }
@@ -17515,7 +17839,9 @@ const publicCachePayload = {
                 }, 700);
             }
 
-            markWilduBootVeilStable('INITDATA_REMOTE_RENDERED');
+            markWilduBootVeilStableWithCatalogCovers('INITDATA_REMOTE_RENDERED', {
+                cold: !cachedPublicData || bypassPublicCache || force
+            });
 
             return data;
 
@@ -19863,6 +20189,59 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         sortMode: 'date'
     };
     let tripFiltersPanelOpen = false;
+    let wilduTripRenderState = {
+        signature: null,
+        token: 0,
+        childCount: -1
+    };
+
+    function buildWilduTripRenderSignature(today) {
+        try {
+            const localDay = [
+                today.getFullYear(),
+                String(today.getMonth() + 1).padStart(2, '0'),
+                String(today.getDate()).padStart(2, '0')
+            ].join('-');
+
+            return JSON.stringify({
+                category: 'events-catalog',
+                localDay,
+                shellVersion: typeof WILDU_EMBEDDED_SHELL_VERSION === 'string'
+                    ? WILDU_EMBEDDED_SHELL_VERSION
+                    : '',
+                filters: {
+                    month: activeFilters.month,
+                    region: activeFilters.region,
+                    title: activeFilters.title,
+                    nearDate: activeFilters.nearDate,
+                    sortMode: activeFilters.sortMode
+                },
+                trips: allTrips,
+                payDays: allPayDays
+            });
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function canReuseWilduTripRender(target, signature) {
+        if (!target || signature === null || wilduTripRenderState.signature !== signature) return false;
+        if (target.dataset.wilduTripRenderToken !== String(wilduTripRenderState.token)) return false;
+        return target.children.length === wilduTripRenderState.childCount;
+    }
+
+    function markWilduTripRender(target, signature, childCount) {
+        if (!target || signature === null) {
+            wilduTripRenderState.signature = null;
+            wilduTripRenderState.childCount = -1;
+            return;
+        }
+
+        wilduTripRenderState.token += 1;
+        wilduTripRenderState.signature = signature;
+        wilduTripRenderState.childCount = childCount;
+        target.dataset.wilduTripRenderToken = String(wilduTripRenderState.token);
+    }
 
     function buildFilters() {
         const monthOrder = {'01':1, '02':2, '03':3, '04':4, '05':5, '06':6, '07':7, '08':8, '09':9, '10':10, '11':11, '12':12};
@@ -20405,6 +20784,12 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
 function filterTrips() {
         const today = new Date();
         today.setHours(0,0,0,0);
+        const renderTarget = document.getElementById('event-list');
+        const renderSignature = buildWilduTripRenderSignature(today);
+
+        if (canReuseWilduTripRender(renderTarget, renderSignature)) {
+            return;
+        }
 
         const mergedCatalog = [
             ...allTrips.map(t => ({ ...t, isHike: false })),
@@ -20468,6 +20853,7 @@ function filterTrips() {
 
         renderTripFilterSummary(filtered.length);
         renderTrips(filtered, 'event-list');
+        markWilduTripRender(renderTarget, renderSignature, filtered.length);
     }
 
 function normalizeWilduExternalCardTimeLabel(value) {
@@ -21730,7 +22116,7 @@ function renderOnDemandTrips() {
         }).join('');
         const mediaHtml =
             '<div class="wildu-ondemand-card-media' + (image ? '' : ' is-empty') + '">' +
-                (image ? '<img src="' + escapeOnDemandHtml(formatAssetLink(image)) + '" loading="lazy" alt="' + escapeOnDemandHtml(title) + '">' : '') +
+                (image ? '<img src="' + escapeOnDemandHtml(formatAssetLink(image)) + '" loading="lazy" decoding="async" width="700" height="380" alt="' + escapeOnDemandHtml(title) + '">' : '') +
                 '<div class="wildu-ondemand-card-overlay">' +
                     '<div class="wildu-ondemand-card-kicker">' +
                         '<span class="wildu-ondemand-card-type">Su richiesta</span>' +
@@ -22020,7 +22406,7 @@ function renderTrips(trips, targetId) {
         // --- IMMAGINE ---
         const imgUrl = ev.immagine || ev.fotoUrl || "";
         let imgHtml = imgUrl && imgUrl.trim() !== ""
-            ? `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}${xpFloatingBadge}</div>`
+            ? `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}${xpFloatingBadge}</div>`
             : `<div style="margin-bottom:15px; position:relative; min-height:38px;">${badgeHtml}${xpFloatingBadge}</div>`;
 
         // --- RENDER IBRIDO ---
@@ -23429,7 +23815,7 @@ configureWilduDetailDateOptions('trip', ev, id);
             const imgUrl = od["immagine"] || od["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`;
+                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
             } else {
                 imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
             }
@@ -23557,7 +23943,7 @@ function renderPayDays() {
             const imgUrl = pd["immagine"] || pd["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy">${badgeHtml}</div>`;
+                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
             } else {
                 imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
             }
@@ -26792,7 +27178,14 @@ if (profKeyEl) {
         return section && !section.classList.contains('hidden') ? section : null;
     }
 
+    function setWilduTravelTabSwipePerformanceMode(active) {
+        const root = document.documentElement;
+        if (!root) return;
+        root.classList.toggle('wildu-travel-swipe-active', active === true);
+    }
+
     function resetWilduTravelTabSwipeVisual(el, animated, options = {}) {
+        setWilduTravelTabSwipePerformanceMode(false);
         if (!el) return;
         el.style.transition = animated === false ? 'none' : 'transform .22s cubic-bezier(.2,.85,.2,1), opacity .18s ease';
         el.style.transform = '';
@@ -26820,7 +27213,9 @@ if (profKeyEl) {
         el.style.transition = 'none';
         el.style.transform = 'translateX(' + (sign * 118) + 'px) rotate(' + (sign * 4.2) + 'deg)';
         el.style.opacity = '.42';
-        el.style.willChange = 'transform, opacity';
+        el.style.willChange = el.scrollHeight <= Math.max(window.innerHeight * 4, 3200)
+            ? 'transform, opacity'
+            : '';
 
         requestAnimationFrame(function () {
             requestAnimationFrame(function () {
@@ -26840,17 +27235,116 @@ if (profKeyEl) {
         }, 470);
     }
 
+    function cancelWilduTravelTabSwipeFrame(state) {
+        if (!state) return;
+        if (state.frameId !== null) {
+            window.cancelAnimationFrame(state.frameId);
+            state.frameId = null;
+        }
+        state.pendingFrame = null;
+    }
+
+    function applyWilduTravelTabSwipeFrame(state) {
+        if (!state) return;
+        state.frameId = null;
+
+        const frame = state.pendingFrame;
+        state.pendingFrame = null;
+        if (!frame || !state.tracking) return;
+
+        const targetTab = frame.targetTab;
+        const dx = frame.dx;
+        const absX = frame.absX;
+        const visualEl = state.visualEl;
+        const refs = state.refs || {};
+
+        setWilduTravelTabSwipePerformanceMode(true);
+
+        if (visualEl) {
+            const damped = targetTab ? dx * .32 : dx * .12;
+            const rotate = Math.max(-4.0, Math.min(4.0, dx / 96));
+            const opacity = Math.max(.72, 1 - (absX / 560));
+            visualEl.style.transition = 'none';
+            visualEl.style.transform = 'translateX(' + damped + 'px) rotate(' + rotate + 'deg)';
+            visualEl.style.opacity = String(opacity);
+            visualEl.style.willChange = state.promoteVisual ? 'transform, opacity' : '';
+        }
+
+        const preview = refs.preview;
+        if (preview && targetTab) {
+            if (state.lastPreviewTarget !== targetTab) {
+                preview.textContent = getWilduTravelTabSwipePreviewText(targetTab, dx);
+                state.lastPreviewTarget = targetTab;
+            }
+            const progress = Math.max(0, Math.min(1, Number(absX || 0) / 150));
+            const side = dx < 0 ? 1 : -1;
+            preview.style.transform = 'translate(calc(-50% + ' + (side * (1 - progress) * 58).toFixed(1) + 'px), -50%) rotate(' + (side * (1 - progress) * -1.8).toFixed(2) + 'deg) scale(' + (0.90 + progress * 0.10).toFixed(3) + ')';
+            preview.style.opacity = String(Math.max(0, Math.min(1, 0.18 + progress * 0.82)));
+            if (!state.feedbackVisible) {
+                preview.classList.remove('is-dismissing');
+                preview.classList.add('is-visible');
+            }
+        }
+
+        const ghost = refs.ghost;
+        if (ghost && targetTab) {
+            if (state.lastGhostTarget !== targetTab) {
+                const meta = getWilduTravelSwipeGhostMeta(targetTab);
+                if (refs.ghostKicker) refs.ghostKicker.textContent = meta.kicker;
+                if (refs.ghostTitle) refs.ghostTitle.textContent = meta.title;
+                if (refs.ghostCopy) refs.ghostCopy.textContent = meta.copy;
+                ghost.setAttribute('data-target-tab', targetTab);
+                state.lastGhostTarget = targetTab;
+            }
+            const progress = Math.max(0, Math.min(1, Number(absX || 0) / 168));
+            const side = dx < 0 ? 1 : -1;
+            ghost.style.left = side > 0 ? 'auto' : '18px';
+            ghost.style.right = side > 0 ? '18px' : 'auto';
+            ghost.style.transform = 'translateX(' + (side * (1 - progress) * 112).toFixed(1) + 'px) rotate(' + (side * (1 - progress) * 4.0).toFixed(2) + 'deg) scale(' + (0.90 + progress * 0.10).toFixed(3) + ')';
+            ghost.style.opacity = String(Math.max(0, Math.min(1, 0.10 + progress * 0.82)));
+            if (!state.feedbackVisible) {
+                ghost.classList.remove('is-dismissing');
+                ghost.classList.add('is-visible');
+            }
+        }
+
+        const hintText = targetTab && absX >= 82
+            ? 'Rilascia per cambiare sezione'
+            : 'Trascina per cambiare sezione';
+        if (refs.hint && state.lastHintText !== hintText) {
+            refs.hint.textContent = hintText;
+            refs.hint.classList.add('is-visible');
+            state.lastHintText = hintText;
+        }
+
+        state.feedbackVisible = true;
+    }
+
+    function scheduleWilduTravelTabSwipeFrame(state, targetTab, dx, absX) {
+        if (!state) return;
+        state.pendingFrame = { targetTab, dx, absX };
+        if (state.frameId !== null) return;
+        state.frameId = window.requestAnimationFrame(function () {
+            applyWilduTravelTabSwipeFrame(state);
+        });
+    }
+
     function installWilduTravelTabSwipe() {
         if (window.__wilduTravelTabSwipeInstalled) return;
         window.__wilduTravelTabSwipeInstalled = true;
 
         document.addEventListener('touchstart', function (event) {
+            if (wilduTravelTabSwipeTouch) {
+                cancelWilduTravelTabSwipeFrame(wilduTravelTabSwipeTouch);
+                resetWilduTravelTabSwipeVisual(wilduTravelTabSwipeTouch.visualEl, false);
+                wilduTravelTabSwipeTouch = null;
+            }
             const touch = event.touches && event.touches[0];
             if (!touch || !canWilduStartTravelTabSwipe(event.target)) {
-                wilduTravelTabSwipeTouch = null;
                 return;
             }
 
+            const visualEl = getWilduTravelTabSwipeVisualEl();
             wilduTravelTabSwipeTouch = {
                 x: touch.clientX,
                 y: touch.clientY,
@@ -26859,13 +27353,33 @@ if (profKeyEl) {
                 consumed: false,
                 feedbackShownAt: 0,
                 target: event.target,
-                visualEl: getWilduTravelTabSwipeVisualEl()
+                visualEl,
+                promoteVisual: !!visualEl && visualEl.scrollHeight <= Math.max(window.innerHeight * 4, 3200),
+                frameId: null,
+                pendingFrame: null,
+                feedbackVisible: false,
+                lastPreviewTarget: null,
+                lastGhostTarget: null,
+                lastHintText: '',
+                refs: (function () {
+                    const ghost = getWilduTravelSwipeGhostEl();
+                    return {
+                        preview: getWilduTravelSwipePreviewEl(),
+                        ghost,
+                        ghostKicker: ghost ? ghost.querySelector('.wildu-travel-swipe-ghost-kicker') : null,
+                        ghostTitle: ghost ? ghost.querySelector('.wildu-travel-swipe-ghost-title') : null,
+                        ghostCopy: ghost ? ghost.querySelector('.wildu-travel-swipe-ghost-copy') : null,
+                        hint: getWilduSwipeHintEl()
+                    };
+                })()
             };
         }, { passive: true });
 
         document.addEventListener('touchmove', function (event) {
             if (!event.cancelable || !wilduTravelTabSwipeTouch || !wilduTravelTabSwipeTouch.tracking) return;
             if (!canWilduStartTravelTabSwipe(wilduTravelTabSwipeTouch.target)) {
+                cancelWilduTravelTabSwipeFrame(wilduTravelTabSwipeTouch);
+                resetWilduTravelTabSwipeVisual(wilduTravelTabSwipeTouch.visualEl, true);
                 wilduTravelTabSwipeTouch = null;
                 return;
             }
@@ -26899,20 +27413,7 @@ if (profKeyEl) {
                         : Date.now();
                 }
                 event.preventDefault();
-
-                const visualEl = wilduTravelTabSwipeTouch.visualEl;
-                if (visualEl) {
-                    const damped = targetTab ? dx * .32 : dx * .12;
-                    const rotate = Math.max(-4.0, Math.min(4.0, dx / 96));
-                    const opacity = Math.max(.72, 1 - (absX / 560));
-                    visualEl.style.transition = 'none';
-                    visualEl.style.transform = 'translateX(' + damped + 'px) rotate(' + rotate + 'deg)';
-                    visualEl.style.opacity = String(opacity);
-                    visualEl.style.willChange = 'transform, opacity';
-                }
-                showWilduTravelSwipePreview(targetTab, dx, absX);
-                showWilduTravelSwipeGhost(targetTab, dx, absX);
-                showWilduSwipeHint(targetTab && absX >= 82 ? 'Rilascia per cambiare sezione' : 'Trascina per cambiare sezione');
+                scheduleWilduTravelTabSwipeFrame(wilduTravelTabSwipeTouch, targetTab, dx, absX);
             }
         }, { passive: false });
 
@@ -26925,6 +27426,7 @@ if (profKeyEl) {
             const changed = event.changedTouches && event.changedTouches[0];
             const state = wilduTravelTabSwipeTouch;
             wilduTravelTabSwipeTouch = null;
+            cancelWilduTravelTabSwipeFrame(state);
             if (!changed || !state.horizontal || !state.consumed) {
                 resetWilduTravelTabSwipeVisual(state && state.visualEl, true);
                 return;
@@ -26980,6 +27482,7 @@ if (profKeyEl) {
 
         document.addEventListener('touchcancel', function () {
             if (wilduTravelTabSwipeTouch) {
+                cancelWilduTravelTabSwipeFrame(wilduTravelTabSwipeTouch);
                 resetWilduTravelTabSwipeVisual(wilduTravelTabSwipeTouch.visualEl, true);
             }
             wilduTravelTabSwipeTouch = null;
