@@ -177,7 +177,7 @@
     const statusEl = document.getElementById("wildu-games-status");
     const listEl = document.getElementById("wildu-games-list");
     const overlayEl = document.getElementById("wildu-game-fullscreen");
-    const frameEl = document.getElementById("wildu-game-frame");
+    let frameEl = document.getElementById("wildu-game-frame");
     const frameTitleEl = document.getElementById("wildu-game-frame-title");
     const frameShellEl = document.getElementById("wildu-game-frame-shell");
     const closeBtn = document.getElementById("wildu-close-game-fullscreen");
@@ -933,8 +933,16 @@
         overlayEl.style.display = "none";
         overlayEl.setAttribute("aria-hidden", "true");
 
-        // Scarica il gioco e ferma loop/audio/canvas.
-        frameEl.setAttribute("src", "about:blank");
+        // Un gioco può proteggere lo stato con beforeunload e impedire che un
+        // semplice cambio di src scarichi davvero il documento. Sostituire il
+        // nodo distrugge invece il browsing context precedente, fermando in
+        // modo deterministico loop/audio/canvas e preparando un frame pulito
+        // per l'apertura successiva.
+        const previousFrameEl = frameEl;
+        const cleanFrameEl = previousFrameEl.cloneNode(false);
+        cleanFrameEl.setAttribute("src", "about:blank");
+        previousFrameEl.replaceWith(cleanFrameEl);
+        frameEl = cleanFrameEl;
 
         document.body.style.overflow = previousBodyOverflow;
         document.documentElement.style.overflow = previousHtmlOverflow;
