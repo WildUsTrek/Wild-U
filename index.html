@@ -7620,9 +7620,14 @@ const WILDU_FIREBASE = (() => {
                         reset: true,
                         immediate: true
                     });
+                } else if (!auth.currentUser && typeof endWilduGoogleAuthTransition === 'function') {
+                    endWilduGoogleAuthTransition('REDIRECT_EMPTY');
                 }
             })
             .catch((error) => {
+                if (typeof endWilduGoogleAuthTransition === 'function') {
+                    endWilduGoogleAuthTransition('REDIRECT_RESULT_ERROR');
+                }
                 console.error("Errore redirect:", error);
 
                 const code = String(error?.code || '').toLowerCase();
@@ -12144,6 +12149,9 @@ window.WilduMediaClient = WilduMediaClient;
     let isRegistrationCompletionInProgress = false;
     const AUTH_RECOVERY_DELAYS_MS = [250, 1000, 3000, 8000];
     const REGISTRATION_PROFILE_CONFIRM_DELAYS_MS = [0, 450];
+    const WILDU_GOOGLE_AUTH_TRANSITION_KEY = 'wilduGoogleAuthTransition:v1';
+    const WILDU_GOOGLE_AUTH_TRANSITION_TTL_MS = 2 * 60 * 1000;
+    let wilduGoogleAuthTransitionTimer = null;
 
     // ==========================================
     // GUARD CENTRALIZZATO GUEST / LOGGED / TELEGRAM
@@ -12176,6 +12184,78 @@ window.WilduMediaClient = WilduMediaClient;
         };
     }
 
+    function readWilduGoogleAuthTransition() {
+        try {
+            const parsed = JSON.parse(sessionStorage.getItem(WILDU_GOOGLE_AUTH_TRANSITION_KEY) || 'null');
+            return parsed && Number(parsed.startedAt) > 0 ? parsed : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function armWilduGoogleAuthTransitionTimeout(startedAt) {
+        const remaining = Math.max(
+            0,
+            WILDU_GOOGLE_AUTH_TRANSITION_TTL_MS - (Date.now() - Number(startedAt || 0))
+        );
+        if (wilduGoogleAuthTransitionTimer) {
+            window.clearTimeout(wilduGoogleAuthTransitionTimer);
+            wilduGoogleAuthTransitionTimer = null;
+        }
+        if (!remaining) return;
+        wilduGoogleAuthTransitionTimer = window.setTimeout(function () {
+            wilduGoogleAuthTransitionTimer = null;
+            endWilduGoogleAuthTransition('TTL_EXPIRED');
+        }, remaining);
+    }
+
+    function isWilduGoogleAuthTransitionActive() {
+        const state = readWilduGoogleAuthTransition();
+        if (!state) return false;
+        if ((Date.now() - Number(state.startedAt)) >= WILDU_GOOGLE_AUTH_TRANSITION_TTL_MS) {
+            try { sessionStorage.removeItem(WILDU_GOOGLE_AUTH_TRANSITION_KEY); } catch (e) {}
+            return false;
+        }
+        armWilduGoogleAuthTransitionTimeout(state.startedAt);
+        return true;
+    }
+
+    function beginWilduGoogleAuthTransition(mode) {
+        const state = {
+            startedAt: Date.now(),
+            mode: String(mode || 'POPUP').toUpperCase()
+        };
+        try {
+            sessionStorage.setItem(WILDU_GOOGLE_AUTH_TRANSITION_KEY, JSON.stringify(state));
+        } catch (e) {}
+        armWilduGoogleAuthTransitionTimeout(state.startedAt);
+        if (typeof pauseWilduCatalogCoverPreload === 'function') {
+            pauseWilduCatalogCoverPreload('GOOGLE_AUTH', { cancelInFlight: true });
+        }
+        try {
+            pageDebug('GOOGLE_AUTH_TRANSITION_STARTED', { mode: state.mode });
+        } catch (e) {}
+    }
+
+    function endWilduGoogleAuthTransition(reason) {
+        const wasActive = !!readWilduGoogleAuthTransition();
+        try { sessionStorage.removeItem(WILDU_GOOGLE_AUTH_TRANSITION_KEY); } catch (e) {}
+        if (wilduGoogleAuthTransitionTimer) {
+            window.clearTimeout(wilduGoogleAuthTransitionTimer);
+            wilduGoogleAuthTransitionTimer = null;
+        }
+        if (typeof resumeWilduCatalogCoverPreload === 'function') {
+            resumeWilduCatalogCoverPreload('GOOGLE_AUTH');
+        }
+        if (wasActive) {
+            try {
+                pageDebug('GOOGLE_AUTH_TRANSITION_ENDED', {
+                    reason: String(reason || 'UNKNOWN')
+                });
+            } catch (e) {}
+        }
+    }
+
     function syncClientSessionFromInitData(data) {
         const channel = String(data?.channel || (isTelegramContext() ? 'TELEGRAM' : 'WEB')).toUpperCase() === 'TELEGRAM'
             ? 'TELEGRAM'
@@ -12200,6 +12280,7 @@ window.WilduMediaClient = WilduMediaClient;
             wildUserKey = data.userOverlay.profile.uid;
             lastBackendVerifiedUid = String(wildUserKey);
             localStorage.setItem('wildUserKey', wildUserKey);
+            endWilduGoogleAuthTransition('BACKEND_LOGGED');
         } else {
             lastBackendVerifiedUid = '';
             wildUserKey = null;
@@ -13251,6 +13332,11 @@ function requireLoggedAccess(reason, options = {}) {
         isPageActive = !document.hidden;
 
         if (document.hidden) {
+            if (typeof pauseWilduCatalogCoverPreload === 'function') {
+                pauseWilduCatalogCoverPreload('PAGE_HIDDEN', {
+                    cancelInFlight: typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice()
+                });
+            }
             pauseWilduAudioForHiddenPage();
             return;
         }
@@ -14290,6 +14376,7 @@ async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
         // OFFLINE: non proviamo a capire se è un nuovo utente.
         // Niente complete-profile-screen, niente deduzioni sul DB.
 if (!navigator.onLine) {
+    endWilduGoogleAuthTransition('AUTH_RETURNED_OFFLINE');
     holdClientAuthPending(
         user,
         "Accesso Google riuscito. Attendo la connessione per sincronizzare il profilo.",
@@ -14391,6 +14478,7 @@ if (docSnap.exists) {
 
     clearClientAuthRecovery();
     authProbeInProgress = false;
+    endWilduGoogleAuthTransition('PROFILE_CONFIRMED');
     updateProfileUI();
 } else {
                 // Il backend canonico ha confermato che il profilo non esiste.
@@ -14399,11 +14487,13 @@ if (docSnap.exists) {
                 clearClientPrivateRuntimeState();
                 profileCompletionRequired = true;
                 authProbeInProgress = false;
+                endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
                 reconcileProfileShellWithClientSession();
             }
 
         } catch (e) {
             authRefreshLock = false;
+            endWilduGoogleAuthTransition('AUTH_PROCESSING_ERROR');
             console.error("Firestore error:", e);
 
             const errCode = String(e?.code || '').toLowerCase();
@@ -14492,14 +14582,19 @@ function loginWithGoogle() {
         prompt: 'select_account'
     });
 
+    // Deve restare sincrono rispetto al tap: nessun await prima del popup.
+    beginWilduGoogleAuthTransition('POPUP');
     auth.signInWithPopup(provider).then((result) => {
         if (result?.user || auth.currentUser) {
             scheduleClientAuthRecovery('POPUP_SUCCESS', {
                 reset: true,
                 immediate: true
             });
+        } else {
+            endWilduGoogleAuthTransition('POPUP_EMPTY');
         }
     }).catch((error) => {
+        endWilduGoogleAuthTransition('POPUP_ERROR');
         console.error("Errore login Google Popup:", error);
 
         const code = String(error?.code || '').toLowerCase();
@@ -14603,7 +14698,9 @@ function loginWithGoogleRedirect() {
         prompt: 'select_account'
     });
 
+    beginWilduGoogleAuthTransition('REDIRECT');
     auth.signInWithRedirect(provider).catch((error) => {
+        endWilduGoogleAuthTransition('REDIRECT_ERROR');
         console.error("Errore login Google Redirect:", error);
 
         const code = String(error?.code || '').toLowerCase();
@@ -15026,7 +15123,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.34';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.35';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -15397,6 +15494,9 @@ function collectWilduAudioDebugSnapshot() {
         connection: connectionState,
         cache: cacheState,
         assets: assetState,
+        catalogPreload: typeof getWilduCatalogCoverPreloadSnapshot === 'function'
+            ? getWilduCatalogCoverPreloadSnapshot()
+            : null,
 
         audioFlags: {
             consoleSwitch: wilduConsoleIsEnabled(),
@@ -17010,6 +17110,7 @@ function isPublicCacheStillValid(envelope) {
 }
 
 const WILDU_CATALOG_COVER_PRELOAD_CONCURRENCY = 3;
+const WILDU_CATALOG_IOS_BACKGROUND_PRELOAD_LIMIT = 4;
 const WILDU_CATALOG_COLD_CRITICAL_LIMIT = 1;
 const WILDU_CATALOG_COLD_WAIT_MS = 500;
 const WILDU_CATALOG_COVER_LOAD_TIMEOUT_MS = 8000;
@@ -17017,10 +17118,23 @@ const WILDU_CATALOG_COVER_PRELOAD_RUNTIME = {
     queue: [],
     queued: new Set(),
     inFlight: new Map(),
+    requests: new Map(),
     outcomes: new Map(),
+    pauseReasons: new Set(),
     scheduled: false,
     active: 0
 };
+
+function isWilduIOSClientDevice() {
+    try {
+        const ua = String(navigator.userAgent || '');
+        const platform = String(navigator.platform || '');
+        return /iPad|iPhone|iPod/i.test(ua + ' ' + platform) ||
+            (platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1);
+    } catch (e) {
+        return false;
+    }
+}
 
 function getWilduCatalogCoverRaw(item) {
     if (!item || typeof item !== 'object') return '';
@@ -17076,6 +17190,7 @@ function collectWilduCriticalBootImageUrls(covers) {
 }
 
 function getWilduCatalogCoverPreloadConcurrency() {
+    if (isWilduIOSClientDevice()) return 1;
     try {
         const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
         const effectiveType = String(connection && connection.effectiveType || '').toLowerCase();
@@ -17085,6 +17200,42 @@ function getWilduCatalogCoverPreloadConcurrency() {
     } catch (e) {}
 
     return WILDU_CATALOG_COVER_PRELOAD_CONCURRENCY;
+}
+
+function getWilduCatalogBackgroundPreloadUrls(covers) {
+    const source = Array.isArray(covers) ? covers : [];
+    if (isWilduIOSClientDevice()) {
+        return source.slice(0, WILDU_CATALOG_IOS_BACKGROUND_PRELOAD_LIMIT);
+    }
+    return source;
+}
+
+function isWilduCatalogCoverPreloadPaused() {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    return runtime.pauseReasons.size > 0 ||
+        (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive());
+}
+
+function pauseWilduCatalogCoverPreload(reason, options) {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    const cleanReason = String(reason || 'MANUAL');
+    options = options || {};
+    runtime.pauseReasons.add(cleanReason);
+    runtime.scheduled = false;
+
+    if (options.cancelInFlight === true) {
+        Array.from(runtime.requests.values()).forEach(function (request) {
+            try { request.cancel(); } catch (e) {}
+        });
+    }
+
+    try {
+        pageDebug('CATALOG_COVER_PRELOAD_PAUSED', {
+            reason: cleanReason,
+            pending: runtime.queue.length,
+            inFlight: runtime.inFlight.size
+        });
+    } catch (e) {}
 }
 
 function preloadWilduCatalogCoverUrl(url, options) {
@@ -17107,12 +17258,24 @@ function preloadWilduCatalogCoverUrl(url, options) {
             if (timer) clearTimeout(timer);
             image.onload = null;
             image.onerror = null;
-            if (outcome === 'timeout') {
+            runtime.requests.delete(url);
+            if (outcome === 'timeout' || outcome === 'cancelled') {
                 try { image.removeAttribute('src'); } catch (e) {}
             }
-            runtime.outcomes.set(url, outcome);
+            if (outcome !== 'cancelled') runtime.outcomes.set(url, outcome);
             resolve(outcome);
         }
+
+        runtime.requests.set(url, {
+            cancel: function () {
+                if (settled) return;
+                try {
+                    image.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+                    image.removeAttribute('src');
+                } catch (e) {}
+                finish('cancelled');
+            }
+        });
 
         image.decoding = 'async';
         image.loading = 'eager';
@@ -17146,7 +17309,7 @@ function preloadWilduCatalogCoverUrl(url, options) {
 function runWilduCatalogCoverPreloadBatch() {
     const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
     runtime.scheduled = false;
-    if (document.hidden) return;
+    if (document.hidden || isWilduCatalogCoverPreloadPaused()) return;
 
     const concurrency = getWilduCatalogCoverPreloadConcurrency();
     while (runtime.active < concurrency && runtime.queue.length) {
@@ -17168,7 +17331,7 @@ function runWilduCatalogCoverPreloadBatch() {
 
 function scheduleWilduCatalogCoverPreload() {
     const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
-    if (runtime.scheduled || document.hidden || !runtime.queue.length) return;
+    if (runtime.scheduled || document.hidden || isWilduCatalogCoverPreloadPaused() || !runtime.queue.length) return;
     runtime.scheduled = true;
 
     if (typeof window.requestIdleCallback === 'function') {
@@ -17178,16 +17341,26 @@ function scheduleWilduCatalogCoverPreload() {
     }
 }
 
-function resumeWilduCatalogCoverPreload() {
+function resumeWilduCatalogCoverPreload(reason) {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    runtime.pauseReasons.delete(String(reason || 'PAGE_HIDDEN'));
+    try {
+        pageDebug('CATALOG_COVER_PRELOAD_RESUME_REQUESTED', {
+            reason: String(reason || 'PAGE_VISIBLE'),
+            pending: runtime.queue.length,
+            blocked: isWilduCatalogCoverPreloadPaused()
+        });
+    } catch (e) {}
     scheduleWilduCatalogCoverPreload();
 }
 
 function queueWilduCatalogCoverPreload(reason) {
     const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
     const covers = collectWilduCatalogCoverUrls();
+    const preloadCovers = getWilduCatalogBackgroundPreloadUrls(covers);
     let added = 0;
 
-    covers.forEach(function (url) {
+    preloadCovers.forEach(function (url) {
         if (runtime.outcomes.has(url) || runtime.inFlight.has(url) || runtime.queued.has(url)) return;
         runtime.queued.add(url);
         runtime.queue.push(url);
@@ -17199,12 +17372,30 @@ function queueWilduCatalogCoverPreload(reason) {
             reason: String(reason || ''),
             added,
             totalUnique: covers.length,
+            eligible: preloadCovers.length,
+            policy: isWilduIOSClientDevice() ? 'IOS_BOUNDED' : 'DEFAULT',
             pending: runtime.queue.length
         });
     } catch (e) {}
 
     scheduleWilduCatalogCoverPreload();
     return covers;
+}
+
+function getWilduCatalogCoverPreloadSnapshot() {
+    const runtime = WILDU_CATALOG_COVER_PRELOAD_RUNTIME;
+    return {
+        policy: isWilduIOSClientDevice() ? 'IOS_BOUNDED' : 'DEFAULT',
+        backgroundLimit: isWilduIOSClientDevice() ? WILDU_CATALOG_IOS_BACKGROUND_PRELOAD_LIMIT : null,
+        concurrency: getWilduCatalogCoverPreloadConcurrency(),
+        queued: runtime.queue.length,
+        inFlight: runtime.inFlight.size,
+        completed: runtime.outcomes.size,
+        pauseReasons: Array.from(runtime.pauseReasons),
+        authTransitionActive: typeof isWilduGoogleAuthTransitionActive === 'function'
+            ? isWilduGoogleAuthTransitionActive()
+            : false
+    };
 }
 
 function waitForWilduCriticalBootImages(covers) {
