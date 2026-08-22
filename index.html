@@ -7628,6 +7628,30 @@ const WILDU_FIREBASE = (() => {
 
     let logLevelBound = false;
     let redirectHandled = false;
+    let localAuthPersistencePromise = null;
+    let localAuthPersistenceReady = false;
+
+    function ensureLocalAuthPersistence() {
+        if (localAuthPersistenceReady) return Promise.resolve(true);
+        if (localAuthPersistencePromise) return localAuthPersistencePromise;
+
+        localAuthPersistencePromise = auth
+            .setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+            .then(() => {
+                localAuthPersistenceReady = true;
+                return true;
+            })
+            .catch((error) => {
+                localAuthPersistencePromise = null;
+                throw error;
+            });
+
+        return localAuthPersistencePromise;
+    }
+
+    function isLocalAuthPersistenceReady() {
+        return localAuthPersistenceReady === true;
+    }
 
     // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
     // FALSE = console più pulita, solo errori online
@@ -7758,7 +7782,14 @@ const WILDU_FIREBASE = (() => {
     function boot() {
         setFirestoreLogLevelByConnectivity();
         bindFirestoreLogLevelEvents();
-        handleRedirectResultSafe();
+        // La persistenza deve essere pronta prima di qualunque ritorno OAuth.
+        // Il fallimento non blocca il bootstrap pubblico, ma resta osservabile
+        // e il login non viene avviato finche' un retry non riesce.
+        ensureLocalAuthPersistence()
+            .catch((error) => {
+                console.error('Persistenza Firebase locale non disponibile:', String(error?.code || 'AUTH_PERSISTENCE_FAILED'));
+            })
+            .finally(handleRedirectResultSafe);
     }
 
     function ready() {
@@ -7772,6 +7803,8 @@ const WILDU_FIREBASE = (() => {
         store,
         boot,
         ready,
+        ensureLocalAuthPersistence,
+        isLocalAuthPersistenceReady,
         setFirestoreLogLevelByConnectivity
     };
 })();
@@ -14400,6 +14433,91 @@ function schedulePendingClientAuthState(user) {
     authStateReplayTimer = window.setTimeout(replayWhenUnlocked, 50);
 }
 
+function clearPendingClientAuthStateReplay() {
+    if (authStateReplayTimer) {
+        window.clearTimeout(authStateReplayTimer);
+        authStateReplayTimer = null;
+    }
+    pendingAuthStateUser = undefined;
+}
+
+async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') {
+    const expectedUid = String(user?.uid || '').trim();
+    const currentUid = String(auth.currentUser?.uid || '').trim();
+    if (!expectedUid || currentUid !== expectedUid) {
+        const identityError = new Error('Firebase non ha consolidato l\'identita\' Google corrente.');
+        identityError.code = 'AUTH_IDENTITY_NOT_CONSOLIDATED';
+        throw identityError;
+    }
+
+    holdClientAuthPending(
+        user,
+        "Accesso Google riuscito. Verifica del profilo in corso...",
+        reason + '_BACKEND_START',
+        { probeInProgress: true, scheduleRecovery: false }
+    );
+
+    // Forza un token appena emesso prima del gate canonico backend. Il client
+    // non considera mai sufficiente il solo successo del popup/credential.
+    await user.getIdToken(true);
+    if (String(auth.currentUser?.uid || '').trim() !== expectedUid) {
+        const changedError = new Error('Identita\' Firebase cambiata durante la verifica.');
+        changedError.code = 'AUTH_IDENTITY_CHANGED_DURING_FINALIZE';
+        throw changedError;
+    }
+
+    const data = await fetchInitData({
+        reason: reason + '_BACKEND_FINALIZE',
+        force: true
+    });
+    const profile = data?.userOverlay?.profile || null;
+    const backendUid = String(profile?.uid || '').trim();
+
+    if (data?.authState !== 'LOGGED' || backendUid !== expectedUid) {
+        const backendError = new Error('Il backend non ha confermato la sessione Google.');
+        backendError.code = 'AUTH_BACKEND_IDENTITY_NOT_CONFIRMED';
+        throw backendError;
+    }
+
+    const profileExists = profile?.exists === true || (
+        typeof profile?.exists !== 'boolean' &&
+        !!String(profile?.nome || profile?.telefono || '').trim()
+    );
+
+    if (!profileExists) {
+        clearClientAuthRecovery();
+        clearPendingClientAuthStateReplay();
+        lastBackendVerifiedUid = '';
+        wildUserKey = null;
+        localStorage.removeItem('wildUserKey');
+        clearClientPrivateRuntimeState();
+        tempGoogleUser = user;
+        profileCompletionRequired = true;
+        authProbeInProgress = false;
+        endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
+        reconcileProfileShellWithClientSession();
+        return { status: 'PROFILE_COMPLETION_REQUIRED', data };
+    }
+
+    if (
+        !isCurrentVerifiedClientIdentity(expectedUid) ||
+        clientSession.capabilities?.canUseBackpack !== true
+    ) {
+        const capabilityError = new Error('La sessione verificata non abilita ancora il profilo completo.');
+        capabilityError.code = 'AUTH_BACKEND_CAPABILITIES_NOT_READY';
+        throw capabilityError;
+    }
+
+    clearClientAuthRecovery();
+    clearPendingClientAuthStateReplay();
+    profileCompletionRequired = false;
+    authProbeInProgress = false;
+    endWilduGoogleAuthTransition('BACKEND_SESSION_FINALIZED');
+    reconcileProfileShellWithClientSession();
+    updateProfileUI();
+    return { status: 'LOGGED', data };
+}
+
 async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
     try {
         await ensureWilduClientInteractionBootGate('AUTH_STATE');
@@ -14645,9 +14763,12 @@ let WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE = null;
 let WILDU_GOOGLE_IDENTITY_INITIALIZED = false;
 let WILDU_GOOGLE_IDENTITY_RENDERED = false;
 let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
+let WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
 
 function shouldUseWilduGoogleIdentitySignIn() {
-    return typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice();
+    return WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED === true &&
+        typeof isWilduIOSClientDevice === 'function' &&
+        isWilduIOSClientDevice();
 }
 
 function setWilduLegacyGoogleControlsVisible(visible) {
@@ -14752,28 +14873,49 @@ async function handleWilduGoogleIdentityCredential(response) {
     }
 
     WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = true;
+    authRefreshLock = true;
     beginWilduGoogleAuthTransition('GIS_CREDENTIAL');
     showToast('Accesso Google in verifica...');
 
+    let finalized = false;
+
     try {
+        await WILDU_FIREBASE.ensureLocalAuthPersistence();
         const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
         const result = await auth.signInWithCredential(credential);
-        if (!result?.user && !auth.currentUser) throw new Error('GOOGLE_IDENTITY_FIREBASE_USER_MISSING');
+        const signedUser = result?.user || auth.currentUser;
+        if (!signedUser) throw new Error('GOOGLE_IDENTITY_FIREBASE_USER_MISSING');
 
-        scheduleClientAuthRecovery('GIS_CREDENTIAL_SUCCESS', {
-            reset: true,
-            immediate: true
-        });
+        await finalizeWilduAuthenticatedSignIn(signedUser, 'GIS_CREDENTIAL');
+        finalized = true;
+        showToast('Accesso completato. Bentornato!');
     } catch (error) {
-        endWilduGoogleAuthTransition('GIS_CREDENTIAL_ERROR');
         console.error(
             'Errore accesso Google iOS:',
             String(error?.code || 'GIS_SIGNIN_FAILED')
         );
-        showToast('Errore accesso Google. Riprova.');
+        if (auth.currentUser) {
+            holdClientAuthPending(
+                auth.currentUser,
+                "Accesso Google riuscito. Completo la sincronizzazione...",
+                'GIS_FINALIZE_RETRY',
+                { scheduleRecovery: false }
+            );
+            showToast('Accesso Google acquisito. Sincronizzazione in corso...');
+        } else {
+            endWilduGoogleAuthTransition('GIS_CREDENTIAL_ERROR');
+            showToast('Errore accesso Google. Riprova.');
+        }
     } finally {
         try { if (response && typeof response === 'object') response.credential = ''; } catch (e) {}
+        authRefreshLock = false;
         WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
+        if (!finalized && auth.currentUser) {
+            scheduleClientAuthRecovery('GIS_FINALIZE_RETRY', {
+                reset: true,
+                immediate: true
+            });
+        }
     }
 }
 
@@ -14791,7 +14933,7 @@ async function prepareWilduGoogleIdentitySignIn() {
         const results = await Promise.all([
             loadWilduGoogleIdentityLibrary(),
             resolveWilduGoogleIdentityClientId(),
-            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+            WILDU_FIREBASE.ensureLocalAuthPersistence()
         ]);
         const googleIdentity = results[0];
         const clientId = results[1];
@@ -14834,6 +14976,23 @@ async function prepareWilduGoogleIdentitySignIn() {
     }
 }
 
+async function enableWilduGoogleIdentityFallback() {
+    if (!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) {
+        return false;
+    }
+
+    // Il bottone GIS vive in un iframe Google: il parent non puo' osservare il
+    // suo tap. Prepariamo quindi memoria e guardie PRIMA di renderizzarlo.
+    WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = true;
+    beginWilduGoogleAuthTransition('GIS_READY');
+    const ready = await prepareWilduGoogleIdentitySignIn();
+    if (!ready) {
+        WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
+        endWilduGoogleAuthTransition('GIS_PREPARE_FAILED');
+    }
+    return ready;
+}
+
 function loginWithGoogle() {
     if (!navigator.onLine) {
         showToast("Sei offline. Per accedere serve la connessione.");
@@ -14849,6 +15008,13 @@ function loginWithGoogle() {
         return;
     }
 
+    if (!WILDU_FIREBASE.isLocalAuthPersistenceReady()) {
+        WILDU_FIREBASE.ensureLocalAuthPersistence()
+            .then(() => showToast('Accesso pronto. Tocca di nuovo Accedi con Google.'))
+            .catch(() => showToast('Impossibile preparare un accesso persistente. Riprova.'));
+        return;
+    }
+
     auth.languageCode = 'it';
 
     const provider = new firebase.auth.GoogleAuthProvider();
@@ -14857,18 +15023,16 @@ function loginWithGoogle() {
     });
 
     // Deve restare sincrono rispetto al tap: nessun await prima del popup.
+    authRefreshLock = true;
     beginWilduGoogleAuthTransition('POPUP');
-    auth.signInWithPopup(provider).then((result) => {
-        if (result?.user || auth.currentUser) {
-            scheduleClientAuthRecovery('POPUP_SUCCESS', {
-                reset: true,
-                immediate: true
-            });
-        } else {
-            endWilduGoogleAuthTransition('POPUP_EMPTY');
-        }
+    let finalized = false;
+    auth.signInWithPopup(provider).then(async (result) => {
+        const signedUser = result?.user || auth.currentUser;
+        if (!signedUser) throw new Error('GOOGLE_POPUP_FIREBASE_USER_MISSING');
+        await finalizeWilduAuthenticatedSignIn(signedUser, 'POPUP');
+        finalized = true;
+        showToast('Accesso completato. Bentornato!');
     }).catch((error) => {
-        endWilduGoogleAuthTransition('POPUP_ERROR');
         console.error("Errore login Google Popup:", error);
 
         const code = String(error?.code || '').toLowerCase();
@@ -14880,13 +15044,30 @@ function loginWithGoogle() {
             msg.includes('network') ||
             msg.includes('offline');
 
+        if (auth.currentUser) {
+            holdClientAuthPending(
+                auth.currentUser,
+                "Accesso Google riuscito. Completo la sincronizzazione...",
+                'POPUP_FINALIZE_RETRY',
+                { scheduleRecovery: false }
+            );
+            showToast('Accesso Google acquisito. Sincronizzazione in corso...');
+            return;
+        }
+
+        endWilduGoogleAuthTransition('POPUP_ERROR');
+
         if (looksOffline) {
             showToast("Sei offline. Per accedere serve la connessione.");
             return;
         }
 
-        if (code === 'auth/popup-blocked') {
-            showToast("Popup bloccato. Usa il pulsante alternativo qui sotto.");
+        if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+            enableWilduGoogleIdentityFallback().then((ready) => {
+                showToast(ready
+                    ? 'Popup non disponibile. Usa il pulsante Google alternativo.'
+                    : 'Accesso alternativo non disponibile. Riprova.');
+            });
             return;
         }
 
@@ -14896,6 +15077,14 @@ function loginWithGoogle() {
         }
 
         showToast("Errore accesso Google. Riprova con connessione attiva.");
+    }).finally(() => {
+        authRefreshLock = false;
+        if (!finalized && auth.currentUser) {
+            scheduleClientAuthRecovery('POPUP_FINALIZE_RETRY', {
+                reset: true,
+                immediate: true
+            });
+        }
     });
 }
 
@@ -14956,12 +15145,24 @@ function installWilduBrowserEdgeHistoryGuard() {
 
 
 // ==========================================
-// LOGIN GOOGLE ALTERNATIVO (REDIRECT SAFE)
+// LOGIN GOOGLE ALTERNATIVO
 // ==========================================
 
 function loginWithGoogleRedirect() {
     if (!navigator.onLine) {
         showToast("Sei offline. Per accedere serve la connessione.");
+        return;
+    }
+
+    // Su hosting GitHub Pages il redirect Firebase attraversa un dominio Auth
+    // diverso e su Safari puo' perdere lo stato per le restrizioni storage.
+    // Il link secondario iOS abilita quindi GIS, non il redirect cross-site.
+    if (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice()) {
+        enableWilduGoogleIdentityFallback().then((ready) => {
+            showToast(ready
+                ? 'Usa il pulsante Google alternativo appena visualizzato.'
+                : 'Accesso alternativo non disponibile. Riprova.');
+        });
         return;
     }
 
@@ -15397,7 +15598,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.38';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.39';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17248,6 +17449,11 @@ function buildWilduCanonicalShellReloadUrl(remoteVersion, rawHref) {
 }
 
 async function ensureFreshShellVersion() {
+    if (isWilduGoogleAuthTransitionActive()) {
+        pageDebug('SHELL_VERSION_DEFERRED_FOR_GOOGLE_AUTH');
+        return true;
+    }
+
     const remoteVersion = await fetchShellVersion();
     const meta = readShellMeta();
     const embeddedVersion = String(WILDU_EMBEDDED_SHELL_VERSION || '').trim();
@@ -34972,6 +35178,10 @@ let WILDU_RESTORED_SHELL_RECONCILIATION = null;
 function reconcileWilduRestoredShellState(event) {
     consumeWilduLegacyLogoutUrlOnce();
     if (!event || event.persisted !== true) return Promise.resolve(true);
+    if (isWilduGoogleAuthTransitionActive()) {
+        pageDebug('SHELL_PAGESHOW_DEFERRED_FOR_GOOGLE_AUTH');
+        return Promise.resolve(true);
+    }
     if (WILDU_RESTORED_SHELL_RECONCILIATION) return WILDU_RESTORED_SHELL_RECONCILIATION;
 
     WILDU_RESTORED_SHELL_RECONCILIATION = ensureFreshShellVersion()
