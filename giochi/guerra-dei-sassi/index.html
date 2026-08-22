@@ -387,6 +387,14 @@
         throw new Error("Protected game init function is unavailable.");
       }
       window.init();
+
+      const storyRuntime = window.UnifiedGameIntegration
+        && window.UnifiedGameIntegration.runtime
+        && window.UnifiedGameIntegration.runtime.story;
+      if (!storyRuntime || typeof storyRuntime.initialize !== "function") {
+        throw new Error("Protected story runtime is unavailable.");
+      }
+      storyRuntime.initialize();
       document.documentElement.classList.remove("wildu-guard-checking");
     } catch (error) {
       document.documentElement.classList.remove("wildu-guard-checking");
