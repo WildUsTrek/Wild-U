@@ -181,6 +181,7 @@
     const frameTitleEl = document.getElementById("wildu-game-frame-title");
     const frameShellEl = document.getElementById("wildu-game-frame-shell");
     const closeBtn = document.getElementById("wildu-close-game-fullscreen");
+    const frameChromeHotspotEl = document.getElementById("wildu-game-chrome-hotspot");
 
     let games = [];
     let previousBodyOverflow = "";
@@ -251,6 +252,21 @@
             closeBtn.style.opacity = show ? "1" : "0";
             closeBtn.style.transform = show ? "translateY(0)" : "translateY(-18px)";
             closeBtn.style.pointerEvents = show ? "auto" : "none";
+        }
+
+        // Gli eventi puntatore/touch dentro un iframe non risalgono al documento
+        // padre. Nel layout immersivo lasciamo quindi una sottile area parentale
+        // attiva solo mentre i controlli sono nascosti: il primo gesto li rivela,
+        // il tap successivo sulla X chiude e scarica davvero il gioco.
+        if (frameChromeHotspotEl) {
+            const canRevealHiddenChrome =
+                activeFrameLayout === IMMERSIVE_FRAME_LAYOUT && !show;
+
+            frameChromeHotspotEl.style.pointerEvents = canRevealHiddenChrome ? "auto" : "none";
+            frameChromeHotspotEl.setAttribute(
+                "aria-hidden",
+                canRevealHiddenChrome ? "false" : "true"
+            );
         }
 
         if (frameTitleEl) {
