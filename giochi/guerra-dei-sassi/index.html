@@ -8,12 +8,17 @@
   <link rel="icon" href="assets/ui/guerra-dei-sassi-logo.svg">
   <style id="wildu-guard-prehide">
     html.wildu-guard-checking body { visibility: hidden; }
+    #wildu-protected-loading { position:fixed; inset:0; z-index:2147483647; display:grid; place-items:center; padding:24px; background:#080d18; color:#f5f8ff; font-family:system-ui,sans-serif; }
+    #wildu-protected-loading .wildu-loading-panel { width:min(420px,90vw); text-align:center; }
+    #wildu-protected-loading img { width:min(270px,72vw); height:auto; }
+    #wildu-protected-loading progress { width:100%; height:12px; margin-top:18px; accent-color:#f5b400; }
+    #wildu-protected-loading output { display:block; margin-top:10px; color:rgba(245,248,255,.76); font-size:.9rem; }
   </style>
   <script id="wildu-guard-prehide-script">
     document.documentElement.classList.add("wildu-guard-checking");
   </script>
 <!-- V37.14V: MeshOpt decoder is configured early, but not modulepreloaded; model-viewer loads it on demand. -->
-  <link rel="stylesheet" href="css/style.css?v=20260821.18">
+  <link rel="stylesheet" href="css/style.css?v=20260822.1">
 </head>
 <body>
   <div id="app">
@@ -21,10 +26,10 @@
       <div class="boot-stage">
         <div class="boot-card panel boot-card-enhanced">
           <p class="eyebrow">arena cartoon</p>
-          <div id="boot-character-preview" class="boot-character-preview" aria-hidden="true"></div>
+          <div id="boot-character-preview" class="boot-character-preview" aria-hidden="true"><span class="boot-preview-loading">Preparazione arena...</span></div>
           <h1 class="game-title game-title-logo"><img src="assets/ui/guerra-dei-sassi-logo.svg" alt="Guerra dei Sassi"></h1>
           <p class="game-subtitle">Un duello cozy di logica, bluff e pietre. Tocca Start per sbloccare audio e musica.</p>
-          <button id="boot-start-btn" class="btn btn-primary boot-start-btn" type="button">▶ Start</button>
+          <button id="boot-start-btn" class="btn btn-primary boot-start-btn" type="button">â–¶ Start</button>
           <p class="boot-note">Avvio audio sicuro per browser e mobile.</p>
         </div>
       </div>
@@ -40,21 +45,22 @@
           <p class="eyebrow">torneo delle pietre</p>
           <div class="menu-top-tools" aria-label="Strumenti menu">
             <button id="rules-btn" class="btn btn-ghost menu-tool-btn" type="button" aria-label="Regole" title="Regole">?</button>
-            <button id="audio-btn" class="btn btn-ghost btn-audio-icon menu-tool-btn" type="button" aria-label="Audio attivo" title="Audio">🔊</button>
-            <button id="vol-toggle-menu" class="btn btn-ghost btn-vol btn-gear menu-tool-btn" type="button" data-volume-toggle aria-expanded="false" aria-controls="volume-modal" aria-label="Configura volumi" title="Configura volumi">⚙</button>
+            <button id="audio-btn" class="btn btn-ghost btn-audio-icon menu-tool-btn" type="button" aria-label="Audio attivo" title="Audio">ðŸ”Š</button>
+            <button id="vol-toggle-menu" class="btn btn-ghost btn-vol btn-gear menu-tool-btn" type="button" data-volume-toggle aria-expanded="false" aria-controls="volume-modal" aria-label="Configura volumi" title="Configura volumi">âš™</button>
           </div>
           <h1 class="game-title game-title-logo"><img src="assets/ui/guerra-dei-sassi-logo.svg" alt="Guerra dei Sassi"></h1>
           <p class="game-subtitle">Scegli come entrare nella guerra dei sassi: torneo, duello di prova o sfida tra amici.</p>
 
-          <div class="menu-play-panel" aria-label="Scegli modalità">
+          <div class="menu-play-panel" aria-label="Scegli modalitÃ ">
             <button id="story-start-btn" class="btn btn-primary menu-mode-btn" type="button" aria-disabled="true" disabled>Gioca storia</button>
             <button class="btn btn-primary menu-mode-btn" type="button" data-menu-mode="tournament" data-start-mode="true">Gioca torneo</button>
             <button class="btn btn-secondary menu-mode-btn" type="button" data-menu-mode="pvp" data-start-mode="true">Sfida amico</button>
+            <button id="mother-exit-btn" class="btn btn-ghost menu-mode-btn menu-exit-btn" type="button" aria-label="Esci dal gioco e torna a Taverna Gratis" aria-hidden="true" hidden>Esci</button>
           </div>
 
           <div class="menu-grid menu-grid-refined">
             <label class="field menu-technical-mode" aria-hidden="true">
-              <span>Modalità</span>
+              <span>ModalitÃ </span>
               <select id="mode-select" tabindex="-1">
                 <option value="tournament" selected>Torneo</option>
                 <option value="cpu">Sfida libera</option>
@@ -64,7 +70,7 @@
             </label>
 <label class="checkbox-row">
               <input type="checkbox" id="misere-toggle">
-              <span>Variante misère: chi prende l'ultima pietra perde</span>
+              <span>Variante misÃ¨re: chi prende l'ultima pietra perde</span>
             </label>
           </div>
 
@@ -80,7 +86,7 @@
               </div>
               <ol id="ranking-ladder" class="ranking-ladder" aria-label="Posizioni classifica"></ol>
             </div>
-            <span id="progress-summary" class="progress-summary-premium">Vittorie 0 · Sconfitte 0 · Match 0</span>
+            <span id="progress-summary" class="progress-summary-premium">Vittorie 0 Â· Sconfitte 0 Â· Match 0</span>
           </div>
           <button id="choose-avatar-btn" class="btn btn-secondary choose-avatar-btn" type="button">Scegli avatar</button>
         </div>
@@ -95,7 +101,7 @@
     <section id="game-screen" class="screen">
       <div id="hud" class="panel panel-hud">
         <div class="hud-left">
-          <div id="match-label" class="match-label">R1/3 · Tu 0 - Nina 0</div>
+          <div id="match-label" class="match-label">R1/3 Â· Tu 0 - Nina 0</div>
           <div id="turn-label" class="turn-label">Turno: Tu</div>
         </div>
         <div class="hud-actions">
@@ -105,8 +111,8 @@
           </div>
           <div class="battle-utility-actions" role="toolbar" aria-label="Comandi della battle">
             <button id="menu-btn" class="btn btn-ghost">Menu</button>
-            <button id="audio-btn-game" class="btn btn-ghost btn-audio-icon" type="button" aria-label="Audio attivo" title="Audio">🔊</button>
-            <button id="vol-toggle-game" class="btn btn-ghost btn-vol btn-gear" type="button" data-volume-toggle aria-expanded="false" aria-controls="volume-modal" aria-label="Configura volumi" title="Configura volumi">⚙</button>
+            <button id="audio-btn-game" class="btn btn-ghost btn-audio-icon" type="button" aria-label="Audio attivo" title="Audio">ðŸ”Š</button>
+            <button id="vol-toggle-game" class="btn btn-ghost btn-vol btn-gear" type="button" data-volume-toggle aria-expanded="false" aria-controls="volume-modal" aria-label="Configura volumi" title="Configura volumi">âš™</button>
           </div>
         </div>
       </div>
@@ -123,7 +129,7 @@
           <div class="opponent-copy">
             <h2 id="opponent-name">Sfidante</h2>
             <p id="opponent-title">Pronto alla sfida</p>
-            <div id="opponent-quip" class="opponent-quip">«Vediamo che mossa fai.»</div>
+            <div id="opponent-quip" class="opponent-quip">Â«Vediamo che mossa fai.Â»</div>
           </div>
         </aside>
 
@@ -166,7 +172,7 @@
     <section id="game-over-screen" class="screen game-over-screen" aria-label="Game Over torneo">
       <div class="panel game-over-stage">
         <div class="game-over-burst" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="game-over-stone" aria-hidden="true">◈</div>
+        <div class="game-over-stone" aria-hidden="true">â—ˆ</div>
         <p class="eyebrow">Torneo interrotto</p>
         <h2 id="game-over-title">GAME OVER</h2>
         <p id="game-over-detail">La scalata si ferma qui. I sassi attendono una nuova sfida.</p>
@@ -180,7 +186,7 @@
     <section id="champion-screen" class="screen champion-screen" aria-label="Torneo vinto">
       <div class="champion-stage panel">
         <div class="champion-burst" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="champion-cup" aria-hidden="true">🏆</div>
+        <div class="champion-cup" aria-hidden="true">ðŸ†</div>
         <p class="eyebrow">Coppa dei Sassi conquistata</p>
         <h2 id="champion-title">TORNEO VINTO!</h2>
         <p id="champion-detail">Hai superato tutti gli sfidanti e inciso il tuo nome nella pietra.</p>
@@ -202,16 +208,16 @@
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rules-title">
         <div class="modal-header">
           <h3 id="rules-title">Regole</h3>
-          <button id="rules-close-btn" class="btn btn-ghost btn-close" aria-label="Chiudi">✕</button>
+          <button id="rules-close-btn" class="btn btn-ghost btn-close" aria-label="Chiudi">âœ•</button>
         </div>
         <div class="modal-body">
           <ol>
             <li>A ogni turno scegli una sola riga.</li>
-            <li>Puoi rimuovere una o più pietre contigue della riga scelta.</li>
+            <li>Puoi rimuovere una o piÃ¹ pietre contigue della riga scelta.</li>
             <li>Non puoi creare selezioni con buchi.</li>
-            <li>Nella modalità standard vince chi prende l'ultima pietra.</li>
-            <li>Nella modalità misère perde chi prende l'ultima pietra.</li>
-            <li>Contro lo sfidante automatico l’input viene bloccato durante la mossa avversaria, così non partono mosse fantasma.</li>
+            <li>Nella modalitÃ  standard vince chi prende l'ultima pietra.</li>
+            <li>Nella modalitÃ  misÃ¨re perde chi prende l'ultima pietra.</li>
+            <li>Contro lo sfidante automatico lâ€™input viene bloccato durante la mossa avversaria, cosÃ¬ non partono mosse fantasma.</li>
           </ol>
         </div>
       </div>
@@ -252,7 +258,7 @@
     <div id="challenge-modal" class="challenge-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="challenge-modal-title">
       <div class="challenge-modal-backdrop" data-challenge-close aria-hidden="true"></div>
       <div class="challenge-modal-panel" role="document">
-        <button class="challenge-modal-close" type="button" data-challenge-close aria-label="Chiudi scelta sfidante">×</button>
+        <button class="challenge-modal-close" type="button" data-challenge-close aria-label="Chiudi scelta sfidante">Ã—</button>
         <p class="eyebrow">Debug sfida</p>
         <h2 id="challenge-modal-title">Scegli sfidante</h2>
         <p class="challenge-modal-copy">Conferma lo sfidante scelto dalla classifica. I PG bloccati non sono selezionabili, salvo comando debug admin().</p>
@@ -270,10 +276,10 @@
     <div id="avatar-modal" class="avatar-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="avatar-modal-title">
       <div class="avatar-modal-backdrop" data-avatar-close aria-hidden="true"></div>
       <div class="avatar-modal-panel" role="document">
-        <button class="avatar-modal-close" type="button" data-avatar-close aria-label="Chiudi scelta avatar">×</button>
+        <button class="avatar-modal-close" type="button" data-avatar-close aria-label="Chiudi scelta avatar">Ã—</button>
         <p class="eyebrow">Avatar giocatore</p>
         <h2 id="avatar-modal-title">Scegli la tua faccia</h2>
-        <p class="avatar-modal-copy">Questo avatar resta salvato in memoria locale e comparirà nella riga TU della classifica.</p>
+        <p class="avatar-modal-copy">Questo avatar resta salvato in memoria locale e comparirÃ  nella riga TU della classifica.</p>
         <div id="avatar-grid" class="avatar-grid" role="list" aria-label="Avatar disponibili"></div>
         <div class="avatar-modal-actions">
           <button id="avatar-confirm-btn" class="btn btn-primary" type="button">Conferma avatar</button>
@@ -284,7 +290,7 @@
     <div id="volume-modal" class="volume-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="volume-modal-title">
       <div class="volume-modal-backdrop" data-volume-close aria-hidden="true"></div>
       <div class="volume-modal-panel" role="document">
-        <button class="volume-modal-close" type="button" data-volume-close aria-label="Chiudi mixer audio">×</button>
+        <button class="volume-modal-close" type="button" data-volume-close aria-label="Chiudi mixer audio">Ã—</button>
         <div id="volume-modal-title" class="volume-panel-title">Mixer audio</div>
         <label class="volume-control" aria-label="Volume generale">
           <span>Output</span>
@@ -314,38 +320,72 @@
   <script type="module" id="wildu-secure-game-bootstrap">
   (async function bootstrapWilduProtectedGame() {
     const SCRIPT_URLS = [
-  "js/integration/contracts.js?v=20260821.18",
-  "js/integration/config.js?v=20260821.18",
-  "js/integration/event-bus.js?v=20260821.18",
-  "js/integration/app-registry.js?v=20260821.18",
-  "js/integration/route-bridge.js?v=20260821.18",
-  "js/integration/exit-bridge.js?v=20260821.18",
-  "js/integration/battle-catalog.js?v=20260821.18",
-  "js/integration/battle-bridge.js?v=20260821.18",
-  "js/integration/audio-bridge.js?v=20260821.18",
-  "js/integration/network-cache-bridge.js?v=20260821.18",
-  "js/integration/player-session-bridge.js?v=20260821.18",
-  "js/integration/child-app-adapter.js?v=20260821.18",
-  "js/integration/story-flow-controller.js?v=20260821.18",
-  "js/integration/bootstrap.js?v=20260821.18",
-  "js/state.js?v=20260821.18",
-  "js/opponents.js?v=20260821.18",
-  "js/voice_manifest.js?v=20260821.18",
-  "js/character3d_runtime.js?v=20260821.18",
-  "js/audio.js?v=20260821.18",
-  "js/procedural_music.js?v=20260821.18",
-  "js/effects.js?v=20260821.18",
-  "js/cinema.js?v=20260821.18",
-  "js/logic.js?v=20260821.18",
-  "js/render.js?v=20260821.18",
-  "js/ui.js?v=20260821.18",
-  "js/input.js?v=20260821.18",
-  "js/main.js?v=20260821.18",
-  "js/story-shell-port.js?v=20260821.18",
-  "js/shared-audio-port.js?v=20260821.18",
-  "js/mother-battle-port.js?v=20260821.18"
+    "js/integration/contracts.js?v=20260822.1",
+    "js/integration/config.js?v=20260822.1",
+    "js/integration/event-bus.js?v=20260822.1",
+    "js/integration/app-registry.js?v=20260822.1",
+    "js/integration/route-bridge.js?v=20260822.1",
+    "js/integration/exit-bridge.js?v=20260822.1",
+    "js/integration/battle-catalog.js?v=20260822.1",
+    "js/integration/battle-bridge.js?v=20260822.1",
+    "js/integration/audio-bridge.js?v=20260822.1",
+    "js/integration/network-cache-bridge.js?v=20260822.1",
+    "js/integration/player-session-bridge.js?v=20260822.1",
+    "js/integration/child-app-adapter.js?v=20260822.1",
+    "js/integration/story-flow-controller.js?v=20260822.1",
+    "js/integration/bootstrap.js?v=20260822.1",
+    "js/state.js?v=20260822.1",
+    "js/opponents.js?v=20260822.1",
+    "js/voice_manifest.js?v=20260822.1",
+    "js/character3d_runtime.js?v=20260822.1",
+    "js/audio.js?v=20260822.1",
+    "js/procedural_music.js?v=20260822.1",
+    "js/effects.js?v=20260822.1",
+    "js/cinema.js?v=20260822.1",
+    "js/logic.js?v=20260822.1",
+    "js/render.js?v=20260822.1",
+    "js/ui.js?v=20260822.1",
+    "js/input.js?v=20260822.1",
+    "js/main.js?v=20260822.1",
+    "js/story-shell-port.js?v=20260822.1",
+    "js/shared-audio-port.js?v=20260822.1",
+    "js/mother-battle-port.js?v=20260822.1"
 ];
     const GUARD_URL = "../../shared/wildu-secure-game-guard.js";
+    let loadingShell = null;
+
+    function showLoadingShell() {
+      loadingShell = document.createElement("div");
+      loadingShell.id = "wildu-protected-loading";
+      loadingShell.setAttribute("role", "status");
+      loadingShell.setAttribute("aria-live", "polite");
+      loadingShell.innerHTML = '<div class="wildu-loading-panel"><img src="assets/ui/guerra-dei-sassi-logo.svg" alt="Guerra dei Sassi"><progress value="0" max="' + SCRIPT_URLS.length + '"></progress><output>Preparazione arena 0/' + SCRIPT_URLS.length + '</output></div>';
+      document.body.appendChild(loadingShell);
+      document.documentElement.classList.remove("wildu-guard-checking");
+    }
+
+    function updateLoadingShell(loaded) {
+      if (!loadingShell) return;
+      const progress = loadingShell.querySelector("progress");
+      const output = loadingShell.querySelector("output");
+      if (progress) progress.value = loaded;
+      if (output) output.textContent = "Preparazione arena " + loaded + "/" + SCRIPT_URLS.length;
+    }
+
+    function hideLoadingShell() {
+      if (loadingShell) loadingShell.remove();
+      loadingShell = null;
+    }
+
+    function preloadScripts() {
+      for (const src of SCRIPT_URLS) {
+        const link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "script";
+        link.href = src;
+        document.head.appendChild(link);
+      }
+    }
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
@@ -378,9 +418,12 @@
         });
       }
 
+      showLoadingShell();
+      preloadScripts();
       configureMeshopt();
-      for (const src of SCRIPT_URLS) {
+      for (const [index, src] of SCRIPT_URLS.entries()) {
         await loadScript(src);
+        updateLoadingShell(index + 1);
       }
 
       if (typeof window.init !== "function") {
@@ -395,8 +438,10 @@
         throw new Error("Protected story runtime is unavailable.");
       }
       storyRuntime.initialize();
-      document.documentElement.classList.remove("wildu-guard-checking");
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      hideLoadingShell();
     } catch (error) {
+      hideLoadingShell();
       document.documentElement.classList.remove("wildu-guard-checking");
       if (!String(error && error.message || "").includes("WILDU_GAME_BLOCKED:")) {
         console.error("[Wildu Protected Game] Bootstrap failed:", error);

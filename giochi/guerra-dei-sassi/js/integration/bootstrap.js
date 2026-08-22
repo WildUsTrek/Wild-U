@@ -12,6 +12,21 @@
   const audio = new root.AudioBridge(registry, eventBus, root.config.flags);
   const networkCache = new root.NetworkCacheBridge(eventBus);
   const playerSession = new root.PlayerSessionBridge(root.config.flags, eventBus);
+  if (root.config.flags.enableWilduHostedMode) {
+    registry.register('wildu-host', Object.freeze({
+      openRewardsAndGames() {
+        if (!global.parent || global.parent === global) {
+          throw root.contracts.contractError('HOST_CONTRACT_UNAVAILABLE', 'Wildu parent frame is unavailable.');
+        }
+        global.parent.postMessage(Object.freeze({
+          type: 'WILDU_GAME_CLOSE_REQUEST',
+          source: 'guerra-dei-sassi',
+          destination: 'taverna-gratis'
+        }), global.location.origin);
+        return Object.freeze({ ok: true, destination: 'taverna-gratis' });
+      }
+    }));
+  }
   const ChildWorldAdapter = root.ChildWorldAdapter;
   if (root.config.flags.enableStoryWorldAdapter && typeof ChildWorldAdapter !== 'function') {
     throw new Error('ChildWorldAdapter is required when the story world feature is enabled.');

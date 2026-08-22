@@ -200,6 +200,51 @@ window.renderBootOpponentPreview = function renderBootOpponentPreview() {
   }
 };
 
+window.scheduleBootOpponentPreview = function scheduleBootOpponentPreview() {
+  if (window.__sassiBootPreviewScheduled) return;
+  window.__sassiBootPreviewScheduled = true;
+  const run = () => {
+    window.__sassiBootPreviewScheduled = false;
+    const bootScreen = document.getElementById('boot-screen');
+    if (!bootScreen || !bootScreen.classList.contains('active')) return;
+    if (typeof renderBootOpponentPreview === 'function') renderBootOpponentPreview();
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 1200 });
+  } else {
+    window.setTimeout(run, 120);
+  }
+};
+
+window.syncMotherExitAvailability = function syncMotherExitAvailability() {
+  const button = document.getElementById('mother-exit-btn');
+  if (!button) return false;
+  const integration = window.UnifiedGameIntegration;
+  const runtime = integration && integration.runtime;
+  const hosted = !!(integration && integration.config && integration.config.flags.enableWilduHostedMode);
+  const available = !!(hosted && runtime && runtime.exit && runtime.registry && runtime.registry.get('wildu-host'));
+  button.hidden = !available;
+  button.disabled = !available;
+  button.setAttribute('aria-hidden', String(!available));
+  return available;
+};
+
+window.exitMotherMenuToWildu = function exitMotherMenuToWildu() {
+  const button = document.getElementById('mother-exit-btn');
+  const integration = window.UnifiedGameIntegration;
+  const exitBridge = integration && integration.runtime && integration.runtime.exit;
+  if (!exitBridge || typeof exitBridge.exitMotherToWildu !== 'function') return;
+  if (button) button.disabled = true;
+  try {
+    if (typeof playSfx === 'function') playSfx('click');
+    exitBridge.exitMotherToWildu();
+  } catch (error) {
+    if (button) button.disabled = false;
+    if (typeof flashActionRibbon === 'function') flashActionRibbon('Ritorno a Wildu non disponibile', 'bad');
+    console.error('[SASSI] Wildu host exit failed:', error);
+  }
+};
+
 window.bindUI = function bindUI() {
   const bootStartBtn = document.getElementById('boot-start-btn');
   const startBtn = document.getElementById('start-btn');
@@ -218,6 +263,7 @@ window.bindUI = function bindUI() {
   const gameOverMenuBtn = document.getElementById('game-over-menu-btn');
   const opponentSelect = document.getElementById('opponent-select');
   const modeSelect = document.getElementById('mode-select');
+  const motherExitBtn = document.getElementById('mother-exit-btn');
   const volumeSliders = Array.from(document.querySelectorAll('[data-audio-volume]'));
 
   if (bootStartBtn) bootStartBtn.addEventListener('click', onBootStart);
@@ -234,6 +280,7 @@ window.bindUI = function bindUI() {
   if (audioBtnGame) audioBtnGame.addEventListener('click', toggleAudio);
   if (championMenuBtn) championMenuBtn.addEventListener('click', returnToMenu);
   if (gameOverMenuBtn) gameOverMenuBtn.addEventListener('click', returnToMenu);
+  if (motherExitBtn) motherExitBtn.addEventListener('click', exitMotherMenuToWildu);
   if (championReplayBtn) championReplayBtn.addEventListener('click', () => {
     const modeSelect = document.getElementById('mode-select');
     if (modeSelect) modeSelect.value = 'tournament';
@@ -403,8 +450,9 @@ window.init = function init() {
   // Si renderizza solo il menu; renderAll() viene chiamato quando parte davvero la partita.
   if (typeof renderProgressSummary === 'function') renderProgressSummary();
   if (typeof renderAudioButton === 'function') renderAudioButton();
-  if (typeof renderBootOpponentPreview === 'function') renderBootOpponentPreview();
   showScreen('boot-screen');
+  if (typeof syncMotherExitAvailability === 'function') syncMotherExitAvailability();
+  if (typeof scheduleBootOpponentPreview === 'function') scheduleBootOpponentPreview();
 };
 
 document.addEventListener('DOMContentLoaded', init);
