@@ -7630,13 +7630,35 @@ const WILDU_FIREBASE = (() => {
     let redirectHandled = false;
     let localAuthPersistencePromise = null;
     let localAuthPersistenceReady = false;
+    const FIREBASE_AUTH_MODULE_URL = 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 
     function ensureLocalAuthPersistence() {
         if (localAuthPersistenceReady) return Promise.resolve(true);
         if (localAuthPersistencePromise) return localAuthPersistencePromise;
 
-        localAuthPersistencePromise = auth
-            .setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        // Il compat SDK inizializza LOCAL con una gerarchia che preferisce
+        // IndexedDB. Su Safari/PWA la pagina puo' essere ricreata nel ritorno
+        // Google mentre IndexedDB e' sospeso: il login risulta lato Firebase,
+        // ma la nuova pagina idrata null. Usiamo l'API modulare della stessa
+        // identica versione e scegliamo esplicitamente localStorage.
+        localAuthPersistencePromise = import(FIREBASE_AUTH_MODULE_URL)
+            .then((authModule) => {
+                const delegate = auth && auth._delegate;
+                if (
+                    !delegate ||
+                    typeof authModule?.setPersistence !== 'function' ||
+                    !authModule?.browserLocalPersistence
+                ) {
+                    const unsupported = new Error('AUTH_BROWSER_LOCAL_PERSISTENCE_UNAVAILABLE');
+                    unsupported.code = 'AUTH_BROWSER_LOCAL_PERSISTENCE_UNAVAILABLE';
+                    throw unsupported;
+                }
+
+                return authModule.setPersistence(
+                    delegate,
+                    authModule.browserLocalPersistence
+                );
+            })
             .then(() => {
                 localAuthPersistenceReady = true;
                 return true;
@@ -15598,7 +15620,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.39';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.40';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
