@@ -7630,6 +7630,8 @@ const WILDU_FIREBASE = (() => {
     let redirectHandled = false;
     let localAuthPersistencePromise = null;
     let localAuthPersistenceReady = false;
+    let initialAuthStatePromise = null;
+    let initialAuthStateReady = false;
     const FIREBASE_AUTH_MODULE_URL = 'https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js';
 
     function ensureLocalAuthPersistence() {
@@ -7673,6 +7675,49 @@ const WILDU_FIREBASE = (() => {
 
     function isLocalAuthPersistenceReady() {
         return localAuthPersistenceReady === true;
+    }
+
+    function waitForInitialAuthState() {
+        if (initialAuthStateReady) return Promise.resolve(auth.currentUser || null);
+        if (initialAuthStatePromise) return initialAuthStatePromise;
+
+        // auth.currentUser e' intenzionalmente null mentre Firebase sta ancora
+        // reidratando la persistenza. Il bootstrap non deve decidere GUEST prima
+        // che il primo stato Auth sia stato risolto nel nuovo documento iOS.
+        initialAuthStatePromise = ensureLocalAuthPersistence()
+            .then(() => new Promise((resolve, reject) => {
+                let settled = false;
+                let unsubscribe = null;
+
+                const finish = (error, user) => {
+                    if (settled) return;
+                    settled = true;
+                    if (typeof unsubscribe === 'function') {
+                        try { unsubscribe(); } catch (e) {}
+                    }
+                    if (error) reject(error);
+                    else resolve(user || null);
+                };
+
+                unsubscribe = auth.onAuthStateChanged(
+                    (user) => finish(null, user),
+                    (error) => finish(error || new Error('AUTH_INITIAL_STATE_FAILED'), null)
+                );
+            }))
+            .then((user) => {
+                initialAuthStateReady = true;
+                return user;
+            })
+            .catch((error) => {
+                initialAuthStatePromise = null;
+                throw error;
+            });
+
+        return initialAuthStatePromise;
+    }
+
+    function isInitialAuthStateReady() {
+        return initialAuthStateReady === true;
     }
 
     // TRUE = durante la migrazione preferisci leggere anche warning/deprecation
@@ -7807,9 +7852,9 @@ const WILDU_FIREBASE = (() => {
         // La persistenza deve essere pronta prima di qualunque ritorno OAuth.
         // Il fallimento non blocca il bootstrap pubblico, ma resta osservabile
         // e il login non viene avviato finche' un retry non riesce.
-        ensureLocalAuthPersistence()
+        waitForInitialAuthState()
             .catch((error) => {
-                console.error('Persistenza Firebase locale non disponibile:', String(error?.code || 'AUTH_PERSISTENCE_FAILED'));
+                console.error('Stato Firebase iniziale non disponibile:', String(error?.code || 'AUTH_INITIAL_STATE_FAILED'));
             })
             .finally(handleRedirectResultSafe);
     }
@@ -7827,6 +7872,8 @@ const WILDU_FIREBASE = (() => {
         ready,
         ensureLocalAuthPersistence,
         isLocalAuthPersistenceReady,
+        waitForInitialAuthState,
+        isInitialAuthStateReady,
         setFirestoreLogLevelByConnectivity
     };
 })();
@@ -14780,6 +14827,7 @@ auth.onAuthStateChanged((user) => {
 
 const WILDU_GOOGLE_IDENTITY_SCRIPT_ID = 'wildu-google-identity-client';
 const WILDU_GOOGLE_IDENTITY_TIMEOUT_MS = 10000;
+const WILDU_GOOGLE_IDENTITY_FALLBACK_ENABLED = false;
 let WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE = null;
 let WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE = null;
 let WILDU_GOOGLE_IDENTITY_INITIALIZED = false;
@@ -14788,7 +14836,8 @@ let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
 let WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
 
 function shouldUseWilduGoogleIdentitySignIn() {
-    return WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED === true &&
+    return WILDU_GOOGLE_IDENTITY_FALLBACK_ENABLED === true &&
+        WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED === true &&
         typeof isWilduIOSClientDevice === 'function' &&
         isWilduIOSClientDevice();
 }
@@ -15044,16 +15093,18 @@ function loginWithGoogle() {
         prompt: 'select_account'
     });
 
-    // Deve restare sincrono rispetto al tap: nessun await prima del popup.
-    authRefreshLock = true;
+    // Percorso storico e documentato per hosting non-Firebase: il popup nasce
+    // direttamente dal gesto utente. L'observer Auth resta l'unica pipeline di
+    // promozione; non viene bloccato da una finalizzazione parallela.
     beginWilduGoogleAuthTransition('POPUP');
-    let finalized = false;
-    auth.signInWithPopup(provider).then(async (result) => {
+    auth.signInWithPopup(provider).then((result) => {
         const signedUser = result?.user || auth.currentUser;
         if (!signedUser) throw new Error('GOOGLE_POPUP_FIREBASE_USER_MISSING');
-        await finalizeWilduAuthenticatedSignIn(signedUser, 'POPUP');
-        finalized = true;
-        showToast('Accesso completato. Bentornato!');
+        scheduleClientAuthRecovery('POPUP_SUCCESS', {
+            reset: true,
+            immediate: true
+        });
+        showToast('Accesso Google acquisito. Sincronizzazione in corso...');
     }).catch((error) => {
         console.error("Errore login Google Popup:", error);
 
@@ -15067,12 +15118,10 @@ function loginWithGoogle() {
             msg.includes('offline');
 
         if (auth.currentUser) {
-            holdClientAuthPending(
-                auth.currentUser,
-                "Accesso Google riuscito. Completo la sincronizzazione...",
-                'POPUP_FINALIZE_RETRY',
-                { scheduleRecovery: false }
-            );
+            scheduleClientAuthRecovery('POPUP_RECOVERY', {
+                reset: true,
+                immediate: true
+            });
             showToast('Accesso Google acquisito. Sincronizzazione in corso...');
             return;
         }
@@ -15085,11 +15134,7 @@ function loginWithGoogle() {
         }
 
         if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-            enableWilduGoogleIdentityFallback().then((ready) => {
-                showToast(ready
-                    ? 'Popup non disponibile. Usa il pulsante Google alternativo.'
-                    : 'Accesso alternativo non disponibile. Riprova.');
-            });
+            showToast('Il selettore Google non si e\' aperto. Riprova dal pulsante principale.');
             return;
         }
 
@@ -15099,14 +15144,6 @@ function loginWithGoogle() {
         }
 
         showToast("Errore accesso Google. Riprova con connessione attiva.");
-    }).finally(() => {
-        authRefreshLock = false;
-        if (!finalized && auth.currentUser) {
-            scheduleClientAuthRecovery('POPUP_FINALIZE_RETRY', {
-                reset: true,
-                immediate: true
-            });
-        }
     });
 }
 
@@ -15176,46 +15213,11 @@ function loginWithGoogleRedirect() {
         return;
     }
 
-    // Su hosting GitHub Pages il redirect Firebase attraversa un dominio Auth
-    // diverso e su Safari puo' perdere lo stato per le restrizioni storage.
-    // Il link secondario iOS abilita quindi GIS, non il redirect cross-site.
-    if (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice()) {
-        enableWilduGoogleIdentityFallback().then((ready) => {
-            showToast(ready
-                ? 'Usa il pulsante Google alternativo appena visualizzato.'
-                : 'Accesso alternativo non disponibile. Riprova.');
-        });
-        return;
-    }
-
-    auth.languageCode = 'it';
-
-    const provider = new firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters({
-        prompt: 'select_account'
-    });
-
-    beginWilduGoogleAuthTransition('REDIRECT');
-    auth.signInWithRedirect(provider).catch((error) => {
-        endWilduGoogleAuthTransition('REDIRECT_ERROR');
-        console.error("Errore login Google Redirect:", error);
-
-        const code = String(error?.code || '').toLowerCase();
-        const msg = String(error?.message || '').toLowerCase();
-
-        const looksOffline =
-            !navigator.onLine ||
-            code === 'auth/network-request-failed' ||
-            msg.includes('network') ||
-            msg.includes('offline');
-
-        if (looksOffline) {
-            showToast("Sei offline. Per accedere serve la connessione.");
-            return;
-        }
-
-        showToast("Errore accesso Google. Riprova con connessione attiva.");
-    });
+    // GitHub Pages non puo' offrire il proxy same-origin /__/auth/ richiesto
+    // dai redirect Firebase sui browser con storage terze parti limitato. Il
+    // link testuale conserva la UX, ma usa lo stesso popup affidabile.
+    pageDebug('GOOGLE_REDIRECT_REPLACED_BY_POPUP');
+    loginWithGoogle();
 }
 
 // ==========================================
@@ -15620,7 +15622,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.40';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.41';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -18220,6 +18222,16 @@ async function init() {
     } catch (e) {
         if (isWilduBootstrapNavigationError(e)) return;
         console.warn('Client bootstrap gate skipped:', e);
+    }
+
+    // Non decidere mai la vista guest/autenticata finché Firebase non ha
+    // risolto il primo stato auth persistito del nuovo documento. Su iOS la
+    // PWA può essere ricreata dopo il ritorno dal selettore Google: leggere
+    // auth.currentUser prima di questo gate produce un falso guest.
+    try {
+        await WILDU_FIREBASE.waitForInitialAuthState();
+    } catch (e) {
+        console.warn('Firebase auth bootstrap gate skipped:', e);
     }
 
     maybeShowWilduGlobalCacheNotice();
