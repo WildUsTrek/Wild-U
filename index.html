@@ -14828,12 +14828,322 @@ auth.onAuthStateChanged((user) => {
 const WILDU_GOOGLE_IDENTITY_SCRIPT_ID = 'wildu-google-identity-client';
 const WILDU_GOOGLE_IDENTITY_TIMEOUT_MS = 10000;
 const WILDU_GOOGLE_IDENTITY_FALLBACK_ENABLED = false;
+const WILDU_AUTH_BRIDGE_ENABLED = true;
+const WILDU_AUTH_BRIDGE_URL = 'https://wild-u-server.firebaseapp.com/auth-bridge/';
+const WILDU_AUTH_BRIDGE_STORAGE_KEY = 'wilduAuthBridgeAttempt:v1';
+const WILDU_AUTH_BRIDGE_TTL_MS = 5 * 60 * 1000;
+const WILDU_AUTH_BRIDGE_TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+const WILDU_AUTH_BRIDGE_POLL_DELAYS_MS = [0, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000];
 let WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE = null;
 let WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE = null;
 let WILDU_GOOGLE_IDENTITY_INITIALIZED = false;
 let WILDU_GOOGLE_IDENTITY_RENDERED = false;
 let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
 let WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
+let WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
+
+function shouldUseWilduDurableAuthBridge() {
+    return WILDU_AUTH_BRIDGE_ENABLED === true &&
+        typeof isWilduIOSClientDevice === 'function' &&
+        isWilduIOSClientDevice();
+}
+
+function wilduAuthBridgeRandomToken() {
+    if (!window.crypto?.getRandomValues) {
+        const unavailable = new Error('AUTH_BRIDGE_SECURE_RANDOM_UNAVAILABLE');
+        unavailable.code = 'AUTH_BRIDGE_SECURE_RANDOM_UNAVAILABLE';
+        throw unavailable;
+    }
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    let binary = '';
+    bytes.forEach((value) => { binary += String.fromCharCode(value); });
+    return window.btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
+
+async function wilduAuthBridgeChallenge(verifier) {
+    if (!window.crypto?.subtle || typeof TextEncoder !== 'function') {
+        const unavailable = new Error('AUTH_BRIDGE_SHA256_UNAVAILABLE');
+        unavailable.code = 'AUTH_BRIDGE_SHA256_UNAVAILABLE';
+        throw unavailable;
+    }
+    const digest = await window.crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(String(verifier || ''))
+    );
+    let binary = '';
+    new Uint8Array(digest).forEach((value) => { binary += String.fromCharCode(value); });
+    return window.btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
+
+function clearWilduAuthBridgeAttempt(reason) {
+    try { localStorage.removeItem(WILDU_AUTH_BRIDGE_STORAGE_KEY); } catch (e) {}
+    try {
+        pageDebug('AUTH_BRIDGE_ATTEMPT_CLEARED', {
+            reason: String(reason || 'UNKNOWN')
+        });
+    } catch (e) {}
+}
+
+function readWilduAuthBridgeAttempt() {
+    try {
+        const state = JSON.parse(localStorage.getItem(WILDU_AUTH_BRIDGE_STORAGE_KEY) || 'null');
+        const attemptId = String(state?.attemptId || '');
+        const verifier = String(state?.verifier || '');
+        const createdAt = Number(state?.createdAt || 0);
+        if (
+            !WILDU_AUTH_BRIDGE_TOKEN_SHAPE.test(attemptId) ||
+            !WILDU_AUTH_BRIDGE_TOKEN_SHAPE.test(verifier) ||
+            !createdAt ||
+            Date.now() - createdAt >= WILDU_AUTH_BRIDGE_TTL_MS
+        ) {
+            clearWilduAuthBridgeAttempt('INVALID_OR_EXPIRED');
+            return null;
+        }
+        return {
+            attemptId,
+            verifier,
+            createdAt,
+            phase: String(state?.phase || 'PENDING')
+        };
+    } catch (e) {
+        clearWilduAuthBridgeAttempt('READ_FAILED');
+        return null;
+    }
+}
+
+function writeWilduAuthBridgeAttempt(state) {
+    const safeState = {
+        attemptId: String(state?.attemptId || ''),
+        verifier: String(state?.verifier || ''),
+        createdAt: Number(state?.createdAt || Date.now()),
+        phase: String(state?.phase || 'PENDING')
+    };
+    if (
+        !WILDU_AUTH_BRIDGE_TOKEN_SHAPE.test(safeState.attemptId) ||
+        !WILDU_AUTH_BRIDGE_TOKEN_SHAPE.test(safeState.verifier)
+    ) {
+        const invalid = new Error('AUTH_BRIDGE_STATE_INVALID');
+        invalid.code = 'AUTH_BRIDGE_STATE_INVALID';
+        throw invalid;
+    }
+    localStorage.setItem(WILDU_AUTH_BRIDGE_STORAGE_KEY, JSON.stringify(safeState));
+    return safeState;
+}
+
+function buildWilduAuthBridgeUrl(attemptId) {
+    const url = new URL(WILDU_AUTH_BRIDGE_URL);
+    url.searchParams.set('attempt', String(attemptId || ''));
+    return url.toString();
+}
+
+async function postWilduAuthBridgeAction(action, payload) {
+    const response = await fetch(MOTORE_API_URL, {
+        method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-WILDU-CHANNEL': 'WEB'
+        },
+        body: JSON.stringify({
+            action,
+            payload,
+            clientContext: { channel: 'WEB' }
+        })
+    });
+    let data = null;
+    try { data = await response.json(); } catch (e) {}
+    if (!response.ok || data?.success === false) {
+        const error = new Error(String(data?.code || `AUTH_BRIDGE_HTTP_${response.status}`));
+        error.code = String(data?.code || `AUTH_BRIDGE_HTTP_${response.status}`);
+        error.status = response.status;
+        throw error;
+    }
+    return data;
+}
+
+async function ensureWilduAuthBridgeAttemptStarted(state) {
+    if (state.phase !== 'STARTING') return state;
+    const challenge = await wilduAuthBridgeChallenge(state.verifier);
+    const bridgeUrl = buildWilduAuthBridgeUrl(state.attemptId);
+    const started = await postWilduAuthBridgeAction('AUTH_BRIDGE_START', {
+        attemptId: state.attemptId,
+        challenge
+    });
+    const returnedBridge = new URL(String(started?.bridgeUrl || bridgeUrl));
+    if (
+        returnedBridge.origin !== 'https://wild-u-server.firebaseapp.com' ||
+        returnedBridge.pathname !== '/auth-bridge/' ||
+        returnedBridge.searchParams.get('attempt') !== state.attemptId
+    ) {
+        const unsafe = new Error('AUTH_BRIDGE_URL_REJECTED');
+        unsafe.code = 'AUTH_BRIDGE_URL_REJECTED';
+        throw unsafe;
+    }
+    state.phase = 'PENDING';
+    writeWilduAuthBridgeAttempt(state);
+    return state;
+}
+
+async function redeemWilduAuthBridgeAttempt(state) {
+    const response = await postWilduAuthBridgeAction('AUTH_BRIDGE_REDEEM', {
+        attemptId: state.attemptId,
+        verifier: state.verifier
+    });
+    let customToken = String(response?.customToken || '');
+    if (!customToken || customToken.split('.').length !== 3) {
+        const invalid = new Error('AUTH_BRIDGE_CUSTOM_TOKEN_INVALID');
+        invalid.code = 'AUTH_BRIDGE_CUSTOM_TOKEN_INVALID';
+        throw invalid;
+    }
+
+    await WILDU_FIREBASE.ensureLocalAuthPersistence();
+    const result = await auth.signInWithCustomToken(customToken);
+    customToken = '';
+    try { response.customToken = ''; } catch (e) {}
+
+    const signedUser = result?.user || auth.currentUser;
+    if (!signedUser) {
+        const missing = new Error('AUTH_BRIDGE_FIREBASE_USER_MISSING');
+        missing.code = 'AUTH_BRIDGE_FIREBASE_USER_MISSING';
+        throw missing;
+    }
+
+    clearWilduAuthBridgeAttempt('REDEEMED');
+    scheduleClientAuthRecovery('AUTH_BRIDGE_SUCCESS', {
+        reset: true,
+        immediate: true
+    });
+    showToast('Accesso Google acquisito. Sincronizzazione in corso...');
+    return true;
+}
+
+async function pollWilduAuthBridgeAttempt(state) {
+    for (const delay of WILDU_AUTH_BRIDGE_POLL_DELAYS_MS) {
+        if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+        if (auth.currentUser) {
+            clearWilduAuthBridgeAttempt('FIREBASE_USER_ALREADY_AVAILABLE');
+            scheduleClientAuthRecovery('AUTH_BRIDGE_USER_AVAILABLE', {
+                reset: true,
+                immediate: true
+            });
+            return true;
+        }
+
+        try {
+            const status = await postWilduAuthBridgeAction('AUTH_BRIDGE_STATUS', {
+                attemptId: state.attemptId
+            });
+            if (status?.status === 'COMPLETED') {
+                return await redeemWilduAuthBridgeAttempt(state);
+            }
+        } catch (error) {
+            const code = String(error?.code || '');
+            if (
+                error?.status === 410 ||
+                code === 'AUTH_BRIDGE_EXPIRED' ||
+                code === 'AUTH_BRIDGE_NOT_FOUND'
+            ) {
+                clearWilduAuthBridgeAttempt(code || 'EXPIRED');
+                endWilduGoogleAuthTransition(code || 'AUTH_BRIDGE_EXPIRED');
+                showToast('Il tentativo di accesso è scaduto. Tocca di nuovo Accedi con Google.');
+                return false;
+            }
+            if (error?.status !== 429 && error?.status !== 409) throw error;
+        }
+    }
+
+    showToast('Completa Google e torna a Wild-U: l’accesso riprenderà automaticamente.');
+    return false;
+}
+
+async function resumeWilduAuthBridgeAttempt() {
+    if (WILDU_AUTH_BRIDGE_IN_PROGRESS || auth.currentUser) return false;
+    const state = readWilduAuthBridgeAttempt();
+    if (!state) return false;
+
+    WILDU_AUTH_BRIDGE_IN_PROGRESS = true;
+    beginWilduGoogleAuthTransition('DURABLE_RESUME');
+    try {
+        state = await ensureWilduAuthBridgeAttemptStarted(state);
+        return await pollWilduAuthBridgeAttempt(state);
+    } catch (error) {
+        pageDebug('AUTH_BRIDGE_RESUME_FAILED', {
+            code: String(error?.code || 'AUTH_BRIDGE_RESUME_FAILED')
+        });
+        showToast('Accesso Google in attesa. Tocca Accedi con Google per riprenderlo.');
+        return false;
+    } finally {
+        WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
+    }
+}
+
+async function loginWithWilduDurableAuthBridge() {
+    if (WILDU_AUTH_BRIDGE_IN_PROGRESS) {
+        showToast('Accesso Google già in corso...');
+        return;
+    }
+    if (auth.currentUser) {
+        scheduleClientAuthRecovery('AUTH_BRIDGE_EXISTING_USER', {
+            reset: true,
+            immediate: true
+        });
+        return;
+    }
+
+    WILDU_AUTH_BRIDGE_IN_PROGRESS = true;
+    beginWilduGoogleAuthTransition('DURABLE_BRIDGE');
+    let state = readWilduAuthBridgeAttempt();
+    let authWindow = null;
+
+    try {
+        if (!state) {
+            state = writeWilduAuthBridgeAttempt({
+                attemptId: wilduAuthBridgeRandomToken(),
+                verifier: wilduAuthBridgeRandomToken(),
+                createdAt: Date.now(),
+                phase: 'STARTING'
+            });
+        }
+
+        // Riserva la finestra durante il gesto, ma non espone ancora WebKit al
+        // redirect Google: prima il tentativo deve esistere in modo durevole.
+        authWindow = window.open('', '_blank');
+        try { if (authWindow) authWindow.opener = null; } catch (e) {}
+
+        state = await ensureWilduAuthBridgeAttemptStarted(state);
+        const bridgeUrl = buildWilduAuthBridgeUrl(state.attemptId);
+
+        if (!authWindow) {
+            window.location.assign(bridgeUrl);
+            return;
+        }
+
+        authWindow.location.replace(bridgeUrl);
+
+        showToast('Completa l’accesso Google nella finestra appena aperta.');
+        await pollWilduAuthBridgeAttempt(state);
+    } catch (error) {
+        const code = String(error?.code || 'AUTH_BRIDGE_START_FAILED');
+        pageDebug('AUTH_BRIDGE_START_FAILED', { code });
+        if (state?.phase === 'STARTING' || error?.status === 400 || error?.status === 403) {
+            clearWilduAuthBridgeAttempt(code);
+            endWilduGoogleAuthTransition(code);
+        }
+        try { if (authWindow && !authWindow.closed) authWindow.close(); } catch (e) {}
+        showToast('Accesso Google non avviato. Riprova tra poco.');
+    } finally {
+        WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
+    }
+}
 
 function shouldUseWilduGoogleIdentitySignIn() {
     return WILDU_GOOGLE_IDENTITY_FALLBACK_ENABLED === true &&
@@ -15067,6 +15377,11 @@ async function enableWilduGoogleIdentityFallback() {
 function loginWithGoogle() {
     if (!navigator.onLine) {
         showToast("Sei offline. Per accedere serve la connessione.");
+        return;
+    }
+
+    if (shouldUseWilduDurableAuthBridge()) {
+        loginWithWilduDurableAuthBridge();
         return;
     }
 
@@ -15622,7 +15937,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.41';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.42';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -18238,6 +18553,19 @@ async function init() {
     consumeWilduGlobalCacheUrlParamsOnce();
 
     checkAuthEnvironment();
+
+    // Se iOS ha ricreato il processo durante Google, il tentativo crittografico
+    // resta nell'origin della PWA e viene riscattato senza riaprire il popup.
+    if (!auth.currentUser && shouldUseWilduDurableAuthBridge()) {
+        const resumeDurableGoogleLogin = () => {
+            if (!auth.currentUser && document.visibilityState !== 'hidden') {
+                resumeWilduAuthBridgeAttempt().catch(() => {});
+            }
+        };
+        window.setTimeout(resumeDurableGoogleLogin, 0);
+        window.addEventListener('focus', resumeDurableGoogleLogin, { passive: true });
+        document.addEventListener('visibilitychange', resumeDurableGoogleLogin, { passive: true });
+    }
 
     consumeWilduReturnTabUrlParamOnce();
 
