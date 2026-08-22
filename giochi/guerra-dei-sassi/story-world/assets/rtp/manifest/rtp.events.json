@@ -1,0 +1,2132 @@
+{
+  "schemaVersion": 1,
+  "status": "dormant_scenario_manifest_v347_pass3_cutscene_dialogue_flow",
+  "runtimeLoaded": false,
+  "sourcePlan": "PERLA1/RTP_GAME_COMPLETION_PLAN.md",
+  "battlePolicy": {
+    "battleAppIntegrated": false,
+    "temporaryTestSwitch": "Segnare questa battle come vinta o persa?",
+    "disableWhenRealBattleAppExists": true
+  },
+  "coordinatePolicy": {
+    "status": "runtime_pending",
+    "note": "Exact event trigger coordinates must wait for runtime coordinate verification, including the suspected east/south +30 offset between debug/in-game coordinate systems."
+  },
+  "comfortGameplayPolicyV341": {
+    "status": "session_debug_runtime_slice",
+    "numericStatePreferred": true,
+    "states": {
+      "comfort": "0..100",
+      "stress": "0..100",
+      "energy": "0..maxByHubTier",
+      "prep": "0..100",
+      "wetness": "0..100",
+      "orientation": "0..100"
+    },
+    "sourceEvidence": [
+      "sceneggiatura: afternoon heat pressure about -2 comfort per minute",
+      "sceneggiatura: mosquito pressure must be spatialized through the visible mosquito cloud sprite instead of a passive night timer",
+      "sceneggiatura/GDD: GD shower recovery, hub tier mitigation, refrigerator, reflective tarp, wheelbarrow fatigue",
+      "V341 design refinement: rain produces wetness/energy pressure, storm produces orientation/stress pressure, and preparation/resilience is the second counter for counterplay"
+    ],
+    "hazardRulesV341": {
+      "heat": "clear/sunny weather only; cloudy, rain, and storm must not behave like heat",
+      "mosquito": "requires active visible mosquito sprite proximity/chase/bite; no generic night decay",
+      "rain": "raises wetness and drains energy/preparation; recover through hub/shower/poncho-style effects",
+      "storm": "raises wetness, reduces orientation, increases stress, and drains energy/preparation; recover through hub/compass/kit-style effects",
+      "bonuses": "hub tier, reflective tarp, repellent, fridge, poncho, and compass-style flags reduce specific hazards instead of globally flattening all danger"
+    },
+    "legacyBooleanFlags": [
+      "player.comfort_penalty_minor",
+      "player.comfort_penalty_heat",
+      "player.stress_penalty_minor",
+      "player.energy_penalty_minor"
+    ],
+    "runtimeContract": "V341 mirrors numeric comfort/stress/energy thresholds into legacy flags for current event compatibility while keeping prep/wetness/orientation session-only; production should migrate battle/event effects to numeric deltas after save/load contract."
+  },
+  "events": [
+    {
+      "eventId": "event.intro.reception_debt",
+      "eventType": "intro",
+      "location": {
+        "zone": "reception",
+        "placementId": "placement.main.imperio.reception",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "event_only",
+      "participants": [
+        "imperio"
+      ],
+      "trigger": {
+        "type": "scripted_intro_after_player_wakeup",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "intro.player_woke_up",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "player.debt_ec",
+          "op": "set",
+          "value": 10
+        },
+        {
+          "state": "rent.daily_cost_ec",
+          "op": "set",
+          "value": 10
+        },
+        {
+          "state": "tutorial.debt_started",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "wheelbarrow.available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.unlocked",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.imperio.intro_debt.001",
+        "dialogue.imperio.intro_debt.002",
+        "dialogue.imperio.intro_debt.003",
+        "dialogue.imperio.intro_debt.004",
+        "dialogue.imperio.intro_debt.005",
+        "dialogue.imperio.intro_debt.006"
+      ],
+      "placeholderRefs": [
+        "placeholder.hub.piazzola_tier_1",
+        "placeholder.wheelbarrow.tier_1_2_3"
+      ],
+      "successState": "intro.debt_tutorial_ready",
+      "failureState": "intro.reception_debt_retry",
+      "noParadoxChecks": [
+        "Imperio must be present at reception during intro.",
+        "Intro text may be rewritten only if it preserves debt, missing wallet, wheelbarrow, and ghiaione scandal setup.",
+        "Comic intro integration remains later than core runtime."
+      ],
+      "eventSource": "storyboard_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Intro debt/reception beat is directly represented by the supplied storyboard and scenario premise.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 6,
+        "dynamicTokensAllowed": true
+      },
+      "dialogueExpansionV347": {
+        "cutsceneRewrite": true,
+        "dialogueCount": 6,
+        "storyboardBeats": [
+          "Prato order",
+          "ghiaione dump",
+          "Torneo dei Sassi",
+          "missing wallet",
+          "10 EC debt",
+          "wheelbarrow tutorial"
+        ],
+        "lockedLinesPreserved": false
+      }
+    },
+    {
+      "eventId": "event.system.daily_rent_pressure",
+      "eventType": "system",
+      "location": {
+        "zone": "reception",
+        "placementId": "placement.main.imperio.reception",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "morning",
+      "participants": [
+        "imperio"
+      ],
+      "trigger": {
+        "type": "daily_time_check",
+        "hour": "08:00"
+      },
+      "conditions": [
+        {
+          "state": "rent.daily_check_due",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "rent.warning_seen_today",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "rent.payment_prompt_available",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.imperio.rent_pressure.001",
+        "dialogue.imperio.rent_pressure.002",
+        "dialogue.imperio.rent_pressure.003"
+      ],
+      "placeholderRefs": [],
+      "successState": "rent.player_warned_before_penalty",
+      "failureState": "rent.warning_retry_before_penalty",
+      "noParadoxChecks": [
+        "Rent pressure must warn before punishment.",
+        "No eviction softlock without recovery path."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Daily rent/debt pressure is an explicit gameplay-system requirement.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 3,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.nina_ciottolo",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "lavatoi",
+        "placementId": "placement.main.nina_ciottolo.lavatoi",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "morning",
+      "participants": [
+        "nina_ciottolo"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "nina_ciottolo.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "nina_ciottolo.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.nina_ciottolo.challenge.001",
+        "dialogue.nina_ciottolo.challenge.002",
+        "dialogue.nina_ciottolo.challenge.003",
+        "dialogue.nina_ciottolo.lost.001",
+        "dialogue.nina_ciottolo.lost.002",
+        "dialogue.nina_ciottolo.recruited.001",
+        "dialogue.nina_ciottolo.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "nina_ciottolo.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "nina_ciottolo.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.accattonaggio.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.nina_ciottolo",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "nina_ciottolo.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "nina_ciottolo.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.comfort_penalty_minor",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "nina_ciottolo.recruited",
+      "failureState": "nina_ciottolo.retry_available",
+      "noParadoxChecks": [
+        "Recruitment removes or conditions original-zone challenge placement.",
+        "Lost branch remains recoverable."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.prof_ossidiana",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "bar_veranda",
+        "placementId": "placement.main.prof_ossidiana.bar_veranda",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "morning",
+      "participants": [
+        "prof_ossidiana"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "prof_ossidiana.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "prof_ossidiana.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.prof_ossidiana.challenge.001",
+        "dialogue.prof_ossidiana.challenge.002",
+        "dialogue.prof_ossidiana.challenge.003",
+        "dialogue.prof_ossidiana.lost.001",
+        "dialogue.prof_ossidiana.lost.002",
+        "dialogue.prof_ossidiana.recruited.001",
+        "dialogue.prof_ossidiana.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "prof_ossidiana.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "prof_ossidiana.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.audit_fiscale.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.prof_ossidiana",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "prof_ossidiana.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "prof_ossidiana.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.ec_penalty_minor",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "prof_ossidiana.recruited",
+      "failureState": "prof_ossidiana.retry_available",
+      "noParadoxChecks": [
+        "Audit job unlock only on won.",
+        "Lost branch remains recoverable."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.orbo_granito",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "spiaggia_libera",
+        "placementId": "placement.main.orbo_granito.spiaggia_libera",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "afternoon",
+      "participants": [
+        "orbo_granito"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "orbo_granito.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "orbo_granito.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.orbo_granito.challenge.001",
+        "dialogue.orbo_granito.challenge.002",
+        "dialogue.orbo_granito.challenge.003",
+        "dialogue.orbo_granito.lost.001",
+        "dialogue.orbo_granito.lost.002",
+        "dialogue.orbo_granito.recruited.001",
+        "dialogue.orbo_granito.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "orbo_granito.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "orbo_granito.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.metal_detector.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.orbo_granito",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "orbo_granito.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "orbo_granito.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.resource_drop_minor",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "orbo_granito.recruited",
+      "failureState": "orbo_granito.retry_available",
+      "noParadoxChecks": [
+        "Beach animal ambience must not hide the trigger."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.teo_pietrafocaia",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "barbecue",
+        "placementId": "placement.main.teo_pietrafocaia.barbecue",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "afternoon",
+      "participants": [
+        "teo_pietrafocaia"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "teo_pietrafocaia.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "teo_pietrafocaia.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.teo_pietrafocaia.challenge.001",
+        "dialogue.teo_pietrafocaia.challenge.002",
+        "dialogue.teo_pietrafocaia.challenge.003",
+        "dialogue.teo_pietrafocaia.lost.001",
+        "dialogue.teo_pietrafocaia.lost.002",
+        "dialogue.teo_pietrafocaia.recruited.001",
+        "dialogue.teo_pietrafocaia.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "teo_pietrafocaia.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "teo_pietrafocaia.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.grigliata_clandestina.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.teo_pietrafocaia",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "teo_pietrafocaia.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "teo_pietrafocaia.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.comfort_penalty_heat",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "teo_pietrafocaia.recruited",
+      "failureState": "teo_pietrafocaia.retry_available",
+      "noParadoxChecks": [
+        "Heat/comfort penalty must remain minor and recoverable."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.bruno_basalto",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "calisthenics_stone_piles",
+        "placementId": "placement.main.bruno_basalto.training_corner",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "afternoon",
+      "participants": [
+        "bruno_basalto"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "bruno_basalto.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "bruno_basalto.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.bruno_basalto.challenge.001",
+        "dialogue.bruno_basalto.challenge.002",
+        "dialogue.bruno_basalto.challenge.003",
+        "dialogue.bruno_basalto.lost.001",
+        "dialogue.bruno_basalto.lost.002",
+        "dialogue.bruno_basalto.recruited.001",
+        "dialogue.bruno_basalto.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "bruno_basalto.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "bruno_basalto.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.frantumazione_massi.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.bruno_basalto",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "bruno_basalto.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "bruno_basalto.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.inventory_weight_warning",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "bruno_basalto.recruited",
+      "failureState": "bruno_basalto.retry_available",
+      "noParadoxChecks": [
+        "Heavy resource mechanics must not block retry."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.lalla_lapillo",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "yoga_prato_ombreggiato",
+        "placementId": "placement.main.lalla_lapillo.yoga_shadow",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "lalla_lapillo"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "lalla_lapillo.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "lalla_lapillo.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.lalla_lapillo.challenge.001",
+        "dialogue.lalla_lapillo.challenge.002",
+        "dialogue.lalla_lapillo.challenge.003",
+        "dialogue.lalla_lapillo.lost.001",
+        "dialogue.lalla_lapillo.lost.002",
+        "dialogue.lalla_lapillo.recruited.001",
+        "dialogue.lalla_lapillo.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "lalla_lapillo.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "lalla_lapillo.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.purificazione.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.lalla_lapillo",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "lalla_lapillo.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "lalla_lapillo.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.stress_penalty_minor",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "lalla_lapillo.recruited",
+      "failureState": "lalla_lapillo.retry_available",
+      "noParadoxChecks": [
+        "Night trigger must be visible enough."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.mara_selce",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "pineta_hidden_charge_point",
+        "placementId": "placement.main.mara_selce.pineta_charge_point",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "mara_selce"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "mara_selce.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "mara_selce.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.mara_selce.challenge.001",
+        "dialogue.mara_selce.challenge.002",
+        "dialogue.mara_selce.challenge.003",
+        "dialogue.mara_selce.lost.001",
+        "dialogue.mara_selce.lost.002",
+        "dialogue.mara_selce.recruited.001",
+        "dialogue.mara_selce.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "mara_selce.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "mara_selce.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.riciclaggio_elettronica.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.mara_selce",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "mara_selce.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "mara_selce.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.energy_penalty_minor",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "mara_selce.recruited",
+      "failureState": "mara_selce.retry_available",
+      "noParadoxChecks": [
+        "Hidden zone must not become inaccessible."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.challenge.zelda_quarzo",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "palco_animazione",
+        "placementId": "placement.main.zelda_quarzo.palco_animazione",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "zelda_quarzo"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "zelda_quarzo.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "effects": [
+        {
+          "state": "zelda_quarzo.challenge_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.zelda_quarzo.challenge.001",
+        "dialogue.zelda_quarzo.challenge.002",
+        "dialogue.zelda_quarzo.challenge.003",
+        "dialogue.zelda_quarzo.lost.001",
+        "dialogue.zelda_quarzo.lost.002",
+        "dialogue.zelda_quarzo.recruited.001",
+        "dialogue.zelda_quarzo.recruited.002"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "zelda_quarzo.challenge_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "zelda_quarzo.recruited",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "hub.job.lotteria_clandestina.unlocked",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "progress.stone_badges.zelda_quarzo",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "zelda_quarzo.challenge_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "zelda_quarzo.challenge_retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "player.gd_penalty_minor",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "zelda_quarzo.recruited",
+      "failureState": "zelda_quarzo.retry_available",
+      "noParadoxChecks": [
+        "DJ flavor trigger must not overlap challenge trigger."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Recruitment challenge battle placeholders are explicit gameplay progression requirements.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 7,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.final.imperio_battle",
+      "eventType": "battle_placeholder",
+      "location": {
+        "zone": "reception",
+        "placementId": "placement.main.imperio.reception",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "imperio"
+      ],
+      "trigger": {
+        "type": "interact_or_scripted_final",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "final.imperio_battle_available",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "game.final_won",
+          "op": "not_equals",
+          "value": true
+        },
+        {
+          "state": "imperio.defeated",
+          "op": "not_equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "final.imperio_battle_started",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.imperio.final.001",
+        "dialogue.imperio.final.002",
+        "dialogue.imperio.final.003",
+        "dialogue.imperio.final.004",
+        "dialogue.imperio.final.005",
+        "dialogue.imperio.final.006",
+        "dialogue.imperio.final.lost.001",
+        "dialogue.imperio.final.lost.002",
+        "dialogue.imperio.final.lost.003",
+        "dialogue.imperio.final.won.001",
+        "dialogue.imperio.final.won.002",
+        "dialogue.imperio.final.won.003"
+      ],
+      "placeholderRefs": [
+        "placeholder.system.battle_app"
+      ],
+      "battlePlaceholder": {
+        "battleAppIntegrated": false,
+        "testSwitch": {
+          "enabled": true,
+          "prompt": "Segnare questa battle come vinta o persa?",
+          "outcomes": [
+            "won",
+            "lost"
+          ]
+        }
+      },
+      "effectsOnWon": [
+        {
+          "state": "final.imperio_battle_result",
+          "op": "set",
+          "value": "won"
+        },
+        {
+          "state": "game.final_won",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "imperio.defeated",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "effectsOnLost": [
+        {
+          "state": "final.imperio_battle_result",
+          "op": "set",
+          "value": "lost"
+        },
+        {
+          "state": "final.retry_available",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "rent.warning_seen_today",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "successState": "game.final_won",
+      "failureState": "final.retry_available",
+      "noParadoxChecks": [
+        "Final is gated by at least 3 recruitments, cleared debt, 500 EC administrative tax, and night window.",
+        "Lost branch does not erase recruitment progress."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Final Imperio battle placeholder is an explicit game-completion requirement after recruitments/debt progression.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 12,
+        "dynamicTokensAllowed": true
+      },
+      "dialogueExpansionV347": {
+        "cutsceneRewrite": true,
+        "preBattleDialogueCount": 6,
+        "finalOutcomeDialogueCount": 6,
+        "lockedPreBattleLinesPreserved": false,
+        "storyBeats": [
+          "at least 3 recruited and resistance organized",
+          "debt/base progress",
+          "Imperio exploit confession",
+          "Porfido Monumentale",
+          "temporary win/lost battle switch"
+        ]
+      }
+    },
+    {
+      "eventId": "event.system.resource_collection_loop",
+      "eventType": "resource",
+      "location": {
+        "zone": "multi_zone_resource_spawns",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "placeholder.resource.ciottolo_base",
+        "placeholder.resource.quarzo_lucido",
+        "placeholder.resource.ghiaione_cantiere",
+        "placeholder.resource.basalto_pesante"
+      ],
+      "trigger": {
+        "type": "interact_or_pickup",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "wheelbarrow.available",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "inventory.resource_changed",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [
+        "placeholder.resource.ciottolo_base",
+        "placeholder.resource.quarzo_lucido",
+        "placeholder.resource.ghiaione_cantiere",
+        "placeholder.resource.basalto_pesante",
+        "placeholder.wheelbarrow.tier_1_2_3"
+      ],
+      "successState": "resource.collected_or_inventory_full",
+      "failureState": "resource.pickup_retry_or_inventory_full_message",
+      "noParadoxChecks": [
+        "Resource spawn density must be capped.",
+        "Wheelbarrow capacity must gate collection without softlock."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Resource collection is an explicit core management-loop requirement."
+    },
+    {
+      "eventId": "event.system.hub_upgrade_loop",
+      "eventType": "base_upgrade",
+      "location": {
+        "zone": "hub_piazzola",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "placeholder.hub.piazzola_tier_1",
+        "placeholder.hub.piazzola_tier_2",
+        "placeholder.hub.piazzola_tier_3",
+        "placeholder.wheelbarrow.tier_1_2_3"
+      ],
+      "trigger": {
+        "type": "interact_hub",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "hub.unlocked",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "hub.upgrade_menu_available",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [
+        "placeholder.hub.piazzola_tier_1",
+        "placeholder.hub.piazzola_tier_2",
+        "placeholder.hub.piazzola_tier_3",
+        "placeholder.wheelbarrow.tier_1_2_3"
+      ],
+      "successState": "hub.upgrade_or_status_opened",
+      "failureState": "hub.requirements_message_shown",
+      "noParadoxChecks": [
+        "Hub tiers are mutually exclusive visual states.",
+        "Recruited jobs unlock only after won branches."
+      ],
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Hub/base upgrade loop is an explicit management-loop requirement."
+    },
+    {
+      "eventId": "event.cutscene.hub_three_allies_strategy",
+      "eventType": "cutscene_dynamic",
+      "eventSource": "sceneggiatura_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Scenario section 3.3 defines a modular hub cutscene when any three workers are active on the Tabellone della Resistenza.",
+      "location": {
+        "zone": "hub_piazzola",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "event_only",
+      "participants": [
+        "nina_ciottolo",
+        "orbo_granito",
+        "teo_pietrafocaia",
+        "prof_ossidiana",
+        "lalla_lapillo",
+        "mara_selce",
+        "bruno_basalto",
+        "zelda_quarzo"
+      ],
+      "trigger": {
+        "type": "interact_hub_three_active_workers",
+        "coordinateStatus": "runtime_pending",
+        "runtimeIntegrationPending": true,
+        "activeWorkerSlotPolicy": "show exactly three assigned/recruited workers from the hub roster, not every unlocked worker"
+      },
+      "conditions": [
+        {
+          "state": "hub.unlocked",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "hub.three_allies_cutscene_available",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "hub.three_allies_strategy_seen",
+          "op": "not_equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "hub.three_allies_strategy_seen",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [
+        "dialogue.hub_three_allies.nina.report",
+        "dialogue.hub_three_allies.orbo.report",
+        "dialogue.hub_three_allies.teo.report",
+        "dialogue.hub_three_allies.prof.report",
+        "dialogue.hub_three_allies.lalla.report",
+        "dialogue.hub_three_allies.mara.report",
+        "dialogue.hub_three_allies.bruno.report",
+        "dialogue.hub_three_allies.zelda.report",
+        "dialogue.hub_three_allies.nina.risk",
+        "dialogue.hub_three_allies.orbo.risk",
+        "dialogue.hub_three_allies.teo.risk",
+        "dialogue.hub_three_allies.prof.risk",
+        "dialogue.hub_three_allies.lalla.risk",
+        "dialogue.hub_three_allies.mara.risk",
+        "dialogue.hub_three_allies.bruno.risk",
+        "dialogue.hub_three_allies.zelda.risk",
+        "dialogue.hub_three_allies.prof.close",
+        "dialogue.hub_three_allies.nina.close",
+        "dialogue.hub_three_allies.mara.close",
+        "dialogue.hub_three_allies.orbo.close",
+        "dialogue.hub_three_allies.teo.close",
+        "dialogue.hub_three_allies.lalla.close",
+        "dialogue.hub_three_allies.bruno.close",
+        "dialogue.hub_three_allies.zelda.close"
+      ],
+      "placeholderRefs": [],
+      "successState": "hub.three_allies_strategy_seen",
+      "failureState": "hub.three_allies_cutscene_waiting_for_three_active_workers",
+      "noParadoxChecks": [
+        "Do not show all unlocked workers; runtime must filter exactly three active Tabellone slots.",
+        "The cutscene must not collect daily income twice or mutate recruitment progress.",
+        "The cutscene is narrative strategy context; hub economy remains owned by the hub menu/runtime systems."
+      ],
+      "dialogueExpansionV347": {
+        "multiBox": true,
+        "dialogueCount": 19,
+        "dynamicInjectionRequired": true,
+        "runtimeMustFilterActiveWorkerSlots": true,
+        "manifestProvidesPerCharacterReportRiskCloseVariants": true
+      }
+    },
+    {
+      "eventId": "event.ambient.animals.day",
+      "eventType": "ambient",
+      "location": {
+        "zone": "day_ambience_zones",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "seagull_1",
+        "seagull_2",
+        "cat",
+        "dog",
+        "squirrel",
+        "bird_1",
+        "bird_2",
+        "bird_3",
+        "curly"
+      ],
+      "trigger": {
+        "type": "zone_ambience_load"
+      },
+      "conditions": [
+        {
+          "state": "ambience.day_enabled",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "ambience.day_animals_loaded",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "ambience.day_active",
+      "failureState": "ambience.day_skipped_for_budget",
+      "noParadoxChecks": [
+        "Animals have no dialogue.",
+        "Density cap must protect performance."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone."
+    },
+    {
+      "eventId": "event.ambient.animals.night",
+      "eventType": "ambient",
+      "location": {
+        "zone": "night_ambience_zones",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "cat",
+        "rana",
+        "rana_2",
+        "bat",
+        "howl_1",
+        "howl_2"
+      ],
+      "trigger": {
+        "type": "zone_ambience_load"
+      },
+      "conditions": [
+        {
+          "state": "ambience.night_enabled",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "ambience.night_animals_loaded",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "ambience.night_active",
+      "failureState": "ambience.night_skipped_for_budget",
+      "noParadoxChecks": [
+        "Animals have no dialogue.",
+        "Night ambience must not hide event-critical characters."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone."
+    },
+    {
+      "eventId": "event.ambient.insects.day",
+      "eventType": "ambient",
+      "location": {
+        "zone": "barbecue_flowers_trash",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "bees_iso_custom_cloud_shake_right"
+      ],
+      "trigger": {
+        "type": "zone_ambience_load"
+      },
+      "conditions": [
+        {
+          "state": "ambience.insects_day_enabled",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "ambience.bees_loaded",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "ambience.bees_active",
+      "failureState": "ambience.bees_skipped_for_budget",
+      "noParadoxChecks": [
+        "Special ambient direct asset is not inflated to fake standard frames."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone."
+    },
+    {
+      "eventId": "event.ambient.insects.night",
+      "eventType": "ambient",
+      "location": {
+        "zone": "pineta_lavatoi_night_routes",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "mosquitoes_iso_custom_clouds_shake_down",
+        "mosquitoes_iso_yoga_shadow",
+        "mosquitoes_iso_yoga_outer",
+        "mosquitoes_iso_far_west_pineta",
+        "mosquitoes_iso_beach_sections"
+      ],
+      "trigger": {
+        "type": "zone_ambience_load"
+      },
+      "conditions": [
+        {
+          "state": "ambience.insects_night_enabled",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "ambience.mosquitoes_loaded",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "ambience.mosquitoes_active",
+      "failureState": "ambience.mosquitoes_skipped_for_budget",
+      "noParadoxChecks": [
+        "Special ambient direct asset is not inflated to fake standard frames."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone."
+    },
+    {
+      "eventId": "event.npc.loris_salvagente.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "lavatoi_puddle",
+        "placementId": "placement.npc.loris_salvagente.lavatoi",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "loris_salvagente"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.loris_salvagente.flavor.001",
+        "dialogue.loris_salvagente.flavor.002"
+      ],
+      "opensMarketV356": true,
+      "marketPolicyV356": {
+        "handler": "perlaRtpActionRenderMarketMenuV356",
+        "opensAfterDialogue": true,
+        "weatherPricing": "clear_is_player_disadvantage; rain_or_storm_is_player_advantage",
+        "usesIconCostBenefitSummary": true
+      },
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "NPC has no portrait by default."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.franca_sottovuoto.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "piazzole_storage",
+        "placementId": "placement.npc.franca_sottovuoto.piazzole",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "franca_sottovuoto"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.franca_sottovuoto.flavor.001",
+        "dialogue.franca_sottovuoto.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "NPC has no portrait by default."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.dj_giacomo_tristezza.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "palco_animazione",
+        "placementId": "placement.npc.dj_giacomo_tristezza.stage",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "dj_giacomo_tristezza"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.dj_giacomo_tristezza.flavor.001",
+        "dialogue.dj_giacomo_tristezza.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "Keep separate from Zelda trigger."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.ennio_verticale.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "bar_veranda_shadow",
+        "placementId": "placement.npc.ennio_verticale.bar_shadow",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "ennio_verticale"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.ennio_verticale.flavor.001",
+        "dialogue.ennio_verticale.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "NPC has no portrait by default."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.kevin_predatore.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "spiaggia_shore_bucket",
+        "placementId": "placement.npc.kevin_predatore.shore",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "kevin_predatore"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.kevin_predatore.flavor.001",
+        "dialogue.kevin_predatore.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "NPC has no portrait by default."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.klaus_von_wurst.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "sun_exposed_path",
+        "placementId": "placement.npc.klaus_von_wurst.sun_path",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "afternoon",
+      "participants": [
+        "klaus_von_wurst"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.klaus_von_wurst.flavor.001",
+        "dialogue.klaus_von_wurst.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "Comfort/stress hint cannot become mandatory."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.agente_igiene_007.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "pineta_hidden_tent",
+        "placementId": "placement.npc.agente_igiene_007.pineta",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "agente_igiene_007"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.agente_igiene_007.flavor.001",
+        "dialogue.agente_igiene_007.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "Hidden event must stay discoverable enough."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.nonna_pina.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "piazzola_card_table",
+        "placementId": "placement.npc.nonna_pina.card_table",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "afternoon",
+      "participants": [
+        "nonna_pina"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.nonna_pina.flavor.001",
+        "dialogue.nonna_pina.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "NPC has no portrait by default."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.npc.cocco_bill.flavor",
+      "eventType": "dialogue",
+      "location": {
+        "zone": "beach_bar_piazzole_vendor_route",
+        "placementId": "placement.npc.cocco_bill.vendor_route",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "cocco_bill"
+      ],
+      "trigger": {
+        "type": "interact",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [],
+      "effects": [],
+      "dialogueRefs": [
+        "dialogue.cocco_bill.flavor.001",
+        "dialogue.cocco_bill.flavor.002"
+      ],
+      "placeholderRefs": [],
+      "successState": "npc.flavor_dialogue_seen",
+      "failureState": "npc.flavor_dialogue_retry",
+      "noParadoxChecks": [
+        "Vendor route exact waypoints remain runtime pending."
+      ],
+      "eventSource": "inferred",
+      "sourceType": "inferred",
+      "sourceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "inferenceRationale": "Flavor or ambience event inferred from mapped RTP identity, zone atmosphere, time band, and scenario/gameplay tone.",
+      "dialogueExpansionV335": {
+        "multiBox": true,
+        "dialogueCount": 2,
+        "dynamicTokensAllowed": true
+      }
+    },
+    {
+      "eventId": "event.system.debt_payment_loop",
+      "eventType": "system",
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Debt/rent payment is required to make the final battle prerequisites reachable.",
+      "location": {
+        "zone": "reception",
+        "placementId": "placement.main.imperio.reception",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "day",
+      "participants": [
+        "imperio"
+      ],
+      "trigger": {
+        "type": "interact_rent_payment_prompt",
+        "coordinateStatus": "runtime_pending"
+      },
+      "conditions": [
+        {
+          "state": "rent.payment_prompt_available",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "player.debt_cleared",
+          "op": "set",
+          "value": true
+        },
+        {
+          "state": "rent.payment_prompt_available",
+          "op": "set",
+          "value": false
+        },
+        {
+          "state": "rent.daily_check_due",
+          "op": "set",
+          "value": false
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "player.debt_cleared",
+      "failureState": "rent.payment_retry_or_insufficient_ec",
+      "noParadoxChecks": [
+        "Debt clearing must require enough EC in runtime logic before setting success.",
+        "Failure keeps payment retry available without softlock."
+      ]
+    },
+    {
+      "eventId": "event.system.all_recruited_check",
+      "eventType": "system",
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Aggregate recruitment flag is required so final unlock logic has a single testable prerequisite.",
+      "location": {
+        "zone": "system_progression",
+        "coordinateStatus": "event_only"
+      },
+      "timeBand": "event_only",
+      "participants": [],
+      "trigger": {
+        "type": "state_aggregate_check"
+      },
+      "conditions": [
+        {
+          "state": "nina_ciottolo.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "prof_ossidiana.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "orbo_granito.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "teo_pietrafocaia.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "bruno_basalto.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "lalla_lapillo.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "mara_selce.recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "zelda_quarzo.recruited",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "progress.all_8_recruited",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "progress.all_8_recruited",
+      "failureState": "progress.recruitment_incomplete",
+      "noParadoxChecks": [
+        "Aggregate flag must be recomputed or invalidated only by explicit future design; recruited states are monotonic in current plan."
+      ]
+    },
+    {
+      "eventId": "event.system.three_recruited_check",
+      "eventType": "system",
+      "eventSource": "runtime_external_producer",
+      "sourceType": "derived",
+      "sourceRationale": "Runtime counts recruited PGs and sets progress.minimum_3_recruited before the core chain; this manifest entry documents and validates that aggregate prerequisite without requiring all 8 recruitments.",
+      "location": {
+        "zone": "system_progression",
+        "coordinateStatus": "event_only"
+      },
+      "timeBand": "event_only",
+      "participants": [],
+      "trigger": {
+        "type": "state_aggregate_check"
+      },
+      "conditions": [
+        {
+          "state": "progress.minimum_3_recruited",
+          "op": "equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "progress.minimum_3_recruited",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "progress.minimum_3_recruited",
+      "failureState": "progress.recruitment_under_3",
+      "noParadoxChecks": [
+        "The aggregate is computed from real recruited flags by runtime, not granted directly by this checker.",
+        "Three recruited PGs unlock final eligibility checks, while recruiting all 8 remains valid optional completion depth."
+      ]
+    },
+    {
+      "eventId": "event.system.final_battle_unlock_check",
+      "eventType": "system",
+      "eventSource": "gameplay_explicit",
+      "sourceType": "explicit",
+      "sourceRationale": "Final battle availability bridges at least 3 recruitments, daily debt, 500 EC administrative tax, and night-window prerequisites for both event and dialogue.",
+      "location": {
+        "zone": "reception",
+        "placementId": "placement.main.imperio.reception",
+        "coordinateStatus": "runtime_pending"
+      },
+      "timeBand": "night",
+      "participants": [
+        "imperio"
+      ],
+      "trigger": {
+        "type": "state_gate_check"
+      },
+      "conditions": [
+        {
+          "state": "progress.minimum_3_recruited",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "player.debt_cleared",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "final.admin_tax_paid",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "final.night_window",
+          "op": "equals",
+          "value": true
+        },
+        {
+          "state": "game.final_won",
+          "op": "not_equals",
+          "value": true
+        },
+        {
+          "state": "imperio.defeated",
+          "op": "not_equals",
+          "value": true
+        }
+      ],
+      "effects": [
+        {
+          "state": "final.imperio_battle_available",
+          "op": "set",
+          "value": true
+        }
+      ],
+      "dialogueRefs": [],
+      "placeholderRefs": [],
+      "successState": "final.imperio_battle_available",
+      "failureState": "final.prerequisites_incomplete",
+      "noParadoxChecks": [
+        "Final unlock must not start the battle automatically.",
+        "The 500 EC administrative tax must be paid by explicit player interaction, never by the natural core-chain checker.",
+        "Missing prerequisites produce readable feedback instead of a softlock."
+      ]
+    }
+  ],
+  "dialogueExpansionV335": {
+    "dialogueRefsSynced": true,
+    "dialogueCount": 119,
+    "eventCountWithDialogues": 21,
+    "eventCountTotalV347": 31,
+    "cutsceneRewriteV347": true
+  }
+}

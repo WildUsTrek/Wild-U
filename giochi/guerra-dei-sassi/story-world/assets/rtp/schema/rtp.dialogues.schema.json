@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "perla1.rtp.dialogues.schema.v1",
+  "title": "PERLA1 RTP Scenario Dialogues",
+  "type": "object",
+  "required": ["schemaVersion", "dialogues"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "dialogues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "speakerId",
+          "eventId",
+          "lineType",
+          "portraitPolicy",
+          "source",
+          "sourceType",
+          "sourceRationale",
+          "conditions",
+          "effects"
+        ],
+        "oneOf": [
+          { "required": ["textRef"] },
+          { "required": ["line"] }
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "speakerId": { "type": "string", "minLength": 1 },
+          "eventId": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "sourceType": { "enum": ["explicit", "inferred"] },
+          "sourceRationale": { "type": "string", "minLength": 1 },
+          "inferenceRationale": { "type": "string", "minLength": 1 },
+          "lineType": {
+            "enum": [
+              "event",
+              "ambient",
+              "fallback",
+              "tutorial",
+              "system",
+              "cutscene",
+              "battle_result_lost",
+              "battle_result_won",
+              "context_hint"
+            ]
+          },
+          "portraitPolicy": {
+            "enum": [
+              "main_character_portrait",
+              "no_portrait",
+              "npc_portrait_exception"
+            ]
+          },
+          "portraitExceptionApproved": { "type": "boolean" },
+          "conditions": { "type": "array" },
+          "effects": { "type": "array" },
+          "textRef": { "type": "string", "minLength": 1 },
+          "line": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

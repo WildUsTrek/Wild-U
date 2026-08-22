@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "perla1.rtp.events.schema.v1",
+  "title": "PERLA1 RTP Scenario Events",
+  "type": "object",
+  "required": ["schemaVersion", "events"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventType",
+          "eventSource",
+          "sourceType",
+          "sourceRationale",
+          "location",
+          "timeBand",
+          "participants",
+          "trigger",
+          "conditions",
+          "effects",
+          "dialogueRefs",
+          "successState",
+          "failureState",
+          "noParadoxChecks"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "eventId": { "type": "string", "minLength": 1 },
+          "eventSource": {
+            "enum": ["script_explicit", "storyboard_explicit", "gameplay_explicit", "inferred"]
+          },
+          "sourceType": { "enum": ["explicit", "inferred"] },
+          "sourceRationale": { "type": "string", "minLength": 1 },
+          "inferenceRationale": { "type": "string", "minLength": 1 },
+          "eventType": {
+            "enum": [
+              "intro",
+              "dialogue",
+              "quest",
+              "battle_placeholder",
+              "resource",
+              "base_upgrade",
+              "system",
+              "ambient"
+            ]
+          },
+          "location": { "type": "object", "required": ["zone"], "additionalProperties": true },
+          "timeBand": {
+            "enum": [
+              "dawn",
+              "morning",
+              "day",
+              "afternoon",
+              "sunset",
+              "night",
+              "storm_or_special_weather",
+              "event_only"
+            ]
+          },
+          "participants": { "type": "array", "items": { "type": "string" } },
+          "trigger": { "type": "object" },
+          "conditions": { "type": "array" },
+          "effects": { "type": "array" },
+          "dialogueRefs": { "type": "array", "items": { "type": "string" } },
+          "placeholderRefs": { "type": "array", "items": { "type": "string" } },
+          "battlePlaceholder": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "battleAppIntegrated": { "const": false },
+              "testSwitch": {
+                "type": "object",
+                "required": ["enabled", "outcomes"],
+                "additionalProperties": true,
+                "properties": {
+                  "enabled": { "const": true },
+                  "outcomes": {
+                    "type": "array",
+                    "items": { "enum": ["won", "lost"] }
+                  }
+                }
+              }
+            }
+          },
+          "effectsOnWon": { "type": "array" },
+          "effectsOnLost": { "type": "array" },
+          "successState": { "type": "string", "minLength": 1 },
+          "failureState": { "type": "string", "minLength": 1 },
+          "noParadoxChecks": { "type": "array" }
+        }
+      }
+    }
+  }
+}

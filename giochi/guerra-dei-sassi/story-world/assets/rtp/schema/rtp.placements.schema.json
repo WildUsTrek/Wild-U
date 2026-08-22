@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "perla1.rtp.placements.schema.v1",
+  "title": "PERLA1 RTP Scenario Placements",
+  "type": "object",
+  "required": ["schemaVersion", "status", "placements"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "type": "string" },
+    "placements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "entityType",
+          "zone",
+          "position",
+          "placementSource",
+          "placementRationale",
+          "timeBands",
+          "timeBandSource",
+          "availabilityConditions",
+          "eventLinks"
+        ],
+        "oneOf": [
+          { "required": ["entityId"] },
+          { "required": ["placeholderId"] }
+        ],
+        "allOf": [
+          {
+            "if": { "required": ["placeholderId"] },
+            "then": {
+              "required": [
+                "missingAssetType",
+                "temporaryRepresentation",
+                "recommendedFinalAsset",
+                "upgradeOrStateVariants",
+                "validationRisk"
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "entityId": { "type": "string", "minLength": 1 },
+          "placeholderId": { "type": "string", "minLength": 1 },
+          "entityType": {
+            "enum": [
+              "main_character",
+              "npc",
+              "animal",
+              "animal_ambient",
+              "resource",
+              "base_or_upgrade",
+              "system_event",
+              "placeholder"
+            ]
+          },
+          "zone": { "type": "string", "minLength": 1 },
+          "position": {
+            "type": "object",
+            "required": ["status"],
+            "additionalProperties": true,
+            "properties": {
+              "status": {
+                "enum": ["runtime_pending", "exact", "inferred", "event_only"]
+              },
+              "x": { "type": ["number", "null"] },
+              "y": { "type": ["number", "null"] },
+              "walkabilityStatus": {
+                "enum": ["runtime_pending", "walkable", "blocked", "risky"]
+              },
+              "visibilityStatus": {
+                "enum": ["runtime_pending", "visible", "occluded", "risky"]
+              }
+            }
+          },
+          "placementSource": {
+            "enum": ["script_explicit", "gameplay_explicit", "storyboard_explicit", "inferred"]
+          },
+          "placementRationale": { "type": "string", "minLength": 1 },
+          "timeBands": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "dawn",
+                "morning",
+                "day",
+                "afternoon",
+                "sunset",
+                "night",
+                "storm_or_special_weather",
+                "event_only"
+              ]
+            }
+          },
+          "timeBandSource": { "enum": ["explicit", "inferred"] },
+          "availabilityConditions": { "type": "array" },
+          "eventLinks": { "type": "array", "items": { "type": "string" } },
+          "missingAssetType": { "type": "string", "minLength": 1 },
+          "temporaryRepresentation": { "type": "string", "minLength": 1 },
+          "recommendedFinalAsset": { "type": "string", "minLength": 1 },
+          "upgradeOrStateVariants": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "validationRisk": { "type": "string", "minLength": 1 },
+          "validationNotes": { "type": "array" }
+        }
+      }
+    }
+  }
+}

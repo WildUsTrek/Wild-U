@@ -1,0 +1,2225 @@
+{
+  "schemaVersion": 1,
+  "status": "dormant_scenario_manifest_v1",
+  "runtimeLoaded": false,
+  "sourcePlan": "PERLA1/RTP_GAME_COMPLETION_PLAN.md",
+  "sourceDraft": "PERLA1/report/SCENEGGIATURA_GAMEPLAY_MAPPING_DRAFT_2026-06-14.md",
+  "notes": [
+    "Inferred placements are marked with rationale and must be revisited during runtime map integration.",
+    "V357: Main/NPC/animal coordinates are now canonical exact records after user-provided corrections plus mapper-pending promotion for absent PG/animals. The +30 X offset remains explicit in each position."
+  ],
+  "performanceBudget": {
+    "max_live_sprites_per_zone_band": 4,
+    "max_main_or_npc_per_zone_band": 2,
+    "max_animals_per_zone_band": 3,
+    "max_ambient_per_zone_band": 2,
+    "max_interactive_events_per_zone_band": 2,
+    "max_battle_placeholders_per_zone_band": 1,
+    "recommended_min_live_sprite_spacing_tiles": 2,
+    "recommended_min_main_or_npc_spacing_tiles": 2.5,
+    "recommended_min_event_trigger_spacing_tiles": 2,
+    "runtimeExactSpacingRequiredBeforeActivation": true,
+    "eventConcurrencyPolicy": "interactive events in the same zone/time band should be serialized or explicitly prioritized unless budget validation approves parallel availability",
+    "liveSpriteDistancePolicy": "main, npc, animal, and ambient sprites must keep readable spacing after coordinate offset reconciliation; exact spacing is runtime_pending until map validation",
+    "comfortHazardPolicyV341": "main/NPC/animal placements must be evaluated against sunny-only heat, shade/rest recovery, sprite-driven mosquito chase/bite threat, rain wetness, storm orientation loss, preparation/resilience, route effort, visibility, and sprite spacing. Safe fallback cells are review-only when they are not narratively/atmospherically correct; production exact promotion requires placement plus comfort-hazard and runtime map proof."
+  },
+  "placements": [
+    {
+      "id": "placement.main.imperio.reception",
+      "entityId": "imperio",
+      "entityType": "main_character",
+      "zone": "reception",
+      "position": {
+        "status": "exact",
+        "x": 40.5,
+        "y": 5.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 70.5,
+        "internalWorldY": 5.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 40.5,
+            "gameplayY": 5.5,
+            "worldX": 70.5,
+            "worldY": 5.5
+          }
+        }
+      },
+      "placementSource": "storyboard_explicit",
+      "placementRationale": "Imperio is shown and described at the reception desk for debt, rent, tournament, and final confrontation beats.",
+      "timeBands": [
+        "morning",
+        "day",
+        "night",
+        "event_only"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "imperio.final_battle_active",
+          "op": "not_equals",
+          "value": true
+        }
+      ],
+      "eventLinks": [
+        "event.intro.reception_debt",
+        "event.system.daily_rent_pressure",
+        "event.system.debt_payment_loop",
+        "event.final.imperio_battle"
+      ],
+      "validationNotes": [
+        "V341 promotes Imperio to exact debug/review coordinate inside Reception; runtime smoke must verify map/fMap/cMap/ceilingOwner before close.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: exact_v341_debug_review."
+      ]
+    },
+    {
+      "id": "placement.main.nina_ciottolo.lavatoi",
+      "entityId": "nina_ciottolo",
+      "entityType": "main_character",
+      "zone": "lavatoi",
+      "position": {
+        "status": "exact",
+        "x": 62,
+        "y": 66,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 92,
+        "internalWorldY": 66,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 41.5,
+            "gameplayY": 42.5,
+            "worldX": 71.5,
+            "worldY": 42.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Morning challenger tied to lavatoi, coin/gettoni pressure, and first recruitment economy.",
+      "timeBands": [
+        "morning"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "nina_ciottolo.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.nina_ciottolo"
+      ],
+      "validationNotes": [
+        "Post-recruitment hub placement remains a design decision.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.prof_ossidiana.bar_veranda",
+      "entityId": "prof_ossidiana",
+      "entityType": "main_character",
+      "zone": "bar_veranda",
+      "position": {
+        "status": "exact",
+        "x": 114,
+        "y": 68,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 144,
+        "internalWorldY": 68,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 20.5,
+            "gameplayY": 5.5,
+            "worldX": 50.5,
+            "worldY": 5.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Morning challenger with legalistic/audit role, best staged near bar tables and paperwork.",
+      "timeBands": [
+        "morning"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "prof_ossidiana.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.prof_ossidiana"
+      ],
+      "validationNotes": [
+        "Avoid overlap with general bar NPC flow.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.orbo_granito.spiaggia_libera",
+      "entityId": "orbo_granito",
+      "entityType": "main_character",
+      "zone": "spiaggia_libera",
+      "position": {
+        "status": "exact",
+        "x": 56.37,
+        "y": 8.66,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 86.37,
+        "internalWorldY": 8.66,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": -24.5,
+            "gameplayY": 72.5,
+            "worldX": 5.5,
+            "worldY": 72.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Afternoon metal-detector challenger belongs on the beach edge and stone-search route.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "orbo_granito.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.orbo_granito"
+      ],
+      "validationNotes": [
+        "Route must not conflict with shoreline animal ambience.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.teo_pietrafocaia.barbecue",
+      "entityId": "teo_pietrafocaia",
+      "entityType": "main_character",
+      "zone": "barbecue",
+      "position": {
+        "status": "exact",
+        "x": 75.36,
+        "y": 31.91,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 105.36,
+        "internalWorldY": 31.91,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 64.5,
+            "gameplayY": 4.5,
+            "worldX": 94.5,
+            "worldY": 4.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Afternoon barbecue challenger should anchor the grill/firewood/table loop.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "teo_pietrafocaia.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.teo_pietrafocaia"
+      ],
+      "validationNotes": [
+        "Heat/comfort hazard should be checked when gameplay systems are integrated.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.bruno_basalto.training_corner",
+      "entityId": "bruno_basalto",
+      "entityType": "main_character",
+      "zone": "calisthenics_stone_piles",
+      "position": {
+        "status": "exact",
+        "x": 63.5,
+        "y": 42.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 93.5,
+        "internalWorldY": 42.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 63.5,
+            "gameplayY": 42.5,
+            "worldX": 93.5,
+            "worldY": 42.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Afternoon strength challenger belongs near rough training props and stone piles.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "bruno_basalto.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.bruno_basalto"
+      ],
+      "validationNotes": [
+        "Avoid blocking primary route with large character silhouette.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.lalla_lapillo.yoga_shadow",
+      "entityId": "lalla_lapillo",
+      "entityType": "main_character",
+      "zone": "yoga_prato_ombreggiato",
+      "position": {
+        "status": "exact",
+        "x": 97,
+        "y": 28,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 127,
+        "internalWorldY": 28,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 42.5,
+            "gameplayY": 47.5,
+            "worldX": 72.5,
+            "worldY": 47.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Night ritual/purification challenger fits a shaded yoga or crystal corner.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "lalla_lapillo.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.lalla_lapillo"
+      ],
+      "validationNotes": [
+        "Night visibility and sprite contrast require visual QA later.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.mara_selce.pineta_charge_point",
+      "entityId": "mara_selce",
+      "entityType": "main_character",
+      "zone": "pineta_hidden_charge_point",
+      "position": {
+        "status": "exact",
+        "x": 17,
+        "y": 49,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 47,
+        "internalWorldY": 49,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 16.5,
+            "gameplayY": 25.5,
+            "worldX": 46.5,
+            "worldY": 25.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Night electronics/recycling challenger fits the darker tent/pineta charging point.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "mara_selce.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.mara_selce"
+      ],
+      "validationNotes": [
+        "Must not be hidden behind roofs/walls or tree clutter.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.main.zelda_quarzo.palco_animazione",
+      "entityId": "zelda_quarzo",
+      "entityType": "main_character",
+      "zone": "palco_animazione",
+      "position": {
+        "status": "exact",
+        "x": -9.9,
+        "y": 45,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 20.1,
+        "internalWorldY": 45,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 60.5,
+            "gameplayY": 42.5,
+            "worldX": 90.5,
+            "worldY": 42.5
+          }
+        }
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Night performance/lottery challenger should be staged on or near the animation stage.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "zelda_quarzo.recruited",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.zelda_quarzo"
+      ],
+      "validationNotes": [
+        "Keep enough distance from DJ NPC to avoid trigger overlap.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.loris_salvagente.lavatoi",
+      "entityId": "loris_salvagente",
+      "entityType": "npc",
+      "zone": "lavatoi_puddle",
+      "position": {
+        "status": "exact",
+        "x": 45,
+        "y": 74,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 75,
+        "internalWorldY": 74,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 38.5,
+            "gameplayY": 72.5,
+            "worldX": 68.5,
+            "worldY": 72.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Fake lifeguard authority works best near stagnant puddles and no-pool comedy.",
+      "timeBands": [
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.loris_salvagente.flavor"
+      ],
+      "validationNotes": [
+        "Flavor NPC; should not block Nina's lavatoi challenge route.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.franca_sottovuoto.piazzole",
+      "entityId": "franca_sottovuoto",
+      "entityType": "npc",
+      "zone": "piazzole_storage",
+      "position": {
+        "status": "exact",
+        "x": 61,
+        "y": 27,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 91,
+        "internalWorldY": 27,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 37.5,
+            "gameplayY": 75.5,
+            "worldX": 67.5,
+            "worldY": 75.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Storage/cooler guarding NPC supports resource and container hints.",
+      "timeBands": [
+        "morning",
+        "day",
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.franca_sottovuoto.flavor"
+      ],
+      "validationNotes": [
+        "Can hint at resource containers without being a quest blocker.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.dj_giacomo_tristezza.stage",
+      "entityId": "dj_giacomo_tristezza",
+      "entityType": "npc",
+      "zone": "palco_animazione",
+      "position": {
+        "status": "exact",
+        "x": 42,
+        "y": 49,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 72,
+        "internalWorldY": 49,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 66.5,
+            "gameplayY": 53.5,
+            "worldX": 96.5,
+            "worldY": 53.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Stage NPC supports Zelda's night zone while staying a lower-priority flavor interaction.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.dj_giacomo_tristezza.flavor"
+      ],
+      "validationNotes": [
+        "Must not overlap Zelda challenge trigger.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.ennio_verticale.bar_shadow",
+      "entityId": "ennio_verticale",
+      "entityType": "npc",
+      "zone": "bar_veranda_shadow",
+      "position": {
+        "status": "exact",
+        "x": -6.5,
+        "y": 10.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 23.5,
+        "internalWorldY": 10.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": -6.5,
+            "gameplayY": 10.5,
+            "worldX": 23.5,
+            "worldY": 10.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Crossword/shaded-chair flavor fits the bar veranda and can provide hints.",
+      "timeBands": [
+        "morning",
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.ennio_verticale.flavor"
+      ],
+      "validationNotes": [
+        "Use idle_only if seated/static pose is unsupported.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.kevin_predatore.shore",
+      "entityId": "kevin_predatore",
+      "entityType": "npc",
+      "zone": "spiaggia_shore_bucket",
+      "position": {
+        "status": "exact",
+        "x": 95,
+        "y": 48,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 125,
+        "internalWorldY": 48,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": -24.5,
+            "gameplayY": 68.5,
+            "worldX": 5.5,
+            "worldY": 68.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Erratic child NPC belongs near shoreline/bucket play and collectible hints.",
+      "timeBands": [
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.kevin_predatore.flavor"
+      ],
+      "validationNotes": [
+        "Keep patrol short to avoid player path blocking.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.klaus_von_wurst.sun_path",
+      "entityId": "klaus_von_wurst",
+      "entityType": "npc",
+      "zone": "sun_exposed_path",
+      "position": {
+        "status": "exact",
+        "x": 13,
+        "y": 5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 43,
+        "internalWorldY": 5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 60.5,
+            "gameplayY": 16.5,
+            "worldX": 90.5,
+            "worldY": 16.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Heat hazard flavor NPC belongs on an exposed, uncomfortable route.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.klaus_von_wurst.flavor"
+      ],
+      "validationNotes": [
+        "Useful future comfort/stress hint.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.agente_igiene_007.pineta",
+      "entityId": "agente_igiene_007",
+      "entityType": "npc",
+      "zone": "pineta_hidden_tent",
+      "position": {
+        "status": "exact",
+        "x": 16,
+        "y": 26,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 46,
+        "internalWorldY": 26,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 23.5,
+            "gameplayY": 27.5,
+            "worldX": 53.5,
+            "worldY": 27.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Hidden ASL/spy flavor works behind pines and near suspicious tents.",
+      "timeBands": [
+        "night",
+        "event_only"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.agente_igiene_007.flavor"
+      ],
+      "validationNotes": [
+        "Must be discoverable enough; avoid total occlusion.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.nonna_pina.card_table",
+      "entityId": "nonna_pina",
+      "entityType": "npc",
+      "zone": "piazzola_card_table",
+      "position": {
+        "status": "exact",
+        "x": 65,
+        "y": 75,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 95,
+        "internalWorldY": 75,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 59.5,
+            "gameplayY": 9.5,
+            "worldX": 89.5,
+            "worldY": 9.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Social camping flavor NPC fits shaded card-table area.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.nonna_pina.flavor"
+      ],
+      "validationNotes": [
+        "Mostly static behavior recommended.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.npc.cocco_bill.vendor_route",
+      "entityId": "cocco_bill",
+      "entityType": "npc",
+      "zone": "beach_bar_piazzole_vendor_route",
+      "position": {
+        "status": "exact",
+        "x": 22,
+        "y": 72,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 52,
+        "internalWorldY": 72,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": -3.5,
+            "gameplayY": 13.5,
+            "worldX": 26.5,
+            "worldY": 13.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Vendor NPC should patrol between beach, bar, and piazzole while staying short and readable.",
+      "timeBands": [
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.npc.cocco_bill.flavor"
+      ],
+      "validationNotes": [
+        "Convert route to exact waypoints only after map inspection.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.seagull_1.beach",
+      "entityId": "seagull_1",
+      "entityType": "animal",
+      "zone": "spiaggia_trash_route",
+      "position": {
+        "status": "exact",
+        "x": -22.5,
+        "y": 68.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 7.5,
+        "internalWorldY": 68.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": -22.5,
+            "gameplayY": 68.5,
+            "worldX": 7.5,
+            "worldY": 68.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Seagull ambience supports beach/trash/vendor comedy.",
+      "timeBands": [
+        "day",
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "No dialogue; density capped by ambience system.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.seagull_2.reception_roof",
+      "entityId": "seagull_2",
+      "entityType": "animal",
+      "zone": "reception_roof_edge",
+      "position": {
+        "status": "exact",
+        "x": 14.5,
+        "y": 6.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 44.5,
+        "internalWorldY": 6.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 14.5,
+            "gameplayY": 6.5,
+            "worldX": 44.5,
+            "worldY": 6.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Roof/edge perch reinforces noisy campsite atmosphere without blocking routes.",
+      "timeBands": [
+        "day",
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Renderer support for elevated/perched placement must be checked.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.cat.piazzole",
+      "entityId": "cat",
+      "entityType": "animal",
+      "zone": "piazzole_bar_shadow",
+      "position": {
+        "status": "exact",
+        "x": 26,
+        "y": 6,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 56,
+        "internalWorldY": 6,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": -9.5,
+            "gameplayY": 13.5,
+            "worldX": 20.5,
+            "worldY": 13.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Cat ambience fits shade, reception corner, and piazzole routes.",
+      "timeBands": [
+        "morning",
+        "day",
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day",
+        "event.ambient.animals.night"
+      ],
+      "validationNotes": [
+        "No dialogue.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.dog.entrance",
+      "entityId": "dog",
+      "entityType": "animal",
+      "zone": "camping_entrance_piazzole",
+      "position": {
+        "status": "exact",
+        "x": 40,
+        "y": 37,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 70,
+        "internalWorldY": 37,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 36.5,
+            "gameplayY": 70.5,
+            "worldX": 66.5,
+            "worldY": 70.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Dog patrol/sniff loop fits entrance and piazzole edge.",
+      "timeBands": [
+        "day",
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Use non-blocking collision.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.squirrel.pineta",
+      "entityId": "squirrel",
+      "entityType": "animal",
+      "zone": "pineta",
+      "position": {
+        "status": "exact",
+        "x": 18.5,
+        "y": 32.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 48.5,
+        "internalWorldY": 32.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 18.5,
+            "gameplayY": 32.5,
+            "worldX": 48.5,
+            "worldY": 32.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Squirrel ambience belongs in pineta and should use short dart loops.",
+      "timeBands": [
+        "morning",
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Avoid main path darting.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.lizard.sunny_wall",
+      "entityId": "lizard",
+      "entityType": "animal",
+      "zone": "sunny_walls_rocks",
+      "position": {
+        "status": "exact",
+        "x": 8,
+        "y": 71,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 38,
+        "internalWorldY": 71,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 85.5,
+            "gameplayY": 18.5,
+            "worldX": 115.5,
+            "worldY": 18.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Lizard basking supports hot exposed stone zones.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Mostly static loop.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.rana.lavatoi",
+      "entityId": "rana",
+      "entityType": "animal",
+      "zone": "secret_lake_path",
+      "position": {
+        "status": "exact",
+        "x": 94,
+        "y": 33,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 124,
+        "internalWorldY": 33,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 94,
+            "gameplayY": 33,
+            "worldX": 124,
+            "worldY": 33
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "V341 lake ecology pass: frog ambience belongs near the secret lake edge/path rather than the lavatoi, far enough from rana_2 to be readable.",
+      "candidateZones": [
+        "secret_lake_path",
+        "secret_lake_sand"
+      ],
+      "v341LakePlacement": {
+        "requestedAs": "rana_or_rospo_near_lake",
+        "assetReality": "No rospo/toad asset exists in the RTP manifest; rana is one of the two available amphibian animal sprites.",
+        "minimumSeparationFromRana2Tiles": 2,
+        "avoidZone": "secret_lake_water",
+        "runtimeCellV341": {
+          "map": 0,
+          "floor": 4,
+          "ceiling": 0,
+          "owner": 0,
+          "road": 1,
+          "zone": "secret_lake_path",
+          "free2": true,
+          "bushyWallWithin3": false,
+          "isWalkable": false
+        }
+      },
+      "timeBands": [
+        "morning",
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.night"
+      ],
+      "validationNotes": [
+        "No dialogue.",
+        "V341 runtime smoke confirms this cell is near the lake, map=0, free2, visible/open, and not water; player isWalkable remains false in this secret lake path slice and must be resolved before production promotion.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: exact_v341_debug_review."
+      ]
+    },
+    {
+      "id": "placement.animal.rana_2.lavatoi",
+      "entityId": "rana_2",
+      "entityType": "animal",
+      "zone": "secret_lake_path",
+      "position": {
+        "status": "exact",
+        "x": 106,
+        "y": 36,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 136,
+        "internalWorldY": 36,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 106,
+            "gameplayY": 36,
+            "worldX": 136,
+            "worldY": 36
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "V341 lake ecology pass: second amphibian variation is used as the requested toad/frog counterpart near the lake, separated from rana.",
+      "candidateZones": [
+        "secret_lake_path",
+        "secret_lake_sand"
+      ],
+      "v341LakePlacement": {
+        "requestedAs": "rospo_if_available",
+        "assetReality": "No rospo/toad asset exists in the RTP manifest; rana_2 is the second available amphibian animal sprite.",
+        "minimumSeparationFromRanaTiles": 2,
+        "actualSeparationFromRanaTiles": 12.37,
+        "avoidZone": "secret_lake_water",
+        "runtimeCellV341": {
+          "map": 0,
+          "floor": 4,
+          "ceiling": 0,
+          "owner": 0,
+          "road": 1,
+          "zone": "secret_lake_path",
+          "free2": true,
+          "bushyWallWithin3": false,
+          "isWalkable": false
+        }
+      },
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.night"
+      ],
+      "validationNotes": [
+        "Keep density low.",
+        "V341 runtime smoke confirms this cell is near the lake, map=0, free2, visible/open, not water, and distant from rana; player isWalkable remains false in this secret lake path slice and must be resolved before production promotion.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: exact_v341_debug_review."
+      ]
+    },
+    {
+      "id": "placement.animal.bird_1.pineta",
+      "entityId": "bird_1",
+      "entityType": "animal",
+      "zone": "pineta_trees",
+      "position": {
+        "status": "exact",
+        "x": 28.5,
+        "y": 32.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 58.5,
+        "internalWorldY": 32.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_bird_spacing_instruction_v357",
+          "note": "kept at the mapper/historical pineta anchor: one bird remains in the original historic pineta cluster",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 28.5,
+            "gameplayY": 32.5,
+            "worldX": 58.5,
+            "worldY": 32.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Bird ambience supports morning/day tree life.",
+      "timeBands": [
+        "morning",
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Perch/elevated rendering pending.",
+        "V357 coordinate promotion: kept at the mapper/historical pineta anchor: one bird remains in the original historic pineta cluster Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.bird_2.pineta",
+      "entityId": "bird_2",
+      "entityType": "animal",
+      "zone": "pineta_trees",
+      "position": {
+        "status": "exact",
+        "x": -14.5,
+        "y": 38.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 15.5,
+        "internalWorldY": 38.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_bird_spacing_instruction_v357",
+          "note": "moved away from the historic bird cluster into the new west pineta",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 26.5,
+            "gameplayY": 34.5,
+            "worldX": 56.5,
+            "worldY": 34.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Second bird adds variation without story ownership.",
+      "timeBands": [
+        "morning",
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "No dialogue.",
+        "V357 coordinate promotion: moved away from the historic bird cluster into the new west pineta Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.bird_3.pineta",
+      "entityId": "bird_3",
+      "entityType": "animal",
+      "zone": "pineta_trees",
+      "position": {
+        "status": "exact",
+        "x": 96.5,
+        "y": 24.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 126.5,
+        "internalWorldY": 24.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_bird_spacing_instruction_v357",
+          "note": "moved away from the historic bird cluster into the east pineta",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 21.5,
+            "gameplayY": 36.5,
+            "worldX": 51.5,
+            "worldY": 36.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Third bird supports ambient pool selection.",
+      "timeBands": [
+        "morning",
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Keep active count capped.",
+        "V357 coordinate promotion: moved away from the historic bird cluster into the east pineta Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.bat.pineta_night",
+      "entityId": "bat",
+      "entityType": "animal",
+      "zone": "pineta_night_fringe",
+      "position": {
+        "status": "exact",
+        "x": 17,
+        "y": 57,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 47,
+        "internalWorldY": 57,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "user_supplied_coordinate_v357",
+          "note": "Promoted from explicit in-game coordinate provided by the user.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 29.5,
+            "gameplayY": 34.5,
+            "worldX": 59.5,
+            "worldY": 34.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Bat ambience belongs in night pineta fringe if renderer supports high placement.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.night"
+      ],
+      "validationNotes": [
+        "Height/render support pending.",
+        "V357 coordinate promotion: Promoted from explicit in-game coordinate provided by the user. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.curly.piazzole",
+      "entityId": "curly",
+      "entityType": "animal",
+      "zone": "piazzole_shadow",
+      "position": {
+        "status": "exact",
+        "x": 22.5,
+        "y": 72.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 52.5,
+        "internalWorldY": 72.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 22.5,
+            "gameplayY": 72.5,
+            "worldX": 52.5,
+            "worldY": 72.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Generic animal ambience reserved for piazzole shadow variation.",
+      "timeBands": [
+        "day"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.day"
+      ],
+      "validationNotes": [
+        "Identity may be refined after visual review.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.howl_1.pineta",
+      "entityId": "howl_1",
+      "entityType": "animal",
+      "zone": "pineta_deep",
+      "position": {
+        "status": "exact",
+        "x": 23.5,
+        "y": 36.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 53.5,
+        "internalWorldY": 36.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 23.5,
+            "gameplayY": 36.5,
+            "worldX": 53.5,
+            "worldY": 36.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Howl ambience can support deeper pineta night tension.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.night"
+      ],
+      "validationNotes": [
+        "Audio/visual role must remain ambient only.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.animal.howl_2.pineta",
+      "entityId": "howl_2",
+      "entityType": "animal",
+      "zone": "pineta_deep",
+      "position": {
+        "status": "exact",
+        "x": 25.5,
+        "y": 37.5,
+        "coordinateSystem": "gameplay_display_x_to_internal_world_x_plus_30_y_unchanged",
+        "internalWorldX": 55.5,
+        "internalWorldY": 37.5,
+        "walkabilityStatus": "walkable",
+        "visibilityStatus": "visible",
+        "promotionV357": {
+          "source": "mapper_pending_promoted_v357",
+          "note": "Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list.",
+          "promotedAt": "2026-06-19",
+          "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt",
+          "xPlus30Applied": true,
+          "yOffsetApplied": 0,
+          "mapperCandidateStatus": "exact_candidate",
+          "previousMapperCandidate": {
+            "gameplayX": 25.5,
+            "gameplayY": 37.5,
+            "worldX": 55.5,
+            "worldY": 37.5
+          }
+        }
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Second howl ambience supports variation in night pineta.",
+      "timeBands": [
+        "night"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.animals.night"
+      ],
+      "validationNotes": [
+        "Keep rare to avoid noise.",
+        "V357 coordinate promotion: Promoted from current runtime mapper pending coordinate because this PG/animal was absent from the user correction list. Gameplay X/Y are stored separately from internal world X/Y; internal X = gameplay X + 30, internal Y unchanged. Previous status: runtime_pending."
+      ]
+    },
+    {
+      "id": "placement.ambient.bees.food_flowers",
+      "entityId": "bees_iso_custom_cloud_shake_right",
+      "entityType": "animal_ambient",
+      "zone": "barbecue_flowers_trash",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Bee cloud ambience fits food, flowers, and trash zones during daytime.",
+      "timeBands": [
+        "day",
+        "afternoon"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.insects.day"
+      ],
+      "validationNotes": [
+        "Special direct asset; do not inflate to fake 8-frame standard loop."
+      ]
+    },
+    {
+      "id": "placement.ambient.mosquitoes.night_routes",
+      "entityId": "mosquitoes_iso_custom_clouds_shake_down",
+      "entityType": "animal_ambient",
+      "zone": "pineta_lavatoi_night_routes",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "inferred",
+      "placementRationale": "Mosquito cloud is a real sprite-driven comfort hazard: it should chase/bite only when the visible mosquito entity is active and near the player, not as a generic night timer.",
+      "timeBands": [
+        "day",
+        "afternoon",
+        "night",
+        "storm_or_special_weather"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.insects.night"
+      ],
+      "validationNotes": [
+        "Special direct asset; keep density capped.",
+        "V341 comfort hazard reads active mosquito sprite proximity, chase radius, and bite cooldown; do not inflate this direct asset into fake 8-frame loops."
+      ],
+      "v341HazardPolicy": {
+        "hazardType": "mosquito_sprite_chase_bite",
+        "notNightTimer": true,
+        "chaseRadiusTiles": 11.5,
+        "biteRadiusTiles": 1.8,
+        "biteCooldownMs": 1800,
+        "comfortBite": -5,
+        "stressBite": 3,
+        "activeInWetOrHiddenZones": true
+      }
+    },
+    {
+      "id": "placement.ambient.mosquitoes.yoga_shadow",
+      "entityId": "mosquitoes_iso_yoga_shadow",
+      "entityType": "animal_ambient",
+      "zone": "pineta_yoga_shadow_routes",
+      "candidateZones": [
+        "pineta",
+        "yoga",
+        "pineta_lavatoi",
+        "secret_grove"
+      ],
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "inferred",
+      "placementRationale": "V361 x5 density: covers historic pinewood around the old yoga route with a real visible mosquito hazard sprite.",
+      "timeBands": [
+        "day",
+        "afternoon",
+        "night",
+        "storm_or_special_weather"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.insects.night"
+      ],
+      "validationNotes": [
+        "V361 density node 2/5. Keep separated from other mosquito clouds; special 25-frame atlas is preserved."
+      ],
+      "v341HazardPolicy": {
+        "hazardType": "mosquito_sprite_chase_bite",
+        "notNightTimer": true,
+        "chaseRadiusTiles": 11.5,
+        "biteRadiusTiles": 1.8,
+        "biteCooldownMs": 1800,
+        "comfortBite": -5,
+        "stressBite": 3,
+        "activeInWetOrHiddenZones": true
+      }
+    },
+    {
+      "id": "placement.ambient.mosquitoes.yoga_outer",
+      "entityId": "mosquitoes_iso_yoga_outer",
+      "entityType": "animal_ambient",
+      "zone": "pineta_yoga_outer_routes",
+      "candidateZones": [
+        "pineta",
+        "yoga",
+        "pineta_lavatoi",
+        "secret_grove"
+      ],
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "inferred",
+      "placementRationale": "V361 x5 density: second old-yoga pinewood coverage node so the adjacent historic pine sections feel populated without stacking clouds.",
+      "timeBands": [
+        "day",
+        "afternoon",
+        "night",
+        "storm_or_special_weather"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.insects.night"
+      ],
+      "validationNotes": [
+        "V361 density node 3/5. Keep separated from other mosquito clouds; special 25-frame atlas is preserved."
+      ],
+      "v341HazardPolicy": {
+        "hazardType": "mosquito_sprite_chase_bite",
+        "notNightTimer": true,
+        "chaseRadiusTiles": 11.5,
+        "biteRadiusTiles": 1.8,
+        "biteCooldownMs": 1800,
+        "comfortBite": -5,
+        "stressBite": 3,
+        "activeInWetOrHiddenZones": true
+      }
+    },
+    {
+      "id": "placement.ambient.mosquitoes.far_west_pineta",
+      "entityId": "mosquitoes_iso_far_west_pineta",
+      "entityType": "animal_ambient",
+      "zone": "pineta_far_west_routes",
+      "candidateZones": [
+        "pineta",
+        "west_pineta",
+        "pineta_ovest",
+        "secret_grove"
+      ],
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "inferred",
+      "placementRationale": "V361 x5 density: covers the new far-west pinewood while staying a distinct, separated visible hazard.",
+      "timeBands": [
+        "day",
+        "afternoon",
+        "night",
+        "storm_or_special_weather"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.insects.night"
+      ],
+      "validationNotes": [
+        "V361 density node 4/5. Keep separated from other mosquito clouds; special 25-frame atlas is preserved."
+      ],
+      "v341HazardPolicy": {
+        "hazardType": "mosquito_sprite_chase_bite",
+        "notNightTimer": true,
+        "chaseRadiusTiles": 11.5,
+        "biteRadiusTiles": 1.8,
+        "biteCooldownMs": 1800,
+        "comfortBite": -5,
+        "stressBite": 3,
+        "activeInWetOrHiddenZones": true
+      }
+    },
+    {
+      "id": "placement.ambient.mosquitoes.beach_sections",
+      "entityId": "mosquitoes_iso_beach_sections",
+      "entityType": "animal_ambient",
+      "zone": "beach_mosquito_sections",
+      "candidateZones": [
+        "beach",
+        "spiaggia",
+        "secret_beach",
+        "west_beach_gate_resource_site"
+      ],
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "inferred",
+      "placementRationale": "V361 x5 density: adds a sparse beach mosquito hazard in selected beach sections, still visible and avoidable.",
+      "timeBands": [
+        "day",
+        "afternoon",
+        "night",
+        "storm_or_special_weather"
+      ],
+      "timeBandSource": "inferred",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.ambient.insects.night"
+      ],
+      "validationNotes": [
+        "V361 density node 5/5. Keep separated from other mosquito clouds; special 25-frame atlas is preserved."
+      ],
+      "v341HazardPolicy": {
+        "hazardType": "mosquito_sprite_chase_bite",
+        "notNightTimer": true,
+        "chaseRadiusTiles": 11.5,
+        "biteRadiusTiles": 1.8,
+        "biteCooldownMs": 1800,
+        "comfortBite": -5,
+        "stressBite": 3,
+        "activeInWetOrHiddenZones": true
+      }
+    },
+    {
+      "id": "placement.placeholder.hub.piazzola_tier_1",
+      "placeholderId": "placeholder.hub.piazzola_tier_1",
+      "entityType": "base_or_upgrade",
+      "zone": "hub_piazzola",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Starting hub/base is required by the management loop and must be represented before final art exists.",
+      "timeBands": [
+        "day",
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "hub.tier",
+          "op": "equals",
+          "value": 1
+        }
+      ],
+      "eventLinks": [
+        "event.intro.reception_debt",
+        "event.system.hub_upgrade_loop"
+      ],
+      "validationNotes": [
+        "Placeholder asset; final footprint pending."
+      ],
+      "missingAssetType": "base_upgrade_world_sprite",
+      "temporaryRepresentation": "dormant placeholder placement for starting hub footprint",
+      "recommendedFinalAsset": "tier_1 tent/piazzola world sprite with walkable footprint metadata",
+      "upgradeOrStateVariants": [
+        "tier_1"
+      ],
+      "validationRisk": "final footprint, collision, visibility, and upgrade-state exclusivity pending runtime map validation"
+    },
+    {
+      "id": "placement.placeholder.hub.piazzola_tier_2",
+      "placeholderId": "placeholder.hub.piazzola_tier_2",
+      "entityType": "base_or_upgrade",
+      "zone": "hub_piazzola",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Tier 2 hub upgrade needs explicit placeholder state.",
+      "timeBands": [
+        "day",
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "hub.tier",
+          "op": "equals",
+          "value": 2
+        }
+      ],
+      "eventLinks": [
+        "event.system.hub_upgrade_loop"
+      ],
+      "validationNotes": [
+        "Mutually exclusive with other hub tiers."
+      ],
+      "missingAssetType": "base_upgrade_world_sprite",
+      "temporaryRepresentation": "dormant placeholder placement for upgraded hub footprint",
+      "recommendedFinalAsset": "tier_2 improved piazzola/canopy world sprite with footprint metadata",
+      "upgradeOrStateVariants": [
+        "tier_2"
+      ],
+      "validationRisk": "final footprint, collision, visibility, and mutual exclusivity with other hub tiers pending runtime map validation"
+    },
+    {
+      "id": "placement.placeholder.hub.piazzola_tier_3",
+      "placeholderId": "placeholder.hub.piazzola_tier_3",
+      "entityType": "base_or_upgrade",
+      "zone": "hub_piazzola",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Tier 3 camper-style hub upgrade needs explicit placeholder state.",
+      "timeBands": [
+        "day",
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "hub.tier",
+          "op": "equals",
+          "value": 3
+        }
+      ],
+      "eventLinks": [
+        "event.system.hub_upgrade_loop"
+      ],
+      "validationNotes": [
+        "Final art and footprint pending."
+      ],
+      "missingAssetType": "base_upgrade_world_sprite",
+      "temporaryRepresentation": "dormant placeholder placement for final camper-style hub footprint",
+      "recommendedFinalAsset": "tier_3 camper or premium piazzola world sprite with footprint metadata",
+      "upgradeOrStateVariants": [
+        "tier_3"
+      ],
+      "validationRisk": "largest footprint can block routes if not validated against walkability and visibility"
+    },
+    {
+      "id": "placement.placeholder.wheelbarrow.tier_1_2_3",
+      "placeholderId": "placeholder.wheelbarrow.tier_1_2_3",
+      "entityType": "base_or_upgrade",
+      "zone": "player_hud_and_world_anchor",
+      "position": {
+        "status": "event_only",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Wheelbarrow is player identity, inventory, and upgrade state; world/HUD representation remains placeholder.",
+      "timeBands": [
+        "event_only"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.intro.reception_debt",
+        "event.system.resource_collection_loop",
+        "event.system.hub_upgrade_loop"
+      ],
+      "validationNotes": [
+        "Final HUD/world split pending."
+      ],
+      "missingAssetType": "player_inventory_world_or_hud_asset",
+      "temporaryRepresentation": "event-only placeholder for wheelbarrow identity, capacity, and upgrade state",
+      "recommendedFinalAsset": "wheelbarrow tier set plus HUD/world split contract",
+      "upgradeOrStateVariants": [
+        "tier_1",
+        "tier_2",
+        "tier_3"
+      ],
+      "validationRisk": "must not duplicate player/world representation or desync inventory capacity"
+    },
+    {
+      "id": "placement.placeholder.resource.ciottolo_base",
+      "placeholderId": "placeholder.resource.ciottolo_base",
+      "entityType": "resource",
+      "zone": "gravel_paths_common",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Common stone pickup required by the core resource loop.",
+      "timeBands": [
+        "day"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.system.resource_collection_loop"
+      ],
+      "validationNotes": [
+        "Spawn density pending."
+      ],
+      "missingAssetType": "resource_pickup_sprite",
+      "temporaryRepresentation": "dormant common stone pickup placeholder",
+      "recommendedFinalAsset": "small readable ciottolo pickup sprite with sparkle/outline variant",
+      "upgradeOrStateVariants": [
+        "common_resource"
+      ],
+      "validationRisk": "spawn density, collision, and pickup readability pending runtime validation"
+    },
+    {
+      "id": "placement.placeholder.resource.quarzo_lucido",
+      "placeholderId": "placeholder.resource.quarzo_lucido",
+      "entityType": "resource",
+      "zone": "yoga_prato_ombreggiato",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Medium-value shiny stone supports Lalla/quartz economy.",
+      "timeBands": [
+        "day",
+        "night"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.system.resource_collection_loop"
+      ],
+      "validationNotes": [
+        "Visual placeholder pending."
+      ],
+      "missingAssetType": "resource_pickup_sprite",
+      "temporaryRepresentation": "dormant medium-value shiny stone placeholder",
+      "recommendedFinalAsset": "quartz pickup sprite with readable highlight at raycaster distance",
+      "upgradeOrStateVariants": [
+        "medium_value_resource"
+      ],
+      "validationRisk": "night readability and value distinction pending visual QA"
+    },
+    {
+      "id": "placement.placeholder.resource.ghiaione_cantiere",
+      "placeholderId": "placeholder.resource.ghiaione_cantiere",
+      "entityType": "resource",
+      "zone": "area_zen_vip_dump",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "storyboard_explicit",
+      "placementRationale": "Construction gravel dump is core intro/world premise and resource source.",
+      "timeBands": [
+        "day"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.system.resource_collection_loop"
+      ],
+      "validationNotes": [
+        "Must not hide navigable route."
+      ],
+      "missingAssetType": "resource_cluster_or_dump_sprite",
+      "temporaryRepresentation": "dormant construction gravel source placeholder",
+      "recommendedFinalAsset": "gravel dump/source sprite with non-blocking collision footprint",
+      "upgradeOrStateVariants": [
+        "construction_gravel_source"
+      ],
+      "validationRisk": "must not hide navigable route or overload sprite density near intro area"
+    },
+    {
+      "id": "placement.placeholder.resource.basalto_pesante",
+      "placeholderId": "placeholder.resource.basalto_pesante",
+      "entityType": "resource",
+      "zone": "calisthenics_stone_piles",
+      "position": {
+        "status": "runtime_pending",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Heavy/high-value stone supports Bruno and final readiness economy.",
+      "timeBands": [
+        "afternoon"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [],
+      "eventLinks": [
+        "event.system.resource_collection_loop"
+      ],
+      "validationNotes": [
+        "Carry/inventory weight pending."
+      ],
+      "missingAssetType": "resource_pickup_sprite",
+      "temporaryRepresentation": "dormant heavy/high-value stone placeholder",
+      "recommendedFinalAsset": "heavy basalt pickup sprite with clear weight/value silhouette",
+      "upgradeOrStateVariants": [
+        "heavy_resource"
+      ],
+      "validationRisk": "inventory weight/carry rules and path obstruction pending gameplay integration"
+    },
+    {
+      "id": "placement.placeholder.battle_app",
+      "placeholderId": "placeholder.system.battle_app",
+      "entityType": "system_event",
+      "zone": "battle_placeholder_modal",
+      "position": {
+        "status": "event_only",
+        "x": null,
+        "y": null,
+        "walkabilityStatus": "runtime_pending",
+        "visibilityStatus": "runtime_pending"
+      },
+      "placementSource": "gameplay_explicit",
+      "placementRationale": "Battle app is future external integration; current manifest maps won/lost switch only.",
+      "timeBands": [
+        "event_only"
+      ],
+      "timeBandSource": "explicit",
+      "availabilityConditions": [
+        {
+          "state": "battle_app.integrated",
+          "op": "equals",
+          "value": false
+        }
+      ],
+      "eventLinks": [
+        "event.challenge.nina_ciottolo",
+        "event.challenge.prof_ossidiana",
+        "event.challenge.orbo_granito",
+        "event.challenge.teo_pietrafocaia",
+        "event.challenge.bruno_basalto",
+        "event.challenge.lalla_lapillo",
+        "event.challenge.mara_selce",
+        "event.challenge.zelda_quarzo",
+        "event.final.imperio_battle"
+      ],
+      "validationNotes": [
+        "Must be easy to disable when battle app is integrated."
+      ],
+      "missingAssetType": "external_battle_app_integration",
+      "temporaryRepresentation": "event-only won/lost test switch",
+      "recommendedFinalAsset": "battle-app bridge that returns won/lost result and can replace the temporary switch",
+      "upgradeOrStateVariants": [
+        "temporary_test_switch",
+        "real_battle_app_bridge"
+      ],
+      "validationRisk": "must be easy to disable when real battle integration replaces the test switch"
+    }
+  ],
+  "coordinatePolicy": {
+    "status": "exact_v357_user_and_mapper_promoted_for_main_npc_animals",
+    "note": "Main characters, NPCs, and animal placements are promoted to canonical position.status exact. User-listed PGs use the coordinate file; absent PG/animals use current runtime mapper pending candidates. X uses the proven +30 internal-world offset; Y is unchanged.",
+    "promotedAt": "2026-06-19",
+    "userCoordinateFile": "C:/Users/ASUS/Downloads/COORDINATE IN-GAME PG DA SISTEMARE.txt"
+  }
+}

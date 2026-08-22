@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "perla1.rtp.behaviors.schema.v1",
+  "title": "PERLA1 RTP Scenario Behaviors",
+  "type": "object",
+  "required": ["schemaVersion", "behaviors"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "behaviors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "placementId",
+          "entityId",
+          "behaviorSource",
+          "sourceType",
+          "mode",
+          "anchor",
+          "radius",
+          "idleSeconds",
+          "walkSeconds",
+          "turnBehavior",
+          "collisionPolicy",
+          "schedulePolicy",
+          "leftFacingPolicy"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "placementId": { "type": "string", "minLength": 1 },
+          "entityId": { "type": "string", "minLength": 1 },
+          "behaviorSource": {
+            "enum": ["script_explicit", "storyboard_explicit", "gameplay_explicit", "inferred"]
+          },
+          "sourceType": { "enum": ["explicit", "inferred"] },
+          "inferenceRationale": { "type": "string", "minLength": 1 },
+          "mode": { "enum": ["idle_walk_loop", "idle_only", "patrol_loop", "ambient_loop", "event_only"] },
+          "anchor": { "type": "object" },
+          "radius": { "type": "number", "minimum": 0 },
+          "idleSeconds": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
+          "walkSeconds": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
+          "turnBehavior": { "type": "string", "minLength": 1 },
+          "collisionPolicy": { "type": "string", "minLength": 1 },
+          "schedulePolicy": { "type": "string", "minLength": 1 },
+          "allowedFacings": {
+            "type": "array",
+            "items": { "enum": ["up", "down", "left", "right"] }
+          },
+          "leftFacingPolicy": { "const": "derive_by_mirroring_right_assets" }
+        }
+      }
+    }
+  }
+}
