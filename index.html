@@ -2129,6 +2129,17 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     width: 100%;
 }
 
+#wildu-google-identity-button {
+    width: 100%;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+}
+
+#wildu-google-identity-button:not(.hidden) {
+    display: flex;
+}
+
 .wildu-guest-profile-google-btn {
     width: 100%;
     min-height: 48px;
@@ -6316,6 +6327,51 @@ html.wildu-detail-transition-busy body {
     .wildu-program-confirm-card { padding: 18px; }
     .wildu-program-confirm-actions { grid-template-columns: minmax(0, 1fr); }
 }
+/* =========================================================
+   WILDU MOBILE — SCORRIMENTO VERTICALE CARD ASSISTITO
+   ---------------------------------------------------------
+   Proximity resta una guida, non una gabbia: il gesto breve si
+   assesta sulla card vicina; uno swipe lungo puo' oltrepassarne
+   diverse grazie a scroll-snap-stop:normal. Il browser anima sul
+   proprio compositor, senza listener touchmove o frame JavaScript.
+   ========================================================= */
+@media (max-width: 760px) and (hover: none) {
+    html {
+        scroll-snap-type: y proximity;
+        scroll-padding-block: clamp(64px, 10svh, 104px);
+    }
+
+    #event-list > .card,
+    #event-list > .wildu-adventure-card,
+    #openday-list > .card,
+    #openday-list > .wildu-adventure-card,
+    #payday-list > .card,
+    #payday-list > .wildu-adventure-card,
+    #ondemand-list > .card,
+    #ondemand-list > .wildu-adventure-card {
+        scroll-snap-align: center;
+        scroll-snap-stop: normal;
+        scroll-margin-block: clamp(48px, 8svh, 88px);
+    }
+}
+
+@media (max-width: 760px) and (hover: none) and (prefers-reduced-motion: reduce) {
+    html {
+        scroll-snap-type: none;
+    }
+
+    #event-list > .card,
+    #event-list > .wildu-adventure-card,
+    #openday-list > .card,
+    #openday-list > .wildu-adventure-card,
+    #payday-list > .card,
+    #payday-list > .wildu-adventure-card,
+    #ondemand-list > .card,
+    #ondemand-list > .wildu-adventure-card {
+        scroll-snap-align: none;
+    }
+}
+
 </style>
     
 </head>
@@ -6971,10 +7027,12 @@ html.wildu-detail-transition-busy body {
 
                 <div class="wildu-guest-profile-actions">
                     <div id="login-method-google" class="wildu-guest-profile-google-wrap hidden">
-                        <button type="button" onclick="loginWithGoogle()" class="wildu-guest-profile-google-btn">
+                        <button id="login-method-google-popup" type="button" onclick="loginWithGoogle()" class="wildu-guest-profile-google-btn">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
                             Accedi con Google
                         </button>
+
+                        <div id="wildu-google-identity-button" class="hidden" aria-label="Accesso Google sicuro per iOS"></div>
 
                         <button id="login-method-google-fallback" class="hidden" onclick="loginWithGoogleRedirect()" style="margin-top: 12px; font-size: 0.8rem; text-decoration: underline; background: none; color: white; border: none; width: 100%; text-align: center; cursor: pointer;">
                             Non funziona? Prova ad accedere da qui
@@ -12232,6 +12290,9 @@ window.WilduMediaClient = WilduMediaClient;
         if (typeof pauseWilduCatalogCoverPreload === 'function') {
             pauseWilduCatalogCoverPreload('GOOGLE_AUTH', { cancelInFlight: true });
         }
+        if (typeof wilduReleaseIOSManagedImages === 'function') {
+            wilduReleaseIOSManagedImages('GOOGLE_AUTH');
+        }
         try {
             pageDebug('GOOGLE_AUTH_TRANSITION_STARTED', { mode: state.mode });
         } catch (e) {}
@@ -12246,6 +12307,9 @@ window.WilduMediaClient = WilduMediaClient;
         }
         if (typeof resumeWilduCatalogCoverPreload === 'function') {
             resumeWilduCatalogCoverPreload('GOOGLE_AUTH');
+        }
+        if (typeof wilduRefreshIOSImageMemoryWindow === 'function') {
+            wilduRefreshIOSImageMemoryWindow('GOOGLE_AUTH_END');
         }
         if (wasActive) {
             try {
@@ -14153,6 +14217,11 @@ function checkAuthEnvironment() {
     if (telegramBox) telegramBox.classList.add('hidden');
     if (googleBox) googleBox.classList.remove('hidden');
     if (fallbackBtn) fallbackBtn.classList.remove('hidden');
+    if (shouldUseWilduGoogleIdentitySignIn()) {
+        prepareWilduGoogleIdentitySignIn().catch(() => {});
+    } else {
+        setWilduLegacyGoogleControlsVisible(true);
+    }
     if (loginDesc && !hasFirebaseUser && !hasAuthSessionInFlight) {
         loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
     }
@@ -14569,9 +14638,214 @@ auth.onAuthStateChanged((user) => {
 // LOGIN GOOGLE (CROSS-SITE FIX / POPUP SAFE)
 // ==========================================
 
+const WILDU_GOOGLE_IDENTITY_SCRIPT_ID = 'wildu-google-identity-client';
+const WILDU_GOOGLE_IDENTITY_TIMEOUT_MS = 10000;
+let WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE = null;
+let WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE = null;
+let WILDU_GOOGLE_IDENTITY_INITIALIZED = false;
+let WILDU_GOOGLE_IDENTITY_RENDERED = false;
+let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
+
+function shouldUseWilduGoogleIdentitySignIn() {
+    return typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice();
+}
+
+function setWilduLegacyGoogleControlsVisible(visible) {
+    const popupButton = document.getElementById('login-method-google-popup');
+    const fallbackButton = document.getElementById('login-method-google-fallback');
+    const identityButton = document.getElementById('wildu-google-identity-button');
+
+    if (popupButton) popupButton.classList.toggle('hidden', !visible);
+    if (fallbackButton) fallbackButton.classList.toggle('hidden', !visible);
+    if (identityButton) identityButton.classList.toggle('hidden', visible);
+}
+
+function withWilduGoogleIdentityTimeout(promise, code) {
+    let timeoutId = null;
+    const timeout = new Promise((resolve, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error(code)), WILDU_GOOGLE_IDENTITY_TIMEOUT_MS);
+    });
+
+    return Promise.race([Promise.resolve(promise), timeout])
+        .finally(() => {
+            if (timeoutId !== null) window.clearTimeout(timeoutId);
+        });
+}
+
+function loadWilduGoogleIdentityLibrary() {
+    if (window.google?.accounts?.id) return Promise.resolve(window.google.accounts.id);
+    if (WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE) return WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE;
+
+    WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE = withWilduGoogleIdentityTimeout(new Promise((resolve, reject) => {
+        let script = document.getElementById(WILDU_GOOGLE_IDENTITY_SCRIPT_ID);
+        const onReady = () => {
+            if (window.google?.accounts?.id) resolve(window.google.accounts.id);
+            else reject(new Error('GOOGLE_IDENTITY_API_MISSING'));
+        };
+
+        if (script) {
+            script.addEventListener('load', onReady, { once: true });
+            script.addEventListener('error', () => reject(new Error('GOOGLE_IDENTITY_SCRIPT_ERROR')), { once: true });
+            return;
+        }
+
+        script = document.createElement('script');
+        script.id = WILDU_GOOGLE_IDENTITY_SCRIPT_ID;
+        script.src = 'https://accounts.google.com/gsi/client?hl=it';
+        script.async = true;
+        script.defer = true;
+        script.referrerPolicy = 'strict-origin-when-cross-origin';
+        script.addEventListener('load', onReady, { once: true });
+        script.addEventListener('error', () => reject(new Error('GOOGLE_IDENTITY_SCRIPT_ERROR')), { once: true });
+        document.head.appendChild(script);
+    }), 'GOOGLE_IDENTITY_SCRIPT_TIMEOUT').catch((error) => {
+        WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE = null;
+        throw error;
+    });
+
+    return WILDU_GOOGLE_IDENTITY_SCRIPT_PROMISE;
+}
+
+function resolveWilduGoogleIdentityClientId() {
+    if (WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE) return WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE;
+
+    WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE = withWilduGoogleIdentityTimeout(fetch(
+        'https://identitytoolkit.googleapis.com/v1/accounts:createAuthUri?key=' + encodeURIComponent(firebaseConfig.apiKey),
+        {
+            method: 'POST',
+            mode: 'cors',
+            credentials: 'omit',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                continueUri: window.location.origin + window.location.pathname,
+                providerId: 'google.com',
+                customParameter: { prompt: 'select_account' }
+            })
+        }
+    ).then(async (response) => {
+        if (!response.ok) throw new Error('GOOGLE_IDENTITY_CONFIG_HTTP_' + response.status);
+        const data = await response.json();
+        const authUri = new URL(String(data?.authUri || ''));
+        const clientId = String(authUri.searchParams.get('client_id') || '').trim();
+        if (authUri.protocol !== 'https:' || authUri.hostname !== 'accounts.google.com') {
+            throw new Error('GOOGLE_IDENTITY_AUTH_URI_INVALID');
+        }
+        if (!/^\d+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(clientId)) {
+            throw new Error('GOOGLE_IDENTITY_CLIENT_ID_INVALID');
+        }
+        return clientId;
+    }), 'GOOGLE_IDENTITY_CONFIG_TIMEOUT').catch((error) => {
+        WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE = null;
+        throw error;
+    });
+
+    return WILDU_GOOGLE_IDENTITY_CLIENT_ID_PROMISE;
+}
+
+async function handleWilduGoogleIdentityCredential(response) {
+    if (WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS) return;
+    const idToken = String(response?.credential || '').trim();
+    if (!idToken) {
+        showToast('Google non ha restituito una credenziale valida. Riprova.');
+        return;
+    }
+
+    WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = true;
+    beginWilduGoogleAuthTransition('GIS_CREDENTIAL');
+    showToast('Accesso Google in verifica...');
+
+    try {
+        const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
+        const result = await auth.signInWithCredential(credential);
+        if (!result?.user && !auth.currentUser) throw new Error('GOOGLE_IDENTITY_FIREBASE_USER_MISSING');
+
+        scheduleClientAuthRecovery('GIS_CREDENTIAL_SUCCESS', {
+            reset: true,
+            immediate: true
+        });
+    } catch (error) {
+        endWilduGoogleAuthTransition('GIS_CREDENTIAL_ERROR');
+        console.error(
+            'Errore accesso Google iOS:',
+            String(error?.code || 'GIS_SIGNIN_FAILED')
+        );
+        showToast('Errore accesso Google. Riprova.');
+    } finally {
+        try { if (response && typeof response === 'object') response.credential = ''; } catch (e) {}
+        WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
+    }
+}
+
+async function prepareWilduGoogleIdentitySignIn() {
+    if (!shouldUseWilduGoogleIdentitySignIn()) return false;
+    if (WILDU_GOOGLE_IDENTITY_RENDERED) {
+        setWilduLegacyGoogleControlsVisible(false);
+        return true;
+    }
+
+    const container = document.getElementById('wildu-google-identity-button');
+    if (!container) return false;
+
+    try {
+        const results = await Promise.all([
+            loadWilduGoogleIdentityLibrary(),
+            resolveWilduGoogleIdentityClientId(),
+            auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        ]);
+        const googleIdentity = results[0];
+        const clientId = results[1];
+
+        if (!WILDU_GOOGLE_IDENTITY_INITIALIZED) {
+            googleIdentity.initialize({
+                client_id: clientId,
+                callback: handleWilduGoogleIdentityCredential,
+                auto_select: false,
+                cancel_on_tap_outside: true,
+                context: 'signin',
+                ux_mode: 'popup'
+            });
+            WILDU_GOOGLE_IDENTITY_INITIALIZED = true;
+        }
+
+        container.replaceChildren();
+        googleIdentity.renderButton(container, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            shape: 'pill',
+            text: 'signin_with',
+            logo_alignment: 'left',
+            locale: 'it',
+            width: Math.min(320, Math.max(220, (window.innerWidth || 320) - 56))
+        });
+
+        if (!container.firstElementChild) throw new Error('GOOGLE_IDENTITY_BUTTON_NOT_RENDERED');
+        WILDU_GOOGLE_IDENTITY_RENDERED = true;
+        setWilduLegacyGoogleControlsVisible(false);
+        return true;
+    } catch (error) {
+        WILDU_GOOGLE_IDENTITY_RENDERED = false;
+        setWilduLegacyGoogleControlsVisible(true);
+        pageDebug('GOOGLE_IDENTITY_PREPARE_FAILED', {
+            code: String(error?.code || error?.message || 'GIS_PREPARE_FAILED')
+        });
+        return false;
+    }
+}
+
 function loginWithGoogle() {
     if (!navigator.onLine) {
         showToast("Sei offline. Per accedere serve la connessione.");
+        return;
+    }
+
+    if (shouldUseWilduGoogleIdentitySignIn()) {
+        prepareWilduGoogleIdentitySignIn().then((ready) => {
+            showToast(ready
+                ? 'Usa il pulsante Google appena visualizzato.'
+                : 'Accesso Google iOS non disponibile. Riprova tra poco.');
+        });
         return;
     }
 
@@ -15123,7 +15397,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.35';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.36';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17110,7 +17384,7 @@ function isPublicCacheStillValid(envelope) {
 }
 
 const WILDU_CATALOG_COVER_PRELOAD_CONCURRENCY = 3;
-const WILDU_CATALOG_IOS_BACKGROUND_PRELOAD_LIMIT = 4;
+const WILDU_CATALOG_IOS_BACKGROUND_PRELOAD_LIMIT = 0;
 const WILDU_CATALOG_COLD_CRITICAL_LIMIT = 1;
 const WILDU_CATALOG_COLD_WAIT_MS = 500;
 const WILDU_CATALOG_COVER_LOAD_TIMEOUT_MS = 8000;
@@ -21646,6 +21920,7 @@ function wilduSetDetailModalVisible(visible) {
     if (isVisible) {
         wilduSetDetailTransitionBusy(false);
         WILDU_DETAIL_RUNTIME.phase = 'open';
+        wilduRefreshIOSImageMemoryWindow('DETAIL_OPENED');
         const generation = WILDU_DETAIL_RUNTIME.generation;
         WILDU_DETAIL_RUNTIME.scrollFrame = requestAnimationFrame(function () {
             WILDU_DETAIL_RUNTIME.scrollFrame = 0;
@@ -21680,6 +21955,311 @@ function wilduReleaseImageNodes(root) {
     });
 }
 
+const WILDU_IOS_IMAGE_MEMORY_ROOT_SELECTOR = [
+    '#event-list',
+    '#openday-list',
+    '#payday-list',
+    '#ondemand-list',
+    '#amazon-slider-engine',
+    '#wildu-rewards-horizontal-videos',
+    '#sec-travelhub .wildu-travelhub-carousel',
+    '#wildu-guest-profile-media',
+    '#wildu-related-list',
+    '#wildu-date-options-list'
+].join(',');
+const WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX = 1400;
+const WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX = 900;
+const WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS = 650;
+const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
+    installed: false,
+    images: new Set(),
+    states: new WeakMap(),
+    intersectionObserver: null,
+    mutationObserver: null,
+    refreshFrame: 0,
+    lastReason: ''
+};
+
+function wilduIsIOSImageMemoryCandidate(img) {
+    return !!(
+        img &&
+        img.nodeType === 1 &&
+        String(img.tagName || '').toUpperCase() === 'IMG' &&
+        img.id !== 'trip-modal-img' &&
+        typeof img.closest === 'function' &&
+        img.closest(WILDU_IOS_IMAGE_MEMORY_ROOT_SELECTOR)
+    );
+}
+
+function wilduReadIOSImageMemoryAttributes(img, state) {
+    if (!img || !state) return;
+    state.src = img.getAttribute('src') || '';
+    state.srcset = img.getAttribute('srcset') || '';
+    state.sizes = img.getAttribute('sizes') || '';
+}
+
+function wilduIsImageInsideIOSMemoryWindow(img) {
+    if (!img || !img.isConnected || document.hidden) return false;
+    const rect = img.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+
+    const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    return rect.bottom >= -WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX &&
+        rect.top <= viewportHeight + WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX &&
+        rect.right >= -WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX &&
+        rect.left <= viewportWidth + WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX;
+}
+
+function wilduCancelIOSImageMemoryRelease(state) {
+    if (!state || !state.releaseTimer) return;
+    window.clearTimeout(state.releaseTimer);
+    state.releaseTimer = 0;
+}
+
+function wilduReleaseIOSManagedImage(img) {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const state = runtime.states.get(img);
+    if (!state || state.released || !img.isConnected) return false;
+
+    wilduCancelIOSImageMemoryRelease(state);
+    wilduReadIOSImageMemoryAttributes(img, state);
+    if (!state.src && !state.srcset) return false;
+
+    state.released = true;
+    img.removeAttribute('src');
+    img.removeAttribute('srcset');
+    img.removeAttribute('sizes');
+    img.dataset.wilduIosImageReleased = '1';
+    return true;
+}
+
+function wilduRestoreIOSManagedImage(img) {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const state = runtime.states.get(img);
+    if (!state || !state.released || !img.isConnected) return false;
+
+    wilduCancelIOSImageMemoryRelease(state);
+    state.released = false;
+    delete img.dataset.wilduIosImageReleased;
+    if (state.sizes) img.setAttribute('sizes', state.sizes);
+    if (state.srcset) img.setAttribute('srcset', state.srcset);
+    if (state.src) img.setAttribute('src', state.src);
+    return true;
+}
+
+function wilduScheduleIOSImageMemoryRelease(img, delay) {
+    const state = WILDU_IOS_IMAGE_MEMORY_RUNTIME.states.get(img);
+    if (!state || state.released || state.releaseTimer) return;
+    state.releaseTimer = window.setTimeout(function () {
+        state.releaseTimer = 0;
+        if (!wilduIsImageInsideIOSMemoryWindow(img)) {
+            wilduReleaseIOSManagedImage(img);
+        }
+    }, Math.max(0, Number(delay) || 0));
+}
+
+function wilduRegisterIOSImageMemoryCandidate(img) {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    if (!wilduIsIOSImageMemoryCandidate(img) || runtime.states.has(img)) return false;
+
+    const state = {
+        src: '',
+        srcset: '',
+        sizes: '',
+        released: false,
+        releaseTimer: 0
+    };
+    wilduReadIOSImageMemoryAttributes(img, state);
+    runtime.states.set(img, state);
+    runtime.images.add(img);
+    runtime.intersectionObserver.observe(img);
+    return true;
+}
+
+function wilduUnregisterIOSImageMemoryCandidate(img) {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const state = runtime.states.get(img);
+    if (!state) return;
+    wilduCancelIOSImageMemoryRelease(state);
+    try { runtime.intersectionObserver.unobserve(img); } catch (e) {}
+    runtime.images.delete(img);
+    runtime.states.delete(img);
+}
+
+function wilduRegisterIOSImagesIn(root) {
+    if (!root || root.nodeType !== 1) return;
+    if (String(root.tagName || '').toUpperCase() === 'IMG') {
+        wilduRegisterIOSImageMemoryCandidate(root);
+    }
+    if (typeof root.querySelectorAll === 'function') {
+        root.querySelectorAll('img').forEach(wilduRegisterIOSImageMemoryCandidate);
+    }
+}
+
+function wilduRefreshIOSImageMemoryWindow(reason) {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    if (!runtime.installed || !isWilduIOSClientDevice()) return false;
+    runtime.lastReason = String(reason || 'REFRESH');
+    if (runtime.refreshFrame) window.cancelAnimationFrame(runtime.refreshFrame);
+    runtime.refreshFrame = window.requestAnimationFrame(function () {
+        runtime.refreshFrame = 0;
+        runtime.images.forEach(function (img) {
+            if (!img.isConnected) {
+                wilduUnregisterIOSImageMemoryCandidate(img);
+                return;
+            }
+            if (wilduIsImageInsideIOSMemoryWindow(img)) {
+                wilduRestoreIOSManagedImage(img);
+            } else {
+                wilduScheduleIOSImageMemoryRelease(img, WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS);
+            }
+        });
+    });
+    return true;
+}
+
+function wilduReleaseIOSManagedImages(reason) {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    if (!runtime.installed || !isWilduIOSClientDevice()) return 0;
+    runtime.lastReason = String(reason || 'RELEASE_ALL');
+    let released = 0;
+    runtime.images.forEach(function (img) {
+        if (wilduReleaseIOSManagedImage(img)) released += 1;
+    });
+    try {
+        pageDebug('IOS_IMAGE_MEMORY_RELEASED', {
+            reason: runtime.lastReason,
+            released,
+            registered: runtime.images.size
+        });
+    } catch (e) {}
+    return released;
+}
+
+function getWilduIOSImageMemorySnapshot() {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    let connected = 0;
+    let released = 0;
+    let loaded = 0;
+    let decodedPixels = 0;
+    runtime.images.forEach(function (img) {
+        if (!img.isConnected) return;
+        connected += 1;
+        const state = runtime.states.get(img);
+        if (state && state.released) released += 1;
+        if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+            loaded += 1;
+            decodedPixels += img.naturalWidth * img.naturalHeight;
+        }
+    });
+    return {
+        enabled: runtime.installed,
+        policy: isWilduIOSClientDevice() ? 'IOS_VIEWPORT_WINDOW' : 'UNCHANGED',
+        registered: runtime.images.size,
+        connected,
+        released,
+        loaded,
+        decodedPixels,
+        approxDecodedMiB: Math.round((decodedPixels * 4 / 1048576) * 10) / 10,
+        lastReason: runtime.lastReason
+    };
+}
+
+function installWilduIOSImageMemoryWindow() {
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    if (runtime.installed || !isWilduIOSClientDevice()) return runtime.installed;
+    if (typeof window.IntersectionObserver !== 'function' || !document.body) return false;
+
+    runtime.intersectionObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            const img = entry.target;
+            if (entry.isIntersecting) {
+                wilduRestoreIOSManagedImage(img);
+            } else {
+                wilduScheduleIOSImageMemoryRelease(img, WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS);
+            }
+        });
+    }, {
+        root: null,
+        rootMargin: WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX + 'px ' +
+            WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX + 'px',
+        threshold: 0.01
+    });
+
+    runtime.mutationObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+            if (mutation.type === 'childList') {
+                mutation.addedNodes.forEach(wilduRegisterIOSImagesIn);
+                mutation.removedNodes.forEach(function (node) {
+                    if (!node || node.nodeType !== 1) return;
+                    if (String(node.tagName || '').toUpperCase() === 'IMG') {
+                        wilduUnregisterIOSImageMemoryCandidate(node);
+                    }
+                    if (typeof node.querySelectorAll === 'function') {
+                        node.querySelectorAll('img').forEach(wilduUnregisterIOSImageMemoryCandidate);
+                    }
+                });
+                return;
+            }
+
+            const img = mutation.target;
+            const state = runtime.states.get(img);
+            if (!state) return;
+            const name = mutation.attributeName;
+            const value = img.getAttribute(name) || '';
+            if (!state.released) {
+                state[name] = value;
+                return;
+            }
+            if (!value) return;
+            state[name] = value;
+            if (wilduIsImageInsideIOSMemoryWindow(img)) {
+                wilduRestoreIOSManagedImage(img);
+            } else {
+                img.removeAttribute(name);
+            }
+        });
+    });
+
+    runtime.mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['src', 'srcset', 'sizes']
+    });
+    runtime.installed = true;
+    wilduRegisterIOSImagesIn(document.body);
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) wilduReleaseIOSManagedImages('PAGE_HIDDEN');
+        else wilduRefreshIOSImageMemoryWindow('PAGE_VISIBLE');
+    }, { passive: true });
+    window.addEventListener('pageshow', function () {
+        wilduRefreshIOSImageMemoryWindow('PAGE_SHOW');
+    }, { passive: true });
+    window.addEventListener('resize', function () {
+        wilduRefreshIOSImageMemoryWindow('RESIZE');
+    }, { passive: true });
+    window.addEventListener('orientationchange', function () {
+        wilduRefreshIOSImageMemoryWindow('ORIENTATION');
+    }, { passive: true });
+    wilduRefreshIOSImageMemoryWindow('INSTALL');
+    return true;
+}
+
+function wilduReplaceReleasedDetailImageNode() {
+    if (!isWilduIOSClientDevice()) return false;
+    const img = document.getElementById('trip-modal-img');
+    if (!img || !img.parentNode) return false;
+    const replacement = img.cloneNode(false);
+    replacement.removeAttribute('src');
+    replacement.removeAttribute('srcset');
+    replacement.removeAttribute('sizes');
+    img.replaceWith(replacement);
+    return true;
+}
+
 function wilduReleaseDetailMedia() {
     const mapContainer = document.getElementById('od-map-container');
     const modalImg = document.getElementById('trip-modal-img');
@@ -21695,7 +22275,9 @@ function wilduReleaseDetailMedia() {
         modalImg.removeAttribute('srcset');
         modalImg.removeAttribute('sizes');
     }
+    wilduReplaceReleasedDetailImageNode();
     if (modalImgContainer) modalImgContainer.style.display = 'none';
+    wilduRefreshIOSImageMemoryWindow('DETAIL_CLOSED');
 }
 
 function wilduCloseDetailModalOnly() {
@@ -34371,6 +34953,7 @@ document.addEventListener('DOMContentLoaded', () => {
     installWilduTopLayerEscapeRouter();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
+    installWilduIOSImageMemoryWindow();
 
     // Anti-stato marcio dopo reload da modulo STOP:
     // se il modulo non è realmente aperto, l'audio torna in default.
