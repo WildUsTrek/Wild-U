@@ -14937,9 +14937,12 @@ function writeWilduAuthBridgeAttempt(state) {
     return safeState;
 }
 
-function buildWilduAuthBridgeUrl(attemptId) {
+function buildWilduAuthBridgeUrl(attemptId, launchMode = '') {
     const url = new URL(WILDU_AUTH_BRIDGE_URL);
     url.searchParams.set('attempt', String(attemptId || ''));
+    if (launchMode === 'popup' || launchMode === 'same') {
+        url.searchParams.set('launch', launchMode);
+    }
     return url.toString();
 }
 
@@ -15179,14 +15182,12 @@ async function loginWithWilduDurableAuthBridge() {
         try { if (authWindow) authWindow.opener = null; } catch (e) {}
 
         state = await ensureWilduAuthBridgeAttemptStarted(state);
-        const bridgeUrl = buildWilduAuthBridgeUrl(state.attemptId);
-
         if (!authWindow) {
-            window.location.assign(bridgeUrl);
+            window.location.assign(buildWilduAuthBridgeUrl(state.attemptId, 'same'));
             return;
         }
 
-        authWindow.location.replace(bridgeUrl);
+        authWindow.location.replace(buildWilduAuthBridgeUrl(state.attemptId, 'popup'));
 
         showToast('Completa l’accesso Google nella finestra appena aperta.');
         await pollWilduAuthBridgeAttempt(state);
@@ -15996,7 +15997,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.43';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.44';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
