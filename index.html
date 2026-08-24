@@ -15006,24 +15006,66 @@ async function redeemWilduAuthBridgeAttempt(state) {
     }
 
     await WILDU_FIREBASE.ensureLocalAuthPersistence();
-    const result = await auth.signInWithCustomToken(customToken);
-    customToken = '';
-    try { response.customToken = ''; } catch (e) {}
 
-    const signedUser = result?.user || auth.currentUser;
-    if (!signedUser) {
-        const missing = new Error('AUTH_BRIDGE_FIREBASE_USER_MISSING');
-        missing.code = 'AUTH_BRIDGE_FIREBASE_USER_MISSING';
-        throw missing;
+    // Il custom token completa Firebase nell'origin della PWA. Da questo punto
+    // il rientro deve essere atomico: l'observer Auth viene accodato mentre la
+    // stessa pipeline attende subito anche il gate canonico backend. In questo
+    // modo la shell non puo' tornare guest e richiedere un secondo tap.
+    const previousAuthRefreshLock = authRefreshLock;
+    authRefreshLock = true;
+    let signedUser = null;
+
+    try {
+        const result = await auth.signInWithCustomToken(customToken);
+        customToken = '';
+        try { response.customToken = ''; } catch (e) {}
+
+        signedUser = result?.user || auth.currentUser;
+        if (!signedUser) {
+            const missing = new Error('AUTH_BRIDGE_FIREBASE_USER_MISSING');
+            missing.code = 'AUTH_BRIDGE_FIREBASE_USER_MISSING';
+            throw missing;
+        }
+
+        clearWilduAuthBridgeAttempt('REDEEMED');
+
+        try {
+            const finalized = await finalizeWilduAuthenticatedSignIn(
+                signedUser,
+                'AUTH_BRIDGE_REDEEM'
+            );
+            showToast(
+                finalized?.status === 'PROFILE_COMPLETION_REQUIRED'
+                    ? 'Accesso completato. Completa il tuo profilo.'
+                    : 'Accesso completato. Bentornato!'
+            );
+            return true;
+        } catch (error) {
+            // Firebase e' gia' autenticato e il tentativo server e' one-shot:
+            // non riaprire Google. Manteniamo AUTH_PENDING e riproviamo la sola
+            // verifica backend con la recovery storica e limitata.
+            pageDebug('AUTH_BRIDGE_FINALIZE_DEFERRED', {
+                code: String(error?.code || 'AUTH_BRIDGE_FINALIZE_FAILED')
+            });
+            clearPendingClientAuthStateReplay();
+            holdClientAuthPending(
+                signedUser,
+                'Accesso Google riuscito. Completo la sincronizzazione...',
+                'AUTH_BRIDGE_FINALIZE_RETRY',
+                { scheduleRecovery: false }
+            );
+            scheduleClientAuthRecovery('AUTH_BRIDGE_FINALIZE_RETRY', {
+                reset: true,
+                immediate: true
+            });
+            showToast('Accesso Google acquisito. Sincronizzazione in corso...');
+            return false;
+        }
+    } finally {
+        customToken = '';
+        try { response.customToken = ''; } catch (e) {}
+        authRefreshLock = previousAuthRefreshLock;
     }
-
-    clearWilduAuthBridgeAttempt('REDEEMED');
-    scheduleClientAuthRecovery('AUTH_BRIDGE_SUCCESS', {
-        reset: true,
-        immediate: true
-    });
-    showToast('Accesso Google acquisito. Sincronizzazione in corso...');
-    return true;
 }
 
 async function pollWilduAuthBridgeAttempt(state) {
@@ -15031,6 +15073,7 @@ async function pollWilduAuthBridgeAttempt(state) {
         if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
         if (auth.currentUser) {
             clearWilduAuthBridgeAttempt('FIREBASE_USER_ALREADY_AVAILABLE');
+            authProbeInProgress = false;
             scheduleClientAuthRecovery('AUTH_BRIDGE_USER_AVAILABLE', {
                 reset: true,
                 immediate: true
@@ -15066,10 +15109,26 @@ async function pollWilduAuthBridgeAttempt(state) {
 }
 
 async function resumeWilduAuthBridgeAttempt() {
-    if (WILDU_AUTH_BRIDGE_IN_PROGRESS || auth.currentUser) return false;
-    const state = readWilduAuthBridgeAttempt();
+    if (WILDU_AUTH_BRIDGE_IN_PROGRESS) return false;
+    if (auth.currentUser) {
+        scheduleClientAuthRecovery('AUTH_BRIDGE_EXISTING_USER', {
+            reset: true,
+            immediate: true
+        });
+        return true;
+    }
+    let state = readWilduAuthBridgeAttempt();
     if (!state) return false;
 
+    // Blocca subito il falso guest prima del primo await. Il bootstrap pubblico
+    // puo' continuare, ma Profilo/Zaino restano in caricamento finche' il bridge
+    // non e' riscattato oppure fallisce realmente.
+    holdClientAuthPending(
+        null,
+        'Accesso Google completato. Recupero della sessione...',
+        'AUTH_BRIDGE_RESUME',
+        { probeInProgress: true, scheduleRecovery: false }
+    );
     WILDU_AUTH_BRIDGE_IN_PROGRESS = true;
     beginWilduGoogleAuthTransition('DURABLE_RESUME');
     try {
@@ -15937,7 +15996,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.42';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.43';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
