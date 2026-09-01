@@ -16106,7 +16106,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.51';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.52';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16483,8 +16483,12 @@ const WilduIOSBlackBox = (() => {
             'map_iframe_cooldown_active',
             'map_iframe_user_armed',
             'map_iframe_load_scheduled',
+            'map_iframe_autoload_blocked',
+            'map_iframe_soft_modal_guard',
             'map_iframe_loaded',
             'map_iframe_reset',
+            'travel_card_snap_assisted',
+            'travel_card_snap_free_scroll',
             'catalog_image_released',
             'catalog_image_restored',
             'catalog_image_optimized',
@@ -21569,6 +21573,10 @@ const WILDU_DETAIL_MAP_RUNTIME = {
     cooldownUntil: 0,
     lastResetAt: 0,
     lastLoadedAt: 0,
+    detailOpenedAt: 0,
+    lastSoftModalCloseAt: 0,
+    lastAutoBlockAt: 0,
+    lastAutoBlockReason: '',
     lastUrl: '',
     loadState: 'idle',
     userArmed: false
@@ -21579,6 +21587,10 @@ const WILDU_DETAIL_MAP_IOS_BROWSER_COOLDOWN_MS = 1800;
 const WILDU_DETAIL_MAP_DEFAULT_COOLDOWN_MS = 450;
 const WILDU_DETAIL_MAP_IOS_DWELL_MS = 900;
 const WILDU_DETAIL_MAP_DEFAULT_DWELL_MS = 220;
+const WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS = 8500;
+const WILDU_DETAIL_MAP_IOS_PWA_POST_POPUP_GUARD_MS = 9000;
+const WILDU_DETAIL_MAP_IOS_PWA_RESTART_GUARD_MS = 90000;
+const WILDU_DETAIL_MAP_IOS_PWA_IMAGE_MIB_AUTO_LIMIT = 8;
 
 function wilduIsStandaloneDisplayMode() {
     try {
@@ -21638,10 +21650,119 @@ function getWilduDetailMapRuntimeSnapshot() {
         cooldownRemainingMs: Math.max(0, Number(runtime.cooldownUntil || 0) - now),
         lastResetAgoMs: runtime.lastResetAt ? Math.max(0, now - runtime.lastResetAt) : null,
         lastLoadedAgoMs: runtime.lastLoadedAt ? Math.max(0, now - runtime.lastLoadedAt) : null,
+        detailOpenAgoMs: runtime.detailOpenedAt ? Math.max(0, now - runtime.detailOpenedAt) : null,
+        lastSoftModalCloseAgoMs: runtime.lastSoftModalCloseAt ? Math.max(0, now - runtime.lastSoftModalCloseAt) : null,
+        lastAutoBlockAgoMs: runtime.lastAutoBlockAt ? Math.max(0, now - runtime.lastAutoBlockAt) : null,
+        lastAutoBlockReason: runtime.lastAutoBlockReason || '',
         loadState: runtime.loadState,
         userArmed: !!runtime.userArmed,
         conservative: wilduShouldUseConservativeDetailMapLoading()
     };
+}
+
+function wilduNoteDetailMapSoftModalClose(source) {
+    if (!wilduShouldUseConservativeDetailMapLoading()) return;
+    WILDU_DETAIL_MAP_RUNTIME.lastSoftModalCloseAt = Date.now();
+    WILDU_DETAIL_MAP_RUNTIME.lastAutoBlockReason = 'soft_modal_close';
+    wilduRecordDetailMapEvent('map_iframe_soft_modal_guard', {
+        source: String(source || '')
+    });
+}
+
+function wilduGetRecentDetailMapRestartRisk() {
+    try {
+        if (!window.localStorage || typeof safeJsonParse !== 'function') return null;
+        const state = safeJsonParse(localStorage.getItem(WILDU_IOS_BLACKBOX_STORAGE_KEY), null);
+        const diary = state && Array.isArray(state.bootDiary) ? state.bootDiary : [];
+        if (!diary.length) return null;
+        const now = Date.now();
+        for (let i = diary.length - 1; i >= 0 && i >= diary.length - 12; i -= 1) {
+            const entry = diary[i] || {};
+            const at = Number(entry.at || 0);
+            const ageMs = at ? Math.max(0, now - at) : 0;
+            if (!at || ageMs > WILDU_DETAIL_MAP_IOS_PWA_RESTART_GUARD_MS) continue;
+            const criticalEvent = String(entry.previousCriticalEvent || '');
+            const snapshot = entry.previousCriticalSnapshot || {};
+            const detailPhase = String(snapshot.detailPhase || '');
+            const mapLoadState = String(snapshot.mapLoadState || '');
+            const modalOpen = !!snapshot.modalOpen;
+            const mapWasRelevant = /detail|related|dates|map_iframe/.test(criticalEvent)
+                || detailPhase === 'open'
+                || modalOpen
+                || mapLoadState === 'scheduled'
+                || mapLoadState === 'loaded'
+                || mapLoadState === 'pending';
+            if (mapWasRelevant) {
+                return {
+                    ageMs,
+                    code: entry.causeCode || 'DOCUMENT_RESTART_OBSERVED',
+                    previousCriticalEvent: criticalEvent,
+                    mapLoadState
+                };
+            }
+        }
+    } catch (e) {}
+    return null;
+}
+
+function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
+    if (!wilduShouldUseConservativeDetailMapLoading()) {
+        return { blocked: false };
+    }
+    if (explicitUser) {
+        return { blocked: false };
+    }
+
+    const runtime = WILDU_DETAIL_MAP_RUNTIME;
+    const now = Date.now();
+    const rawReason = String(reason || '');
+
+    if (document.visibilityState && document.visibilityState !== 'visible') {
+        return { blocked: true, guard: 'document_hidden', retryMs: 1200 };
+    }
+
+    const restartRisk = wilduGetRecentDetailMapRestartRisk();
+    if (restartRisk) {
+        return {
+            blocked: true,
+            guard: 'recent_detail_restart',
+            retryMs: 0,
+            detail: restartRisk
+        };
+    }
+
+    const detailOpenAgo = runtime.detailOpenedAt ? Math.max(0, now - runtime.detailOpenedAt) : 0;
+    if (detailOpenAgo < WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS) {
+        return {
+            blocked: true,
+            guard: 'detail_not_stable',
+            retryMs: WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS - detailOpenAgo
+        };
+    }
+
+    const softModalAgo = runtime.lastSoftModalCloseAt ? Math.max(0, now - runtime.lastSoftModalCloseAt) : 0;
+    if (softModalAgo && softModalAgo < WILDU_DETAIL_MAP_IOS_PWA_POST_POPUP_GUARD_MS) {
+        return {
+            blocked: true,
+            guard: 'recent_soft_modal_close',
+            retryMs: WILDU_DETAIL_MAP_IOS_PWA_POST_POPUP_GUARD_MS - softModalAgo
+        };
+    }
+
+    try {
+        const mem = typeof getWilduIOSImageMemorySnapshot === 'function' ? getWilduIOSImageMemorySnapshot() : null;
+        const approxDecodedMiB = Number(mem && mem.approxDecodedMiB || 0);
+        if (approxDecodedMiB > WILDU_DETAIL_MAP_IOS_PWA_IMAGE_MIB_AUTO_LIMIT) {
+            return {
+                blocked: true,
+                guard: 'image_budget_high',
+                retryMs: 4000,
+                detail: { approxDecodedMiB, reason: rawReason }
+            };
+        }
+    } catch (e) {}
+
+    return { blocked: false };
 }
 
 function wilduRemoveDetailMapCourtesy() {
@@ -21683,15 +21804,37 @@ function wilduAttachDetailMapCourtesy(mapContainer, options) {
         'justify-items:center'
     ].join(';');
 
+    const marker = document.createElement('div');
+    marker.textContent = '⌖';
+    marker.setAttribute('aria-hidden', 'true');
+    marker.style.cssText = [
+        'width:42px',
+        'height:42px',
+        'border-radius:50%',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'background:rgba(212,175,55,0.18)',
+        'border:1px solid rgba(212,175,55,0.42)',
+        'box-shadow:0 10px 24px rgba(0,0,0,.24), inset 0 0 18px rgba(212,175,55,.14)',
+        'color:var(--w-gold,#d4af37)',
+        'font-size:24px',
+        'font-weight:950'
+    ].join(';');
+
     const title = document.createElement('strong');
-    title.textContent = 'Mappa pronta';
+    title.textContent = 'Punto di ritrovo';
     title.style.cssText = 'font-size:14px;font-weight:950;letter-spacing:.25px;text-transform:uppercase;color:var(--w-gold,#d4af37)';
 
     const copy = document.createElement('span');
     copy.textContent = options.place
         ? String(options.place).slice(0, 90)
-        : "Apri Maps o carica l'anteprima quando serve.";
+        : "Apri Maps o carica l'anteprima quando l'app e' stabile.";
     copy.style.cssText = 'font-size:12px;line-height:1.35;color:#d8ded7;max-width:320px';
+
+    const state = document.createElement('span');
+    state.textContent = 'Anteprima pronta';
+    state.style.cssText = 'font-size:10px;line-height:1.2;color:rgba(255,255,255,.68);letter-spacing:.4px;text-transform:uppercase;font-weight:850';
 
     const buttons = document.createElement('div');
     buttons.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px';
@@ -21710,24 +21853,28 @@ function wilduAttachDetailMapCourtesy(mapContainer, options) {
         buttons.appendChild(openBtn);
     }
 
-    const previewBtn = document.createElement('button');
-    previewBtn.type = 'button';
-    previewBtn.textContent = 'Carica anteprima';
-    previewBtn.style.cssText = 'border:0;border-radius:999px;padding:8px 12px;background:linear-gradient(135deg,#d4af37,#f1c40f,#d4af37);color:#000;font-size:11px;font-weight:950;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent';
-    previewBtn.onclick = function (evt) {
-        if (evt && evt.preventDefault) evt.preventDefault();
-        if (evt && evt.stopPropagation) evt.stopPropagation();
-        WILDU_DETAIL_MAP_RUNTIME.userArmed = true;
-        wilduRecordDetailMapEvent('map_iframe_user_armed', { source: 'courtesy_preview_button' });
-        if (typeof WILDU_DETAIL_MAP_RUNTIME.load === 'function') {
-            WILDU_DETAIL_MAP_RUNTIME.load('courtesy_preview_button');
-        }
-        return false;
-    };
-    buttons.appendChild(previewBtn);
+    if (options.previewAvailable !== false) {
+        const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
+        previewBtn.textContent = 'Carica anteprima';
+        previewBtn.style.cssText = 'border:0;border-radius:999px;padding:8px 12px;background:linear-gradient(135deg,#d4af37,#f1c40f,#d4af37);color:#000;font-size:11px;font-weight:950;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent';
+        previewBtn.onclick = function (evt) {
+            if (evt && evt.preventDefault) evt.preventDefault();
+            if (evt && evt.stopPropagation) evt.stopPropagation();
+            WILDU_DETAIL_MAP_RUNTIME.userArmed = true;
+            wilduRecordDetailMapEvent('map_iframe_user_armed', { source: 'courtesy_preview_button' });
+            if (typeof WILDU_DETAIL_MAP_RUNTIME.load === 'function') {
+                WILDU_DETAIL_MAP_RUNTIME.load('courtesy_preview_button');
+            }
+            return false;
+        };
+        buttons.appendChild(previewBtn);
+    }
 
+    inner.appendChild(marker);
     inner.appendChild(title);
     inner.appendChild(copy);
+    inner.appendChild(state);
     inner.appendChild(buttons);
     panel.appendChild(inner);
     mapContainer.appendChild(panel);
@@ -21752,6 +21899,7 @@ function wilduCancelPendingDetailMapLoad() {
     WILDU_DETAIL_MAP_RUNTIME.scrollRoot = null;
     WILDU_DETAIL_MAP_RUNTIME.scrollHandler = null;
     WILDU_DETAIL_MAP_RUNTIME.check = null;
+    WILDU_DETAIL_MAP_RUNTIME.detailOpenedAt = 0;
 }
 
 function wilduResetDetailMapIframe() {
@@ -21789,6 +21937,7 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
     WILDU_DETAIL_MAP_RUNTIME.pendingUrl = cleanUrl;
     WILDU_DETAIL_MAP_RUNTIME.lastUrl = cleanUrl;
     WILDU_DETAIL_MAP_RUNTIME.loadState = 'pending';
+    WILDU_DETAIL_MAP_RUNTIME.detailOpenedAt = Date.now();
     mapIframe.setAttribute('loading', 'lazy');
     mapIframe.setAttribute('data-wildu-map-src', cleanUrl);
 
@@ -21809,6 +21958,25 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
             });
             if (typeof scheduleStableLoad === 'function') {
                 scheduleStableLoad(reason, cooldownRemaining);
+            }
+            return false;
+        }
+
+        const explicitUser = WILDU_DETAIL_MAP_RUNTIME.userArmed === true || /user|courtesy_preview_button|preview_button/i.test(reason);
+        const guard = wilduGetDetailMapAutoLoadGuard(reason, explicitUser);
+        if (guard && guard.blocked) {
+            const retryMs = Math.max(0, Number(guard.retryMs || 0));
+            WILDU_DETAIL_MAP_RUNTIME.loadState = 'guarded';
+            WILDU_DETAIL_MAP_RUNTIME.lastAutoBlockAt = Date.now();
+            WILDU_DETAIL_MAP_RUNTIME.lastAutoBlockReason = guard.guard || 'guarded';
+            wilduRecordDetailMapEvent('map_iframe_autoload_blocked', {
+                reason,
+                guard: guard.guard || 'guarded',
+                retryMs,
+                detail: guard.detail || null
+            });
+            if (retryMs > 0 && typeof scheduleStableLoad === 'function') {
+                scheduleStableLoad(reason, retryMs);
             }
             return false;
         }
@@ -22158,6 +22326,7 @@ function renderUnifiedDetailMap(payload) {
             wilduAttachDetailMapCourtesy(mapContainer, {
                 buttonUrl,
                 place: query || luogo || regione,
+                previewAvailable: true,
                 openMaps: openWilduMapsAfterSoftConfirm
             });
         } else if (buttonUrl) {
@@ -22204,6 +22373,15 @@ function renderUnifiedDetailMap(payload) {
 
             mapContainer.appendChild(overlay);
         }
+    } else if (buttonUrl && wilduShouldUseConservativeDetailMapLoading()) {
+        mapIframe.style.opacity = "0";
+        mapContainer.style.display = "block";
+        wilduAttachDetailMapCourtesy(mapContainer, {
+            buttonUrl,
+            place: query || luogo || regione,
+            previewAvailable: false,
+            openMaps: openWilduMapsAfterSoftConfirm
+        });
     }
 
     if (typeof pageDebug === "function") {
@@ -23762,6 +23940,48 @@ function wilduGetSmartImageSurface(img) {
     return 'other';
 }
 
+function wilduGetTravelListRootForImage(img) {
+    if (!img || typeof img.closest !== 'function') return null;
+    return img.closest('#event-list,#openday-list,#payday-list,#ondemand-list');
+}
+
+function wilduGetTravelListCardForImage(img) {
+    if (!img || typeof img.closest !== 'function') return null;
+    return img.closest('.wildu-adventure-card,.card');
+}
+
+function wilduIsTravelListImageInsideActiveBand(img) {
+    const root = wilduGetTravelListRootForImage(img);
+    const card = wilduGetTravelListCardForImage(img);
+    if (!root || !card || !root.contains(card)) return null;
+
+    const cards = Array.prototype.filter.call(root.children || [], function (node) {
+        return !!(node && node.nodeType === 1 && node.matches && node.matches('.wildu-adventure-card,.card'));
+    });
+    const cardIndex = cards.indexOf(card);
+    if (cardIndex < 0) return null;
+
+    const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    let firstVisible = -1;
+    let lastVisible = -1;
+    cards.forEach(function (node, index) {
+        const rect = node.getBoundingClientRect();
+        if (!rect || rect.height <= 0 || rect.width <= 0) return;
+        if (rect.bottom >= 0 && rect.top <= viewportHeight) {
+            if (firstVisible < 0) firstVisible = index;
+            lastVisible = index;
+        }
+    });
+
+    if (firstVisible < 0 || lastVisible < 0) {
+        const rect = card.getBoundingClientRect();
+        const fallbackMargin = 680;
+        return !!(rect && rect.bottom >= -fallbackMargin && rect.top <= viewportHeight + fallbackMargin);
+    }
+
+    return cardIndex >= Math.max(0, firstVisible - 1) && cardIndex <= Math.min(cards.length - 1, lastVisible + 1);
+}
+
 function wilduGetSmartImageTargetSize(img) {
     const surface = wilduGetSmartImageSurface(img);
     if (surface === 'related' || surface === 'dates') {
@@ -24013,6 +24233,9 @@ function wilduRunNextSmartImageOptimization() {
 
 function wilduIsImageInsideIOSMemoryWindow(img) {
     if (!img || !img.isConnected || document.hidden) return false;
+    const travelBand = wilduIsTravelListImageInsideActiveBand(img);
+    if (travelBand !== null) return travelBand;
+
     const rect = img.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
     const policy = getWilduImageMemoryPolicy();
@@ -24224,7 +24447,7 @@ function installWilduIOSImageMemoryWindow() {
         runtime.policyName = currentPolicy.policyName;
         entries.forEach(function (entry) {
             const img = entry.target;
-            if (entry.isIntersecting) {
+            if (entry.isIntersecting && wilduIsImageInsideIOSMemoryWindow(img)) {
                 wilduRestoreIOSManagedImage(img);
                 wilduQueueSmartImageOptimization(img, 'intersection');
             } else {
@@ -24680,6 +24903,7 @@ function consumeWilduSoftModalDismissEvent(evt) {
 
 function closeWilduRelatedModal(closeDetail, evt) {
     consumeWilduSoftModalDismissEvent(evt);
+    wilduNoteDetailMapSoftModalClose('related_close');
     wilduIOSBlackBoxRecord('related_close_requested', {
         closeDetail: closeDetail !== false
     });
@@ -24897,6 +25121,7 @@ function openWilduDateOptions(type, id, evt) {
 
 function closeWilduDateOptionsModal(evt, restoreDetail) {
     consumeWilduSoftModalDismissEvent(evt);
+    wilduNoteDetailMapSoftModalClose('dates_close');
     wilduIOSBlackBoxRecord('dates_close_requested', {
         restoreDetail: restoreDetail !== false
     });
@@ -30503,11 +30728,190 @@ if (profKeyEl) {
         }, { passive: true });
     }
 
+    const WILDU_TRAVEL_CARD_SNAP_ROOT_IDS = ['event-list', 'openday-list', 'payday-list', 'ondemand-list'];
+    const WILDU_TRAVEL_CARD_SNAP_MIN_DY = 34;
+    const WILDU_TRAVEL_CARD_SNAP_FREE_HOLD_MS = 620;
+    const WILDU_TRAVEL_CARD_SNAP_FREE_DISTANCE_PX = 340;
+    const WILDU_TRAVEL_CARD_SNAP_DEBOUNCE_MS = 115;
+    const WILDU_TRAVEL_CARD_SNAP_LOCK_MS = 620;
+    let wilduTravelCardSnapTouch = null;
+    let wilduTravelCardSnapTimer = 0;
+    let wilduTravelCardSnapProgrammaticUntil = 0;
+    let wilduTravelCardSnapFreeUntil = 0;
+
+    function wilduCanUseTravelCardSnap() {
+        try {
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+            if (window.matchMedia && !window.matchMedia('(hover: none)').matches) return false;
+        } catch (e) {}
+        return Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1) <= 760;
+    }
+
+    function wilduIsTravelCardSnapBlocked() {
+        if (!wilduCanUseTravelCardSnap()) return true;
+        if (wilduTravelTabSwipeTouch || wilduTravelTabSwipeTransitionInProgress) return true;
+        if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) return true;
+        if (typeof wilduIsDetailModalVisible === 'function' && wilduIsDetailModalVisible()) return true;
+        if (document.querySelector('.modal-overlay[style*="display: flex"],.modal-overlay.is-visible,.wildu-soft-modal.is-visible,#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible')) return true;
+        return false;
+    }
+
+    function wilduIsTravelCardSnapInteractiveTarget(target) {
+        return !!(target && typeof target.closest === 'function' && target.closest('button,a,input,select,textarea,[role="button"],.nav,.footer-nav,#wildu-nav-travel-hub,#wildu-travel-nav-menu'));
+    }
+
+    function wilduGetActiveTravelCardSnapRoot() {
+        let best = null;
+        let bestScore = -Infinity;
+        const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+        WILDU_TRAVEL_CARD_SNAP_ROOT_IDS.forEach(function (id) {
+            const root = document.getElementById(id);
+            if (!root || !root.children || !root.children.length) return;
+            const section = root.closest('.section,section,[id^="sec-"]');
+            if (section && section.classList && section.classList.contains('hidden')) return;
+            const rect = root.getBoundingClientRect();
+            if (!rect || rect.bottom < 0 || rect.top > viewportHeight) return;
+            const visible = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+            if (visible > bestScore) {
+                bestScore = visible;
+                best = root;
+            }
+        });
+        return best;
+    }
+
+    function wilduGetTravelCardsInRoot(root) {
+        if (!root || !root.children) return [];
+        return Array.prototype.filter.call(root.children, function (node) {
+            return !!(node && node.nodeType === 1 && node.matches && node.matches('.wildu-adventure-card,.card'));
+        });
+    }
+
+    function wilduFindNearestTravelCard(root) {
+        const cards = wilduGetTravelCardsInRoot(root);
+        if (!cards.length) return null;
+        const center = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1) / 2;
+        let best = null;
+        let bestDistance = Infinity;
+        cards.forEach(function (card) {
+            const rect = card.getBoundingClientRect();
+            if (!rect || rect.height <= 0 || rect.bottom < -80 || rect.top > center * 2 + 80) return;
+            const cardCenter = rect.top + rect.height / 2;
+            const distance = Math.abs(cardCenter - center);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = card;
+            }
+        });
+        return best;
+    }
+
+    function wilduScheduleTravelCardSnap(reason) {
+        if (wilduIsTravelCardSnapBlocked()) return;
+        const now = Date.now();
+        if (now < wilduTravelCardSnapProgrammaticUntil || now < wilduTravelCardSnapFreeUntil) return;
+        if (wilduTravelCardSnapTimer) window.clearTimeout(wilduTravelCardSnapTimer);
+        wilduTravelCardSnapTimer = window.setTimeout(function () {
+            wilduTravelCardSnapTimer = 0;
+            if (wilduIsTravelCardSnapBlocked()) return;
+            const nowInside = Date.now();
+            if (nowInside < wilduTravelCardSnapProgrammaticUntil || nowInside < wilduTravelCardSnapFreeUntil) return;
+            const root = wilduGetActiveTravelCardSnapRoot();
+            const card = wilduFindNearestTravelCard(root);
+            if (!root || !card || typeof card.scrollIntoView !== 'function') return;
+            wilduTravelCardSnapProgrammaticUntil = Date.now() + WILDU_TRAVEL_CARD_SNAP_LOCK_MS;
+            try {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            } catch (e) {
+                card.scrollIntoView();
+            }
+            try {
+                wilduIOSBlackBoxRecord('travel_card_snap_assisted', {
+                    reason: String(reason || 'scroll_end'),
+                    rootId: root.id || ''
+                });
+            } catch (e) {}
+            if (typeof wilduRefreshIOSImageMemoryWindow === 'function') {
+                window.setTimeout(function () {
+                    wilduRefreshIOSImageMemoryWindow('TRAVEL_CARD_SNAP');
+                }, 180);
+            }
+        }, WILDU_TRAVEL_CARD_SNAP_DEBOUNCE_MS);
+    }
+
+    function installWilduTravelCardSnapAssist() {
+        if (window.__wilduTravelCardSnapAssistInstalled) return;
+        window.__wilduTravelCardSnapAssistInstalled = true;
+
+        document.addEventListener('touchstart', function (event) {
+            if (wilduIsTravelCardSnapBlocked() || wilduIsTravelCardSnapInteractiveTarget(event.target)) {
+                wilduTravelCardSnapTouch = null;
+                return;
+            }
+            const root = wilduGetActiveTravelCardSnapRoot();
+            if (!root) {
+                wilduTravelCardSnapTouch = null;
+                return;
+            }
+            const touch = event.touches && event.touches[0];
+            if (!touch) return;
+            wilduTravelCardSnapTouch = {
+                y: touch.clientY,
+                x: touch.clientX,
+                startedAt: Date.now(),
+                maxDy: 0,
+                rootId: root.id || ''
+            };
+        }, { passive: true });
+
+        document.addEventListener('touchmove', function (event) {
+            if (!wilduTravelCardSnapTouch) return;
+            const touch = event.touches && event.touches[0];
+            if (!touch) return;
+            const dy = touch.clientY - wilduTravelCardSnapTouch.y;
+            const dx = touch.clientX - wilduTravelCardSnapTouch.x;
+            if (Math.abs(dx) > Math.abs(dy) * 1.25) {
+                wilduTravelCardSnapTouch = null;
+                return;
+            }
+            wilduTravelCardSnapTouch.maxDy = Math.max(wilduTravelCardSnapTouch.maxDy, Math.abs(dy));
+        }, { passive: true });
+
+        document.addEventListener('touchend', function () {
+            const state = wilduTravelCardSnapTouch;
+            wilduTravelCardSnapTouch = null;
+            if (!state || state.maxDy < WILDU_TRAVEL_CARD_SNAP_MIN_DY) return;
+            const duration = Date.now() - state.startedAt;
+            if (duration >= WILDU_TRAVEL_CARD_SNAP_FREE_HOLD_MS && state.maxDy >= WILDU_TRAVEL_CARD_SNAP_FREE_DISTANCE_PX) {
+                wilduTravelCardSnapFreeUntil = Date.now() + 1400;
+                try {
+                    wilduIOSBlackBoxRecord('travel_card_snap_free_scroll', {
+                        rootId: state.rootId || '',
+                        durationMs: duration,
+                        distancePx: Math.round(state.maxDy)
+                    });
+                } catch (e) {}
+                return;
+            }
+            wilduScheduleTravelCardSnap('touch_end');
+        }, { passive: true });
+
+        document.addEventListener('touchcancel', function () {
+            wilduTravelCardSnapTouch = null;
+        }, { passive: true });
+
+        window.addEventListener('scroll', function () {
+            if (Date.now() < wilduTravelCardSnapProgrammaticUntil || Date.now() < wilduTravelCardSnapFreeUntil) return;
+            wilduScheduleTravelCardSnap('scroll_idle');
+        }, { passive: true });
+    }
+
     function initWilduTravelNavHub() {
         syncWilduTravelNavHubState(currentTab || 'events');
         initWilduScreenWakeLock();
         installWilduTravelNavLongPress();
         installWilduTravelTabSwipe();
+        installWilduTravelCardSnapAssist();
 
         document.addEventListener('click', function (event) {
             const target = event && event.target;
