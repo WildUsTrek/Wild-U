@@ -16099,7 +16099,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.47';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.48';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16314,6 +16314,18 @@ const WilduIOSBlackBox = (() => {
         }
 
         try {
+            if (typeof getWilduIOSImageMemorySnapshot === 'function') {
+                snapshot.iosImageMemory = sanitizeValue(getWilduIOSImageMemorySnapshot(), 0);
+            }
+        } catch (e) {}
+
+        try {
+            if (typeof getWilduDetailMapRuntimeSnapshot === 'function') {
+                snapshot.mapRuntime = sanitizeValue(getWilduDetailMapRuntimeSnapshot(), 0);
+            }
+        } catch (e) {}
+
+        try {
             const state = readState();
             const cycles = Array.isArray(state.events)
                 ? state.events.filter((entry) => entry && entry.event === 'detail_resources_released').length
@@ -16331,6 +16343,13 @@ const WilduIOSBlackBox = (() => {
         const lifecycle = [...events].reverse().find((entry) => /app_boot_start|pagehide|pageshow|visibilitychange/.test(String(entry.event || '')));
         const bootEvents = events.filter((entry) => entry && entry.event === 'app_boot_start');
         const lastCritical = [...events].reverse().find((entry) => /detail_open|detail_close|related|dates|pagehide|visibilitychange/.test(String(entry.event || '')));
+        const docIdTransitions = [];
+        events.forEach((entry) => {
+            const docId = entry && entry.snapshot && entry.snapshot.docId ? String(entry.snapshot.docId) : '';
+            if (docId && docIdTransitions[docIdTransitions.length - 1] !== docId) {
+                docIdTransitions.push(docId);
+            }
+        });
         const retainedHeavyResource = [...events].reverse().find((entry) => {
             const snap = entry.snapshot || {};
             const eventName = String(entry.event || '');
@@ -16345,6 +16364,14 @@ const WilduIOSBlackBox = (() => {
         if (reload) return { code: 'APP_REQUESTED_RELOAD', reason: reload.appReloadIntent, at: reload.ts };
         if (last.event === 'pageshow' && last.details && last.details.persisted === true) {
             return { code: 'BF_CACHE_RESTORE_RISK', reason: 'pageshow.persisted', at: last.ts };
+        }
+        if (docIdTransitions.length > 1) {
+            return {
+                code: 'DOCUMENT_RESTART_OBSERVED',
+                reason: 'doc_id_changed_in_event_window',
+                at: last.ts,
+                docIds: docIdTransitions.slice(-4)
+            };
         }
         if (bootEvents.length > 1) {
             const currentBoot = bootEvents[bootEvents.length - 1] || {};
@@ -16388,6 +16415,14 @@ const WilduIOSBlackBox = (() => {
             'reload_requested_by_app',
             'before_resource_budget_enter',
             'after_resource_budget_release',
+            'map_iframe_deferred',
+            'map_iframe_cooldown_active',
+            'map_iframe_user_armed',
+            'map_iframe_load_scheduled',
+            'map_iframe_loaded',
+            'map_iframe_reset',
+            'catalog_image_released',
+            'catalog_image_restored',
             'blackbox_enabled_by_footer_taps',
             'SHELL_RELOAD_TRIGGERED',
             'SHELL_VERSION_CHANGED',
@@ -21458,12 +21493,183 @@ const WILDU_DETAIL_MAP_RUNTIME = {
     pendingUrl: '',
     scrollRoot: null,
     scrollHandler: null,
-    check: null
+    check: null,
+    load: null,
+    dwellTimer: 0,
+    cooldownUntil: 0,
+    lastResetAt: 0,
+    lastLoadedAt: 0,
+    lastUrl: '',
+    loadState: 'idle',
+    userArmed: false
 };
+
+const WILDU_DETAIL_MAP_IOS_PWA_COOLDOWN_MS = 4500;
+const WILDU_DETAIL_MAP_IOS_BROWSER_COOLDOWN_MS = 1800;
+const WILDU_DETAIL_MAP_DEFAULT_COOLDOWN_MS = 450;
+const WILDU_DETAIL_MAP_IOS_DWELL_MS = 900;
+const WILDU_DETAIL_MAP_DEFAULT_DWELL_MS = 220;
+
+function wilduIsStandaloneDisplayMode() {
+    try {
+        return !!(
+            window.navigator &&
+            window.navigator.standalone === true
+        ) || !!(
+            window.matchMedia &&
+            window.matchMedia('(display-mode: standalone)').matches
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduShouldUseConservativeDetailMapLoading() {
+    return !!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice() && wilduIsStandaloneDisplayMode());
+}
+
+function wilduGetDetailMapCooldownMs() {
+    if (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice()) {
+        return wilduIsStandaloneDisplayMode()
+            ? WILDU_DETAIL_MAP_IOS_PWA_COOLDOWN_MS
+            : WILDU_DETAIL_MAP_IOS_BROWSER_COOLDOWN_MS;
+    }
+    return WILDU_DETAIL_MAP_DEFAULT_COOLDOWN_MS;
+}
+
+function wilduRecordDetailMapEvent(eventName, details) {
+    try {
+        if (typeof pageDebug === 'function') {
+            pageDebug(String(eventName || 'MAP_EVENT').toUpperCase(), details || {});
+        }
+    } catch (e) {}
+    try {
+        if (typeof wilduIOSBlackBoxRecord === 'function') {
+            wilduIOSBlackBoxRecord(eventName, details || {});
+        }
+    } catch (e) {}
+}
+
+function wilduClearDetailMapDwellTimer() {
+    if (!WILDU_DETAIL_MAP_RUNTIME.dwellTimer) return;
+    try { window.clearTimeout(WILDU_DETAIL_MAP_RUNTIME.dwellTimer); } catch (e) {}
+    WILDU_DETAIL_MAP_RUNTIME.dwellTimer = 0;
+}
+
+function getWilduDetailMapRuntimeSnapshot() {
+    const runtime = WILDU_DETAIL_MAP_RUNTIME;
+    const now = Date.now();
+    return {
+        generation: runtime.generation,
+        pendingUrl: !!runtime.pendingUrl,
+        observer: !!runtime.observer,
+        scrollHandler: !!runtime.scrollHandler,
+        hasDwellTimer: !!runtime.dwellTimer,
+        cooldownRemainingMs: Math.max(0, Number(runtime.cooldownUntil || 0) - now),
+        lastResetAgoMs: runtime.lastResetAt ? Math.max(0, now - runtime.lastResetAt) : null,
+        lastLoadedAgoMs: runtime.lastLoadedAt ? Math.max(0, now - runtime.lastLoadedAt) : null,
+        loadState: runtime.loadState,
+        userArmed: !!runtime.userArmed,
+        conservative: wilduShouldUseConservativeDetailMapLoading()
+    };
+}
+
+function wilduRemoveDetailMapCourtesy() {
+    const courtesy = document.getElementById('wildu-map-courtesy');
+    if (courtesy) {
+        try { courtesy.remove(); } catch (e) {}
+    }
+}
+
+function wilduAttachDetailMapCourtesy(mapContainer, options) {
+    if (!mapContainer) return;
+    options = options || {};
+    wilduRemoveDetailMapCourtesy();
+
+    const panel = document.createElement('div');
+    panel.id = 'wildu-map-courtesy';
+    panel.setAttribute('role', 'group');
+    panel.setAttribute('aria-label', 'Mappa punto di ritrovo');
+    panel.style.cssText = [
+        'position:absolute',
+        'inset:0',
+        'z-index:3',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'padding:14px',
+        'box-sizing:border-box',
+        'background:radial-gradient(circle at top left, rgba(212,175,55,0.18), transparent 45%), linear-gradient(145deg, rgba(18,35,24,0.98), rgba(8,16,12,0.98))',
+        'border-radius:10px',
+        'color:#fff',
+        'text-align:center'
+    ].join(';');
+
+    const inner = document.createElement('div');
+    inner.style.cssText = [
+        'width:min(100%,360px)',
+        'display:grid',
+        'gap:8px',
+        'justify-items:center'
+    ].join(';');
+
+    const title = document.createElement('strong');
+    title.textContent = 'Mappa pronta';
+    title.style.cssText = 'font-size:14px;font-weight:950;letter-spacing:.25px;text-transform:uppercase;color:var(--w-gold,#d4af37)';
+
+    const copy = document.createElement('span');
+    copy.textContent = options.place
+        ? String(options.place).slice(0, 90)
+        : "Apri Maps o carica l'anteprima quando serve.";
+    copy.style.cssText = 'font-size:12px;line-height:1.35;color:#d8ded7;max-width:320px';
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:2px';
+
+    if (options.buttonUrl) {
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.textContent = 'Apri Maps';
+        openBtn.style.cssText = 'border:0;border-radius:999px;padding:8px 12px;background:rgba(255,255,255,0.10);color:#fff;font-size:11px;font-weight:900;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent';
+        openBtn.onclick = function (evt) {
+            if (evt && evt.preventDefault) evt.preventDefault();
+            if (evt && evt.stopPropagation) evt.stopPropagation();
+            if (typeof options.openMaps === 'function') return options.openMaps(evt);
+            return false;
+        };
+        buttons.appendChild(openBtn);
+    }
+
+    const previewBtn = document.createElement('button');
+    previewBtn.type = 'button';
+    previewBtn.textContent = 'Carica anteprima';
+    previewBtn.style.cssText = 'border:0;border-radius:999px;padding:8px 12px;background:linear-gradient(135deg,#d4af37,#f1c40f,#d4af37);color:#000;font-size:11px;font-weight:950;text-transform:uppercase;cursor:pointer;-webkit-tap-highlight-color:transparent';
+    previewBtn.onclick = function (evt) {
+        if (evt && evt.preventDefault) evt.preventDefault();
+        if (evt && evt.stopPropagation) evt.stopPropagation();
+        WILDU_DETAIL_MAP_RUNTIME.userArmed = true;
+        wilduRecordDetailMapEvent('map_iframe_user_armed', { source: 'courtesy_preview_button' });
+        if (typeof WILDU_DETAIL_MAP_RUNTIME.load === 'function') {
+            WILDU_DETAIL_MAP_RUNTIME.load('courtesy_preview_button');
+        }
+        return false;
+    };
+    buttons.appendChild(previewBtn);
+
+    inner.appendChild(title);
+    inner.appendChild(copy);
+    inner.appendChild(buttons);
+    panel.appendChild(inner);
+    mapContainer.appendChild(panel);
+}
 
 function wilduCancelPendingDetailMapLoad() {
     WILDU_DETAIL_MAP_RUNTIME.generation += 1;
     WILDU_DETAIL_MAP_RUNTIME.pendingUrl = '';
+    WILDU_DETAIL_MAP_RUNTIME.load = null;
+    WILDU_DETAIL_MAP_RUNTIME.loadState = 'cancelled';
+    WILDU_DETAIL_MAP_RUNTIME.userArmed = false;
+    wilduClearDetailMapDwellTimer();
     if (WILDU_DETAIL_MAP_RUNTIME.observer) {
         try { WILDU_DETAIL_MAP_RUNTIME.observer.disconnect(); } catch (e) {}
         WILDU_DETAIL_MAP_RUNTIME.observer = null;
@@ -21490,7 +21696,17 @@ function wilduResetDetailMapIframe() {
     clean.removeAttribute('srcdoc');
     clean.removeAttribute('data-wildu-map-src');
     clean.setAttribute('loading', 'lazy');
+    clean.style.opacity = '1';
     current.parentNode.replaceChild(clean, current);
+    wilduRemoveDetailMapCourtesy();
+    WILDU_DETAIL_MAP_RUNTIME.lastResetAt = Date.now();
+    WILDU_DETAIL_MAP_RUNTIME.cooldownUntil = WILDU_DETAIL_MAP_RUNTIME.lastResetAt + wilduGetDetailMapCooldownMs();
+    WILDU_DETAIL_MAP_RUNTIME.lastUrl = '';
+    WILDU_DETAIL_MAP_RUNTIME.loadState = 'idle';
+    wilduRecordDetailMapEvent('map_iframe_reset', {
+        cooldownMs: wilduGetDetailMapCooldownMs(),
+        conservative: wilduShouldUseConservativeDetailMapLoading()
+    });
     return clean;
 }
 
@@ -21501,16 +21717,47 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
     const generation = WILDU_DETAIL_MAP_RUNTIME.generation;
     const detailModal = document.getElementById('od-details-modal');
     WILDU_DETAIL_MAP_RUNTIME.pendingUrl = cleanUrl;
+    WILDU_DETAIL_MAP_RUNTIME.lastUrl = cleanUrl;
+    WILDU_DETAIL_MAP_RUNTIME.loadState = 'pending';
     mapIframe.setAttribute('loading', 'lazy');
     mapIframe.setAttribute('data-wildu-map-src', cleanUrl);
 
-    const loadMap = function () {
-        if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return;
-        if (!wilduIsDetailModalVisible()) return;
-        if (mapIframe.getAttribute('src')) return;
+    var scheduleStableLoad = null;
+
+    const loadMap = function (reason) {
+        reason = String(reason || 'near_viewport');
+        if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return false;
+        if (!wilduIsDetailModalVisible()) return false;
+        if (mapIframe.getAttribute('src')) return true;
+        if (wilduShouldUseConservativeDetailMapLoading() && !WILDU_DETAIL_MAP_RUNTIME.userArmed) {
+            WILDU_DETAIL_MAP_RUNTIME.loadState = 'deferred';
+            wilduRecordDetailMapEvent('map_iframe_deferred', {
+                reason,
+                conservative: true
+            });
+            return false;
+        }
+
+        const now = Date.now();
+        const cooldownRemaining = Math.max(0, Number(WILDU_DETAIL_MAP_RUNTIME.cooldownUntil || 0) - now);
+        if (cooldownRemaining > 0) {
+            WILDU_DETAIL_MAP_RUNTIME.loadState = 'cooldown';
+            wilduRecordDetailMapEvent('map_iframe_cooldown_active', {
+                reason,
+                remainingMs: cooldownRemaining
+            });
+            if (typeof scheduleStableLoad === 'function') {
+                scheduleStableLoad(reason, cooldownRemaining);
+            }
+            return false;
+        }
 
         mapIframe.setAttribute('src', cleanUrl);
+        mapIframe.style.opacity = '1';
         WILDU_DETAIL_MAP_RUNTIME.pendingUrl = '';
+        WILDU_DETAIL_MAP_RUNTIME.lastLoadedAt = Date.now();
+        WILDU_DETAIL_MAP_RUNTIME.loadState = 'loaded';
+        wilduRemoveDetailMapCourtesy();
         if (WILDU_DETAIL_MAP_RUNTIME.observer) {
             try { WILDU_DETAIL_MAP_RUNTIME.observer.disconnect(); } catch (e) {}
             WILDU_DETAIL_MAP_RUNTIME.observer = null;
@@ -21523,6 +21770,49 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
         WILDU_DETAIL_MAP_RUNTIME.scrollRoot = null;
         WILDU_DETAIL_MAP_RUNTIME.scrollHandler = null;
         WILDU_DETAIL_MAP_RUNTIME.check = null;
+        wilduRecordDetailMapEvent('map_iframe_loaded', {
+            reason,
+            conservative: wilduShouldUseConservativeDetailMapLoading()
+        });
+        return true;
+    };
+
+    scheduleStableLoad = function (reason, minimumDelay) {
+        reason = String(reason || 'near_viewport');
+        if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return false;
+        if (!wilduIsDetailModalVisible()) return false;
+        if (mapIframe.getAttribute('src')) return true;
+        if (wilduShouldUseConservativeDetailMapLoading() && !WILDU_DETAIL_MAP_RUNTIME.userArmed) {
+            WILDU_DETAIL_MAP_RUNTIME.loadState = 'deferred';
+            wilduRecordDetailMapEvent('map_iframe_deferred', {
+                reason,
+                conservative: true
+            });
+            return false;
+        }
+
+        const cooldownRemaining = Math.max(0, Number(WILDU_DETAIL_MAP_RUNTIME.cooldownUntil || 0) - Date.now());
+        const dwellMs = (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())
+            ? WILDU_DETAIL_MAP_IOS_DWELL_MS
+            : WILDU_DETAIL_MAP_DEFAULT_DWELL_MS;
+        const delayMs = Math.max(cooldownRemaining, Number(minimumDelay || 0), dwellMs);
+        wilduClearDetailMapDwellTimer();
+        WILDU_DETAIL_MAP_RUNTIME.loadState = 'scheduled';
+        WILDU_DETAIL_MAP_RUNTIME.dwellTimer = window.setTimeout(function () {
+            WILDU_DETAIL_MAP_RUNTIME.dwellTimer = 0;
+            loadMap(reason);
+        }, delayMs);
+        wilduRecordDetailMapEvent('map_iframe_load_scheduled', {
+            reason,
+            delayMs,
+            conservative: wilduShouldUseConservativeDetailMapLoading()
+        });
+        return true;
+    };
+
+    WILDU_DETAIL_MAP_RUNTIME.load = function (reason) {
+        WILDU_DETAIL_MAP_RUNTIME.userArmed = true;
+        return scheduleStableLoad(reason || 'user_armed', 0);
     };
 
     const checkNearViewport = function () {
@@ -21533,7 +21823,7 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
         const modalRect = detailModal.getBoundingClientRect();
         const margin = 120;
         if (mapRect.bottom >= modalRect.top - margin && mapRect.top <= modalRect.bottom + margin) {
-            loadMap();
+            scheduleStableLoad('near_viewport', 0);
         }
     };
 
@@ -21546,7 +21836,7 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
 
     if (typeof IntersectionObserver === 'function') {
         WILDU_DETAIL_MAP_RUNTIME.observer = new IntersectionObserver(function (entries) {
-            if (entries.some(function (entry) { return entry.isIntersecting; })) loadMap();
+            if (entries.some(function (entry) { return entry.isIntersecting; })) scheduleStableLoad('intersection', 0);
         }, { root: detailModal || null, rootMargin: '120px 0px', threshold: 0.01 });
         WILDU_DETAIL_MAP_RUNTIME.observer.observe(mapContainer);
         requestAnimationFrame(checkNearViewport);
@@ -21811,7 +22101,14 @@ function renderUnifiedDetailMap(payload) {
         mapContainer.style.display = "block";
         wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl);
 
-        if (buttonUrl) {
+        if (wilduShouldUseConservativeDetailMapLoading()) {
+            mapIframe.style.opacity = "0";
+            wilduAttachDetailMapCourtesy(mapContainer, {
+                buttonUrl,
+                place: query || luogo || regione,
+                openMaps: openWilduMapsAfterSoftConfirm
+            });
+        } else if (buttonUrl) {
             const overlay = document.createElement("button");
             overlay.type = "button";
             overlay.id = "wildu-map-confirm-overlay";
@@ -21870,8 +22167,9 @@ function renderUnifiedDetailMap(payload) {
             query,
             buttonVisible: false,
             iframeVisible: !!iframeUrl,
-            overlayEnabled: !!(iframeUrl && buttonUrl),
+            overlayEnabled: !!(iframeUrl && buttonUrl && !wilduShouldUseConservativeDetailMapLoading()),
             softConfirmEnabled: !!buttonUrl,
+            courtesyMapEnabled: !!(iframeUrl && wilduShouldUseConservativeDetailMapLoading()),
             buttonUrl,
             iframeUrl
         });
@@ -23847,7 +24145,14 @@ function closeWilduRelatedModal(closeDetail, evt) {
     if (card) wilduResetSwipeTarget(card);
     hideWilduSwipeHint();
     if (closeDetail !== false) {
-        wilduCloseDetailModalOnly();
+        if (wilduIsDetailModalVisible()) {
+            wilduCloseDetailModalOnly();
+        } else {
+            wilduIOSBlackBoxRecord('detail_close_ignored_duplicate', {
+                source: 'closeWilduRelatedModal',
+                reason: 'detail_already_closed'
+            });
+        }
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
     }
     if (modal) {
