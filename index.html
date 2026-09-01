@@ -16099,7 +16099,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.48';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.49';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21729,15 +21729,6 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
         if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return false;
         if (!wilduIsDetailModalVisible()) return false;
         if (mapIframe.getAttribute('src')) return true;
-        if (wilduShouldUseConservativeDetailMapLoading() && !WILDU_DETAIL_MAP_RUNTIME.userArmed) {
-            WILDU_DETAIL_MAP_RUNTIME.loadState = 'deferred';
-            wilduRecordDetailMapEvent('map_iframe_deferred', {
-                reason,
-                conservative: true
-            });
-            return false;
-        }
-
         const now = Date.now();
         const cooldownRemaining = Math.max(0, Number(WILDU_DETAIL_MAP_RUNTIME.cooldownUntil || 0) - now);
         if (cooldownRemaining > 0) {
@@ -21782,15 +21773,6 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
         if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return false;
         if (!wilduIsDetailModalVisible()) return false;
         if (mapIframe.getAttribute('src')) return true;
-        if (wilduShouldUseConservativeDetailMapLoading() && !WILDU_DETAIL_MAP_RUNTIME.userArmed) {
-            WILDU_DETAIL_MAP_RUNTIME.loadState = 'deferred';
-            wilduRecordDetailMapEvent('map_iframe_deferred', {
-                reason,
-                conservative: true
-            });
-            return false;
-        }
-
         const cooldownRemaining = Math.max(0, Number(WILDU_DETAIL_MAP_RUNTIME.cooldownUntil || 0) - Date.now());
         const dwellMs = (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())
             ? WILDU_DETAIL_MAP_IOS_DWELL_MS
@@ -23603,6 +23585,12 @@ const WILDU_IOS_IMAGE_MEMORY_ROOT_SELECTOR = [
 const WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX = 1400;
 const WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX = 900;
 const WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS = 650;
+const WILDU_ANDROID_IMAGE_MEMORY_VERTICAL_MARGIN_PX = 2200;
+const WILDU_ANDROID_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX = 1200;
+const WILDU_ANDROID_IMAGE_MEMORY_RELEASE_DELAY_MS = 1100;
+const WILDU_DESKTOP_IMAGE_MEMORY_VERTICAL_MARGIN_PX = 5200;
+const WILDU_DESKTOP_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX = 2600;
+const WILDU_DESKTOP_IMAGE_MEMORY_RELEASE_DELAY_MS = 2200;
 const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     installed: false,
     images: new Set(),
@@ -23610,8 +23598,43 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     intersectionObserver: null,
     mutationObserver: null,
     refreshFrame: 0,
-    lastReason: ''
+    lastReason: '',
+    policyName: 'DISABLED'
 };
+
+function getWilduImageMemoryPolicy() {
+    const width = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    const coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    if (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice()) {
+        return {
+            enabled: true,
+            policyName: 'IOS_VIEWPORT_WINDOW',
+            verticalMargin: WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX,
+            horizontalMargin: WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX,
+            releaseDelay: WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS
+        };
+    }
+    if (coarsePointer || width <= 900) {
+        return {
+            enabled: true,
+            policyName: 'MOBILE_VIEWPORT_WINDOW',
+            verticalMargin: WILDU_ANDROID_IMAGE_MEMORY_VERTICAL_MARGIN_PX,
+            horizontalMargin: WILDU_ANDROID_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX,
+            releaseDelay: WILDU_ANDROID_IMAGE_MEMORY_RELEASE_DELAY_MS
+        };
+    }
+    return {
+        enabled: true,
+        policyName: 'DESKTOP_WIDE_VIEWPORT_WINDOW',
+        verticalMargin: WILDU_DESKTOP_IMAGE_MEMORY_VERTICAL_MARGIN_PX,
+        horizontalMargin: WILDU_DESKTOP_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX,
+        releaseDelay: WILDU_DESKTOP_IMAGE_MEMORY_RELEASE_DELAY_MS
+    };
+}
+
+function wilduShouldUseImageMemoryWindow() {
+    return getWilduImageMemoryPolicy().enabled === true;
+}
 
 function wilduIsIOSImageMemoryCandidate(img) {
     return !!(
@@ -23635,13 +23658,14 @@ function wilduIsImageInsideIOSMemoryWindow(img) {
     if (!img || !img.isConnected || document.hidden) return false;
     const rect = img.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+    const policy = getWilduImageMemoryPolicy();
 
     const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
     const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
-    return rect.bottom >= -WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX &&
-        rect.top <= viewportHeight + WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX &&
-        rect.right >= -WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX &&
-        rect.left <= viewportWidth + WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX;
+    return rect.bottom >= -policy.verticalMargin &&
+        rect.top <= viewportHeight + policy.verticalMargin &&
+        rect.right >= -policy.horizontalMargin &&
+        rect.left <= viewportWidth + policy.horizontalMargin;
 }
 
 function wilduCancelIOSImageMemoryRelease(state) {
@@ -23732,10 +23756,15 @@ function wilduRegisterIOSImagesIn(root) {
 
 function wilduRefreshIOSImageMemoryWindow(reason) {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
-    if (!runtime.installed || !isWilduIOSClientDevice()) return false;
-    runtime.lastReason = String(reason || 'REFRESH');
+    if (!runtime.installed || !wilduShouldUseImageMemoryWindow()) return false;
+    const refreshReason = String(reason || 'REFRESH');
+    if (refreshReason.indexOf('GOOGLE_AUTH') === 0 && !(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) return false;
+    runtime.lastReason = refreshReason;
+    runtime.policyName = getWilduImageMemoryPolicy().policyName;
     if (runtime.refreshFrame) window.cancelAnimationFrame(runtime.refreshFrame);
     runtime.refreshFrame = window.requestAnimationFrame(function () {
+        const policy = getWilduImageMemoryPolicy();
+        runtime.policyName = policy.policyName;
         runtime.refreshFrame = 0;
         runtime.images.forEach(function (img) {
             if (!img.isConnected) {
@@ -23745,7 +23774,7 @@ function wilduRefreshIOSImageMemoryWindow(reason) {
             if (wilduIsImageInsideIOSMemoryWindow(img)) {
                 wilduRestoreIOSManagedImage(img);
             } else {
-                wilduScheduleIOSImageMemoryRelease(img, WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS);
+                wilduScheduleIOSImageMemoryRelease(img, policy.releaseDelay);
             }
         });
     });
@@ -23754,8 +23783,11 @@ function wilduRefreshIOSImageMemoryWindow(reason) {
 
 function wilduReleaseIOSManagedImages(reason) {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
-    if (!runtime.installed || !isWilduIOSClientDevice()) return 0;
-    runtime.lastReason = String(reason || 'RELEASE_ALL');
+    if (!runtime.installed || !wilduShouldUseImageMemoryWindow()) return 0;
+    const releaseReason = String(reason || 'RELEASE_ALL');
+    if (releaseReason.indexOf('GOOGLE_AUTH') === 0 && !(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) return 0;
+    runtime.lastReason = releaseReason;
+    runtime.policyName = getWilduImageMemoryPolicy().policyName;
     let released = 0;
     runtime.images.forEach(function (img) {
         if (wilduReleaseIOSManagedImage(img)) released += 1;
@@ -23763,11 +23795,13 @@ function wilduReleaseIOSManagedImages(reason) {
     try {
         pageDebug('IOS_IMAGE_MEMORY_RELEASED', {
             reason: runtime.lastReason,
+            policy: runtime.policyName,
             released,
             registered: runtime.images.size
         });
         wilduIOSBlackBoxRecord('after_resource_budget_release', {
             reason: runtime.lastReason,
+            policy: runtime.policyName,
             released,
             registered: runtime.images.size
         });
@@ -23777,6 +23811,7 @@ function wilduReleaseIOSManagedImages(reason) {
 
 function getWilduIOSImageMemorySnapshot() {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const policy = getWilduImageMemoryPolicy();
     let connected = 0;
     let released = 0;
     let loaded = 0;
@@ -23793,7 +23828,8 @@ function getWilduIOSImageMemorySnapshot() {
     });
     return {
         enabled: runtime.installed,
-        policy: isWilduIOSClientDevice() ? 'IOS_VIEWPORT_WINDOW' : 'UNCHANGED',
+        policy: runtime.installed ? runtime.policyName || policy.policyName : 'NOT_INSTALLED',
+        activePolicy: policy.policyName,
         registered: runtime.images.size,
         connected,
         released,
@@ -23806,22 +23842,25 @@ function getWilduIOSImageMemorySnapshot() {
 
 function installWilduIOSImageMemoryWindow() {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
-    if (runtime.installed || !isWilduIOSClientDevice()) return runtime.installed;
+    const policy = getWilduImageMemoryPolicy();
+    if (runtime.installed || !policy.enabled) return runtime.installed;
     if (typeof window.IntersectionObserver !== 'function' || !document.body) return false;
+    runtime.policyName = policy.policyName;
 
     runtime.intersectionObserver = new IntersectionObserver(function (entries) {
+        const currentPolicy = getWilduImageMemoryPolicy();
+        runtime.policyName = currentPolicy.policyName;
         entries.forEach(function (entry) {
             const img = entry.target;
             if (entry.isIntersecting) {
                 wilduRestoreIOSManagedImage(img);
             } else {
-                wilduScheduleIOSImageMemoryRelease(img, WILDU_IOS_IMAGE_MEMORY_RELEASE_DELAY_MS);
+                wilduScheduleIOSImageMemoryRelease(img, currentPolicy.releaseDelay);
             }
         });
     }, {
         root: null,
-        rootMargin: WILDU_IOS_IMAGE_MEMORY_VERTICAL_MARGIN_PX + 'px ' +
-            WILDU_IOS_IMAGE_MEMORY_HORIZONTAL_MARGIN_PX + 'px',
+        rootMargin: policy.verticalMargin + 'px ' + policy.horizontalMargin + 'px',
         threshold: 0.01
     });
 
