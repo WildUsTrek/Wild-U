@@ -2998,6 +2998,98 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     font-size: 9px;
 }
 
+.wildu-ios-blackbox-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 8px;
+    padding: 5px 10px;
+    border: 1px solid rgba(212,175,55,0.45);
+    border-radius: 999px;
+    background: rgba(212,175,55,0.08);
+    color: var(--w-gold);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.wildu-ios-blackbox-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0,0,0,0.82);
+    box-sizing: border-box;
+}
+
+.wildu-ios-blackbox-modal.is-visible {
+    display: flex;
+}
+
+.wildu-ios-blackbox-card {
+    width: min(640px, 100%);
+    max-height: 86vh;
+    overflow: auto;
+    border: 1px solid rgba(212,175,55,0.35);
+    border-radius: 20px;
+    background: linear-gradient(145deg, #101b12, #070b08);
+    color: #f5f5f5;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.72);
+    padding: 18px;
+    box-sizing: border-box;
+}
+
+.wildu-ios-blackbox-card h3 {
+    margin: 0 0 8px 0;
+    color: var(--w-gold);
+    font-size: 20px;
+}
+
+.wildu-ios-blackbox-card p {
+    margin: 0 0 12px 0;
+    color: #cfcfcf;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.wildu-ios-blackbox-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.wildu-ios-blackbox-actions button {
+    border: 0;
+    border-radius: 12px;
+    padding: 11px 10px;
+    background: var(--w-gold);
+    color: #111;
+    font-weight: 900;
+}
+
+.wildu-ios-blackbox-actions button.wildu-ios-blackbox-secondary {
+    background: rgba(255,255,255,0.11);
+    color: #f5f5f5;
+    border: 1px solid rgba(255,255,255,0.16);
+}
+
+.wildu-ios-blackbox-text {
+    width: 100%;
+    min-height: 220px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(0,0,0,0.44);
+    color: #e8e8e8;
+    font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
 .amazon-slider {
     width: calc(100vw + (var(--amazon-bleed) * 2));
     max-width: none;
@@ -12440,6 +12532,12 @@ window.WilduMediaClient = WilduMediaClient;
                 ...(data?.capabilities || {})
             }
         };
+        wilduIOSBlackBoxRecord('auth_state_known', {
+            source: 'syncClientSessionFromInitData',
+            authState,
+            channel,
+            tokenStatus
+        });
 
         // Fonte di verità lato client: solo il backend può dichiarare LOGGED
         if (authState === 'LOGGED' && data?.userOverlay?.profile?.uid) {
@@ -14818,6 +14916,10 @@ if (docSnap.exists) {
 }
 
 auth.onAuthStateChanged((user) => {
+    wilduIOSBlackBoxRecord('auth_state_known', {
+        source: 'AUTH_LISTENER',
+        hasUser: !!user
+    });
     handleClientAuthStateChanged(user, 'AUTH_LISTENER');
 });
 
@@ -15997,13 +16099,512 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.44';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.45';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
 const SHELL_VERSION_FETCH_TIMEOUT_MS = 3000;
 
 const DEBUG_WILDU_PAGE = true;
+
+// =========================================================
+// WILDU iOS BLACK BOX — diagnostica locale crash/reload WebKit
+// =========================================================
+// Off di default. Si attiva con ?wildu_debug_ios=1 e non registra dati
+// sensibili: niente token, cookie, email complete, UID o payload personali.
+const WILDU_IOS_BLACKBOX_STORAGE_KEY = 'wildu.debug.ios.blackbox.v1';
+const WILDU_IOS_BLACKBOX_ENABLED_KEY = 'wildu.debug.ios.blackbox.enabled';
+const WILDU_IOS_BLACKBOX_DOC_ID = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const WILDU_IOS_BLACKBOX_MAX_EVENTS = 80;
+const WILDU_IOS_BLACKBOX_MAX_TEXT = 20000;
+
+const WilduIOSBlackBox = (() => {
+    let activationHandled = false;
+
+    function safeJsonParse(value, fallback) {
+        try {
+            const parsed = JSON.parse(value || '');
+            return parsed && typeof parsed === 'object' ? parsed : fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    function isLikelyIOS() {
+        try {
+            if (typeof isWilduIOSClientDevice === 'function') return isWilduIOSClientDevice();
+        } catch (e) {}
+        try {
+            const ua = String(navigator.userAgent || '');
+            const platform = String(navigator.platform || '');
+            return /iPad|iPhone|iPod/i.test(ua + ' ' + platform) ||
+                (platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function readState() {
+        try {
+            return safeJsonParse(localStorage.getItem(WILDU_IOS_BLACKBOX_STORAGE_KEY), {
+                version: 1,
+                enabled: false,
+                createdAt: new Date().toISOString(),
+                lastClassification: null,
+                events: []
+            });
+        } catch (e) {
+            return { version: 1, enabled: false, events: [] };
+        }
+    }
+
+    function writeState(state) {
+        try {
+            const clean = state && typeof state === 'object' ? state : {};
+            clean.version = 1;
+            clean.events = Array.isArray(clean.events) ? clean.events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) : [];
+            let text = JSON.stringify(clean);
+            while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > 20) {
+                clean.events.shift();
+                text = JSON.stringify(clean);
+            }
+            localStorage.setItem(WILDU_IOS_BLACKBOX_STORAGE_KEY, text);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function setEnabled(value, reason) {
+        try {
+            if (value) localStorage.setItem(WILDU_IOS_BLACKBOX_ENABLED_KEY, '1');
+            else localStorage.removeItem(WILDU_IOS_BLACKBOX_ENABLED_KEY);
+        } catch (e) {}
+        const state = readState();
+        state.enabled = value === true;
+        state.enabledAt = state.enabled ? new Date().toISOString() : state.enabledAt;
+        state.disabledAt = state.enabled ? null : new Date().toISOString();
+        state.toggleReason = String(reason || '');
+        writeState(state);
+    }
+
+    function isEnabled() {
+        try {
+            if (localStorage.getItem(WILDU_IOS_BLACKBOX_ENABLED_KEY) === '1') return true;
+        } catch (e) {}
+        const state = readState();
+        return state.enabled === true;
+    }
+
+    function sanitizeValue(value, depth) {
+        if (depth > 2) return '[depth]';
+        if (value === null || value === undefined) return value;
+        if (typeof value === 'number' || typeof value === 'boolean') return value;
+        if (typeof value === 'string') {
+            let out = value;
+            out = out.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]');
+            out = out.replace(/\b[A-Za-z0-9_-]{24,}\b/g, '[id]');
+            out = out.replace(/([?&](?:token|credential|id_token|access_token|code|state|nonce|attempt)=)[^&#]+/gi, '$1[redacted]');
+            return out.slice(0, 240);
+        }
+        if (Array.isArray(value)) return value.slice(0, 8).map((item) => sanitizeValue(item, depth + 1));
+        if (typeof value === 'object') {
+            const out = {};
+            Object.keys(value).slice(0, 20).forEach((key) => {
+                if (/token|credential|cookie|secret|password|email|uid|idToken|accessToken/i.test(key)) {
+                    out[key] = '[redacted]';
+                } else {
+                    out[key] = sanitizeValue(value[key], depth + 1);
+                }
+            });
+            return out;
+        }
+        return String(value).slice(0, 120);
+    }
+
+    function getDetailPhase() {
+        try {
+            if (typeof WILDU_DETAIL_RUNTIME !== 'undefined' && WILDU_DETAIL_RUNTIME) {
+                return String(WILDU_DETAIL_RUNTIME.phase || 'unknown');
+            }
+        } catch (e) {}
+        try {
+            const modal = document.getElementById('od-details-modal');
+            return modal && (modal.classList.contains('is-visible') || modal.style.display !== 'none') ? 'open' : 'closed';
+        } catch (e) {
+            return 'unknown';
+        }
+    }
+
+    function getOpenModalId() {
+        try {
+            const selectors = [
+                '#od-details-modal.is-visible',
+                '#wildu-related-modal.is-visible',
+                '#wildu-date-options-modal.is-visible',
+                '#iframe-modal[style*="display: block"]'
+            ];
+            for (const selector of selectors) {
+                const el = document.querySelector(selector);
+                if (el && el.id) return el.id;
+            }
+        } catch (e) {}
+        return 'none';
+    }
+
+    function getPreloadSnapshot() {
+        try {
+            if (typeof getWilduCatalogCoverPreloadSnapshot === 'function') {
+                return getWilduCatalogCoverPreloadSnapshot();
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    function collectSnapshot() {
+        const snapshot = {
+            build: String(typeof WILDU_EMBEDDED_SHELL_VERSION !== 'undefined' ? WILDU_EMBEDDED_SHELL_VERSION : 'n/d'),
+            docId: WILDU_IOS_BLACKBOX_DOC_ID,
+            timeOrigin: Math.round(Number(performance && performance.timeOrigin ? performance.timeOrigin : Date.now())),
+            ios: isLikelyIOS(),
+            hidden: !!document.hidden,
+            visibility: String(document.visibilityState || ''),
+            route: String(window.currentTab || location.hash || location.pathname || ''),
+            detailPhase: getDetailPhase(),
+            modalOpen: getOpenModalId(),
+            imagesLive: 0,
+            imagesLoaded: 0,
+            iframesLive: 0,
+            mapsIframeLive: false,
+            gameFrameLive: false,
+            audioLongActive: false,
+            preloadActive: false,
+            preload: null,
+            lastDetailCycle: 0
+        };
+
+        try {
+            const imgs = Array.from(document.images || []);
+            snapshot.imagesLive = imgs.filter((img) => !!(img.currentSrc || img.getAttribute('src'))).length;
+            snapshot.imagesLoaded = imgs.filter((img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0).length;
+        } catch (e) {}
+
+        try {
+            const frames = Array.from(document.querySelectorAll('iframe'));
+            const liveFrames = frames.filter((frame) => !!(frame.currentSrc || frame.getAttribute('src')));
+            snapshot.iframesLive = liveFrames.length;
+            snapshot.mapsIframeLive = liveFrames.some((frame) => frame.id === 'od-map-iframe');
+            snapshot.gameFrameLive = liveFrames.some((frame) => /(^|\/)giochi\//i.test(String(frame.currentSrc || frame.getAttribute('src') || '')));
+        } catch (e) {}
+
+        try {
+            snapshot.audioLongActive = Array.from(document.querySelectorAll('audio')).some((audio) => {
+                return !!(audio.currentSrc || audio.getAttribute('src')) && audio.paused === false;
+            });
+        } catch (e) {}
+
+        const preload = getPreloadSnapshot();
+        if (preload) {
+            snapshot.preload = sanitizeValue(preload, 0);
+            snapshot.preloadActive = Number(preload.queued || 0) > 0 || Number(preload.inFlight || 0) > 0;
+        }
+
+        try {
+            const state = readState();
+            const cycles = Array.isArray(state.events)
+                ? state.events.filter((entry) => entry && entry.event === 'detail_resources_released').length
+                : 0;
+            snapshot.lastDetailCycle = cycles;
+        } catch (e) {}
+
+        return snapshot;
+    }
+
+    function classifyPreviousSession(events) {
+        if (!Array.isArray(events) || !events.length) return null;
+        const last = events[events.length - 1] || {};
+        const reload = [...events].reverse().find((entry) => entry && entry.appReloadIntent && entry.appReloadIntent !== 'none');
+        const lastCritical = [...events].reverse().find((entry) => /detail|related|dates|pagehide|visibilitychange/.test(String(entry.event || '')));
+        const leak = [...events].reverse().find((entry) => {
+            const snap = entry.snapshot || {};
+            return Number(snap.iframesLive || 0) > 0 || snap.mapsIframeLive === true || snap.gameFrameLive === true;
+        });
+        if (reload) return { code: 'APP_REQUESTED_RELOAD', reason: reload.appReloadIntent, at: reload.ts };
+        if (last.event === 'pageshow' && last.details && last.details.persisted === true) {
+            return { code: 'BF_CACHE_RESTORE_RISK', reason: 'pageshow.persisted', at: last.ts };
+        }
+        if (lastCritical && /detail|related|dates/.test(String(lastCritical.event || ''))) {
+            return { code: leak ? 'RESOURCE_LEAK_OR_WEBKIT_RESTART_SUSPECTED' : 'WEBKIT_PROCESS_RESTART_SUSPECTED', reason: lastCritical.event, at: lastCritical.ts };
+        }
+        return { code: 'UNKNOWN_NEEDS_TRACE', reason: last.event || 'none', at: last.ts };
+    }
+
+    function shouldRecordEvent(event) {
+        const cleanEvent = String(event || '');
+        return [
+            'app_boot_start',
+            'shell_cache_gate_start',
+            'shell_cache_gate_end',
+            'auth_state_known',
+            'detail_open_requested',
+            'detail_open_committed',
+            'related_open_requested',
+            'related_close_requested',
+            'related_card_detail_requested',
+            'dates_open_requested',
+            'dates_close_requested',
+            'detail_close_requested',
+            'detail_resources_released',
+            'pagehide',
+            'pageshow',
+            'visibilitychange',
+            'reload_requested_by_app',
+            'before_resource_budget_enter',
+            'after_resource_budget_release',
+            'SHELL_RELOAD_TRIGGERED',
+            'SHELL_VERSION_CHANGED',
+            'GLOBAL_CACHE_RELOAD_SCHEDULED',
+            'GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED'
+        ].indexOf(cleanEvent) >= 0;
+    }
+
+    function record(event, details) {
+        if (!isEnabled()) return false;
+        const cleanEvent = String(event || 'event').slice(0, 80);
+        if (!shouldRecordEvent(cleanEvent)) return false;
+        const state = readState();
+        const events = Array.isArray(state.events) ? state.events : [];
+        const entry = {
+            ts: new Date().toISOString(),
+            relMs: Math.round(performance.now ? performance.now() : 0),
+            event: cleanEvent,
+            appReloadIntent: 'none',
+            details: sanitizeValue(details || {}, 0),
+            snapshot: collectSnapshot()
+        };
+        if (/SHELL_RELOAD_TRIGGERED|GLOBAL_CACHE_RELOAD_SCHEDULED|GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED/.test(cleanEvent)) {
+            entry.appReloadIntent = cleanEvent;
+        }
+        events.push(entry);
+        state.enabled = true;
+        state.lastWriteAt = entry.ts;
+        state.lastClassification = classifyPreviousSession(events);
+        state.events = events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS);
+        return writeState(state);
+    }
+
+    function markReloadIntent(reason, targetUrl) {
+        if (!isEnabled()) return false;
+        return record('reload_requested_by_app', {
+            reason: String(reason || 'UNKNOWN'),
+            targetUrl: String(targetUrl || location.href)
+        });
+    }
+
+    function buildReport() {
+        const state = readState();
+        const events = Array.isArray(state.events) ? state.events : [];
+        const classification = classifyPreviousSession(events);
+        return {
+            reportType: 'WILDU_IOS_BLACKBOX_V1',
+            generatedAt: new Date().toISOString(),
+            currentSnapshot: collectSnapshot(),
+            classification,
+            eventCount: events.length,
+            events
+        };
+    }
+
+    function getReportText() {
+        return JSON.stringify(buildReport(), null, 2);
+    }
+
+    function ensureModal() {
+        let modal = document.getElementById('wildu-ios-blackbox-modal');
+        if (modal) return modal;
+        modal = document.createElement('div');
+        modal.id = 'wildu-ios-blackbox-modal';
+        modal.className = 'wildu-ios-blackbox-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-label', 'Log tecnico iOS Wild-U');
+        modal.innerHTML = [
+            '<div class="wildu-ios-blackbox-card">',
+                '<h3>Log tecnico iOS</h3>',
+                '<p id="wildu-ios-blackbox-summary">Diagnostica locale attiva. Il report e redatto e non contiene credenziali.</p>',
+                '<div class="wildu-ios-blackbox-actions">',
+                    '<button type="button" id="wildu-ios-blackbox-copy">Copia report</button>',
+                    '<button type="button" id="wildu-ios-blackbox-share">Condividi</button>',
+                    '<button type="button" id="wildu-ios-blackbox-clear" class="wildu-ios-blackbox-secondary">Cancella log</button>',
+                    '<button type="button" id="wildu-ios-blackbox-close" class="wildu-ios-blackbox-secondary">Chiudi</button>',
+                '</div>',
+                '<textarea id="wildu-ios-blackbox-text" class="wildu-ios-blackbox-text" readonly></textarea>',
+            '</div>'
+        ].join('');
+        document.body.appendChild(modal);
+        modal.addEventListener('click', function (evt) {
+            if (evt.target === modal) closePanel();
+        });
+        const copy = modal.querySelector('#wildu-ios-blackbox-copy');
+        const share = modal.querySelector('#wildu-ios-blackbox-share');
+        const clear = modal.querySelector('#wildu-ios-blackbox-clear');
+        const close = modal.querySelector('#wildu-ios-blackbox-close');
+        if (copy) copy.addEventListener('click', copyReport);
+        if (share) share.addEventListener('click', shareReport);
+        if (clear) clear.addEventListener('click', function () {
+            writeState({ version: 1, enabled: true, createdAt: new Date().toISOString(), events: [] });
+            openPanel();
+        });
+        if (close) close.addEventListener('click', closePanel);
+        return modal;
+    }
+
+    function openPanel() {
+        const modal = ensureModal();
+        const text = modal.querySelector('#wildu-ios-blackbox-text');
+        const summary = modal.querySelector('#wildu-ios-blackbox-summary');
+        const report = buildReport();
+        if (summary) {
+            summary.textContent = 'Diagnostica attiva. Classificazione: ' +
+                String(report.classification && report.classification.code ? report.classification.code : 'UNKNOWN_NEEDS_TRACE') +
+                '. Eventi: ' + report.eventCount + '.';
+        }
+        if (text) {
+            text.value = JSON.stringify(report, null, 2);
+            setTimeout(function () {
+                try { text.focus(); text.select(); } catch (e) {}
+            }, 80);
+        }
+        modal.classList.add('is-visible');
+    }
+
+    function closePanel() {
+        const modal = document.getElementById('wildu-ios-blackbox-modal');
+        if (modal) modal.classList.remove('is-visible');
+    }
+
+    async function copyReport() {
+        const text = getReportText();
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                notify('Log tecnico copiato.');
+                return true;
+            }
+        } catch (e) {}
+        openPanel();
+        notify('Copia non disponibile: seleziona il testo del report.');
+        return false;
+    }
+
+    async function shareReport() {
+        const text = getReportText();
+        try {
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'Wild-U log tecnico iOS',
+                    text
+                });
+                return true;
+            }
+        } catch (e) {}
+        return copyReport();
+    }
+
+    function notify(message) {
+        try {
+            if (typeof showToast === 'function') showToast(message);
+        } catch (e) {}
+    }
+
+    function bindFooterTrigger() {
+        if (!isEnabled()) return false;
+        const build = document.getElementById('wildu-client-build-version');
+        const footer = document.getElementById('wildu-company-footer');
+        if (!build || !footer || footer.querySelector('#wildu-ios-blackbox-trigger')) return false;
+        build.setAttribute('role', 'button');
+        build.setAttribute('tabindex', '0');
+        build.title = 'Apri log tecnico iOS';
+        build.addEventListener('click', openPanel);
+        build.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+                evt.preventDefault();
+                openPanel();
+            }
+        });
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'wildu-ios-blackbox-trigger';
+        btn.className = 'wildu-ios-blackbox-trigger';
+        btn.textContent = 'Log iOS';
+        btn.addEventListener('click', openPanel);
+        footer.appendChild(btn);
+        return true;
+    }
+
+    function handleActivationFromUrl() {
+        if (activationHandled) return;
+        activationHandled = true;
+        try {
+            const url = new URL(window.location.href);
+            const flag = url.searchParams.get('wildu_debug_ios');
+            if (flag === '1') {
+                setEnabled(true, 'url');
+                url.searchParams.delete('wildu_debug_ios');
+                history.replaceState(history.state, document.title, url.toString());
+            } else if (flag === '0') {
+                setEnabled(false, 'url');
+                url.searchParams.delete('wildu_debug_ios');
+                history.replaceState(history.state, document.title, url.toString());
+            }
+        } catch (e) {}
+    }
+
+    function install() {
+        handleActivationFromUrl();
+        if (!isEnabled()) return false;
+        record('app_boot_start', { href: location.href });
+        document.addEventListener('visibilitychange', function () {
+            record('visibilitychange', { state: document.visibilityState });
+        }, { passive: true });
+        window.addEventListener('pagehide', function (event) {
+            record('pagehide', { persisted: !!event.persisted });
+        }, { passive: true });
+        window.addEventListener('pageshow', function (event) {
+            record('pageshow', { persisted: !!event.persisted });
+            bindFooterTrigger();
+        }, { passive: true });
+        document.addEventListener('DOMContentLoaded', function () {
+            bindFooterTrigger();
+            setTimeout(bindFooterTrigger, 1000);
+        });
+        return true;
+    }
+
+    return {
+        install,
+        record,
+        markReloadIntent,
+        bindFooterTrigger,
+        openPanel,
+        getReportText,
+        isEnabled,
+        setEnabled,
+        buildReport
+    };
+})();
+
+window.WilduIOSBlackBox = WilduIOSBlackBox;
+
+function wilduIOSBlackBoxRecord(event, details) {
+    try { return WilduIOSBlackBox.record(event, details || {}); } catch (e) { return false; }
+}
+
+function wilduIOSBlackBoxReloadIntent(reason, targetUrl) {
+    try { return WilduIOSBlackBox.markReloadIntent(reason, targetUrl); } catch (e) { return false; }
+}
+
+WilduIOSBlackBox.install();
 
 // =========================================================
 // WILDU CONSOLE SWITCH — Client -> Service Worker
@@ -16094,6 +16695,7 @@ function wilduConsoleWarn() {
 }
 
 function pageDebug(type, details) {
+    try { wilduIOSBlackBoxRecord(type, details || {}); } catch (e) {}
     if (!wilduConsoleIsEnabled()) return;
     console.log('[WILDU PAGE]', type, details || {});
 }
@@ -17493,10 +18095,12 @@ function triggerWilduGlobalCacheReload(targetUrl) {
         pageDebug('GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED', {
             targetUrl: finalUrl
         });
+        wilduIOSBlackBoxReloadIntent('GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED', finalUrl);
         return false;
     }
 
     updateWilduGlobalCacheOverlay('Pulizia completata. Ricarico l’app...');
+    wilduIOSBlackBoxReloadIntent('GLOBAL_CACHE_RELOAD_SCHEDULED', finalUrl);
 
     // Una sola navigazione: timer multipli possono sopravvivere a page freeze/BFCache
     // su WebKit e riattivare un ciclo di reload quando la pagina viene ripristinata.
@@ -17918,6 +18522,7 @@ async function ensureFreshShellVersion() {
     pageDebug('SHELL_RELOAD_TRIGGERED', {
         targetUrl: nextUrl
     });
+    wilduIOSBlackBoxReloadIntent('SHELL_VERSION_CHANGED', nextUrl);
 
     window.location.replace(nextUrl);
     throw new Error('SHELL_REFRESH_TRIGGERED');
@@ -17926,6 +18531,9 @@ async function ensureFreshShellVersion() {
 function ensureWilduClientInteractionBootGate(reason) {
     if (!WILDU_CLIENT_INTERACTION_BOOT_GATE) {
         WILDU_CLIENT_INTERACTION_BOOT_GATE = (async () => {
+            wilduIOSBlackBoxRecord('shell_cache_gate_start', {
+                reason: String(reason || 'BOOT')
+            });
             try {
                 await ensureFreshShellVersion();
             } catch (error) {
@@ -17946,6 +18554,10 @@ function ensureWilduClientInteractionBootGate(reason) {
                 });
             }
 
+            wilduIOSBlackBoxRecord('shell_cache_gate_end', {
+                reason: String(reason || 'BOOT'),
+                ok: true
+            });
             return true;
         })();
     }
@@ -22538,6 +23150,9 @@ function wilduSetDetailModalVisible(visible) {
     if (!modal) return null;
 
     const isVisible = visible === true;
+    wilduIOSBlackBoxRecord(isVisible ? 'detail_open_committed' : 'detail_close_requested', {
+        source: 'wilduSetDetailModalVisible'
+    });
     wilduCancelDetailScrollResets();
     if (isVisible) {
         resetWilduOverlayScrollPosition(modal);
@@ -22568,6 +23183,9 @@ function wilduSetDetailModalVisible(visible) {
         wilduResetDetailRuntimePhase();
         WILDU_DETAIL_RUNTIME.generation += 1;
         wilduReleaseDetailMedia();
+        wilduIOSBlackBoxRecord('detail_resources_released', {
+            source: 'wilduSetDetailModalVisible'
+        });
     }
     return modal;
 }
@@ -22761,6 +23379,11 @@ function wilduReleaseIOSManagedImages(reason) {
             released,
             registered: runtime.images.size
         });
+        wilduIOSBlackBoxRecord('after_resource_budget_release', {
+            reason: runtime.lastReason,
+            released,
+            registered: runtime.images.size
+        });
     } catch (e) {}
     return released;
 }
@@ -22889,6 +23512,9 @@ function wilduReplaceReleasedDetailImageNode() {
 }
 
 function wilduReleaseDetailMedia() {
+    wilduIOSBlackBoxRecord('before_resource_budget_enter', {
+        source: 'wilduReleaseDetailMedia'
+    });
     const mapContainer = document.getElementById('od-map-container');
     const modalImg = document.getElementById('trip-modal-img');
     const modalImgContainer = document.getElementById('trip-modal-img-container');
@@ -22906,6 +23532,9 @@ function wilduReleaseDetailMedia() {
     wilduReplaceReleasedDetailImageNode();
     if (modalImgContainer) modalImgContainer.style.display = 'none';
     wilduRefreshIOSImageMemoryWindow('DETAIL_CLOSED');
+    wilduIOSBlackBoxRecord('detail_resources_released', {
+        source: 'wilduReleaseDetailMedia'
+    });
 }
 
 function wilduCloseDetailModalOnly() {
@@ -22923,6 +23552,10 @@ function wilduScheduleDetailOpen(ref, options) {
     if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return false;
     if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return false;
 
+    wilduIOSBlackBoxRecord('detail_open_requested', {
+        key,
+        skipSuggestions: !!(options && options.skipSuggestions)
+    });
     wilduCancelScheduledDetailOpen();
     const token = WILDU_DETAIL_RUNTIME.transitionToken;
     WILDU_DETAIL_RUNTIME.phase = 'scheduled';
@@ -23072,6 +23705,10 @@ function openWilduSoftCardDetail(type, id, evt) {
     consumeWilduSoftModalDismissEvent(evt);
     if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return;
 
+    wilduIOSBlackBoxRecord('related_card_detail_requested', {
+        type: String(type || ''),
+        id: String(id || '')
+    });
     const item = wilduFindDetailItem(type, id);
     if (!item) {
         showToast('⚠️ Dettagli non trovati.');
@@ -23096,6 +23733,9 @@ function showWilduRelatedModal(items) {
     const modal = document.getElementById('wildu-related-modal');
     const list = document.getElementById('wildu-related-list');
     if (!modal || !list || !Array.isArray(items) || !items.length) return false;
+    wilduIOSBlackBoxRecord('related_open_requested', {
+        count: items.length
+    });
     list.innerHTML = items.map(function (ref) { return wilduBuildSoftCardHtml(ref); }).join('');
     return openWilduSoftModalAtTop(modal);
 }
@@ -23109,6 +23749,9 @@ function consumeWilduSoftModalDismissEvent(evt) {
 
 function closeWilduRelatedModal(closeDetail, evt) {
     consumeWilduSoftModalDismissEvent(evt);
+    wilduIOSBlackBoxRecord('related_close_requested', {
+        closeDetail: closeDetail !== false
+    });
     const modal = document.getElementById('wildu-related-modal');
     const list = document.getElementById('wildu-related-list');
     const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
@@ -23126,12 +23769,18 @@ function closeWilduRelatedModal(closeDetail, evt) {
         wilduReleaseImageNodes(list);
         list.innerHTML = '';
     }
+    wilduIOSBlackBoxRecord('detail_resources_released', {
+        source: 'closeWilduRelatedModal'
+    });
     unlockWilduOverlayScrollIfIdle();
 }
 
 function handleWilduDetailClose(source) {
     // Ingresso unico per X, swipe orizzontale, Escape e bottone finale.
     // Se previsto, mantiene la logica “Potrebbe interessarti”.
+    wilduIOSBlackBoxRecord('detail_close_requested', {
+        source: String(source || '')
+    });
     if (WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS) {
         WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
@@ -23266,6 +23915,10 @@ function openWilduDateOptions(type, id, evt) {
     if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
     if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
 
+    wilduIOSBlackBoxRecord('dates_open_requested', {
+        type: String(type || ''),
+        id: String(id || '')
+    });
     const item = wilduFindDetailItem(type, id);
     if (!item) return;
 
@@ -23293,6 +23946,9 @@ function openWilduDateOptions(type, id, evt) {
 
 function closeWilduDateOptionsModal(evt, restoreDetail) {
     consumeWilduSoftModalDismissEvent(evt);
+    wilduIOSBlackBoxRecord('dates_close_requested', {
+        restoreDetail: restoreDetail !== false
+    });
     const modal = document.getElementById('wildu-date-options-modal');
     const list = document.getElementById('wildu-date-options-list');
     const card = modal ? modal.querySelector('.wildu-soft-modal-card') : null;
@@ -23308,6 +23964,9 @@ function closeWilduDateOptionsModal(evt, restoreDetail) {
         wilduReleaseImageNodes(list);
         list.innerHTML = '';
     }
+    wilduIOSBlackBoxRecord('detail_resources_released', {
+        source: 'closeWilduDateOptionsModal'
+    });
     unlockWilduOverlayScrollIfIdle();
     if (restoreDetail !== false && returnRef) {
         wilduScheduleDetailOpen(returnRef, { skipSuggestions: false });
@@ -35532,6 +36191,11 @@ function renderWilduCompanyFooter(data) {
     insurance.textContent = normalized.insuranceDetails || WILDU_PUBLIC_COMPANY_FALLBACK.insuranceDetails;
     if (build) build.textContent = 'Build ' + String(WILDU_EMBEDDED_SHELL_VERSION || 'n/d');
     root.hidden = false;
+    try {
+        if (window.WilduIOSBlackBox && typeof window.WilduIOSBlackBox.bindFooterTrigger === 'function') {
+            window.WilduIOSBlackBox.bindFooterTrigger();
+        }
+    } catch (e) {}
 }
 
 function readWilduPublicCompanyCache() {
