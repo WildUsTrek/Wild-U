@@ -16099,7 +16099,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.45';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.46';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16110,16 +16110,20 @@ const DEBUG_WILDU_PAGE = true;
 // =========================================================
 // WILDU iOS BLACK BOX — diagnostica locale crash/reload WebKit
 // =========================================================
-// Off di default. Si attiva con ?wildu_debug_ios=1 e non registra dati
+// Off di default. Si attiva con ?wildu_debug_ios=1 oppure, nella PWA installata,
+// toccando 7 volte la scritta Build nel footer. Non registra dati
 // sensibili: niente token, cookie, email complete, UID o payload personali.
 const WILDU_IOS_BLACKBOX_STORAGE_KEY = 'wildu.debug.ios.blackbox.v1';
 const WILDU_IOS_BLACKBOX_ENABLED_KEY = 'wildu.debug.ios.blackbox.enabled';
 const WILDU_IOS_BLACKBOX_DOC_ID = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const WILDU_IOS_BLACKBOX_MAX_EVENTS = 80;
 const WILDU_IOS_BLACKBOX_MAX_TEXT = 20000;
+const WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT = 7;
+const WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS = 4500;
 
 const WilduIOSBlackBox = (() => {
     let activationHandled = false;
+    let footerTapTimes = [];
 
     function safeJsonParse(value, fallback) {
         try {
@@ -16324,17 +16328,39 @@ const WilduIOSBlackBox = (() => {
         if (!Array.isArray(events) || !events.length) return null;
         const last = events[events.length - 1] || {};
         const reload = [...events].reverse().find((entry) => entry && entry.appReloadIntent && entry.appReloadIntent !== 'none');
-        const lastCritical = [...events].reverse().find((entry) => /detail|related|dates|pagehide|visibilitychange/.test(String(entry.event || '')));
-        const leak = [...events].reverse().find((entry) => {
+        const lifecycle = [...events].reverse().find((entry) => /app_boot_start|pagehide|pageshow|visibilitychange/.test(String(entry.event || '')));
+        const bootEvents = events.filter((entry) => entry && entry.event === 'app_boot_start');
+        const lastCritical = [...events].reverse().find((entry) => /detail_open|detail_close|related|dates|pagehide|visibilitychange/.test(String(entry.event || '')));
+        const retainedHeavyResource = [...events].reverse().find((entry) => {
             const snap = entry.snapshot || {};
-            return Number(snap.iframesLive || 0) > 0 || snap.mapsIframeLive === true || snap.gameFrameLive === true;
+            const eventName = String(entry.event || '');
+            if (eventName === 'detail_resources_released' || eventName === 'after_resource_budget_release') return false;
+            return snap.detailPhase !== 'closed' && (
+                Number(snap.iframesLive || 0) > 0 ||
+                snap.mapsIframeLive === true ||
+                snap.gameFrameLive === true ||
+                Number(snap.imagesLive || 0) > 30
+            );
         });
         if (reload) return { code: 'APP_REQUESTED_RELOAD', reason: reload.appReloadIntent, at: reload.ts };
         if (last.event === 'pageshow' && last.details && last.details.persisted === true) {
             return { code: 'BF_CACHE_RESTORE_RISK', reason: 'pageshow.persisted', at: last.ts };
         }
+        if (bootEvents.length > 1) {
+            const currentBoot = bootEvents[bootEvents.length - 1] || {};
+            const previousBoot = bootEvents[bootEvents.length - 2] || {};
+            const currentDoc = currentBoot.snapshot && currentBoot.snapshot.docId ? String(currentBoot.snapshot.docId) : '';
+            const previousDoc = previousBoot.snapshot && previousBoot.snapshot.docId ? String(previousBoot.snapshot.docId) : '';
+            return {
+                code: 'DOCUMENT_RESTART_OBSERVED',
+                reason: currentDoc && previousDoc && currentDoc !== previousDoc
+                    ? 'new_doc_id_after_previous_boot'
+                    : 'multiple_app_boot_start',
+                at: currentBoot.ts
+            };
+        }
         if (lastCritical && /detail|related|dates/.test(String(lastCritical.event || ''))) {
-            return { code: leak ? 'RESOURCE_LEAK_OR_WEBKIT_RESTART_SUSPECTED' : 'WEBKIT_PROCESS_RESTART_SUSPECTED', reason: lastCritical.event, at: lastCritical.ts };
+            return { code: retainedHeavyResource ? 'RESOURCE_LEAK_OR_WEBKIT_RESTART_SUSPECTED' : 'DETAIL_FLOW_NO_RELOAD_CAPTURED', reason: lastCritical.event, at: lastCritical.ts };
         }
         return { code: 'UNKNOWN_NEEDS_TRACE', reason: last.event || 'none', at: last.ts };
     }
@@ -16361,6 +16387,7 @@ const WilduIOSBlackBox = (() => {
             'reload_requested_by_app',
             'before_resource_budget_enter',
             'after_resource_budget_release',
+            'blackbox_enabled_by_footer_taps',
             'SHELL_RELOAD_TRIGGERED',
             'SHELL_VERSION_CHANGED',
             'GLOBAL_CACHE_RELOAD_SCHEDULED',
@@ -16517,29 +16544,72 @@ const WilduIOSBlackBox = (() => {
         } catch (e) {}
     }
 
+    function ensureFooterButton(footer) {
+        if (!isEnabled() || !footer) return false;
+        let btn = footer.querySelector('#wildu-ios-blackbox-trigger');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = 'wildu-ios-blackbox-trigger';
+            btn.className = 'wildu-ios-blackbox-trigger';
+            btn.textContent = 'Log iOS';
+            footer.appendChild(btn);
+        }
+        if (btn.dataset.wilduIosBlackboxBound !== '1') {
+            btn.dataset.wilduIosBlackboxBound = '1';
+            btn.addEventListener('click', openPanel);
+        }
+        return true;
+    }
+
+    function activateFromFooterSequence() {
+        const now = Date.now();
+        footerTapTimes = footerTapTimes
+            .filter((ts) => now - ts <= WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS)
+            .concat(now);
+
+        if (footerTapTimes.length < WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT) return false;
+
+        footerTapTimes = [];
+        setEnabled(true, 'footer-build-7-tap');
+        record('blackbox_enabled_by_footer_taps', {
+            tapCount: WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT,
+            windowMs: WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS,
+            standalone: !!(window.navigator && window.navigator.standalone)
+        });
+        bindFooterTrigger();
+        notify('Log tecnico iOS attivo.');
+        openPanel();
+        return true;
+    }
+
     function bindFooterTrigger() {
-        if (!isEnabled()) return false;
         const build = document.getElementById('wildu-client-build-version');
         const footer = document.getElementById('wildu-company-footer');
-        if (!build || !footer || footer.querySelector('#wildu-ios-blackbox-trigger')) return false;
+        if (!build || !footer) return false;
+
         build.setAttribute('role', 'button');
         build.setAttribute('tabindex', '0');
-        build.title = 'Apri log tecnico iOS';
-        build.addEventListener('click', openPanel);
-        build.addEventListener('keydown', function (evt) {
-            if (evt.key === 'Enter' || evt.key === ' ') {
-                evt.preventDefault();
-                openPanel();
-            }
-        });
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.id = 'wildu-ios-blackbox-trigger';
-        btn.className = 'wildu-ios-blackbox-trigger';
-        btn.textContent = 'Log iOS';
-        btn.addEventListener('click', openPanel);
-        footer.appendChild(btn);
-        return true;
+        build.title = isEnabled()
+            ? 'Apri log tecnico iOS'
+            : 'Tocca 7 volte per attivare il log tecnico iOS nella PWA installata';
+
+        if (build.dataset.wilduIosBlackboxBound !== '1') {
+            build.dataset.wilduIosBlackboxBound = '1';
+            build.addEventListener('click', function () {
+                if (isEnabled()) openPanel();
+                else activateFromFooterSequence();
+            });
+            build.addEventListener('keydown', function (evt) {
+                if (evt.key === 'Enter' || evt.key === ' ') {
+                    evt.preventDefault();
+                    if (isEnabled()) openPanel();
+                    else activateFromFooterSequence();
+                }
+            });
+        }
+
+        return ensureFooterButton(footer);
     }
 
     function handleActivationFromUrl() {
@@ -16562,8 +16632,10 @@ const WilduIOSBlackBox = (() => {
 
     function install() {
         handleActivationFromUrl();
-        if (!isEnabled()) return false;
-        record('app_boot_start', { href: location.href });
+
+        const enabledAtInstall = isEnabled();
+        if (enabledAtInstall) record('app_boot_start', { href: location.href });
+
         document.addEventListener('visibilitychange', function () {
             record('visibilitychange', { state: document.visibilityState });
         }, { passive: true });
@@ -16578,7 +16650,7 @@ const WilduIOSBlackBox = (() => {
             bindFooterTrigger();
             setTimeout(bindFooterTrigger, 1000);
         });
-        return true;
+        return enabledAtInstall;
     }
 
     return {
