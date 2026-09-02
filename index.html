@@ -16106,7 +16106,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.58';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.59';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16123,9 +16123,9 @@ const DEBUG_WILDU_PAGE = true;
 const WILDU_IOS_BLACKBOX_STORAGE_KEY = 'wildu.debug.ios.blackbox.v1';
 const WILDU_IOS_BLACKBOX_ENABLED_KEY = 'wildu.debug.ios.blackbox.enabled';
 const WILDU_IOS_BLACKBOX_DOC_ID = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const WILDU_IOS_BLACKBOX_MAX_EVENTS = 160;
-const WILDU_IOS_BLACKBOX_MIN_EVENTS = 80;
-const WILDU_IOS_BLACKBOX_MAX_TEXT = 420000;
+const WILDU_IOS_BLACKBOX_MAX_EVENTS = 900;
+const WILDU_IOS_BLACKBOX_MIN_EVENTS = 360;
+const WILDU_IOS_BLACKBOX_MAX_TEXT = 1400000;
 const WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY = 12;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT = 7;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS = 4500;
@@ -16133,6 +16133,11 @@ const WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS = 4500;
 const WilduIOSBlackBox = (() => {
     let activationHandled = false;
     let footerTapTimes = [];
+    let frameSamplerRunning = false;
+    let frameSamplerUntil = 0;
+    let frameSamplerReason = '';
+    let lastDomProxyAt = 0;
+    let lastDomProxySnapshot = null;
 
     function safeJsonParse(value, fallback) {
         try {
@@ -16220,12 +16225,12 @@ const WilduIOSBlackBox = (() => {
             out = out.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]');
             out = out.replace(/\b(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{32,}\b/g, '[id]');
             out = out.replace(/([?&](?:token|credential|id_token|access_token|code|state|nonce|attempt)=)[^&#]+/gi, '$1[redacted]');
-            return out.slice(0, 240);
+            return out.slice(0, 360);
         }
-        if (Array.isArray(value)) return value.slice(0, 8).map((item) => sanitizeValue(item, depth + 1));
+        if (Array.isArray(value)) return value.slice(0, 24).map((item) => sanitizeValue(item, depth + 1));
         if (typeof value === 'object') {
             const out = {};
-            Object.keys(value).slice(0, 20).forEach((key) => {
+            Object.keys(value).slice(0, 42).forEach((key) => {
                 if (/token|credential|cookie|secret|password|email|uid|idToken|accessToken/i.test(key)) {
                     out[key] = '[redacted]';
                 } else {
@@ -16290,6 +16295,7 @@ const WilduIOSBlackBox = (() => {
             if (img.closest('#sec-travelhub .wildu-travelhub-carousel')) return 'travelhub';
             if (img.closest('#wildu-rewards-horizontal-videos')) return 'rewards';
             if (img.id === 'trip-modal-img' || img.closest('#od-details-modal')) return 'detail';
+            if (img.closest('#sec-travelhub,.wildu-travel-nav-card,.wildu-travelhub-carousel')) return 'travelhub';
         } catch (e) {}
         return 'other';
     }
@@ -16336,6 +16342,12 @@ const WilduIOSBlackBox = (() => {
             iframesLive: 0,
             mapsIframeLive: false,
             gameFrameLive: false,
+            domNodes: 0,
+            fixedStickyNodes: 0,
+            transformNodes: 0,
+            activeTimers: null,
+            visibleGuarantee: null,
+            navigation: null,
             audioLongActive: false,
             preloadActive: false,
             preload: null,
@@ -16355,6 +16367,55 @@ const WilduIOSBlackBox = (() => {
             snapshot.iframesLive = liveFrames.length;
             snapshot.mapsIframeLive = liveFrames.some((frame) => frame.id === 'od-map-iframe');
             snapshot.gameFrameLive = liveFrames.some((frame) => /(^|\/)giochi\//i.test(String(frame.currentSrc || frame.getAttribute('src') || '')));
+        } catch (e) {}
+
+        try {
+            const now = Date.now();
+            if (!lastDomProxySnapshot || now - lastDomProxyAt > 3500) {
+                const nodes = Array.from(document.querySelectorAll('*'));
+                let fixedSticky = 0;
+                let transformed = 0;
+                nodes.slice(0, 900).forEach((node) => {
+                    try {
+                        const style = window.getComputedStyle(node);
+                        if (style.position === 'fixed' || style.position === 'sticky') fixedSticky += 1;
+                        if ((style.transform && style.transform !== 'none') || (style.willChange && style.willChange !== 'auto')) transformed += 1;
+                    } catch (e) {}
+                });
+                lastDomProxySnapshot = {
+                    domNodes: nodes.length,
+                    fixedStickyNodes: fixedSticky,
+                    transformNodes: transformed
+                };
+                lastDomProxyAt = now;
+            }
+            snapshot.domNodes = lastDomProxySnapshot.domNodes || 0;
+            snapshot.fixedStickyNodes = lastDomProxySnapshot.fixedStickyNodes || 0;
+            snapshot.transformNodes = lastDomProxySnapshot.transformNodes || 0;
+        } catch (e) {}
+
+        try {
+            const nav = performance && performance.getEntriesByType
+                ? (performance.getEntriesByType('navigation')[0] || null)
+                : null;
+            snapshot.navigation = nav ? sanitizeValue({
+                type: nav.type,
+                redirectCount: nav.redirectCount,
+                startTime: Math.round(Number(nav.startTime || 0)),
+                duration: Math.round(Number(nav.duration || 0))
+            }, 0) : null;
+        } catch (e) {}
+
+        try {
+            snapshot.activeTimers = typeof getWilduRuntimeTimerSnapshot === 'function'
+                ? sanitizeValue(getWilduRuntimeTimerSnapshot(), 0)
+                : null;
+        } catch (e) {}
+
+        try {
+            snapshot.visibleGuarantee = typeof getWilduVisibleResourceGuaranteeSnapshot === 'function'
+                ? sanitizeValue(getWilduVisibleResourceGuaranteeSnapshot(), 0)
+                : null;
         } catch (e) {}
 
         try {
@@ -16472,7 +16533,12 @@ const WilduIOSBlackBox = (() => {
             smartOptimizePromoted: mem.smartOptimizePromoted,
             smartOptimizeFailed: mem.smartOptimizeFailed,
             mapLoadState: map.loadState,
-            mapCooldownRemainingMs: map.cooldownRemainingMs
+            mapCooldownRemainingMs: map.cooldownRemainingMs,
+            activeTimers: snapshot.activeTimers,
+            visibleGuarantee: snapshot.visibleGuarantee,
+            domNodes: snapshot.domNodes,
+            fixedStickyNodes: snapshot.fixedStickyNodes,
+            transformNodes: snapshot.transformNodes
         }, 0);
     }
 
@@ -16534,6 +16600,7 @@ const WilduIOSBlackBox = (() => {
             'map_iframe_waiting_detail_visible',
             'map_iframe_recent_restart_fast_path',
             'map_iframe_user_armed',
+            'map_iframe_stability_override',
             'map_iframe_load_scheduled',
             'map_iframe_autoload_blocked',
             'map_iframe_soft_modal_guard',
@@ -16551,26 +16618,117 @@ const WilduIOSBlackBox = (() => {
             'ios_resource_recovery_entered',
             'ios_resource_recovery_blocked',
             'soft_modal_image_hydration_deferred',
+            'soft_modal_image_hydration_window',
+            'soft_modal_image_hydration_limit_reached',
+            'soft_modal_image_hydration_timer_scheduled',
+            'soft_modal_image_hydration_timer_fired',
+            'soft_modal_image_hydration_cancelled',
             'soft_modal_image_hydrated',
             'soft_modal_image_fallback_deferred',
+            'soft_modal_image_final_fallback',
             'soft_modal_image_released',
+            'visible_resource_guarantee',
             'amazon_carousel_render_requested',
             'amazon_carousel_render_deferred',
+            'amazon_carousel_render_coalesced',
             'amazon_carousel_render_reused',
             'amazon_carousel_rendered',
             'amazon_carousel_paused',
             'amazon_carousel_resume_scheduled',
+            'amazon_carousel_resume_suppressed',
+            'amazon_carousel_resume_coalesced',
             'amazon_carousel_resume_blocked',
             'amazon_carousel_started',
             'amazon_carousel_tick',
             'amazon_image_hydrated',
             'map_iframe_autoload_rearmed',
             'blackbox_enabled_by_footer_taps',
+            'blackbox_frame_window',
             'SHELL_RELOAD_TRIGGERED',
             'SHELL_VERSION_CHANGED',
             'GLOBAL_CACHE_RELOAD_SCHEDULED',
             'GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED'
         ].indexOf(cleanEvent) >= 0;
+    }
+
+    function shouldSampleFramesForEvent(event) {
+        return /detail_|related_|dates_|map_iframe_|amazon_carousel_|soft_modal_|pagehide|pageshow|visibilitychange/i.test(String(event || ''));
+    }
+
+    function startFrameGapSampler(reason) {
+        if (frameSamplerRunning || typeof requestAnimationFrame !== 'function') return;
+        frameSamplerRunning = true;
+        frameSamplerReason = String(reason || 'critical_window');
+        frameSamplerUntil = Date.now() + 3600;
+        let last = performance && performance.now ? performance.now() : Date.now();
+        let frames = 0;
+        let maxGap = 0;
+        let gapOver50 = 0;
+        let gapOver100 = 0;
+
+        const tick = function () {
+            const now = performance && performance.now ? performance.now() : Date.now();
+            const gap = Math.max(0, now - last);
+            last = now;
+            frames += 1;
+            maxGap = Math.max(maxGap, gap);
+            if (gap > 50) gapOver50 += 1;
+            if (gap > 100) gapOver100 += 1;
+            if (Date.now() < frameSamplerUntil) {
+                requestAnimationFrame(tick);
+                return;
+            }
+            frameSamplerRunning = false;
+            record('blackbox_frame_window', {
+                reason: frameSamplerReason,
+                frames,
+                maxGapMs: Math.round(maxGap),
+                gapOver50,
+                gapOver100
+            });
+        };
+        requestAnimationFrame(tick);
+    }
+
+    function buildEventCounts(events) {
+        const counts = {};
+        try {
+            (Array.isArray(events) ? events : []).forEach((entry) => {
+                const key = String(entry && entry.event || 'unknown');
+                counts[key] = (counts[key] || 0) + 1;
+            });
+        } catch (e) {}
+        return counts;
+    }
+
+    function buildRecentBlackboxBlocks(events) {
+        return (Array.isArray(events) ? events : [])
+            .filter((entry) => /blocked|deferred|suppressed|coalesced|restart|reload|pagehide|visibilitychange|reset|released/i.test(String(entry && entry.event || '')))
+            .slice(-80)
+            .map((entry) => sanitizeValue({
+                ts: entry.ts,
+                relMs: entry.relMs,
+                event: entry.event,
+                details: entry.details,
+                snapshot: compactBlackBoxSnapshot(entry.snapshot || {})
+            }, 0));
+    }
+
+    function buildBlackboxSummary(state, events, classification) {
+        const currentSnapshot = collectSnapshot();
+        const bootDiary = Array.isArray(state && state.bootDiary) ? state.bootDiary : [];
+        return sanitizeValue({
+            build: currentSnapshot.build,
+            docId: currentSnapshot.docId,
+            generatedAt: new Date().toISOString(),
+            classification,
+            eventCount: Array.isArray(events) ? events.length : 0,
+            eventLimit: WILDU_IOS_BLACKBOX_MAX_EVENTS,
+            current: compactBlackBoxSnapshot(currentSnapshot),
+            eventCounts: buildEventCounts(events),
+            recentBlocks: buildRecentBlackboxBlocks(events),
+            lastBootDiary: bootDiary.slice(-6)
+        }, 0);
     }
 
     function record(event, details) {
@@ -16598,7 +16756,11 @@ const WilduIOSBlackBox = (() => {
         state.lastWriteAt = entry.ts;
         state.lastClassification = classifyPreviousSession(events);
         state.events = events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS);
-        return writeState(state);
+        const wrote = writeState(state);
+        if (wrote && shouldSampleFramesForEvent(cleanEvent)) {
+            try { startFrameGapSampler(cleanEvent); } catch (e) {}
+        }
+        return wrote;
     }
 
     function markReloadIntent(reason, targetUrl) {
@@ -16613,13 +16775,17 @@ const WilduIOSBlackBox = (() => {
         const state = readState();
         const events = Array.isArray(state.events) ? state.events : [];
         const classification = classifyPreviousSession(events);
+        const currentSnapshot = collectSnapshot();
         return {
             reportType: 'WILDU_IOS_BLACKBOX_V1',
             generatedAt: new Date().toISOString(),
-            currentSnapshot: collectSnapshot(),
+            blackboxPlan: 'extended-ios-resource-and-transition-sensors-v2',
+            currentSnapshot,
             classification,
+            summary: buildBlackboxSummary(state, events, classification),
             bootDiary: Array.isArray(state.bootDiary) ? state.bootDiary : [],
             eventCount: events.length,
+            eventLimit: WILDU_IOS_BLACKBOX_MAX_EVENTS,
             events
         };
     }
@@ -21746,6 +21912,8 @@ const WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS = 4800;
 const WILDU_DETAIL_MAP_IOS_PWA_POST_POPUP_GUARD_MS = 6200;
 const WILDU_DETAIL_MAP_IOS_PWA_RESTART_GUARD_MS = 60000;
 const WILDU_DETAIL_MAP_IOS_PWA_IMAGE_MIB_AUTO_LIMIT = 16;
+const WILDU_DETAIL_MAP_IOS_PWA_PATIENCE_FORCE_MS = 12000;
+const WILDU_DETAIL_MAP_IOS_PWA_FORCE_MIB_LIMIT = 24;
 
 function wilduIsStandaloneDisplayMode() {
     try {
@@ -21821,6 +21989,49 @@ function getWilduDetailMapRuntimeSnapshot() {
         userArmed: !!runtime.userArmed,
         conservative: wilduShouldUseConservativeDetailMapLoading()
     };
+}
+
+function getWilduRuntimeTimerSnapshot() {
+    const timers = {};
+    try {
+        if (typeof WILDU_DETAIL_RUNTIME !== 'undefined' && WILDU_DETAIL_RUNTIME) {
+            timers.detail = {
+                relatedOpenTimer: !!WILDU_DETAIL_RUNTIME.relatedOpenTimer,
+                dateOpenTimer: !!WILDU_DETAIL_RUNTIME.dateOpenTimer,
+                phase: WILDU_DETAIL_RUNTIME.phase || '',
+                generation: WILDU_DETAIL_RUNTIME.generation || 0
+            };
+        }
+    } catch (e) {}
+    try {
+        if (typeof WILDU_DETAIL_MAP_RUNTIME !== 'undefined' && WILDU_DETAIL_MAP_RUNTIME) {
+            timers.maps = {
+                dwellTimer: !!WILDU_DETAIL_MAP_RUNTIME.dwellTimer,
+                watchdogTimer: !!WILDU_DETAIL_MAP_RUNTIME.watchdogTimer,
+                watchdogAttempts: WILDU_DETAIL_MAP_RUNTIME.watchdogAttempts || 0,
+                loadState: WILDU_DETAIL_MAP_RUNTIME.loadState || ''
+            };
+        }
+    } catch (e) {}
+    try {
+        timers.images = {
+            optimizeTimer: !!WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeTimer,
+            optimizeRefreshTimer: !!WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeRefreshTimer,
+            optimizeActive: !!WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeActive,
+            optimizeQueued: WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeQueue ? WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeQueue.length : 0,
+            recoveryRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.resourceRecoveryUntil || 0) - Date.now())
+        };
+    } catch (e) {}
+    try {
+        timers.amazon = {
+            autoScrollTimer: !!amazonAutoScrollTimer,
+            resumeTimer: !!amazonResumeTimer,
+            deferredRenderTimer: !!amazonDeferredRenderTimer,
+            imageHydrationTimer: !!amazonImageHydrationTimer,
+            pendingRenderProducts: Array.isArray(amazonDeferredRenderProducts) ? amazonDeferredRenderProducts.length : 0
+        };
+    } catch (e) {}
+    return timers;
 }
 
 function wilduNoteDetailMapSoftModalClose(source) {
@@ -21937,6 +22148,22 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
     const now = Date.now();
     const rawReason = String(reason || '');
     const detailOpenAgo = runtime.detailOpenedAt ? Math.max(0, now - runtime.detailOpenedAt) : 0;
+    const canPatienceOverride = function (guardName, detail) {
+        if (detailOpenAgo < WILDU_DETAIL_MAP_IOS_PWA_PATIENCE_FORCE_MS) return false;
+        if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) return false;
+        if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) return false;
+        if (document.querySelector('#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible,.wildu-soft-modal.is-visible,#wildu-maps-soft-confirm-modal')) return false;
+        const approxDecodedMiB = wilduGetCurrentIOSDecodedImageMiB();
+        if (approxDecodedMiB > WILDU_DETAIL_MAP_IOS_PWA_FORCE_MIB_LIMIT) return false;
+        wilduRecordDetailMapEvent('map_iframe_stability_override', {
+            reason: rawReason,
+            guard: String(guardName || ''),
+            detailOpenAgoMs: Math.round(detailOpenAgo),
+            approxDecodedMiB,
+            detail: detail || null
+        });
+        return true;
+    };
     try {
         if (typeof wilduReleaseIOSImagesOutsideActiveWindow === 'function') {
             wilduReleaseIOSImagesOutsideActiveWindow('map_autoload_preflight:' + rawReason);
@@ -21951,6 +22178,9 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
         if (typeof wilduGetIOSResourceRecoveryGuardStatus === 'function') {
             const resourceGuard = wilduGetIOSResourceRecoveryGuardStatus('map_autoload:' + rawReason, 'maps');
             if (resourceGuard && resourceGuard.blocked) {
+                if (canPatienceOverride(resourceGuard.guard || 'ios_resource_recovery', resourceGuard.detail || null)) {
+                    return { blocked: false };
+                }
                 return {
                     blocked: true,
                     guard: resourceGuard.guard || 'ios_resource_recovery',
@@ -21972,6 +22202,9 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
             });
             return { blocked: false };
         }
+        if (canPatienceOverride('recent_detail_restart', restartRisk)) {
+            return { blocked: false };
+        }
         const retryMs = wilduGetRecentDetailMapRestartRetryMs(restartRisk, detailOpenAgo);
         return {
             blocked: true,
@@ -21991,6 +22224,9 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
 
     const softModalAgo = runtime.lastSoftModalCloseAt ? Math.max(0, now - runtime.lastSoftModalCloseAt) : 0;
     if (softModalAgo && softModalAgo < WILDU_DETAIL_MAP_IOS_PWA_POST_POPUP_GUARD_MS) {
+        if (canPatienceOverride('recent_soft_modal_close', { softModalAgo })) {
+            return { blocked: false };
+        }
         return {
             blocked: true,
             guard: 'recent_soft_modal_close',
@@ -22002,6 +22238,9 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
         const mem = typeof getWilduIOSImageMemorySnapshot === 'function' ? getWilduIOSImageMemorySnapshot() : null;
         const approxDecodedMiB = Number(mem && mem.approxDecodedMiB || 0);
         if (approxDecodedMiB > WILDU_DETAIL_MAP_IOS_PWA_IMAGE_MIB_AUTO_LIMIT) {
+            if (canPatienceOverride('image_budget_high', { approxDecodedMiB, reason: rawReason })) {
+                return { blocked: false };
+            }
             return {
                 blocked: true,
                 guard: 'image_budget_high',
@@ -24250,6 +24489,9 @@ function wilduShouldUseImageMemoryWindow() {
 }
 
 function wilduIsIOSImageMemoryCandidate(img) {
+    if (img && typeof img.closest === 'function' && img.closest('#sec-travelhub,.wildu-travel-nav-card,.wildu-travelhub-carousel')) {
+        return false;
+    }
     return !!(
         img &&
         img.nodeType === 1 &&
@@ -24294,6 +24536,58 @@ function wilduGetSmartImageSurface(img) {
 
 function wilduIsSmartImageLongListSurface(surface) {
     return /^(official|openday|payday|ondemand)-list$/.test(String(surface || ''));
+}
+
+function getWilduVisibleResourceGuaranteeSnapshot() {
+    function imageState(img) {
+        if (!img) return null;
+        let visible = false;
+        try {
+            const rect = img.getBoundingClientRect();
+            visible = !!(rect && rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= (window.innerHeight || document.documentElement.clientHeight || 1));
+        } catch (e) {}
+        return {
+            visible,
+            hasSrc: !!(img.currentSrc || img.getAttribute('src')),
+            loaded: !!(img.complete && img.naturalWidth > 0 && img.naturalHeight > 0),
+            released: img.dataset && img.dataset.wilduIosImageReleased === '1',
+            pendingSoft: img.dataset && img.dataset.wilduSoftImageHydrated === '0',
+            surface: wilduGetSmartImageSurface(img)
+        };
+    }
+
+    function collect(selector, limit) {
+        try {
+            return Array.from(document.querySelectorAll(selector)).slice(0, limit || 12).map(imageState);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    const travelHub = collect('#sec-travelhub img,.wildu-travel-nav-card img,.wildu-travelhub-carousel img', 6);
+    const related = collect('#wildu-related-list img', 12);
+    const dates = collect('#wildu-date-options-list img', 12);
+    return {
+        travelhub: {
+            totalChecked: travelHub.length,
+            visible: travelHub.filter((item) => item && item.visible).length,
+            visibleLoaded: travelHub.filter((item) => item && item.visible && item.loaded).length,
+            visibleReleased: travelHub.filter((item) => item && item.visible && item.released).length,
+            items: travelHub
+        },
+        related: {
+            totalChecked: related.length,
+            visible: related.filter((item) => item && item.visible).length,
+            visibleLoaded: related.filter((item) => item && item.visible && item.loaded).length,
+            pendingVisible: related.filter((item) => item && item.visible && item.pendingSoft).length
+        },
+        dates: {
+            totalChecked: dates.length,
+            visible: dates.filter((item) => item && item.visible).length,
+            visibleLoaded: dates.filter((item) => item && item.visible && item.loaded).length,
+            pendingVisible: dates.filter((item) => item && item.visible && item.pendingSoft).length
+        }
+    };
 }
 
 function wilduShouldUseIOSPWASmartImageGuard() {
@@ -24408,6 +24702,19 @@ function wilduShouldRestoreManagedImageNow(img, reason) {
     if (!wilduShouldUseIOSPWASmartImageGuard()) return true;
     const surface = wilduGetSmartImageSurface(img);
     if (surface === 'related' || surface === 'dates') return false;
+    if (surface === 'travelhub') {
+        const allowed = wilduIsImageInsideIOSMemoryWindow(img) !== false;
+        if (allowed) {
+            try {
+                wilduIOSBlackBoxRecord('visible_resource_guarantee', {
+                    surface,
+                    reason: String(reason || ''),
+                    guarantee: 'travelhub_visible_restore'
+                });
+            } catch (e) {}
+        }
+        return allowed;
+    }
     if (wilduIsSmartImageLongListSurface(surface)) {
         return wilduIsTravelListImageInsideActiveBand(img) === true;
     }
@@ -25071,6 +25378,7 @@ function wilduReleaseIOSLongListImagesForCriticalTransition(reason) {
         }
         const surface = wilduGetSmartImageSurface(img);
         if (!wilduIsSmartImageLongListSurface(surface)) return;
+        if (wilduIsTravelListImageInsideActiveBand(img) === true) return;
         if (wilduReleaseIOSManagedImage(img)) released += 1;
     });
 
@@ -25608,14 +25916,14 @@ function wilduBuildRelatedDetails(current) {
 }
 
 const WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="76" height="58" viewBox="0 0 76 58"%3E%3Crect width="76" height="58" rx="13" fill="%23101510"/%3E%3Ccircle cx="28" cy="20" r="10" fill="%23d4af37" fill-opacity=".18"/%3E%3Cpath d="M14 44 33 28l11 9 8-7 10 14H14Z" fill="%23d4af37" fill-opacity=".16"/%3E%3C/svg%3E';
-const WILDU_SOFT_MODAL_IOS_IMAGE_ACTIVE_LIMIT = 8;
+const WILDU_SOFT_MODAL_IOS_IMAGE_ACTIVE_LIMIT = 10;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_ACTIVE_LIMIT = 8;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_HYDRATION_STEP_MS = 140;
-const WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STEP_MS = 540;
+const WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STEP_MS = 320;
 const WILDU_SOFT_MODAL_IOS_IMAGE_BUDGET_MIB = 17;
-const WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB = 22;
-const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 15;
-const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 900;
+const WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB = 24;
+const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 24;
+const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 650;
 const WILDU_SOFT_MODAL_IOS_RESTART_HYDRATION_GRACE_MS = 7000;
 
 function wilduGetSoftModalImageHydrationLimit() {
@@ -25657,6 +25965,17 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
         return { allowed: false, guard: 'auth_transition', retryMs: 2200 };
     }
     try {
+        const visiblePriority = wilduGetSoftModalHydrationWindow(list).indexOf(img) >= 0;
+        const hydratedNow = wilduCountSoftModalHydratedImages(list);
+        if (visiblePriority && hydratedNow < Math.min(3, wilduGetSoftModalImageHydrationLimit())) {
+            return {
+                allowed: true,
+                approxDecodedMiB: wilduGetSoftModalApproxDecodedMiB(),
+                visiblePriority: true
+            };
+        }
+    } catch (e) {}
+    try {
         const restartRisk = typeof wilduGetRecentIOSDocumentRestartForSmartImages === 'function'
             ? wilduGetRecentIOSDocumentRestartForSmartImages()
             : null;
@@ -25691,6 +26010,14 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
         } catch (e) {}
     }
     if (approxDecodedMiB > WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB) {
+        const inWindow = wilduGetSoftModalHydrationWindow(list).indexOf(img) >= 0;
+        if (inWindow && wilduCountSoftModalHydratedImages(list) < Math.min(3, wilduGetSoftModalImageHydrationLimit())) {
+            return {
+                allowed: true,
+                approxDecodedMiB,
+                guardedVisibleOverride: true
+            };
+        }
         return {
             allowed: false,
             guard: 'soft_modal_image_budget_high',
@@ -25770,10 +26097,25 @@ function wilduAssignSoftModalImageSource(img, sourceInfo, reason) {
             img.src = original;
             return;
         }
+        const failures = Math.min(9, Number(img.getAttribute('data-wildu-soft-image-failures') || 0) + 1);
+        img.setAttribute('data-wildu-soft-image-failures', String(failures));
         img.removeAttribute('src');
         img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
         img.classList.add('wildu-soft-card-img-pending');
         img.setAttribute('data-wildu-soft-image-hydrated', '0');
+        if (!sourceInfo.reduced && failures >= 2) {
+            img.removeAttribute('data-wildu-soft-image-src');
+            img.setAttribute('data-wildu-soft-image-hydrated', 'failed');
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_image_final_fallback', {
+                    provider: sourceInfo.provider || '',
+                    approxDecodedMiB,
+                    reason: String(reason || ''),
+                    failures
+                });
+            } catch (e) {}
+            return;
+        }
         try {
             wilduIOSBlackBoxRecord('soft_modal_image_fallback_deferred', {
                 provider: sourceInfo.provider || '',
@@ -25815,7 +26157,11 @@ function wilduHydrateSoftModalImage(img, reason, list) {
         } catch (e) {}
         if (guard.retryMs > 0 && list && list.isConnected) {
             list.__wilduSoftImageRetryUntil = Math.max(Number(list.__wilduSoftImageRetryUntil || 0), Date.now() + guard.retryMs);
-            window.setTimeout(function () {
+            if (list.__wilduSoftImageHydrationTimer) {
+                try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
+            }
+            list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
+                list.__wilduSoftImageHydrationTimer = 0;
                 wilduScheduleSoftModalImageHydration(list, 'soft_modal_retry_' + String(guard.guard || 'guarded'));
             }, guard.retryMs);
         }
@@ -25939,6 +26285,8 @@ function wilduCountSoftModalHydratedImages(list) {
 
 function wilduCancelSoftModalImageHydration(list) {
     if (!list) return;
+    const hadTimer = !!list.__wilduSoftImageHydrationTimer;
+    const hadRaf = !!list.__wilduSoftImageHydrationRaf;
     if (list.__wilduSoftImageHydrationRaf) {
         try { cancelAnimationFrame(list.__wilduSoftImageHydrationRaf); } catch (e) {}
     }
@@ -25950,6 +26298,15 @@ function wilduCancelSoftModalImageHydration(list) {
     list.__wilduSoftImageHydrating = false;
     list.__wilduSoftImageHydratingSince = 0;
     list.__wilduSoftImageRetryUntil = 0;
+    try {
+        if (hadTimer || hadRaf) {
+            wilduIOSBlackBoxRecord('soft_modal_image_hydration_cancelled', {
+                hadTimer,
+                hadRaf,
+                remainingPending: list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"])').length
+            });
+        }
+    } catch (e) {}
 }
 
 function wilduScheduleSoftModalImageHydration(list, reason) {
@@ -25968,6 +26325,14 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
     list.__wilduSoftImageHydrationRaf = requestAnimationFrame(function () {
         list.__wilduSoftImageHydrationRaf = 0;
         const images = wilduGetSoftModalHydrationWindow(list);
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_image_hydration_window', {
+                reason: String(reason || ''),
+                pendingInWindow: images.length,
+                hydrated: wilduCountSoftModalHydratedImages(list),
+                limit: wilduGetSoftModalImageHydrationLimit()
+            });
+        } catch (e) {}
         if (!images.length) return;
         if (!wilduShouldUseSoftModalImageGuard()) {
             images.forEach(function (img, index) {
@@ -26002,6 +26367,13 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
         list.__wilduSoftImageRetryUntil = 0;
         wilduPruneSoftModalImagesOutsideWindow(list, reason || 'soft_modal_window');
         if (wilduCountSoftModalHydratedImages(list) >= wilduGetSoftModalImageHydrationLimit()) {
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_image_hydration_limit_reached', {
+                    reason: String(reason || ''),
+                    hydrated: wilduCountSoftModalHydratedImages(list),
+                    limit: wilduGetSoftModalImageHydrationLimit()
+                });
+            } catch (e) {}
             return;
         }
         const img = images[0];
@@ -26011,6 +26383,13 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
             try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
         }
         list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_image_hydration_timer_fired', {
+                    reason: String(reason || ''),
+                    hydrated: wilduCountSoftModalHydratedImages(list),
+                    pendingInWindow: wilduGetSoftModalHydrationWindow(list).length
+                });
+            } catch (e) {}
             list.__wilduSoftImageHydrationTimer = 0;
             if (!list.isConnected || !img.isConnected) {
                 list.__wilduSoftImageHydrating = false;
@@ -26024,6 +26403,14 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 if (list.isConnected) wilduScheduleSoftModalImageHydration(list, 'soft_modal_progressive_next');
             }, wilduGetSoftModalHydrationStepMs());
         }, wilduGetSoftModalHydrationStepMs());
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_image_hydration_timer_scheduled', {
+                reason: String(reason || ''),
+                delayMs: wilduGetSoftModalHydrationStepMs(),
+                hydrated: wilduCountSoftModalHydratedImages(list),
+                pendingInWindow: images.length
+            });
+        } catch (e) {}
     });
     return true;
 }
@@ -26099,39 +26486,22 @@ function wilduScheduleRelatedModalAfterDetailClose(related, current, source) {
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
         return false;
     }
-    if (!wilduShouldUseIOSPWASmartImageGuard()) {
-        if (!showWilduRelatedModal(related)) WILDU_ACTIVE_DETAIL_CONTEXT = null;
-        return true;
-    }
-
-    const preflight = wilduPrepareIOSCriticalTransition('related_open_after_detail_close:' + String(source || ''));
-    const delayMs = Math.min(
-        WILDU_IOS_RELATED_OPEN_MAX_DELAY_MS,
-        Math.max(WILDU_IOS_RELATED_OPEN_RETRY_MS, Number(preflight && preflight.delayMs || 0))
-    );
-    const generation = WILDU_DETAIL_RUNTIME.generation;
     if (WILDU_DETAIL_RUNTIME.relatedOpenTimer) {
         try { window.clearTimeout(WILDU_DETAIL_RUNTIME.relatedOpenTimer); } catch (e) {}
         WILDU_DETAIL_RUNTIME.relatedOpenTimer = 0;
     }
     try {
-        wilduIOSBlackBoxRecord('related_open_deferred', {
+        const preflight = wilduPrepareIOSCriticalTransition('related_open_immediate_after_detail_close:' + String(source || ''));
+        wilduIOSBlackBoxRecord('related_open_requested', {
             source: String(source || ''),
-            delayMs,
-            beforeMiB: preflight.beforeMiB,
-            afterMiB: preflight.afterMiB,
-            released: preflight.released,
+            mode: 'immediate_after_detail_close',
+            beforeMiB: preflight && preflight.beforeMiB,
+            afterMiB: preflight && preflight.afterMiB,
+            released: preflight && preflight.released,
             count: related.length
         });
     } catch (e) {}
-    WILDU_DETAIL_RUNTIME.relatedOpenTimer = window.setTimeout(function () {
-        WILDU_DETAIL_RUNTIME.relatedOpenTimer = 0;
-        if (generation !== WILDU_DETAIL_RUNTIME.generation) return;
-        if (WILDU_ACTIVE_DETAIL_CONTEXT !== current) return;
-        if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return;
-        wilduPrepareIOSCriticalTransition('related_open_deferred_run:' + String(source || ''));
-        if (!showWilduRelatedModal(related)) WILDU_ACTIVE_DETAIL_CONTEXT = null;
-    }, delayMs);
+    if (!showWilduRelatedModal(related)) WILDU_ACTIVE_DETAIL_CONTEXT = null;
     return true;
 }
 
@@ -26365,25 +26735,20 @@ function openWilduDateOptions(type, id, evt) {
         wilduScheduleSoftModalImageHydration(list, 'dates_open');
     };
 
-    const preflight = wilduPrepareIOSCriticalTransition('dates_open_after_detail_close:' + String(type || '') + ':' + String(id || ''));
-    const delayMs = wilduShouldUseIOSPWASmartImageGuard()
-        ? Math.max(WILDU_IOS_CRITICAL_TRANSITION_SETTLE_MS, Number(preflight && preflight.delayMs || 0))
-        : 0;
-    if (delayMs > 0) {
-        try {
-            wilduIOSBlackBoxRecord('critical_transition_deferred', {
-                reason: 'dates_open_after_detail_close',
-                delayMs,
-                beforeMiB: preflight.beforeMiB,
-                afterMiB: preflight.afterMiB,
-                released: preflight.released
-            });
-        } catch (e) {}
-        if (WILDU_DETAIL_RUNTIME.dateOpenTimer) {
-            try { window.clearTimeout(WILDU_DETAIL_RUNTIME.dateOpenTimer); } catch (e) {}
-        }
-        WILDU_DETAIL_RUNTIME.dateOpenTimer = window.setTimeout(openDateOptionsNow, delayMs);
-        return;
+    try {
+        const preflight = wilduPrepareIOSCriticalTransition('dates_open_immediate_after_detail_close:' + String(type || '') + ':' + String(id || ''));
+        wilduIOSBlackBoxRecord('dates_open_requested', {
+            type: String(type || ''),
+            id: String(id || ''),
+            mode: 'immediate_after_detail_close',
+            beforeMiB: preflight && preflight.beforeMiB,
+            afterMiB: preflight && preflight.afterMiB,
+            released: preflight && preflight.released
+        });
+    } catch (e) {}
+    if (WILDU_DETAIL_RUNTIME.dateOpenTimer) {
+        try { window.clearTimeout(WILDU_DETAIL_RUNTIME.dateOpenTimer); } catch (e) {}
+        WILDU_DETAIL_RUNTIME.dateOpenTimer = 0;
     }
     openDateOptionsNow();
 }
@@ -36887,6 +37252,34 @@ function wilduRecordAmazonCarouselEvent(eventName, details) {
     } catch (e) {}
 }
 
+function wilduScheduleAmazonResume(reason, delayMs) {
+    const slider = document.getElementById('amazon-slider-engine');
+    if (!slider || !slider.querySelector('.amazon-card')) {
+        wilduRecordAmazonCarouselEvent('amazon_carousel_resume_suppressed', {
+            reason: String(reason || ''),
+            cause: 'no_rendered_cards'
+        });
+        return false;
+    }
+    const delay = Math.max(1200, Math.min(18000, Number(delayMs || 0) || WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS));
+    if (amazonResumeTimer) {
+        wilduRecordAmazonCarouselEvent('amazon_carousel_resume_coalesced', {
+            reason: String(reason || ''),
+            delayMs: delay
+        });
+        return true;
+    }
+    wilduRecordAmazonCarouselEvent('amazon_carousel_resume_scheduled', {
+        reason: String(reason || ''),
+        delayMs: delay
+    });
+    amazonResumeTimer = setTimeout(() => {
+        amazonResumeTimer = null;
+        startAmazonAutoScroll();
+    }, delay);
+    return true;
+}
+
 function wilduGetAmazonInputSignature(products) {
     try {
         return JSON.stringify((Array.isArray(products) ? products : []).slice(0, 80).map(function (p) {
@@ -36923,7 +37316,13 @@ function wilduGetAmazonCarouselGuard(reason) {
 
 function wilduScheduleAmazonRender(products, reason, retryMs) {
     amazonDeferredRenderProducts = Array.isArray(products) ? products.slice() : [];
-    if (amazonDeferredRenderTimer) return;
+    if (amazonDeferredRenderTimer) {
+        wilduRecordAmazonCarouselEvent('amazon_carousel_render_coalesced', {
+            reason: String(reason || ''),
+            pendingProducts: amazonDeferredRenderProducts.length
+        });
+        return;
+    }
     const delay = Math.max(900, Math.min(9000, Number(retryMs || 0) || WILDU_AMAZON_IOS_RENDER_RETRY_MS));
     amazonDeferredRenderTimer = window.setTimeout(function () {
         amazonDeferredRenderTimer = 0;
@@ -37791,17 +38190,15 @@ function renderAmazonSponsors(products, options = {}) {
             const delay = (typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())
                 ? WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS
                 : 1200;
-            if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
-            amazonResumeTimer = setTimeout(() => {
-                amazonResumeTimer = null;
-                startAmazonAutoScroll();
-            }, delay);
+            wilduScheduleAmazonResume('render_reused', delay);
         }
         return;
     }
 
     if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
     if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+    amazonAutoScrollTimer = null;
+    amazonResumeTimer = null;
 
     // 1. Prepariamo i prodotti Amazon base (aggiungiamo flag isTravel: false)
     let mixedList = shuffleAmazonProducts(
@@ -37892,9 +38289,7 @@ function renderAmazonSponsors(products, options = {}) {
         deferredImages: slider.querySelectorAll('img[data-wildu-shop-image-src]').length
     });
 
-    setTimeout(() => {
-        startAmazonAutoScroll();
-    }, (typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())
+    wilduScheduleAmazonResume('rendered', (typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())
         ? WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS
         : 1200);
 }
@@ -38478,10 +38873,8 @@ function startAmazonAutoScroll() {
             retryMs: guard.retryMs || 0
         });
         if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
-        amazonResumeTimer = setTimeout(() => {
-            amazonResumeTimer = null;
-            startAmazonAutoScroll();
-        }, Math.max(1200, Math.min(9000, Number(guard.retryMs || 0) || WILDU_AMAZON_IOS_RENDER_RETRY_MS)));
+        amazonResumeTimer = null;
+        wilduScheduleAmazonResume('auto_scroll_start:' + String(guard.guard || 'guarded'), Math.max(1200, Math.min(9000, Number(guard.retryMs || 0) || WILDU_AMAZON_IOS_RENDER_RETRY_MS)));
         return;
     }
 
@@ -38597,10 +38990,7 @@ function closeAmazonDetail() {
         amazonResumeTimer = null;
     }
 
-    amazonResumeTimer = setTimeout(() => {
-        amazonResumeTimer = null;
-        startAmazonAutoScroll();
-    }, 5000);
+    wilduScheduleAmazonResume('amazon_detail_close', 5000);
 }
 
 function pauseAmazonAutoScroll(reason) {
@@ -38626,14 +39016,14 @@ function pauseAmazonAutoScroll(reason) {
     const resumeDelay = (typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())
         ? Math.max(14000, WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS)
         : 12000;
-    wilduRecordAmazonCarouselEvent('amazon_carousel_resume_scheduled', {
-        reason: String(reason && reason.type ? reason.type : (reason || 'manual_or_interaction')),
-        delayMs: resumeDelay
-    });
-    amazonResumeTimer = setTimeout(() => {
-        amazonResumeTimer = null;
-        startAmazonAutoScroll();
-    }, resumeDelay);
+    if (!amazonAutoScrollTimer && /^ios_resource_recovery:/i.test(String(reason || ''))) {
+        wilduRecordAmazonCarouselEvent('amazon_carousel_resume_suppressed', {
+            reason: String(reason || ''),
+            cause: 'resource_recovery_without_active_autoscroll'
+        });
+        return;
+    }
+    wilduScheduleAmazonResume(String(reason && reason.type ? reason.type : (reason || 'manual_or_interaction')), resumeDelay);
 }    
 
 
