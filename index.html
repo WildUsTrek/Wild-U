@@ -16106,7 +16106,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.53';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.54';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16482,6 +16482,7 @@ const WilduIOSBlackBox = (() => {
             'map_iframe_deferred',
             'map_iframe_cooldown_active',
             'map_iframe_waiting_detail_visible',
+            'map_iframe_recent_restart_fast_path',
             'map_iframe_user_armed',
             'map_iframe_load_scheduled',
             'map_iframe_autoload_blocked',
@@ -16496,6 +16497,10 @@ const WilduIOSBlackBox = (() => {
             'catalog_image_optimization_session_disabled',
             'catalog_image_optimized',
             'catalog_image_optimization_fallback',
+            'soft_modal_image_hydration_deferred',
+            'soft_modal_image_hydrated',
+            'soft_modal_image_fallback_deferred',
+            'soft_modal_image_released',
             'blackbox_enabled_by_footer_taps',
             'SHELL_RELOAD_TRIGGERED',
             'SHELL_VERSION_CHANGED',
@@ -21730,6 +21735,35 @@ function wilduGetRecentDetailMapRestartRisk() {
     return null;
 }
 
+function wilduGetCurrentIOSDecodedImageMiB() {
+    try {
+        const mem = typeof getWilduIOSImageMemorySnapshot === 'function' ? getWilduIOSImageMemorySnapshot() : null;
+        return Number(mem && mem.approxDecodedMiB || 0);
+    } catch (e) {
+        return 0;
+    }
+}
+
+function wilduCanFastPathRecentDetailMapRestart(restartRisk, detailOpenAgo) {
+    if (!restartRisk || !wilduShouldUseConservativeDetailMapLoading()) return false;
+    if (detailOpenAgo < WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS + 2500) return false;
+    if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) return false;
+    if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) return false;
+    if (document.querySelector('#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible,.wildu-soft-modal.is-visible,#wildu-maps-soft-confirm-modal')) return false;
+    const softModalAgo = WILDU_DETAIL_MAP_RUNTIME.lastSoftModalCloseAt ? Math.max(0, Date.now() - WILDU_DETAIL_MAP_RUNTIME.lastSoftModalCloseAt) : 0;
+    if (softModalAgo && softModalAgo < WILDU_DETAIL_MAP_IOS_PWA_POST_POPUP_GUARD_MS) return false;
+    if (Number(restartRisk.ageMs || 0) < WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS + 4500) return false;
+    return wilduGetCurrentIOSDecodedImageMiB() <= Math.min(WILDU_DETAIL_MAP_IOS_PWA_IMAGE_MIB_AUTO_LIMIT, 6.8);
+}
+
+function wilduGetRecentDetailMapRestartRetryMs(restartRisk, detailOpenAgo) {
+    const fullGuardMs = Math.max(1200, WILDU_DETAIL_MAP_IOS_PWA_RESTART_GUARD_MS - Number(restartRisk && restartRisk.ageMs || 0));
+    const stableWaitMs = Math.max(0, WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS + 2500 - Number(detailOpenAgo || 0));
+    const restartQuietWaitMs = Math.max(0, WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS + 4500 - Number(restartRisk && restartRisk.ageMs || 0));
+    const nextFastPathCheckMs = Math.max(1200, stableWaitMs, restartQuietWaitMs);
+    return Math.min(fullGuardMs, Math.min(6000, nextFastPathCheckMs));
+}
+
 function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
     if (!wilduShouldUseConservativeDetailMapLoading()) {
         return { blocked: false };
@@ -21741,6 +21775,7 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
     const runtime = WILDU_DETAIL_MAP_RUNTIME;
     const now = Date.now();
     const rawReason = String(reason || '');
+    const detailOpenAgo = runtime.detailOpenedAt ? Math.max(0, now - runtime.detailOpenedAt) : 0;
 
     if (document.visibilityState && document.visibilityState !== 'visible') {
         return { blocked: true, guard: 'document_hidden', retryMs: 1200 };
@@ -21748,7 +21783,16 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
 
     const restartRisk = wilduGetRecentDetailMapRestartRisk();
     if (restartRisk) {
-        const retryMs = Math.max(1200, WILDU_DETAIL_MAP_IOS_PWA_RESTART_GUARD_MS - Number(restartRisk.ageMs || 0));
+        if (wilduCanFastPathRecentDetailMapRestart(restartRisk, detailOpenAgo)) {
+            wilduRecordDetailMapEvent('map_iframe_recent_restart_fast_path', {
+                reason: rawReason,
+                restartAgeMs: Math.round(Number(restartRisk.ageMs || 0)),
+                detailOpenAgoMs: Math.round(detailOpenAgo),
+                approxDecodedMiB: wilduGetCurrentIOSDecodedImageMiB()
+            });
+            return { blocked: false };
+        }
+        const retryMs = wilduGetRecentDetailMapRestartRetryMs(restartRisk, detailOpenAgo);
         return {
             blocked: true,
             guard: 'recent_detail_restart',
@@ -21757,7 +21801,6 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
         };
     }
 
-    const detailOpenAgo = runtime.detailOpenedAt ? Math.max(0, now - runtime.detailOpenedAt) : 0;
     if (detailOpenAgo < WILDU_DETAIL_MAP_IOS_PWA_AUTO_STABLE_MS) {
         return {
             blocked: true,
@@ -23863,6 +23906,10 @@ function wilduReleaseImageNodes(root) {
             img.removeAttribute('src');
             img.removeAttribute('srcset');
             img.removeAttribute('sizes');
+            if (img.hasAttribute('data-wildu-soft-image-src')) {
+                img.setAttribute('data-wildu-soft-image-hydrated', '0');
+                img.classList.add('wildu-soft-card-img-pending');
+            }
         } catch (e) {}
     });
 }
@@ -25000,9 +25047,13 @@ function wilduBuildRelatedDetails(current) {
 }
 
 const WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="76" height="58" viewBox="0 0 76 58"%3E%3Crect width="76" height="58" rx="13" fill="%23101510"/%3E%3Ccircle cx="28" cy="20" r="10" fill="%23d4af37" fill-opacity=".18"/%3E%3Cpath d="M14 44 33 28l11 9 8-7 10 14H14Z" fill="%23d4af37" fill-opacity=".16"/%3E%3C/svg%3E';
-const WILDU_SOFT_MODAL_IOS_IMAGE_ACTIVE_LIMIT = 3;
+const WILDU_SOFT_MODAL_IOS_IMAGE_ACTIVE_LIMIT = 1;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_ACTIVE_LIMIT = 8;
-const WILDU_SOFT_MODAL_IMAGE_HYDRATION_STEP_MS = 140;
+const WILDU_SOFT_MODAL_DEFAULT_IMAGE_HYDRATION_STEP_MS = 140;
+const WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STEP_MS = 520;
+const WILDU_SOFT_MODAL_IOS_IMAGE_BUDGET_MIB = 12;
+const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 7.5;
+const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 1400;
 
 function wilduGetSoftModalImageHydrationLimit() {
     try {
@@ -25013,14 +25064,187 @@ function wilduGetSoftModalImageHydrationLimit() {
     return WILDU_SOFT_MODAL_DEFAULT_IMAGE_ACTIVE_LIMIT;
 }
 
-function wilduHydrateSoftModalImage(img, reason) {
+function wilduGetSoftModalHydrationStepMs() {
+    return wilduShouldUseSoftModalImageGuard()
+        ? WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STEP_MS
+        : WILDU_SOFT_MODAL_DEFAULT_IMAGE_HYDRATION_STEP_MS;
+}
+
+function wilduShouldUseSoftModalImageGuard() {
+    try {
+        return !!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice() && wilduIsStandaloneDisplayMode());
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduGetSoftModalApproxDecodedMiB() {
+    return typeof wilduGetCurrentIOSDecodedImageMiB === 'function'
+        ? wilduGetCurrentIOSDecodedImageMiB()
+        : 0;
+}
+
+function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
+    if (!wilduShouldUseSoftModalImageGuard()) return { allowed: true };
+    if (!list || !list.isConnected || !img || !img.isConnected) return { allowed: false, guard: 'detached', retryMs: 0 };
+    if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) {
+        return { allowed: false, guard: 'page_hidden', retryMs: WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS };
+    }
+    if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) {
+        return { allowed: false, guard: 'auth_transition', retryMs: 2200 };
+    }
+    try {
+        const restartRisk = typeof wilduGetRecentIOSDocumentRestartForSmartImages === 'function'
+            ? wilduGetRecentIOSDocumentRestartForSmartImages()
+            : null;
+        if (restartRisk && Number(restartRisk.ageMs || 0) < 12000) {
+            return {
+                allowed: false,
+                guard: 'recent_document_restart',
+                retryMs: Math.max(1200, 12000 - Number(restartRisk.ageMs || 0)),
+                detail: restartRisk
+            };
+        }
+    } catch (e) {}
+    const modal = list.closest('.wildu-soft-modal,#wildu-related-modal,#wildu-date-options-modal');
+    if (!modal || !modal.classList || !modal.classList.contains('is-visible')) {
+        return { allowed: false, guard: 'modal_not_visible', retryMs: 0 };
+    }
+    const approxDecodedMiB = wilduGetSoftModalApproxDecodedMiB();
+    if (approxDecodedMiB > WILDU_SOFT_MODAL_IOS_IMAGE_BUDGET_MIB) {
+        return {
+            allowed: false,
+            guard: 'soft_modal_image_budget_high',
+            retryMs: WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS + 900,
+            detail: {
+                approxDecodedMiB,
+                reason: String(reason || '')
+            }
+        };
+    }
+    return { allowed: true, approxDecodedMiB };
+}
+
+function wilduReleaseSoftModalImage(img, reason) {
+    if (!img || img.getAttribute('data-wildu-soft-image-hydrated') !== '1') return false;
+    try {
+        img.removeAttribute('src');
+        img.removeAttribute('srcset');
+        img.removeAttribute('sizes');
+        img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
+        img.classList.add('wildu-soft-card-img-pending');
+        img.setAttribute('data-wildu-soft-image-hydrated', '0');
+        wilduIOSBlackBoxRecord('soft_modal_image_released', {
+            reason: String(reason || 'soft_modal_window'),
+            surface: img.closest('#wildu-related-list') ? 'related' : (img.closest('#wildu-date-options-list') ? 'dates' : 'soft-modal')
+        });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduBuildSoftModalHydrationSource(img, originalSrc) {
+    const original = String(originalSrc || '').trim();
+    if (!original) return null;
+    if (!wilduShouldUseSoftModalImageGuard()) {
+        return {
+            src: original,
+            original,
+            provider: 'original',
+            reduced: false
+        };
+    }
+    const candidate = typeof wilduBuildSmartImageCandidate === 'function'
+        ? wilduBuildSmartImageCandidate(img, original)
+        : null;
+    if (candidate && candidate.candidate && candidate.candidate !== original) {
+        return {
+            src: candidate.candidate,
+            original,
+            provider: candidate.provider || '',
+            reduced: true
+        };
+    }
+    return {
+        src: original,
+        original,
+        provider: 'original',
+        reduced: false
+    };
+}
+
+function wilduAssignSoftModalImageSource(img, sourceInfo, reason) {
+    if (!img || !sourceInfo || !sourceInfo.src) return false;
+    const original = sourceInfo.original || sourceInfo.src;
+    img.setAttribute('data-wildu-soft-image-hydrated', '1');
+    img.setAttribute('data-wildu-soft-image-current-src', sourceInfo.src);
+    img.setAttribute('data-wildu-soft-image-provider', sourceInfo.provider || '');
+    img.classList.remove('wildu-soft-card-img-pending');
+    img.onerror = function () {
+        img.onerror = null;
+        const approxDecodedMiB = wilduGetSoftModalApproxDecodedMiB();
+        if (sourceInfo.reduced && approxDecodedMiB <= WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB) {
+            img.setAttribute('data-wildu-soft-image-current-src', original);
+            img.setAttribute('data-wildu-soft-image-provider', 'original-fallback');
+            img.src = original;
+            return;
+        }
+        img.removeAttribute('src');
+        img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
+        img.classList.add('wildu-soft-card-img-pending');
+        img.setAttribute('data-wildu-soft-image-hydrated', '0');
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_image_fallback_deferred', {
+                provider: sourceInfo.provider || '',
+                approxDecodedMiB,
+                reason: String(reason || '')
+            });
+        } catch (e) {}
+    };
+    img.src = sourceInfo.src;
+    try {
+        wilduIOSBlackBoxRecord('soft_modal_image_hydrated', {
+            provider: sourceInfo.provider || '',
+            reduced: !!sourceInfo.reduced,
+            reason: String(reason || ''),
+            approxDecodedMiB: wilduGetSoftModalApproxDecodedMiB()
+        });
+    } catch (e) {}
+    return true;
+}
+
+function wilduHydrateSoftModalImage(img, reason, list) {
     if (!img || img.getAttribute('data-wildu-soft-image-hydrated') === '1') return false;
     const src = String(img.getAttribute('data-wildu-soft-image-src') || '').trim();
     if (!src) return false;
 
-    img.setAttribute('data-wildu-soft-image-hydrated', '1');
-    img.classList.remove('wildu-soft-card-img-pending');
-    img.src = src;
+    const guard = wilduGetSoftModalImageHydrationGuard(list || img.closest('#wildu-related-list,#wildu-date-options-list'), img, reason);
+    if (!guard.allowed) {
+        if (list) {
+            list.__wilduSoftImageHydrating = false;
+            list.__wilduSoftImageHydratingSince = 0;
+        }
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_image_hydration_deferred', {
+                guard: guard.guard || 'guarded',
+                retryMs: guard.retryMs || 0,
+                detail: guard.detail || null,
+                reason: String(reason || '')
+            });
+        } catch (e) {}
+        if (guard.retryMs > 0 && list && list.isConnected) {
+            list.__wilduSoftImageRetryUntil = Math.max(Number(list.__wilduSoftImageRetryUntil || 0), Date.now() + guard.retryMs);
+            window.setTimeout(function () {
+                wilduScheduleSoftModalImageHydration(list, 'soft_modal_retry_' + String(guard.guard || 'guarded'));
+            }, guard.retryMs);
+        }
+        return false;
+    }
+
+    const sourceInfo = wilduBuildSoftModalHydrationSource(img, src);
+    if (!sourceInfo) return false;
+    wilduAssignSoftModalImageSource(img, sourceInfo, reason);
 
     try {
         if (typeof wilduRegisterIOSImagesIn === 'function') {
@@ -25030,7 +25254,9 @@ function wilduHydrateSoftModalImage(img, reason) {
 
     try {
         if (typeof wilduQueueSmartImageOptimization === 'function') {
-            wilduQueueSmartImageOptimization(img, reason || 'soft_modal_hydrate');
+            if (!wilduShouldUseSoftModalImageGuard()) {
+                wilduQueueSmartImageOptimization(img, reason || 'soft_modal_hydrate');
+            }
         }
     } catch (e) {}
 
@@ -25087,6 +25313,65 @@ function wilduGetSoftModalHydrationWindow(list) {
     return wanted.slice(0, wilduGetSoftModalImageHydrationLimit());
 }
 
+function wilduPruneSoftModalImagesOutsideWindow(list, reason) {
+    if (!wilduShouldUseSoftModalImageGuard() || !list) return 0;
+    const cards = Array.from(list.querySelectorAll('.wildu-soft-card'));
+    if (!cards.length) return 0;
+    const scroller = list.closest('.wildu-soft-modal-card') || list;
+    let viewport = null;
+    try {
+        viewport = scroller.getBoundingClientRect();
+    } catch (e) {
+        viewport = null;
+    }
+    if (!viewport) return 0;
+    let firstVisible = -1;
+    let lastVisible = -1;
+    cards.forEach(function (card, index) {
+        let rect = null;
+        try {
+            rect = card.getBoundingClientRect();
+        } catch (e) {
+            rect = null;
+        }
+        if (!rect) return;
+        const visible = rect.bottom >= viewport.top - 4 && rect.top <= viewport.bottom + 4;
+        if (!visible) return;
+        if (firstVisible < 0) firstVisible = index;
+        lastVisible = index;
+    });
+    if (firstVisible < 0 || lastVisible < 0) return 0;
+    const start = Math.max(0, firstVisible - 1);
+    const end = Math.min(cards.length - 1, lastVisible + 1);
+    let released = 0;
+    cards.forEach(function (card, index) {
+        if (index >= start && index <= end) return;
+        const img = card.querySelector('img[data-wildu-soft-image-src][data-wildu-soft-image-hydrated="1"]');
+        if (wilduReleaseSoftModalImage(img, reason || 'soft_modal_outside_window')) released += 1;
+    });
+    return released;
+}
+
+function wilduCountSoftModalHydratedImages(list) {
+    if (!list || typeof list.querySelectorAll !== 'function') return 0;
+    return list.querySelectorAll('img[data-wildu-soft-image-src][data-wildu-soft-image-hydrated="1"]').length;
+}
+
+function wilduCancelSoftModalImageHydration(list) {
+    if (!list) return;
+    if (list.__wilduSoftImageHydrationRaf) {
+        try { cancelAnimationFrame(list.__wilduSoftImageHydrationRaf); } catch (e) {}
+    }
+    if (list.__wilduSoftImageHydrationTimer) {
+        try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
+    }
+    list.__wilduSoftImageHydrationRaf = 0;
+    list.__wilduSoftImageHydrationTimer = 0;
+    list.__wilduSoftImageHydrating = false;
+    list.__wilduSoftImageHydratingSince = 0;
+    list.__wilduSoftImageRetryUntil = 0;
+}
+
 function wilduScheduleSoftModalImageHydration(list, reason) {
     if (!list) return false;
     const scroller = list.closest('.wildu-soft-modal-card') || list;
@@ -25103,13 +25388,62 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
     list.__wilduSoftImageHydrationRaf = requestAnimationFrame(function () {
         list.__wilduSoftImageHydrationRaf = 0;
         const images = wilduGetSoftModalHydrationWindow(list);
-        images.forEach(function (img, index) {
+        if (!images.length) return;
+        if (!wilduShouldUseSoftModalImageGuard()) {
+            images.forEach(function (img, index) {
+                window.setTimeout(function () {
+                    if (!list.isConnected) return;
+                    if (!img.isConnected) return;
+                    wilduHydrateSoftModalImage(img, reason || 'soft_modal_open', list);
+                }, index * WILDU_SOFT_MODAL_DEFAULT_IMAGE_HYDRATION_STEP_MS);
+            });
+            return;
+        }
+        if (list.__wilduSoftImageHydrating) {
+            const hydratingAge = Date.now() - Number(list.__wilduSoftImageHydratingSince || 0);
+            if (!list.__wilduSoftImageHydrationTimer && hydratingAge > Math.max(2000, wilduGetSoftModalHydrationStepMs() * 4)) {
+                list.__wilduSoftImageHydrating = false;
+                list.__wilduSoftImageHydratingSince = 0;
+            } else {
+                return;
+            }
+        }
+        const retryUntil = Number(list.__wilduSoftImageRetryUntil || 0);
+        if (retryUntil && Date.now() < retryUntil) {
+            if (list.__wilduSoftImageHydrationTimer) {
+                try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
+            }
+            list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
+                list.__wilduSoftImageHydrationTimer = 0;
+                wilduScheduleSoftModalImageHydration(list, 'soft_modal_retry_until');
+            }, Math.max(120, retryUntil - Date.now()));
+            return;
+        }
+        list.__wilduSoftImageRetryUntil = 0;
+        wilduPruneSoftModalImagesOutsideWindow(list, reason || 'soft_modal_window');
+        if (wilduCountSoftModalHydratedImages(list) >= wilduGetSoftModalImageHydrationLimit()) {
+            return;
+        }
+        const img = images[0];
+        list.__wilduSoftImageHydrating = true;
+        list.__wilduSoftImageHydratingSince = Date.now();
+        if (list.__wilduSoftImageHydrationTimer) {
+            try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
+        }
+        list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
+            list.__wilduSoftImageHydrationTimer = 0;
+            if (!list.isConnected || !img.isConnected) {
+                list.__wilduSoftImageHydrating = false;
+                list.__wilduSoftImageHydratingSince = 0;
+                return;
+            }
+            wilduHydrateSoftModalImage(img, reason || 'soft_modal_open', list);
             window.setTimeout(function () {
-                if (!list.isConnected) return;
-                if (!img.isConnected) return;
-                wilduHydrateSoftModalImage(img, reason || 'soft_modal_open');
-            }, index * WILDU_SOFT_MODAL_IMAGE_HYDRATION_STEP_MS);
-        });
+                list.__wilduSoftImageHydrating = false;
+                list.__wilduSoftImageHydratingSince = 0;
+                if (list.isConnected) wilduScheduleSoftModalImageHydration(list, 'soft_modal_progressive_next');
+            }, wilduGetSoftModalHydrationStepMs());
+        }, wilduGetSoftModalHydrationStepMs());
     });
     return true;
 }
@@ -25214,6 +25548,7 @@ function closeWilduRelatedModal(closeDetail, evt) {
         modal.setAttribute('aria-hidden', 'true');
     }
     if (list) {
+        wilduCancelSoftModalImageHydration(list);
         wilduReleaseImageNodes(list);
         list.innerHTML = '';
     }
@@ -25423,6 +25758,7 @@ function closeWilduDateOptionsModal(evt, restoreDetail) {
         modal.setAttribute('aria-hidden', 'true');
     }
     if (list) {
+        wilduCancelSoftModalImageHydration(list);
         wilduReleaseImageNodes(list);
         list.innerHTML = '';
     }
