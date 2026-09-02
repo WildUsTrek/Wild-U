@@ -16106,7 +16106,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.61';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.62';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16587,6 +16587,7 @@ const WilduIOSBlackBox = (() => {
             'dates_close_requested',
             'detail_close_requested',
             'detail_close_ignored_duplicate',
+            'detail_release_phase',
             'detail_resources_released',
             'critical_transition_images_released',
             'critical_transition_deferred',
@@ -16633,6 +16634,11 @@ const WilduIOSBlackBox = (() => {
             'soft_modal_open_committed',
             'soft_modal_atomic_close_start',
             'soft_modal_atomic_close_done',
+            'soft_modal_close_phase',
+            'soft_modal_resource_cleanup_scheduled',
+            'soft_modal_resource_cleanup_batch',
+            'soft_modal_resource_cleanup_done',
+            'soft_modal_shell_hydration_deferred',
             'soft_modal_stale_timer_ignored',
             'soft_modal_post_close_detail_scheduled',
             'soft_modal_post_close_detail_cancelled',
@@ -23787,11 +23793,15 @@ const WILDU_SOFT_MODAL_FLOW_RUNTIME = {
     lastCloseAt: 0,
     lastCloseSurface: '',
     postCloseTimer: 0,
-    postCloseToken: 0
+    postCloseToken: 0,
+    cleanupToken: 0,
+    cleanupPending: 0
 };
 
 const WILDU_SOFT_MODAL_INPUT_GUARD_MS = 520;
 const WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_DELAY_MS = 260;
+const WILDU_SOFT_MODAL_IOS_CLEANUP_BATCH_SIZE = 2;
+const WILDU_SOFT_MODAL_IOS_CLEANUP_GAP_MS = 52;
 
 function wilduGetSoftModalInputGuardRemainingMs() {
     return Math.max(0, Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.inputGuardUntil || 0) - Date.now());
@@ -23891,7 +23901,8 @@ function getWilduSoftModalRuntimeSnapshot() {
         lastCloseAgoMs: WILDU_SOFT_MODAL_FLOW_RUNTIME.lastCloseAt ? Date.now() - WILDU_SOFT_MODAL_FLOW_RUNTIME.lastCloseAt : null,
         lastCloseSurface: WILDU_SOFT_MODAL_FLOW_RUNTIME.lastCloseSurface,
         postCloseTimer: !!WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer,
-        postCloseToken: WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseToken
+        postCloseToken: WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseToken,
+        cleanupPending: WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending
     };
 }
 
@@ -23938,14 +23949,175 @@ function wilduGetSoftModalListSignature(list) {
     }
 }
 
+function wilduCountSoftModalLoadedSources(list) {
+    try {
+        if (!list || typeof list.querySelectorAll !== 'function') return 0;
+        return list.querySelectorAll('img[src],img[srcset],img[sizes]').length;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function wilduRecordSoftModalClosePhase(phase, details) {
+    try {
+        wilduIOSBlackBoxRecord('soft_modal_close_phase', Object.assign({
+            phase: String(phase || ''),
+            cleanupPending: WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0
+        }, details || {}));
+    } catch (e) {}
+}
+
+function wilduClearSoftModalListCleanupTimer(list) {
+    if (!list || !list.__wilduSoftCleanupTimer) return;
+    try { window.clearTimeout(list.__wilduSoftCleanupTimer); } catch (e) {}
+    list.__wilduSoftCleanupTimer = 0;
+}
+
+function wilduCancelSoftModalResourceCleanup(list, reason) {
+    if (!list || !list.__wilduSoftCleanupPending) return false;
+    const token = list.__wilduSoftCleanupToken || 0;
+    wilduClearSoftModalListCleanupTimer(list);
+    list.__wilduSoftCleanupPending = false;
+    list.__wilduSoftCleanupToken = 0;
+    WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupToken += 1;
+    WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending = Math.max(0, (WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0) - 1);
+    try {
+        wilduIOSBlackBoxRecord('soft_modal_resource_cleanup_done', {
+            reason: String(reason || 'cancelled'),
+            token,
+            cancelled: true,
+            remainingLoadedSources: wilduCountSoftModalLoadedSources(list)
+        });
+    } catch (e) {}
+    return true;
+}
+
+function wilduReleaseSoftModalImagesImmediate(list, reason) {
+    if (!list) return 0;
+    let released = 0;
+    try {
+        Array.from(list.querySelectorAll('img[src],img[srcset],img[sizes]')).forEach(function (img) {
+            if (wilduReleaseSoftModalImage(img, reason || 'soft_modal_cleanup')) released += 1;
+            else {
+                try {
+                    img.removeAttribute('src');
+                    img.removeAttribute('srcset');
+                    img.removeAttribute('sizes');
+                    released += 1;
+                } catch (e) {}
+            }
+        });
+    } catch (e) {}
+    return released;
+}
+
+function wilduScheduleSoftModalResourceCleanup(modal, list, surface, source, previousGeneration, signature) {
+    const cleanSurface = String(surface || wilduGetSoftModalSurfaceFromModal(modal));
+    const cleanSource = String(source || 'close');
+    const cleanupReason = 'soft_modal_cleanup:' + cleanSurface + ':' + cleanSource;
+    const isIOS = typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice();
+    if (!list) return 0;
+
+    wilduCancelSoftModalResourceCleanup(list, 'superseded_by_new_cleanup:' + cleanSurface);
+    const cleanupToken = ++WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupToken;
+    list.__wilduSoftCleanupToken = cleanupToken;
+    list.__wilduSoftCleanupPending = true;
+    WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending += 1;
+
+    const initialLoaded = wilduCountSoftModalLoadedSources(list);
+    try {
+        wilduIOSBlackBoxRecord('soft_modal_resource_cleanup_scheduled', {
+            surface: cleanSurface,
+            source: cleanSource,
+            token: cleanupToken,
+            previousGeneration: previousGeneration || 0,
+            generation: WILDU_SOFT_MODAL_FLOW_RUNTIME.generation,
+            loadedSources: initialLoaded,
+            list: signature || wilduGetSoftModalListSignature(list),
+            mode: isIOS ? 'batched_ios' : 'immediate'
+        });
+    } catch (e) {}
+
+    function finishCleanup(totalReleased, reason) {
+        if (!list || list.__wilduSoftCleanupToken !== cleanupToken) return;
+        try { list.innerHTML = ''; } catch (e) {}
+        list.__wilduSoftImageHydrationGeneration = 0;
+        list.__wilduSoftCleanupPending = false;
+        list.__wilduSoftCleanupToken = 0;
+        list.__wilduSoftCleanupTimer = 0;
+        WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending = Math.max(0, (WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0) - 1);
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_resource_cleanup_done', {
+                surface: cleanSurface,
+                source: cleanSource,
+                token: cleanupToken,
+                released: totalReleased || 0,
+                reason: String(reason || 'complete'),
+                remainingLoadedSources: wilduCountSoftModalLoadedSources(list)
+            });
+        } catch (e) {}
+    }
+
+    if (!isIOS) {
+        const released = wilduReleaseSoftModalImagesImmediate(list, cleanupReason);
+        finishCleanup(released, 'non_ios_immediate');
+        return released;
+    }
+
+    let totalReleased = 0;
+    function runBatch() {
+        if (!list || list.__wilduSoftCleanupToken !== cleanupToken) return;
+        const imgs = Array.from(list.querySelectorAll('img[src],img[srcset],img[sizes]')).slice(0, WILDU_SOFT_MODAL_IOS_CLEANUP_BATCH_SIZE);
+        if (!imgs.length) {
+            finishCleanup(totalReleased, 'no_loaded_sources');
+            return;
+        }
+        let released = 0;
+        imgs.forEach(function (img) {
+            if (wilduReleaseSoftModalImage(img, cleanupReason)) released += 1;
+            else {
+                try {
+                    img.removeAttribute('src');
+                    img.removeAttribute('srcset');
+                    img.removeAttribute('sizes');
+                    released += 1;
+                } catch (e) {}
+            }
+        });
+        totalReleased += released;
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_resource_cleanup_batch', {
+                surface: cleanSurface,
+                source: cleanSource,
+                token: cleanupToken,
+                released,
+                totalReleased,
+                remainingLoadedSources: wilduCountSoftModalLoadedSources(list)
+            });
+        } catch (e) {}
+        list.__wilduSoftCleanupTimer = window.setTimeout(runBatch, WILDU_SOFT_MODAL_IOS_CLEANUP_GAP_MS);
+    }
+
+    list.__wilduSoftCleanupTimer = window.setTimeout(runBatch, WILDU_SOFT_MODAL_IOS_CLEANUP_GAP_MS);
+    return initialLoaded;
+}
+
 function wilduCloseSoftModalAtomic(modal, list, surface, evt, source) {
     const cleanSurface = String(surface || wilduGetSoftModalSurfaceFromModal(modal));
     const cleanSource = String(source || (evt && evt.type) || 'close');
     const previousGeneration = wilduGetSoftModalGenerationForList(list);
     const eventDiagnostics = wilduGetSoftModalEventDiagnostics(evt);
     const signature = wilduGetSoftModalListSignature(list);
-    let released = 0;
+    let scheduledLoadedSources = 0;
 
+    wilduRecordSoftModalClosePhase('start', {
+        surface: cleanSurface,
+        source: cleanSource,
+        previousGeneration,
+        loadedSources: wilduCountSoftModalLoadedSources(list),
+        list: signature,
+        event: eventDiagnostics
+    });
     WILDU_SOFT_MODAL_FLOW_RUNTIME.generation += 1;
     WILDU_SOFT_MODAL_FLOW_RUNTIME.activeModalId = '';
     WILDU_SOFT_MODAL_FLOW_RUNTIME.activeSurface = '';
@@ -23955,6 +24127,11 @@ function wilduCloseSoftModalAtomic(modal, list, surface, evt, source) {
     wilduCancelPostSoftModalDetailOpen('atomic_close:' + cleanSurface);
     wilduStartSoftModalInputGuard('atomic_close:' + cleanSurface + ':' + cleanSource, WILDU_SOFT_MODAL_INPUT_GUARD_MS);
     try { wilduCancelAmazonImageHydration('atomic_close:' + cleanSurface); } catch (e) {}
+    wilduRecordSoftModalClosePhase('timers_cancelled', {
+        surface: cleanSurface,
+        source: cleanSource,
+        generation: WILDU_SOFT_MODAL_FLOW_RUNTIME.generation
+    });
 
     try {
         wilduIOSBlackBoxRecord('soft_modal_atomic_close_start', {
@@ -23981,16 +24158,22 @@ function wilduCloseSoftModalAtomic(modal, list, surface, evt, source) {
             modal.setAttribute('aria-hidden', 'true');
         } catch (e) {}
     }
+    wilduRecordSoftModalClosePhase('visual_hidden', {
+        surface: cleanSurface,
+        source: cleanSource,
+        generation: WILDU_SOFT_MODAL_FLOW_RUNTIME.generation,
+        guardRemainingMs: wilduGetSoftModalInputGuardRemainingMs()
+    });
     if (list) {
         try { wilduCancelSoftModalImageHydration(list); } catch (e) {}
-        try {
-            released = list.querySelectorAll('img[src],img[srcset],img[sizes]').length;
-        } catch (e) {
-            released = 0;
-        }
-        try { wilduReleaseImageNodes(list); } catch (e) {}
-        try { list.innerHTML = ''; } catch (e) {}
         list.__wilduSoftImageHydrationGeneration = 0;
+        scheduledLoadedSources = wilduScheduleSoftModalResourceCleanup(modal, list, cleanSurface, cleanSource, previousGeneration, signature);
+        wilduRecordSoftModalClosePhase('cleanup_scheduled', {
+            surface: cleanSurface,
+            source: cleanSource,
+            generation: WILDU_SOFT_MODAL_FLOW_RUNTIME.generation,
+            scheduledLoadedSources
+        });
     }
 
     try {
@@ -23999,7 +24182,7 @@ function wilduCloseSoftModalAtomic(modal, list, surface, evt, source) {
             source: cleanSource,
             previousGeneration,
             generation: WILDU_SOFT_MODAL_FLOW_RUNTIME.generation,
-            released,
+            scheduledLoadedSources,
             guardRemainingMs: wilduGetSoftModalInputGuardRemainingMs()
         });
     } catch (e) {}
@@ -26080,6 +26263,13 @@ function wilduReplaceReleasedDetailImageNode() {
 }
 
 function wilduReleaseDetailMedia() {
+    const releaseStartedAt = Date.now();
+    try {
+        wilduIOSBlackBoxRecord('detail_release_phase', {
+            phase: 'start',
+            source: 'wilduReleaseDetailMedia'
+        });
+    } catch (e) {}
     wilduIOSBlackBoxRecord('before_resource_budget_enter', {
         source: 'wilduReleaseDetailMedia'
     });
@@ -26092,21 +26282,45 @@ function wilduReleaseDetailMedia() {
     const mapIframe = wilduResetDetailMapIframe();
     if (mapIframe) mapIframe.style.pointerEvents = 'none';
     if (mapContainer) mapContainer.style.display = 'none';
+    try {
+        wilduIOSBlackBoxRecord('detail_release_phase', {
+            phase: 'map_reset',
+            source: 'wilduReleaseDetailMedia',
+            elapsedMs: Date.now() - releaseStartedAt,
+            hadMapIframe: !!mapIframe
+        });
+    } catch (e) {}
     if (modalImg) {
         modalImg.removeAttribute('src');
         modalImg.removeAttribute('srcset');
         modalImg.removeAttribute('sizes');
     }
-    wilduReplaceReleasedDetailImageNode();
+    const replacedImageNode = wilduReplaceReleasedDetailImageNode();
     if (modalImgContainer) modalImgContainer.style.display = 'none';
+    try {
+        wilduIOSBlackBoxRecord('detail_release_phase', {
+            phase: 'image_detached',
+            source: 'wilduReleaseDetailMedia',
+            elapsedMs: Date.now() - releaseStartedAt,
+            replacedImageNode
+        });
+    } catch (e) {}
     try {
         wilduNoteIOSResourceRecovery('detail_close', WILDU_IOS_RESOURCE_RECOVERY_DETAIL_CLOSE_MS, {
             source: 'wilduReleaseDetailMedia'
         });
     } catch (e) {}
+    try {
+        wilduIOSBlackBoxRecord('detail_release_phase', {
+            phase: 'recovery_marked',
+            source: 'wilduReleaseDetailMedia',
+            elapsedMs: Date.now() - releaseStartedAt
+        });
+    } catch (e) {}
     wilduRefreshIOSImageMemoryWindow('DETAIL_CLOSED');
     wilduIOSBlackBoxRecord('detail_resources_released', {
-        source: 'wilduReleaseDetailMedia'
+        source: 'wilduReleaseDetailMedia',
+        elapsedMs: Date.now() - releaseStartedAt
     });
 }
 
@@ -26690,6 +26904,41 @@ function wilduCancelSoftModalImageHydration(list) {
     } catch (e) {}
 }
 
+function wilduScheduleSoftModalHydrationFromShell(list, reason, delayMs) {
+    if (!list) return false;
+    const delay = Math.max(0, Math.min(900, Number(delayMs || 0)));
+    if (delay <= 32) return wilduScheduleSoftModalImageHydration(list, reason || 'soft_modal_shell');
+    const generation = wilduGetSoftModalGenerationForList(list);
+    if (list.__wilduSoftImageHydrationTimer) {
+        try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
+        list.__wilduSoftImageHydrationTimer = 0;
+    }
+    try {
+        wilduIOSBlackBoxRecord('soft_modal_shell_hydration_deferred', {
+            reason: String(reason || ''),
+            delayMs: delay,
+            generation,
+            pendingInWindow: wilduGetSoftModalHydrationWindow(list).length
+        });
+    } catch (e) {}
+    list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
+        list.__wilduSoftImageHydrationTimer = 0;
+        if (!list.isConnected || !wilduIsSoftModalGenerationCurrent(list, generation)) {
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_stale_timer_ignored', {
+                    stage: 'shell_hydration',
+                    reason: String(reason || ''),
+                    generation,
+                    currentGeneration: wilduGetSoftModalGenerationForList(list)
+                });
+            } catch (e) {}
+            return;
+        }
+        wilduScheduleSoftModalImageHydration(list, reason || 'soft_modal_shell');
+    }, delay);
+    return true;
+}
+
 function wilduScheduleSoftModalImageHydration(list, reason) {
     if (!list) return false;
     const generation = wilduGetSoftModalGenerationForList(list);
@@ -26902,22 +27151,27 @@ function openWilduSoftCardDetail(type, id, evt) {
     }
 }
 
-function showWilduRelatedModal(items) {
+function showWilduRelatedModal(items, options) {
+    options = options || {};
     const modal = document.getElementById('wildu-related-modal');
     const list = document.getElementById('wildu-related-list');
     if (!modal || !list || !Array.isArray(items) || !items.length) return false;
+    wilduCancelSoftModalResourceCleanup(list, 'related_shell_open');
     wilduIOSBlackBoxRecord('related_open_requested', {
         stage: 'build',
-        count: items.length
+        count: items.length,
+        source: String(options.source || ''),
+        hydrationDelayMs: Math.max(0, Number(options.hydrationDelayMs || 0))
     });
     list.innerHTML = items.map(function (ref) { return wilduBuildSoftCardHtml(ref); }).join('');
     wilduIOSBlackBoxRecord('related_open_requested', {
         stage: 'modal_build_complete',
         count: items.length,
-        list: wilduGetSoftModalListSignature(list)
+        list: wilduGetSoftModalListSignature(list),
+        source: String(options.source || '')
     });
     const opened = openWilduSoftModalAtTop(modal);
-    if (opened) wilduScheduleSoftModalImageHydration(list, 'related_open');
+    if (opened) wilduScheduleSoftModalHydrationFromShell(list, 'related_open', options.hydrationDelayMs || 0);
     return opened;
 }
 
@@ -26930,11 +27184,12 @@ function wilduScheduleRelatedModalAfterDetailClose(related, current, source) {
         try { window.clearTimeout(WILDU_DETAIL_RUNTIME.relatedOpenTimer); } catch (e) {}
         WILDU_DETAIL_RUNTIME.relatedOpenTimer = 0;
     }
+    wilduStartSoftModalInputGuard('related_shell_preopen:' + String(source || ''), 420);
     try {
         const preflight = wilduPrepareIOSCriticalTransition('related_open_immediate_after_detail_close:' + String(source || ''));
         wilduIOSBlackBoxRecord('related_open_requested', {
             source: String(source || ''),
-            mode: preflight && Number(preflight.delayMs || 0) > 32 ? 'deferred_after_detail_close' : 'immediate_after_detail_close',
+            mode: preflight && Number(preflight.delayMs || 0) > 32 ? 'immediate_shell_deferred_resources' : 'immediate_after_detail_close',
             beforeMiB: preflight && preflight.beforeMiB,
             afterMiB: preflight && preflight.afterMiB,
             released: preflight && preflight.released,
@@ -26944,29 +27199,19 @@ function wilduScheduleRelatedModalAfterDetailClose(related, current, source) {
         const delayMs = Math.min(420, Math.max(0, Number(preflight && preflight.delayMs || 0)));
         if (delayMs > 32) {
             const detailGeneration = WILDU_DETAIL_RUNTIME.generation;
-            wilduIOSBlackBoxRecord('related_open_deferred', {
-                source: String(source || ''),
-                delayMs,
-                count: related.length
-            });
-            WILDU_DETAIL_RUNTIME.relatedOpenTimer = window.setTimeout(function () {
-                WILDU_DETAIL_RUNTIME.relatedOpenTimer = 0;
-                if (detailGeneration !== WILDU_DETAIL_RUNTIME.generation) {
-                    try {
-                        wilduIOSBlackBoxRecord('related_open_cancelled', {
-                            reason: 'stale_detail_generation',
-                            source: String(source || '')
-                        });
-                    } catch (e) {}
-                    WILDU_ACTIVE_DETAIL_CONTEXT = null;
-                    return;
-                }
-                if (!showWilduRelatedModal(related)) WILDU_ACTIVE_DETAIL_CONTEXT = null;
-            }, delayMs);
+            if (detailGeneration !== WILDU_DETAIL_RUNTIME.generation) {
+                wilduIOSBlackBoxRecord('related_open_cancelled', {
+                    reason: 'stale_detail_generation_before_shell',
+                    source: String(source || '')
+                });
+                WILDU_ACTIVE_DETAIL_CONTEXT = null;
+                return false;
+            }
+            if (!showWilduRelatedModal(related, { source: source, hydrationDelayMs: delayMs })) WILDU_ACTIVE_DETAIL_CONTEXT = null;
             return true;
         }
     } catch (e) {}
-    if (!showWilduRelatedModal(related)) WILDU_ACTIVE_DETAIL_CONTEXT = null;
+    if (!showWilduRelatedModal(related, { source: source, hydrationDelayMs: 0 })) WILDU_ACTIVE_DETAIL_CONTEXT = null;
     return true;
 }
 
@@ -26990,6 +27235,14 @@ function closeWilduRelatedModal(closeDetail, evt, source) {
     const list = document.getElementById('wildu-related-list');
     const modalVisible = !!(modal && modal.classList && modal.classList.contains('is-visible'));
     const hasListContent = !!(list && list.children && list.children.length);
+    if (!modalVisible && list && list.__wilduSoftCleanupPending) {
+        wilduRecordSoftModalClosePhase('already_closing', {
+            surface: 'related',
+            source: cleanSource
+        });
+        unlockWilduOverlayScrollIfIdle();
+        return false;
+    }
     if (!modalVisible && !hasListContent) {
         wilduIOSBlackBoxRecord('detail_close_ignored_duplicate', {
             source: 'closeWilduRelatedModal',
@@ -27015,8 +27268,10 @@ function closeWilduRelatedModal(closeDetail, evt, source) {
         }
         WILDU_ACTIVE_DETAIL_CONTEXT = null;
     }
-    wilduIOSBlackBoxRecord('detail_resources_released', {
-        source: 'closeWilduRelatedModal'
+    wilduRecordSoftModalClosePhase('caller_done', {
+        surface: 'related',
+        source: cleanSource,
+        closeDetail: closeDetail !== false
     });
     unlockWilduOverlayScrollIfIdle();
     return true;
@@ -27205,12 +27460,14 @@ function openWilduDateOptions(type, id, evt) {
         ? Object.assign({}, WILDU_ACTIVE_DETAIL_CONTEXT)
         : null;
     if (WILDU_DATE_RETURN_DETAIL_REF) wilduCloseDetailModalOnly();
+    wilduStartSoftModalInputGuard('dates_shell_preopen:' + String(type || '') + ':' + String(id || ''), 420);
 
     const dateOpenGeneration = WILDU_DETAIL_RUNTIME.generation;
-    const openDateOptionsNow = function () {
+    const openDateOptionsNow = function (hydrationDelayMs) {
         WILDU_DETAIL_RUNTIME.dateOpenTimer = 0;
         if (dateOpenGeneration !== WILDU_DETAIL_RUNTIME.generation) return;
         if (wilduAnySoftModalVisible()) return;
+        wilduCancelSoftModalResourceCleanup(list, 'dates_shell_open');
         title.innerText = wilduCleanTitleForMatching(wilduGetDetailItemTitle(type, item));
         const currentId = String(id || '').trim();
         list.innerHTML = refs.map(function (ref) {
@@ -27218,7 +27475,7 @@ function openWilduDateOptions(type, id, evt) {
             return wilduBuildSoftCardHtml(ref, extra);
         }).join('');
         openWilduSoftModalAtTop(modal);
-        wilduScheduleSoftModalImageHydration(list, 'dates_open');
+        wilduScheduleSoftModalHydrationFromShell(list, 'dates_open', hydrationDelayMs || 0);
     };
 
     let datePreflightDelayMs = 0;
@@ -27229,7 +27486,7 @@ function openWilduDateOptions(type, id, evt) {
             stage: 'preflight_complete',
             type: String(type || ''),
             id: String(id || ''),
-            mode: datePreflightDelayMs > 32 ? 'deferred_after_detail_close' : 'immediate_after_detail_close',
+            mode: datePreflightDelayMs > 32 ? 'immediate_shell_deferred_resources' : 'immediate_after_detail_close',
             beforeMiB: preflight && preflight.beforeMiB,
             afterMiB: preflight && preflight.afterMiB,
             released: preflight && preflight.released,
@@ -27244,31 +27501,12 @@ function openWilduDateOptions(type, id, evt) {
         wilduIOSBlackBoxRecord('dates_open_deferred', {
             type: String(type || ''),
             id: String(id || ''),
-            delayMs: datePreflightDelayMs
+            delayMs: datePreflightDelayMs,
+            visualDeferred: false,
+            resourcesDeferred: true
         });
-        WILDU_DETAIL_RUNTIME.dateOpenTimer = window.setTimeout(function () {
-            WILDU_DETAIL_RUNTIME.dateOpenTimer = 0;
-            if (dateOpenGeneration !== WILDU_DETAIL_RUNTIME.generation) {
-                wilduIOSBlackBoxRecord('dates_open_cancelled', {
-                    type: String(type || ''),
-                    id: String(id || ''),
-                    reason: 'stale_detail_generation'
-                });
-                return;
-            }
-            if (wilduAnySoftModalVisible()) {
-                wilduIOSBlackBoxRecord('dates_open_cancelled', {
-                    type: String(type || ''),
-                    id: String(id || ''),
-                    reason: 'soft_modal_visible'
-                });
-                return;
-            }
-            openDateOptionsNow();
-        }, datePreflightDelayMs);
-        return;
     }
-    openDateOptionsNow();
+    openDateOptionsNow(datePreflightDelayMs);
 }
 
 function closeWilduDateOptionsModal(evt, restoreDetail, source) {
@@ -27286,6 +27524,17 @@ function closeWilduDateOptionsModal(evt, restoreDetail, source) {
     WILDU_DATE_RETURN_DETAIL_REF = null;
     const modalVisible = !!(modal && modal.classList && modal.classList.contains('is-visible'));
     const hasListContent = !!(list && list.children && list.children.length);
+    if (!modalVisible && list && list.__wilduSoftCleanupPending) {
+        wilduRecordSoftModalClosePhase('already_closing', {
+            surface: 'dates',
+            source: cleanSource
+        });
+        unlockWilduOverlayScrollIfIdle();
+        if (restoreDetail !== false && returnRef) {
+            wilduSchedulePostSoftModalDetailOpen(returnRef, { skipSuggestions: false }, 'dates_restore:' + cleanSource + ':already_closing');
+        }
+        return false;
+    }
     if (!modalVisible && !hasListContent) {
         wilduIOSBlackBoxRecord('detail_close_ignored_duplicate', {
             source: 'closeWilduDateOptionsModal',
@@ -27299,8 +27548,10 @@ function closeWilduDateOptionsModal(evt, restoreDetail, source) {
         return false;
     }
     wilduCloseSoftModalAtomic(modal, list, 'dates', evt, cleanSource);
-    wilduIOSBlackBoxRecord('detail_resources_released', {
-        source: 'closeWilduDateOptionsModal'
+    wilduRecordSoftModalClosePhase('caller_done', {
+        surface: 'dates',
+        source: cleanSource,
+        restoreDetail: restoreDetail !== false
     });
     unlockWilduOverlayScrollIfIdle();
     if (restoreDetail !== false && returnRef) {
