@@ -16106,7 +16106,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.65';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.66';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16668,6 +16668,7 @@ const WilduIOSBlackBox = (() => {
             'amazon_image_hydrated',
             'amazon_carousel_quiet_entered',
             'amazon_carousel_quiet_released',
+            'amazon_visible_image_hydration_bypass',
             'travel_tab_transition_start',
             'travel_tab_transition_release',
             'travel_tab_transition_restore',
@@ -25665,6 +25666,14 @@ function wilduRecordQuietReleaseOnlySmartImage(surface, reason, guard) {
     } catch (e) {}
     try {
         if (typeof wilduIOSBlackBoxRecord === 'function') {
+            const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+            const now = Date.now();
+            const key = [surface || 'surface', guard && guard.guard || 'guard'].join(':');
+            if (!runtime.quietReleaseOnlyBlackboxAt) runtime.quietReleaseOnlyBlackboxAt = {};
+            if (runtime.quietReleaseOnlyBlackboxAt[key] && now - runtime.quietReleaseOnlyBlackboxAt[key] < 1800) {
+                return;
+            }
+            runtime.quietReleaseOnlyBlackboxAt[key] = now;
             wilduIOSBlackBoxRecord('catalog_image_release_only_quiet', {
                 surface,
                 reason: String(reason || ''),
@@ -26942,7 +26951,7 @@ function wilduBuildRelatedDetails(current) {
         .map(function (entry) { return entry.ref; });
 }
 
-const WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="76" height="58" viewBox="0 0 76 58"%3E%3Crect width="76" height="58" rx="13" fill="%23101510"/%3E%3Ccircle cx="28" cy="20" r="10" fill="%23d4af37" fill-opacity=".18"/%3E%3Cpath d="M14 44 33 28l11 9 8-7 10 14H14Z" fill="%23d4af37" fill-opacity=".16"/%3E%3C/svg%3E';
+const WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC = 'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2276%22%20height=%2258%22%20viewBox=%220%200%2076%2058%22%3E%3Crect%20width=%2276%22%20height=%2258%22%20rx=%2213%22%20fill=%22%23101510%22/%3E%3Ccircle%20cx=%2228%22%20cy=%2220%22%20r=%2210%22%20fill=%22%23d4af37%22%20fill-opacity=%22.18%22/%3E%3Cpath%20d=%22M14%2044%2033%2028l11%209%208-7%2010%2014H14Z%22%20fill=%22%23d4af37%22%20fill-opacity=%22.16%22/%3E%3C/svg%3E';
 const WILDU_SOFT_MODAL_IOS_IMAGE_ACTIVE_LIMIT = 10;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_ACTIVE_LIMIT = 8;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_HYDRATION_STEP_MS = 140;
@@ -38524,6 +38533,7 @@ let amazonDeferredRenderProducts = null;
 let amazonImageHydrationTimer = 0;
 const WILDU_AMAZON_IOS_RENDER_RETRY_MS = 2600;
 const WILDU_AMAZON_IOS_IMAGE_STEP_MS = 760;
+const WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT = 2;
 const WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS = 9000;
 
 function wilduGetAmazonCardImageUrl(rawUrl) {
@@ -38742,12 +38752,14 @@ function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
     options = options || {};
     const safeUrl = escapeWilduShopHtml(cardImageUrl);
     const safeTitle = escapeWilduShopHtml(title);
+    const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
+    const fallback = ` onerror="this.onerror=null;this.src='${placeholder}';this.removeAttribute('data-wildu-shop-image-src');"`;
     const shouldProgressive = typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard();
     if (!options.placeholderOnly && (!shouldProgressive || index < 2)) {
-        return `<img src="${safeUrl}" alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58" style="object-fit: cover !important; background: #111 !important;">`;
+        return `<img src="${safeUrl || placeholder}" alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
     }
-    const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
-    return `<img src="${placeholder}" data-wildu-shop-image-src="${safeUrl}" alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58" style="object-fit: cover !important; background: #111 !important;">`;
+    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}"` : '';
+    return `<img src="${placeholder}"${dataAttr} alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
 }
 
 function wilduScheduleAmazonImageHydration(reason, delayMs) {
@@ -38758,21 +38770,47 @@ function wilduScheduleAmazonImageHydration(reason, delayMs) {
     }, Math.max(120, Number(delayMs || 0)));
 }
 
+function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
+    try {
+        if (!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())) return false;
+        if (!slider || document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) return false;
+        if ((typeof wilduIsDetailModalVisible === 'function' && wilduIsDetailModalVisible()) ||
+            document.querySelector('#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible,.wildu-soft-modal.is-visible,#wildu-maps-soft-confirm-modal')) {
+            return false;
+        }
+        const guardName = String(guard && guard.guard || '');
+        if (!/recent_document_restart|google_auth_end|ios_resource_recovery|resource_recovery|amazon_quiet/i.test(guardName)) return false;
+        const hydrated = slider.querySelectorAll('img[data-wildu-amazon-hydrated="1"], img:not([data-wildu-shop-image-src])').length;
+        if (hydrated >= WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT) return false;
+        return /rendered_shell_only|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery/i.test(String(reason || ''));
+    } catch (e) {
+        return false;
+    }
+}
+
 function wilduHydrateVisibleAmazonImages(reason) {
     const slider = document.getElementById('amazon-slider-engine');
     if (!slider) return 0;
     const guard = wilduGetAmazonCarouselGuard('image_hydration:' + String(reason || ''));
     if (guard && guard.blocked) {
-        wilduRecordAmazonCarouselEvent('amazon_carousel_resume_blocked', {
+        if (!wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason)) {
+            wilduRecordAmazonCarouselEvent('amazon_carousel_resume_blocked', {
+                reason: String(reason || ''),
+                guard: guard.guard || 'guarded',
+                retryMs: guard.retryMs || 0
+            });
+            if (String(guard.guard || '') !== 'amazon_quiet') {
+                wilduEnterAmazonQuietMode('image_hydration:' + String(guard.guard || 'guarded'), guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
+            }
+            wilduScheduleAmazonImageHydration('guard_retry:' + String(guard.guard || 'guarded'), guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
+            wilduScheduleAmazonResume('image_hydration:' + String(guard.guard || 'guarded'), Math.max(9000, guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS));
+            return 0;
+        }
+        wilduRecordAmazonCarouselEvent('amazon_visible_image_hydration_bypass', {
             reason: String(reason || ''),
             guard: guard.guard || 'guarded',
             retryMs: guard.retryMs || 0
         });
-        if (String(guard.guard || '') !== 'amazon_quiet') {
-            wilduEnterAmazonQuietMode('image_hydration:' + String(guard.guard || 'guarded'), guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
-        }
-        wilduScheduleAmazonResume('image_hydration:' + String(guard.guard || 'guarded'), guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
-        return 0;
     }
     let viewport = null;
     try {
@@ -38780,7 +38818,9 @@ function wilduHydrateVisibleAmazonImages(reason) {
     } catch (e) {
         viewport = null;
     }
-    const imgs = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src]'));
+    const imgs = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src]')).filter(function (img) {
+        return !!String(img.getAttribute('data-wildu-shop-image-src') || '').trim();
+    });
     const candidates = imgs.filter(function (img) {
         if (!img.isConnected) return false;
         if (!viewport) return true;
@@ -38793,6 +38833,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
     if (!src) return 0;
     img.setAttribute('src', src);
     img.removeAttribute('data-wildu-shop-image-src');
+    img.setAttribute('data-wildu-amazon-hydrated', '1');
     try {
         if (typeof wilduRegisterIOSImagesIn === 'function') wilduRegisterIOSImagesIn(img);
     } catch (e) {}
@@ -40485,8 +40526,17 @@ function syncAmazonFooterViewportOffset() {
         let offset = 0;
 
         if (vv) {
+            const active = document.activeElement;
+            const activeTag = active && active.tagName ? active.tagName.toLowerCase() : '';
+            const isTextEditing =
+                active && (
+                    active.isContentEditable ||
+                    activeTag === 'textarea' ||
+                    activeTag === 'select' ||
+                    (activeTag === 'input' && !/^(button|checkbox|radio|range|submit|reset|file|image|color)$/i.test(String(active.type || '')))
+                );
             const delta = window.innerHeight - vv.height - vv.offsetTop;
-            offset = delta > 0 ? delta : 0;
+            offset = isTextEditing && delta > 0 ? delta : 0;
         }
 
         document.documentElement.style.setProperty('--amazon-footer-offset', offset + 'px');
