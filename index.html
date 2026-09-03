@@ -3568,6 +3568,26 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     border: 1px solid rgba(255,255,255,0.08);
 }
 
+.amazon-card-img-placeholder {
+    width: 58px;
+    height: 58px;
+    min-width: 58px;
+    max-width: 58px;
+    min-height: 58px;
+    max-height: 58px;
+    flex: 0 0 58px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(212,175,55,0.14), rgba(255,255,255,0.04));
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(212,175,55,0.72);
+    font-weight: 900;
+    font-size: 18px;
+    overflow: hidden;
+}
+
 .wildu-grade-row.unlocked {
     border-color: rgba(212,175,55,0.55);
     color: var(--w-gold);
@@ -16106,7 +16126,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.66';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.67';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17055,12 +17075,27 @@ const WilduIOSBlackBox = (() => {
 
         document.addEventListener('visibilitychange', function () {
             record('visibilitychange', { state: document.visibilityState });
+            try {
+                if (typeof wilduHandleIOSPageLifecycleEvent === 'function') {
+                    wilduHandleIOSPageLifecycleEvent('visibilitychange', { state: document.visibilityState });
+                }
+            } catch (e) {}
         }, { passive: true });
         window.addEventListener('pagehide', function (event) {
             record('pagehide', { persisted: !!event.persisted });
+            try {
+                if (typeof wilduHandleIOSPageLifecycleEvent === 'function') {
+                    wilduHandleIOSPageLifecycleEvent('pagehide', { persisted: !!event.persisted });
+                }
+            } catch (e) {}
         }, { passive: true });
         window.addEventListener('pageshow', function (event) {
             record('pageshow', { persisted: !!event.persisted });
+            try {
+                if (typeof wilduHandleIOSPageLifecycleEvent === 'function') {
+                    wilduHandleIOSPageLifecycleEvent('pageshow', { persisted: !!event.persisted });
+                }
+            } catch (e) {}
             bindFooterTrigger();
         }, { passive: true });
         document.addEventListener('DOMContentLoaded', function () {
@@ -22056,6 +22091,9 @@ function getWilduRuntimeTimerSnapshot() {
             optimizeActive: !!WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeActive,
             optimizeQueued: WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeQueue ? WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeQueue.length : 0,
             recoveryRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.resourceRecoveryUntil || 0) - Date.now()),
+            pageLifecycleFreezeRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.pageLifecycleFreezeUntil || 0) - Date.now()),
+            pageLifecycleGeneration: WILDU_IOS_IMAGE_MEMORY_RUNTIME.pageLifecycleGeneration || 0,
+            lastPageLifecycleEvent: WILDU_IOS_IMAGE_MEMORY_RUNTIME.lastPageLifecycleEvent || null,
             travelTabTransitionRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionUntil || 0) - Date.now()),
             travelTabTransitionGeneration: WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionGeneration || 0,
             activeTravelTab: WILDU_IOS_IMAGE_MEMORY_RUNTIME.activeTravelTab || '',
@@ -25081,6 +25119,8 @@ const WILDU_IOS_RESOURCE_RECOVERY_RESTART_MS = 18000;
 const WILDU_IOS_RESOURCE_RECOVERY_POPUP_CLOSE_MS = 7000;
 const WILDU_IOS_RESOURCE_RECOVERY_DETAIL_CLOSE_MS = 6500;
 const WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS = 14000;
+const WILDU_IOS_PAGE_LIFECYCLE_FREEZE_MS = 9000;
+const WILDU_IOS_PAGE_LIFECYCLE_BFCACHE_FREEZE_MS = 16000;
 const WILDU_IOS_RESOURCE_RECOVERY_MEMORY_MIB = 8.5;
 const WILDU_IOS_RESOURCE_RECOVERY_UX_MEMORY_MIB = 18;
 const WILDU_IOS_RESOURCE_RECOVERY_MAP_MEMORY_MIB = 16;
@@ -25121,6 +25161,9 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     resourceRecoveryUntil: 0,
     resourceRecoveryReason: '',
     resourceRecoveryDetail: null,
+    pageLifecycleFreezeUntil: 0,
+    pageLifecycleGeneration: 0,
+    lastPageLifecycleEvent: null,
     travelTabTransitionUntil: 0,
     travelTabTransitionGeneration: 0,
     activeTravelTab: '',
@@ -25177,9 +25220,12 @@ function wilduIsIOSImageMemoryCandidate(img) {
 
 function wilduReadIOSImageMemoryAttributes(img, state) {
     if (!img || !state) return;
-    state.src = img.getAttribute('src') || '';
-    state.srcset = img.getAttribute('srcset') || '';
-    state.sizes = img.getAttribute('sizes') || '';
+    state.src = (img.dataset && img.dataset.wilduTabOriginalSrc) || img.getAttribute('src') || '';
+    state.srcset = (img.dataset && img.dataset.wilduTabOriginalSrcset) || img.getAttribute('srcset') || '';
+    state.sizes = (img.dataset && img.dataset.wilduTabOriginalSizes) || img.getAttribute('sizes') || '';
+    if (img.dataset && img.dataset.wilduTabImageReleased === '1' && state.src) {
+        state.released = true;
+    }
 }
 
 function wilduNormalizeSmartImageUrl(value) {
@@ -25308,6 +25354,125 @@ function wilduRecordIOSResourceRecoveryEvent(eventName, details) {
     } catch (e) {}
 }
 
+function wilduCancelIOSImageRuntimeWork(reason) {
+    try {
+        const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+        let cancelled = 0;
+        if (runtime.refreshFrame) {
+            try { window.cancelAnimationFrame(runtime.refreshFrame); } catch (e) {}
+            runtime.refreshFrame = 0;
+            cancelled += 1;
+        }
+        if (runtime.optimizeTimer) {
+            try { window.clearTimeout(runtime.optimizeTimer); } catch (e) {}
+            runtime.optimizeTimer = 0;
+            cancelled += 1;
+        }
+        if (runtime.optimizeRefreshTimer) {
+            try { window.clearTimeout(runtime.optimizeRefreshTimer); } catch (e) {}
+            runtime.optimizeRefreshTimer = 0;
+            runtime.optimizeRefreshDue = 0;
+            cancelled += 1;
+        }
+        if (runtime.optimizeQueue && runtime.optimizeQueue.length) {
+            cancelled += runtime.optimizeQueue.length;
+            runtime.optimizeQueue = [];
+            runtime.optimizeQueued = new WeakSet();
+        }
+        if (cancelled > 0) {
+            wilduRecordIOSResourceRecoveryEvent('ios_runtime_work_cancelled', {
+                reason: String(reason || ''),
+                cancelled
+            });
+        }
+        return cancelled;
+    } catch (e) {
+        return 0;
+    }
+}
+
+function wilduGetIOSPageLifecycleGuardStatus(reason) {
+    try {
+        if (!wilduShouldUseIOSPWASmartImageGuard()) return { blocked: false };
+        const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+        const remaining = Math.max(0, Number(runtime.pageLifecycleFreezeUntil || 0) - Date.now());
+        if (remaining > 0) {
+            return {
+                blocked: true,
+                guard: 'ios_page_lifecycle_freeze',
+                retryMs: Math.min(9000, Math.max(900, remaining)),
+                detail: runtime.lastPageLifecycleEvent || null,
+                reason: String(reason || '')
+            };
+        }
+    } catch (e) {}
+    return { blocked: false };
+}
+
+function wilduHandleIOSPageLifecycleEvent(eventName, detail) {
+    if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const name = String(eventName || '');
+    const persisted = detail && detail.persisted === true;
+    const state = detail && detail.state ? String(detail.state) : String(document.visibilityState || '');
+    let navigationType = '';
+    try {
+        const nav = performance && performance.getEntriesByType
+            ? (performance.getEntriesByType('navigation')[0] || null)
+            : null;
+        navigationType = nav && nav.type ? String(nav.type) : '';
+    } catch (e) {}
+    const lastLifecycleAt = runtime.lastPageLifecycleEvent && runtime.lastPageLifecycleEvent.at
+        ? Date.parse(String(runtime.lastPageLifecycleEvent.at))
+        : 0;
+    const recentHiddenLifecycle = lastLifecycleAt && Date.now() - lastLifecycleAt < 12000;
+    const shouldFreeze = name === 'pagehide' ||
+        (name === 'pageshow' && (persisted || navigationType === 'back_forward' || recentHiddenLifecycle)) ||
+        (name === 'visibilitychange' && state !== 'visible');
+    if (!shouldFreeze) return false;
+
+    const duration = persisted ? WILDU_IOS_PAGE_LIFECYCLE_BFCACHE_FREEZE_MS : WILDU_IOS_PAGE_LIFECYCLE_FREEZE_MS;
+    runtime.pageLifecycleGeneration = Number(runtime.pageLifecycleGeneration || 0) + 1;
+    runtime.pageLifecycleFreezeUntil = Math.max(Number(runtime.pageLifecycleFreezeUntil || 0), Date.now() + duration);
+    runtime.optimizePausedUntil = Math.max(Number(runtime.optimizePausedUntil || 0), runtime.pageLifecycleFreezeUntil);
+    runtime.lastPageLifecycleEvent = {
+        event: name,
+        state,
+        persisted,
+        navigationType,
+        generation: runtime.pageLifecycleGeneration,
+        at: new Date().toISOString()
+    };
+    wilduCancelIOSImageRuntimeWork('page_lifecycle:' + name);
+    wilduNoteIOSResourceRecovery('page_lifecycle:' + name, duration, runtime.lastPageLifecycleEvent);
+    try {
+        if (typeof wilduReleaseIOSImagesOutsideActiveWindow === 'function') {
+            wilduReleaseIOSImagesOutsideActiveWindow('page_lifecycle:' + name);
+        }
+    } catch (e) {}
+    try {
+        if (typeof wilduEnterAmazonQuietMode === 'function') {
+            wilduEnterAmazonQuietMode('page_lifecycle:' + name, duration);
+        }
+    } catch (e) {}
+    try {
+        wilduRecordIOSResourceRecoveryEvent('ios_page_lifecycle_freeze', {
+            event: name,
+            state,
+            persisted,
+            navigationType,
+            durationMs: duration,
+            generation: runtime.pageLifecycleGeneration
+        });
+    } catch (e) {}
+    try {
+        if (typeof wilduScheduleDeferredSmartImageRefresh === 'function') {
+            wilduScheduleDeferredSmartImageRefresh('PAGE_LIFECYCLE_STABLE_' + name, duration + 400);
+        }
+    } catch (e) {}
+    return true;
+}
+
 function wilduNoteIOSResourceRecovery(reason, durationMs, detail) {
     if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
@@ -25341,6 +25506,11 @@ function wilduGetIOSResourceRecoveryGuardStatus(reason, surface) {
     const cleanSurface = String(surface || 'unknown');
     if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) {
         return { blocked: true, guard: 'page_hidden', retryMs: 1600, surface: cleanSurface };
+    }
+    const lifecycleGuard = wilduGetIOSPageLifecycleGuardStatus(reason);
+    if (lifecycleGuard && lifecycleGuard.blocked) {
+        lifecycleGuard.surface = cleanSurface;
+        return lifecycleGuard;
     }
     if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) {
         const authRemaining = Math.max(0, Number(runtime.resourceRecoveryUntil || 0) - now);
@@ -25412,6 +25582,20 @@ function wilduShouldRestoreManagedImageNow(img, reason) {
     if (!img || !img.isConnected) return false;
     if (!wilduShouldUseIOSPWASmartImageGuard()) return true;
     const surface = wilduGetSmartImageSurface(img);
+    const lifecycleGuard = wilduGetIOSPageLifecycleGuardStatus('restore:' + String(reason || ''));
+    if (lifecycleGuard && lifecycleGuard.blocked && !/PAGE_LIFECYCLE_STABLE|travelhub_force_hydrate/i.test(String(reason || ''))) {
+        wilduRecordSmartImageDeferredOnce(['restore', surface, lifecycleGuard.guard || 'guard'].join(':'), {
+            surface,
+            reason: String(reason || ''),
+            guard: lifecycleGuard.guard,
+            retryMs: lifecycleGuard.retryMs || 0,
+            detail: lifecycleGuard.detail || null
+        });
+        if (lifecycleGuard.retryMs > 0 && typeof wilduScheduleDeferredSmartImageRefresh === 'function') {
+            wilduScheduleDeferredSmartImageRefresh('DEFERRED_RESTORE_' + String(surface || 'surface') + '_' + String(lifecycleGuard.guard || 'guard'), lifecycleGuard.retryMs);
+        }
+        return false;
+    }
     if (surface === 'related' || surface === 'dates') return false;
     if (surface === 'travelhub') {
         const allowed = wilduIsImageInsideIOSMemoryWindow(img) !== false;
@@ -25651,7 +25835,7 @@ function wilduRecordSmartImageDeferredOnce(key, details) {
 
 function wilduShouldUseQuietReleaseOnlyForSmartImageGuard(guard) {
     const name = String(guard && guard.guard || '');
-    return /list_disabled_recent_restart|list_disabled_for_session|travel_tab_transition/.test(name);
+    return /list_disabled_recent_restart|list_disabled_for_session|travel_tab_transition|ios_page_lifecycle_freeze/.test(name);
 }
 
 function wilduRecordQuietReleaseOnlySmartImage(surface, reason, guard) {
@@ -25770,6 +25954,17 @@ function wilduGetSmartImageOptimizationGuard(img, reason, stage) {
         return { allowed: false, surface, guard: 'page_hidden', retryMs: 1600 };
     }
 
+    const lifecycleGuard = wilduGetIOSPageLifecycleGuardStatus(reason);
+    if (lifecycleGuard && lifecycleGuard.blocked) {
+        return {
+            allowed: false,
+            surface,
+            guard: lifecycleGuard.guard || 'ios_page_lifecycle_freeze',
+            retryMs: lifecycleGuard.retryMs || 1600,
+            detail: lifecycleGuard.detail || null
+        };
+    }
+
     if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) {
         runtime.optimizePausedUntil = Math.max(runtime.optimizePausedUntil || 0, Date.now() + WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS);
         return { allowed: false, surface, guard: 'google_auth_transition', retryMs: WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS };
@@ -25864,7 +26059,7 @@ function wilduQueueSmartImageOptimization(img, reason) {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
     if (!runtime.installed || !wilduShouldTrySmartImageOptimization(img)) return false;
     const state = runtime.states.get(img);
-    if (!state || state.optimized || state.optimizing || state.optimizationFailed) return false;
+    if (!state || state.released || state.optimized || state.optimizing || state.optimizationFailed) return false;
     if (runtime.optimizePromoted >= WILDU_SMART_IMAGE_OPTIMIZATION_MAX_PROMOTIONS_PER_SESSION) return false;
     if (runtime.optimizeQueued.has(img)) return false;
 
@@ -26108,6 +26303,8 @@ function wilduRestoreIOSManagedImage(img) {
     wilduCancelIOSImageMemoryRelease(state);
     state.released = false;
     delete img.dataset.wilduIosImageReleased;
+    delete img.dataset.wilduTabImageReleased;
+    delete img.dataset.wilduIosInitialListDeferred;
     if (state.sizes) img.setAttribute('sizes', state.sizes);
     if (state.srcset) img.setAttribute('srcset', state.srcset);
     if (state.src) img.setAttribute('src', state.src);
@@ -26344,7 +26541,7 @@ function wilduReleaseIOSLongListImagesForCriticalTransition(reason) {
 
     const beforeMiB = wilduGetIOSApproxDecodedImageMiB();
     const aggressive = beforeMiB > WILDU_IOS_CRITICAL_TRANSITION_MIB_LIMIT ||
-        /detail_open|related_open|dates_open|soft_modal|map_autoload/i.test(String(reason || ''));
+        /detail_open|related_open|dates_open|soft_modal|map_autoload|travel_tab|page_lifecycle/i.test(String(reason || ''));
     let released = 0;
     runtime.images.forEach(function (img) {
         if (!img || !img.isConnected) {
@@ -26481,6 +26678,21 @@ function wilduRefreshIOSImageMemoryWindow(reason) {
         runtime.optimizePausedUntil = Math.max(runtime.optimizePausedUntil || 0, Date.now() + WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS);
         wilduNoteIOSResourceRecovery('google_auth_end', WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS, { reason: refreshReason });
         wilduScheduleDeferredSmartImageRefresh('GOOGLE_AUTH_END_DELAYED_OPTIMIZE', WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS);
+    }
+    if (wilduShouldUseIOSPWASmartImageGuard() && !/^PAGE_LIFECYCLE_STABLE/i.test(refreshReason)) {
+        const lifecycleGuard = wilduGetIOSPageLifecycleGuardStatus('refresh:' + refreshReason);
+        if (lifecycleGuard && lifecycleGuard.blocked) {
+            wilduReleaseIOSImagesOutsideActiveWindow('refresh_blocked:' + refreshReason + ':' + String(lifecycleGuard.guard || 'lifecycle'));
+            wilduRecordSmartImageDeferredOnce(['refresh', refreshReason, lifecycleGuard.guard || 'guard'].join(':'), {
+                surface: 'all',
+                reason: refreshReason,
+                guard: lifecycleGuard.guard,
+                retryMs: lifecycleGuard.retryMs || 0,
+                detail: lifecycleGuard.detail || null
+            });
+            wilduScheduleDeferredSmartImageRefresh('PAGE_LIFECYCLE_STABLE_' + refreshReason, lifecycleGuard.retryMs || WILDU_IOS_PAGE_LIFECYCLE_FREEZE_MS);
+            return false;
+        }
     }
     runtime.lastReason = refreshReason;
     runtime.policyName = getWilduImageMemoryPolicy().policyName;
@@ -26962,6 +27174,40 @@ const WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 650;
 const WILDU_SOFT_MODAL_IOS_RESTART_HYDRATION_GRACE_MS = 7000;
+const WILDU_IOS_LONG_LIST_INITIAL_VISIBLE_IMAGE_LIMIT = 3;
+
+function wilduShouldDeferInitialTravelListImage(index, targetId) {
+    try {
+        if (!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())) return false;
+        const numericIndex = Math.max(0, Number(index || 0));
+        const root = String(targetId || '');
+        if (!/^(event-list|openday-list|payday-list|ondemand-list)$/.test(root)) return false;
+        if (numericIndex < WILDU_IOS_LONG_LIST_INITIAL_VISIBLE_IMAGE_LIMIT) return false;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduBuildTravelListImageSrcAttributes(rawUrl, index, targetId, reason) {
+    const src = String(rawUrl || '').trim();
+    const safeSrc = escapeWilduHtml(src);
+    if (!src) return 'src=""';
+    if (!wilduShouldDeferInitialTravelListImage(index, targetId)) {
+        return 'src="' + safeSrc + '"';
+    }
+    try {
+        if (typeof wilduIOSBlackBoxRecord === 'function' && Number(index || 0) === WILDU_IOS_LONG_LIST_INITIAL_VISIBLE_IMAGE_LIMIT) {
+            wilduIOSBlackBoxRecord('travel_list_initial_images_deferred', {
+                targetId: String(targetId || ''),
+                startIndex: Number(index || 0),
+                reason: String(reason || 'render'),
+                policy: 'initial_visible_only_then_intersection_restore'
+            });
+        }
+    } catch (e) {}
+    return 'src="' + WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC + '" data-wildu-tab-original-src="' + safeSrc + '" data-wildu-tab-image-released="1" data-wildu-ios-initial-list-deferred="1"';
+}
 
 function wilduGetSoftModalImageHydrationLimit() {
     try {
@@ -28232,7 +28478,7 @@ function renderOnDemandTrips() {
             getOnDemandTripTitle(a).localeCompare(getOnDemandTripTitle(b), 'it');
     });
 
-    container.innerHTML = sorted.map(function (trip) {
+    container.innerHTML = sorted.map(function (trip, index) {
         const id = getOnDemandTripId(trip);
         const title = getOnDemandTripTitle(trip);
         const region = String(trip.region || trip.regione || '').trim();
@@ -28245,7 +28491,7 @@ function renderOnDemandTrips() {
         }).join('');
         const mediaHtml =
             '<div class="wildu-ondemand-card-media' + (image ? '' : ' is-empty') + '">' +
-                (image ? '<img src="' + escapeOnDemandHtml(formatAssetLink(image)) + '" loading="lazy" decoding="async" width="700" height="380" alt="' + escapeOnDemandHtml(title) + '">' : '') +
+                (image ? '<img ' + wilduBuildTravelListImageSrcAttributes(formatAssetLink(image), index, 'ondemand-list', 'ondemand_render') + ' loading="lazy" decoding="async" width="700" height="380" alt="' + escapeOnDemandHtml(title) + '">' : '') +
                 '<div class="wildu-ondemand-card-overlay">' +
                     '<div class="wildu-ondemand-card-kicker">' +
                         '<span class="wildu-ondemand-card-type">Su richiesta</span>' +
@@ -28449,7 +28695,7 @@ function scrollOnDemandTripIntoView(productId) {
 }
 
 function renderTrips(trips, targetId) {
-    document.getElementById(targetId).innerHTML = trips.map(ev => {
+    document.getElementById(targetId).innerHTML = trips.map((ev, index) => {
         const isHike = ev.isHike;
 
         // --- 1. GESTIONE DATE E TITOLO ---
@@ -28535,7 +28781,7 @@ function renderTrips(trips, targetId) {
         // --- IMMAGINE ---
         const imgUrl = ev.immagine || ev.fotoUrl || "";
         let imgHtml = imgUrl && imgUrl.trim() !== ""
-            ? `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}${xpFloatingBadge}</div>`
+            ? `<div style="position: relative; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), index, targetId, 'travel_render')} style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}${xpFloatingBadge}</div>`
             : `<div style="margin-bottom:15px; position:relative; min-height:38px;">${badgeHtml}${xpFloatingBadge}</div>`;
 
         // --- RENDER IBRIDO ---
@@ -29925,7 +30171,8 @@ configureWilduDetailDateOptions('trip', ev, id);
         if(badge) badge.innerText = processedList.length + " viaggi gratis";
 
         let html = '';
-        for(let od of processedList) {
+        for(let odIndex = 0; odIndex < processedList.length; odIndex += 1) {
+        const od = processedList[odIndex];
         const id = od["ID Evento (Super-Key)"] || od["ID Evento"];
         const titolo = od["Titolo"] || "Evento Speciale";
         const dInizio = od["Data Inizio"] || "";
@@ -29944,7 +30191,7 @@ configureWilduDetailDateOptions('trip', ev, id);
             const imgUrl = od["immagine"] || od["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
+                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), odIndex, 'openday-list', 'openday_render')} style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
             } else {
                 imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
             }
@@ -30040,7 +30287,8 @@ function renderPayDays() {
     if(badge) badge.innerText = processedList.length + " Hike";
 
     let html = '';
-    for(let pd of processedList) {
+    for(let pdIndex = 0; pdIndex < processedList.length; pdIndex += 1) {
+        const pd = processedList[pdIndex];
         const id = pd["ID Evento (Super-Key)"] || pd["ID Evento"];
             const titolo = pd["Titolo"] || "Evento Speciale";
             const dataInizio = pd["Data Inizio"] || "";
@@ -30072,7 +30320,7 @@ function renderPayDays() {
             const imgUrl = pd["immagine"] || pd["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img src="${formatAssetLink(imgUrl)}" style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
+                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), pdIndex, 'payday-list', 'payday_render')} style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
             } else {
                 imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
             }
@@ -38533,7 +38781,9 @@ let amazonDeferredRenderProducts = null;
 let amazonImageHydrationTimer = 0;
 const WILDU_AMAZON_IOS_RENDER_RETRY_MS = 2600;
 const WILDU_AMAZON_IOS_IMAGE_STEP_MS = 760;
-const WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT = 2;
+const WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT = 8;
+const WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT = 14;
+const WILDU_AMAZON_IOS_SHELL_IMAGE_NODE_LIMIT = 6;
 const WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS = 9000;
 
 function wilduGetAmazonCardImageUrl(rawUrl) {
@@ -38593,6 +38843,24 @@ function wilduRecordAmazonCarouselEvent(eventName, details) {
     } catch (e) {}
 }
 
+function wilduAnchorAmazonFooter(reason) {
+    try {
+        const wrapper = document.getElementById('amazon-footer-wrapper');
+        if (!wrapper) return false;
+        wrapper.style.bottom = 'var(--amazon-footer-offset, 0px)';
+        wrapper.style.transform = 'translate3d(0,0,0)';
+        wrapper.style.webkitTransform = 'translate3d(0,0,0)';
+        wrapper.style.display = 'flex';
+        wilduRecordAmazonCarouselEvent('amazon_footer_anchored', {
+            reason: String(reason || ''),
+            bottom: wrapper.style.bottom
+        });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function wilduNormalizeAmazonRenderReason(reason) {
     let clean = String(reason || 'render').trim() || 'render';
     clean = clean.replace(/^render:/i, '');
@@ -38614,6 +38882,10 @@ function wilduEnterAmazonQuietMode(reason, durationMs) {
     if (amazonImageHydrationTimer) {
         clearTimeout(amazonImageHydrationTimer);
         amazonImageHydrationTimer = 0;
+    }
+    if (amazonResumeTimer) {
+        clearTimeout(amazonResumeTimer);
+        amazonResumeTimer = null;
     }
     const now = Date.now();
     if (now - Number(amazonLastQuietRecordAt || 0) > 900 || /travel_tab_transition/i.test(amazonQuietReason)) {
@@ -38667,6 +38939,21 @@ function wilduScheduleAmazonResume(reason, delayMs) {
     });
     amazonResumeTimer = setTimeout(() => {
         amazonResumeTimer = null;
+        wilduAnchorAmazonFooter('resume_timer:' + String(reason || ''));
+        const resumeGuard = wilduGetAmazonCarouselGuard('resume_timer:' + String(reason || ''));
+        if (resumeGuard && resumeGuard.blocked) {
+            wilduRecordAmazonCarouselEvent('amazon_carousel_resume_blocked', {
+                reason: String(reason || ''),
+                guard: resumeGuard.guard || 'guarded',
+                retryMs: resumeGuard.retryMs || 0
+            });
+            if (String(resumeGuard.guard || '') !== 'amazon_quiet') {
+                wilduEnterAmazonQuietMode('resume_timer:' + String(resumeGuard.guard || 'guarded'), resumeGuard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
+            }
+            wilduScheduleAmazonResume('resume_timer_guarded:' + String(resumeGuard.guard || 'guarded'), resumeGuard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
+            return;
+        }
+        wilduHydrateVisibleAmazonImages('resume_timer:' + String(reason || ''));
         startAmazonAutoScroll();
     }, delay);
     return true;
@@ -38759,6 +39046,9 @@ function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
         return `<img src="${safeUrl || placeholder}" alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
     }
     const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}"` : '';
+    if (shouldProgressive && options.placeholderOnly && index >= WILDU_AMAZON_IOS_SHELL_IMAGE_NODE_LIMIT) {
+        return `<span class="amazon-card-img-placeholder"${dataAttr} role="img" aria-label="${safeTitle}">?</span>`;
+    }
     return `<img src="${placeholder}"${dataAttr} alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
 }
 
@@ -38780,17 +39070,37 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
         }
         const guardName = String(guard && guard.guard || '');
         if (!/recent_document_restart|google_auth_end|ios_resource_recovery|resource_recovery|amazon_quiet/i.test(guardName)) return false;
-        const hydrated = slider.querySelectorAll('img[data-wildu-amazon-hydrated="1"], img:not([data-wildu-shop-image-src])').length;
-        if (hydrated >= WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT) return false;
+        const hydrated = slider.querySelectorAll('img[data-wildu-amazon-hydrated="1"]').length;
+        const visibleLimit = wilduGetAmazonVisibleHydrationLimit(slider, true);
+        if (hydrated >= visibleLimit) return false;
         return /rendered_shell_only|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery/i.test(String(reason || ''));
     } catch (e) {
         return false;
     }
 }
 
+function wilduGetAmazonVisibleHydrationLimit(slider, guarded) {
+    try {
+        const cards = Array.from(slider.querySelectorAll('.amazon-card'));
+        if (!cards.length) return guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
+        const viewport = slider.getBoundingClientRect();
+        let visibleCards = 0;
+        cards.forEach(function (card) {
+            const rect = card.getBoundingClientRect();
+            if (rect && rect.right >= viewport.left - 160 && rect.left <= viewport.right + 160) visibleCards += 1;
+        });
+        const target = Math.max(4, visibleCards + 2);
+        const cap = guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
+        return Math.min(cap, target);
+    } catch (e) {
+        return guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
+    }
+}
+
 function wilduHydrateVisibleAmazonImages(reason) {
     const slider = document.getElementById('amazon-slider-engine');
     if (!slider) return 0;
+    const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
     const guard = wilduGetAmazonCarouselGuard('image_hydration:' + String(reason || ''));
     if (guard && guard.blocked) {
         if (!wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason)) {
@@ -38818,7 +39128,19 @@ function wilduHydrateVisibleAmazonImages(reason) {
     } catch (e) {
         viewport = null;
     }
-    const imgs = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src]')).filter(function (img) {
+    const guarded = !!(guard && guard.blocked);
+    const hydratedCount = slider.querySelectorAll('img[data-wildu-amazon-hydrated="1"]').length;
+    const hydrationLimit = wilduGetAmazonVisibleHydrationLimit(slider, guarded);
+    if (hydratedCount >= hydrationLimit) {
+        wilduRecordAmazonCarouselEvent('amazon_image_hydration_limit_reached', {
+            reason: String(reason || ''),
+            hydrated: hydratedCount,
+            limit: hydrationLimit,
+            guarded
+        });
+        return 0;
+    }
+    const imgs = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]')).filter(function (img) {
         return !!String(img.getAttribute('data-wildu-shop-image-src') || '').trim();
     });
     const candidates = imgs.filter(function (img) {
@@ -38831,17 +39153,36 @@ function wilduHydrateVisibleAmazonImages(reason) {
     if (!img) return 0;
     const src = String(img.getAttribute('data-wildu-shop-image-src') || '');
     if (!src) return 0;
-    img.setAttribute('src', src);
-    img.removeAttribute('data-wildu-shop-image-src');
-    img.setAttribute('data-wildu-amazon-hydrated', '1');
+    if (String(img.tagName || '').toUpperCase() === 'IMG') {
+        img.setAttribute('src', src);
+        img.removeAttribute('data-wildu-shop-image-src');
+        img.setAttribute('data-wildu-amazon-hydrated', '1');
+    } else {
+        const hydrated = document.createElement('img');
+        hydrated.src = src;
+        hydrated.alt = img.getAttribute('aria-label') || '';
+        hydrated.loading = 'lazy';
+        hydrated.decoding = 'async';
+        hydrated.fetchPriority = 'low';
+        hydrated.width = 58;
+        hydrated.height = 58;
+        hydrated.setAttribute('data-wildu-amazon-hydrated', '1');
+        hydrated.onerror = function () {
+            hydrated.onerror = null;
+            hydrated.src = placeholder;
+        };
+        img.replaceWith(hydrated);
+    }
     try {
         if (typeof wilduRegisterIOSImagesIn === 'function') wilduRegisterIOSImagesIn(img);
     } catch (e) {}
     wilduRecordAmazonCarouselEvent('amazon_image_hydrated', {
         reason: String(reason || ''),
-        remaining: Math.max(0, imgs.length - 1)
+        remaining: Math.max(0, imgs.length - 1),
+        limit: hydrationLimit,
+        guarded
     });
-    if (imgs.length > 1) {
+    if (imgs.length > 1 && hydratedCount + 1 < hydrationLimit) {
         wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
     }
     return 1;
@@ -39632,9 +39973,7 @@ function renderAmazonSponsors(products, options = {}) {
             });
         } else if (slider.querySelector('.amazon-card') &&
             !/page_hidden|document_hidden|top_layer_open|google_auth_transition/i.test(String(guard.guard || ''))) {
-            wrapper.style.display = 'flex';
-            wrapper.style.bottom = '';
-            wrapper.style.transform = '';
+            wilduAnchorAmazonFooter('render_reused_guarded:' + renderReason);
             wilduRecordAmazonCarouselEvent('amazon_carousel_render_reused', {
                 reason: renderReason,
                 cardCount: slider.querySelectorAll('.amazon-card').length,
@@ -39660,9 +39999,7 @@ function renderAmazonSponsors(products, options = {}) {
         }
     }
     if (options.force !== true && slider.dataset.wilduAmazonInputSignature === inputSignature && slider.querySelector('.amazon-card')) {
-        wrapper.style.display = 'flex';
-        wrapper.style.bottom = '';
-        wrapper.style.transform = '';
+        wilduAnchorAmazonFooter('render_reused:' + renderReason);
         wilduRecordAmazonCarouselEvent('amazon_carousel_render_reused', {
             reason: renderReason,
             cardCount: slider.querySelectorAll('.amazon-card').length
@@ -39755,9 +40092,7 @@ function renderAmazonSponsors(products, options = {}) {
 
     slider.innerHTML = html;
     slider.dataset.wilduAmazonInputSignature = inputSignature;
-    wrapper.style.display = 'flex';
-    wrapper.style.bottom = '';
-    wrapper.style.transform = '';
+    wilduAnchorAmazonFooter('rendered:' + renderReason);
 
     // INSERIMENTO PILLOLA AMAZON AD
     /*if(!wrapper.querySelector('.amazon-ad-pill')) {
@@ -40540,6 +40875,14 @@ function syncAmazonFooterViewportOffset() {
         }
 
         document.documentElement.style.setProperty('--amazon-footer-offset', offset + 'px');
+        try {
+            const wrapper = document.getElementById('amazon-footer-wrapper');
+            if (wrapper && wrapper.style.display !== 'none') {
+                wrapper.style.bottom = 'var(--amazon-footer-offset, 0px)';
+                wrapper.style.transform = 'translate3d(0,0,0)';
+                wrapper.style.webkitTransform = 'translate3d(0,0,0)';
+            }
+        } catch (e) {}
     } catch (e) {
         document.documentElement.style.setProperty('--amazon-footer-offset', '0px');
     }
