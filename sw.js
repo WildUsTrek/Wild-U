@@ -1,6 +1,8 @@
 const META_CACHE = 'wildu-meta-v1';
 const MODULE_CACHE = 'wildu-module-v1';
 const ASSET_CACHE = 'wildu-asset-v1';
+const BLACKBOX_REPORT_CACHE = 'wildu-blackbox-report-v1';
+const BLACKBOX_REPORT_PREFIX = '__wildu-ios-blackbox-report/';
 const SHELL_PREFIX = 'wildu-shell-';
 const VERSION_KEY = '__wildu_shell_version__';
 const FALLBACK_VERSION = 'bootstrap';
@@ -175,6 +177,11 @@ if (!isSameOrigin) {
     
     if (url.origin !== self.location.origin) return;
 
+    if (isBlackboxReportRequest(url)) {
+        e.respondWith(handleBlackboxReportRequest(req, url));
+        return;
+    }
+
     // Le versioni storiche del client usavano ?logout=true per ricaricare la
     // shell. Su iOS/WebKit quell'URL puo' essere ripristinato dalla cronologia
     // prima che il JavaScript nuovo riesca a bonificarlo. Il service worker lo
@@ -318,6 +325,49 @@ function getScopeRelativePath(url) {
     }
 
     return path.replace(/^\/+/, '');
+}
+
+function isBlackboxReportRequest(url) {
+    return getScopeRelativePath(url).indexOf(BLACKBOX_REPORT_PREFIX) === 0;
+}
+
+function getBlackboxReportFileName(url) {
+    try {
+        const rel = getScopeRelativePath(url);
+        const rawName = rel.slice(BLACKBOX_REPORT_PREFIX.length).split('/').pop() || 'wildu-ios-blackbox.txt';
+        const decoded = decodeURIComponent(rawName);
+        return decoded
+            .replace(/[\r\n"]/g, '')
+            .replace(/[^A-Za-z0-9._-]/g, '-')
+            .slice(0, 140) || 'wildu-ios-blackbox.txt';
+    } catch (e) {
+        return 'wildu-ios-blackbox.txt';
+    }
+}
+
+async function handleBlackboxReportRequest(req, url) {
+    const cache = await caches.open(BLACKBOX_REPORT_CACHE);
+    const cached = await cache.match(url.toString(), { ignoreSearch: false });
+    const fileName = getBlackboxReportFileName(url);
+    if (!cached) {
+        return new Response('Report Wild-U non trovato o gia rimosso dalla cache locale.', {
+            status: 404,
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8',
+                'Cache-Control': 'no-store'
+            }
+        });
+    }
+    const blob = await cached.blob();
+    return new Response(blob, {
+        status: 200,
+        headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+            'Content-Disposition': 'attachment; filename="' + fileName + '"',
+            'Cache-Control': 'no-store',
+            'X-WildU-Blackbox-Report': '1'
+        }
+    });
 }
 
 function isStandaloneRuntimePath(url) {

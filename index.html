@@ -12485,6 +12485,11 @@ window.WilduMediaClient = WilduMediaClient;
         wilduGoogleAuthTransitionTimer = window.setTimeout(function () {
             wilduGoogleAuthTransitionTimer = null;
             endWilduGoogleAuthTransition('TTL_EXPIRED');
+            try {
+                if (!auth.currentUser && typeof resetStaleClientAuthPendingToGuest === 'function') {
+                    resetStaleClientAuthPendingToGuest('GOOGLE_AUTH_TRANSITION_TTL_EXPIRED', { force: true });
+                }
+            } catch (e) {}
         }, remaining);
     }
 
@@ -14431,6 +14436,7 @@ function checkAuthEnvironment() {
     }
 
     tempTelegramUser = null;
+    try { resetStaleClientAuthPendingToGuest('CHECK_AUTH_ENVIRONMENT'); } catch (e) {}
 
     const hasFirebaseUser = !!auth.currentUser;
     const hasAuthSessionInFlight =
@@ -14538,7 +14544,16 @@ function clearClientAuthRecovery(options = {}) {
 }
 
 function scheduleClientAuthRecovery(reason, options = {}) {
-    if (isTelegramContext() || !auth.currentUser) return;
+    if (isTelegramContext() || !auth.currentUser) {
+        try {
+            pageDebug('AUTH_RECOVERY_SKIPPED_NO_USER', {
+                reason: String(reason || 'AUTH_RECOVERY'),
+                isTelegram: !!isTelegramContext(),
+                hasFirebaseUser: !!auth.currentUser
+            });
+        } catch (e) {}
+        return;
+    }
 
     if (options.reset === true) {
         clearClientAuthRecovery();
@@ -14546,23 +14561,65 @@ function scheduleClientAuthRecovery(reason, options = {}) {
         return;
     }
 
-    if (authRecoveryAttempt >= AUTH_RECOVERY_DELAYS_MS.length) return;
+    if (authRecoveryAttempt >= AUTH_RECOVERY_DELAYS_MS.length) {
+        try {
+            pageDebug('AUTH_RECOVERY_EXHAUSTED', {
+                reason: String(reason || 'AUTH_RECOVERY'),
+                attempt: authRecoveryAttempt,
+                hasFirebaseUser: !!auth.currentUser,
+                clientAuthState: String(clientSession?.authState || '')
+            });
+        } catch (e) {}
+        return;
+    }
 
     const delay = options.immediate === true
         ? 0
         : AUTH_RECOVERY_DELAYS_MS[authRecoveryAttempt];
 
+    try {
+        pageDebug('AUTH_RECOVERY_SCHEDULED', {
+            reason: String(reason || 'AUTH_RECOVERY'),
+            attempt: authRecoveryAttempt,
+            delay,
+            immediate: options.immediate === true,
+            reset: options.reset === true
+        });
+    } catch (e) {}
+
     authRecoveryTimer = window.setTimeout(async function replayAuthenticatedUser() {
         authRecoveryTimer = null;
         const currentUser = auth.currentUser;
-        if (!currentUser || isTelegramContext()) return;
+        if (!currentUser || isTelegramContext()) {
+            try {
+                pageDebug('AUTH_RECOVERY_ABORTED_NO_USER', {
+                    reason: String(reason || 'AUTH_RECOVERY'),
+                    hasFirebaseUser: !!currentUser,
+                    isTelegram: !!isTelegramContext()
+                });
+            } catch (e) {}
+            return;
+        }
 
         if (authRefreshLock || authProbeInProgress) {
+            try {
+                pageDebug('AUTH_RECOVERY_BUSY_DEFERRED', {
+                    reason: String(reason || 'AUTH_RECOVERY'),
+                    authRefreshLock: !!authRefreshLock,
+                    authProbeInProgress: !!authProbeInProgress
+                });
+            } catch (e) {}
             scheduleClientAuthRecovery(reason || 'AUTH_RECOVERY_BUSY');
             return;
         }
 
         authRecoveryAttempt += 1;
+        try {
+            pageDebug('AUTH_RECOVERY_FIRED', {
+                reason: String(reason || 'AUTH_RECOVERY'),
+                attempt: authRecoveryAttempt
+            });
+        } catch (e) {}
         await handleClientAuthStateChanged(currentUser, reason || 'AUTH_RECOVERY');
     }, delay);
 }
@@ -14616,6 +14673,88 @@ function holdClientAuthPending(user, message, reason, options = {}) {
     }
 }
 
+function wilduIsAuthBridgeRuntimeActive() {
+    try { return WILDU_AUTH_BRIDGE_IN_PROGRESS === true; } catch (e) { return false; }
+}
+
+function resetStaleClientAuthPendingToGuest(reason, options = {}) {
+    const force = options && options.force === true;
+    const cleanReason = String(reason || 'AUTH_PENDING_STALE');
+    let hasFirebaseUser = false;
+    let sessionState = '';
+    let googleTransition = false;
+    let bridgeRuntime = false;
+    try { hasFirebaseUser = !!auth.currentUser; } catch (e) {}
+    try { sessionState = String(clientSession && clientSession.authState || ''); } catch (e) {}
+    try { googleTransition = !!(typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()); } catch (e) {}
+    try { bridgeRuntime = wilduIsAuthBridgeRuntimeActive(); } catch (e) {}
+
+    const pendingWithoutUser = sessionState === 'AUTH_PENDING' && !hasFirebaseUser;
+    const probeWithoutUser = !!authProbeInProgress && !hasFirebaseUser;
+    const protectedActiveWork = !!(
+        hasFirebaseUser ||
+        (!force && (googleTransition || bridgeRuntime || authRefreshLock || isRegistrationCompletionInProgress))
+    );
+
+    if (!force && !pendingWithoutUser && !probeWithoutUser) return false;
+    if (protectedActiveWork) return false;
+
+    clearClientAuthRecovery();
+    clearPendingClientAuthStateReplay();
+    try { sessionStorage.removeItem(WILDU_GOOGLE_AUTH_TRANSITION_KEY); } catch (e) {}
+    if (wilduGoogleAuthTransitionTimer) {
+        try { window.clearTimeout(wilduGoogleAuthTransitionTimer); } catch (e) {}
+        wilduGoogleAuthTransitionTimer = null;
+    }
+
+    authRefreshLock = false;
+    authProbeInProgress = false;
+    profileCompletionRequired = false;
+    tempGoogleUser = null;
+    tempTelegramUser = null;
+    lastBackendVerifiedUid = '';
+    wildUserKey = null;
+    try { localStorage.removeItem('wildUserKey'); } catch (e) {}
+    clearClientPrivateRuntimeState();
+
+    clientSession = {
+        authState: 'GUEST',
+        channel: 'WEB',
+        tokenStatus: 'NONE',
+        capabilities: getDefaultClientCapabilities('WEB')
+    };
+
+    try {
+        const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+        if (runtime) {
+            runtime.authProfileQuietUntil = 0;
+            runtime.authProfileQuietReason = '';
+            runtime.authProfileResumeAttempts = 0;
+        }
+    } catch (e) {}
+
+    try {
+        pageDebug('AUTH_PENDING_STALE_CLEARED', {
+            reason: cleanReason,
+            force,
+            pendingWithoutUser,
+            probeWithoutUser,
+            googleTransition,
+            bridgeRuntime
+        });
+    } catch (e) {}
+
+    reconcileProfileShellWithClientSession();
+    try {
+        if (typeof wilduScheduleIOSPostAuthResourceResume === 'function') {
+            wilduScheduleIOSPostAuthResourceResume('AUTH_PENDING_STALE_CLEARED:' + cleanReason, 0);
+        } else if (typeof resumeWilduCatalogCoverPreload === 'function') {
+            resumeWilduCatalogCoverPreload('AUTH_PENDING_STALE_CLEARED');
+        }
+    } catch (e) {}
+    return true;
+}
+
 function schedulePendingClientAuthState(user) {
     pendingAuthStateUser = user;
     if (authStateReplayTimer) return;
@@ -14646,7 +14785,21 @@ function clearPendingClientAuthStateReplay() {
 async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') {
     const expectedUid = String(user?.uid || '').trim();
     const currentUid = String(auth.currentUser?.uid || '').trim();
+    try {
+        pageDebug('AUTH_PROFILE_FINALIZE_STARTED', {
+            reason: String(reason || 'GOOGLE_SIGNIN'),
+            hasUser: !!user,
+            expectedUidPresent: !!expectedUid,
+            currentUidMatches: !!expectedUid && currentUid === expectedUid
+        });
+    } catch (e) {}
     if (!expectedUid || currentUid !== expectedUid) {
+        try {
+            pageDebug('AUTH_PROFILE_FINALIZE_FAILED', {
+                reason: String(reason || 'GOOGLE_SIGNIN'),
+                code: 'AUTH_IDENTITY_NOT_CONSOLIDATED'
+            });
+        } catch (e) {}
         const identityError = new Error('Firebase non ha consolidato l\'identita\' Google corrente.');
         identityError.code = 'AUTH_IDENTITY_NOT_CONSOLIDATED';
         throw identityError;
@@ -14662,7 +14815,19 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
     // Forza un token appena emesso prima del gate canonico backend. Il client
     // non considera mai sufficiente il solo successo del popup/credential.
     await user.getIdToken(true);
+    try {
+        pageDebug('AUTH_PROFILE_TOKEN_READY', {
+            reason: String(reason || 'GOOGLE_SIGNIN'),
+            currentUidMatches: String(auth.currentUser?.uid || '').trim() === expectedUid
+        });
+    } catch (e) {}
     if (String(auth.currentUser?.uid || '').trim() !== expectedUid) {
+        try {
+            pageDebug('AUTH_PROFILE_FINALIZE_FAILED', {
+                reason: String(reason || 'GOOGLE_SIGNIN'),
+                code: 'AUTH_IDENTITY_CHANGED_DURING_FINALIZE'
+            });
+        } catch (e) {}
         const changedError = new Error('Identita\' Firebase cambiata durante la verifica.');
         changedError.code = 'AUTH_IDENTITY_CHANGED_DURING_FINALIZE';
         throw changedError;
@@ -14674,8 +14839,28 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
     });
     const profile = data?.userOverlay?.profile || null;
     const backendUid = String(profile?.uid || '').trim();
+    try {
+        pageDebug('AUTH_PROFILE_INITDATA_RESULT', {
+            reason: String(reason || 'GOOGLE_SIGNIN'),
+            authState: String(data?.authState || ''),
+            profileUidMatches: !!backendUid && backendUid === expectedUid,
+            profileExists: profile?.exists === true || (
+                typeof profile?.exists !== 'boolean' &&
+                !!String(profile?.nome || profile?.telefono || '').trim()
+            ),
+            canUseBackpack: data?.capabilities?.canUseBackpack === true
+        });
+    } catch (e) {}
 
     if (data?.authState !== 'LOGGED' || backendUid !== expectedUid) {
+        try {
+            pageDebug('AUTH_PROFILE_FINALIZE_FAILED', {
+                reason: String(reason || 'GOOGLE_SIGNIN'),
+                code: 'AUTH_BACKEND_IDENTITY_NOT_CONFIRMED',
+                authState: String(data?.authState || ''),
+                profileUidMatches: !!backendUid && backendUid === expectedUid
+            });
+        } catch (e) {}
         const backendError = new Error('Il backend non ha confermato la sessione Google.');
         backendError.code = 'AUTH_BACKEND_IDENTITY_NOT_CONFIRMED';
         throw backendError;
@@ -14698,6 +14883,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
         authProbeInProgress = false;
         endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
         reconcileProfileShellWithClientSession();
+        try { pageDebug('AUTH_PROFILE_FINALIZE_PROFILE_REQUIRED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
         return { status: 'PROFILE_COMPLETION_REQUIRED', data };
     }
 
@@ -14705,6 +14891,13 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
         !isCurrentVerifiedClientIdentity(expectedUid) ||
         clientSession.capabilities?.canUseBackpack !== true
     ) {
+        try {
+            pageDebug('AUTH_PROFILE_FINALIZE_FAILED', {
+                reason: String(reason || 'GOOGLE_SIGNIN'),
+                code: 'AUTH_BACKEND_CAPABILITIES_NOT_READY',
+                canUseBackpack: clientSession.capabilities?.canUseBackpack === true
+            });
+        } catch (e) {}
         const capabilityError = new Error('La sessione verificata non abilita ancora il profilo completo.');
         capabilityError.code = 'AUTH_BACKEND_CAPABILITIES_NOT_READY';
         throw capabilityError;
@@ -14717,6 +14910,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
     endWilduGoogleAuthTransition('BACKEND_SESSION_FINALIZED');
     reconcileProfileShellWithClientSession();
     updateProfileUI();
+    try { pageDebug('AUTH_PROFILE_FINALIZE_LOGGED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
     return { status: 'LOGGED', data };
 }
 
@@ -15084,6 +15278,14 @@ function buildWilduAuthBridgeUrl(attemptId, launchMode = '') {
 }
 
 async function postWilduAuthBridgeAction(action, payload) {
+    try {
+        pageDebug('AUTH_BRIDGE_API_REQUEST', {
+            action: String(action || ''),
+            hasAttemptId: !!payload?.attemptId,
+            hasVerifier: !!payload?.verifier,
+            hasChallenge: !!payload?.challenge
+        });
+    } catch (e) {}
     const response = await fetch(MOTORE_API_URL, {
         method: 'POST',
         mode: 'cors',
@@ -15101,6 +15303,15 @@ async function postWilduAuthBridgeAction(action, payload) {
     });
     let data = null;
     try { data = await response.json(); } catch (e) {}
+    try {
+        pageDebug(response.ok && data?.success !== false ? 'AUTH_BRIDGE_API_RESPONSE' : 'AUTH_BRIDGE_API_FAILED', {
+            action: String(action || ''),
+            httpStatus: response.status,
+            success: data?.success !== false,
+            code: String(data?.code || ''),
+            bridgeStatus: String(data?.status || '')
+        });
+    } catch (e) {}
     if (!response.ok || data?.success === false) {
         const error = new Error(String(data?.code || `AUTH_BRIDGE_HTTP_${response.status}`));
         error.code = String(data?.code || `AUTH_BRIDGE_HTTP_${response.status}`);
@@ -15209,11 +15420,18 @@ async function redeemWilduAuthBridgeAttempt(state) {
 }
 
 async function pollWilduAuthBridgeAttempt(state) {
+    try {
+        pageDebug('AUTH_BRIDGE_POLL_STARTED', {
+            attemptPhase: String(state?.phase || ''),
+            hasFirebaseUser: !!auth.currentUser
+        });
+    } catch (e) {}
     for (const delay of WILDU_AUTH_BRIDGE_POLL_DELAYS_MS) {
         if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
         if (auth.currentUser) {
             clearWilduAuthBridgeAttempt('FIREBASE_USER_ALREADY_AVAILABLE');
             authProbeInProgress = false;
+            try { pageDebug('AUTH_BRIDGE_POLL_FIREBASE_USER_AVAILABLE', { reason: 'FIREBASE_USER_ALREADY_AVAILABLE' }); } catch (e) {}
             scheduleClientAuthRecovery('AUTH_BRIDGE_USER_AVAILABLE', {
                 reset: true,
                 immediate: true
@@ -15225,7 +15443,14 @@ async function pollWilduAuthBridgeAttempt(state) {
             const status = await postWilduAuthBridgeAction('AUTH_BRIDGE_STATUS', {
                 attemptId: state.attemptId
             });
+            try {
+                pageDebug('AUTH_BRIDGE_STATUS_RESULT', {
+                    status: String(status?.status || ''),
+                    hasFirebaseUser: !!auth.currentUser
+                });
+            } catch (e) {}
             if (status?.status === 'COMPLETED') {
+                try { pageDebug('AUTH_BRIDGE_COMPLETED', { source: 'POLL' }); } catch (e) {}
                 return await redeemWilduAuthBridgeAttempt(state);
             }
         } catch (error) {
@@ -15237,6 +15462,17 @@ async function pollWilduAuthBridgeAttempt(state) {
             ) {
                 clearWilduAuthBridgeAttempt(code || 'EXPIRED');
                 endWilduGoogleAuthTransition(code || 'AUTH_BRIDGE_EXPIRED');
+                authProbeInProgress = false;
+                if (!auth.currentUser) {
+                    resetStaleClientAuthPendingToGuest(code || 'AUTH_BRIDGE_EXPIRED', { force: true });
+                }
+                try {
+                    pageDebug('AUTH_BRIDGE_POLL_TERMINAL_FAILURE', {
+                        code: code || 'AUTH_BRIDGE_EXPIRED',
+                        status: error?.status || 0,
+                        hasFirebaseUser: !!auth.currentUser
+                    });
+                } catch (e) {}
                 showToast('Il tentativo di accesso è scaduto. Tocca di nuovo Accedi con Google.');
                 return false;
             }
@@ -15244,6 +15480,15 @@ async function pollWilduAuthBridgeAttempt(state) {
         }
     }
 
+    authProbeInProgress = false;
+    if (!auth.currentUser) {
+        resetStaleClientAuthPendingToGuest('AUTH_BRIDGE_POLL_TIMEOUT', { force: true });
+    }
+    try {
+        pageDebug('AUTH_BRIDGE_POLL_TIMEOUT', {
+            hasFirebaseUser: !!auth.currentUser
+        });
+    } catch (e) {}
     showToast('Completa Google e torna a Wild-U: l’accesso riprenderà automaticamente.');
     return false;
 }
@@ -15278,6 +15523,10 @@ async function resumeWilduAuthBridgeAttempt() {
         pageDebug('AUTH_BRIDGE_RESUME_FAILED', {
             code: String(error?.code || 'AUTH_BRIDGE_RESUME_FAILED')
         });
+        authProbeInProgress = false;
+        if (!auth.currentUser) {
+            resetStaleClientAuthPendingToGuest(error?.code || 'AUTH_BRIDGE_RESUME_FAILED', { force: true });
+        }
         showToast('Accesso Google in attesa. Tocca Accedi con Google per riprenderlo.');
         return false;
     } finally {
@@ -15334,6 +15583,9 @@ async function loginWithWilduDurableAuthBridge() {
         if (state?.phase === 'STARTING' || error?.status === 400 || error?.status === 403) {
             clearWilduAuthBridgeAttempt(code);
             endWilduGoogleAuthTransition(code);
+            if (!auth.currentUser) {
+                resetStaleClientAuthPendingToGuest(code, { force: true });
+            }
         }
         try { if (authWindow && !authWindow.closed) authWindow.close(); } catch (e) {}
         showToast('Accesso Google non avviato. Riprova tra poco.');
@@ -16134,7 +16386,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.73';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.74';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16155,6 +16407,8 @@ const WILDU_IOS_BLACKBOX_MAX_EVENTS = 900;
 const WILDU_IOS_BLACKBOX_MIN_EVENTS = 260;
 const WILDU_IOS_BLACKBOX_MAX_TEXT = 950000;
 const WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS = 220000;
+const WILDU_IOS_BLACKBOX_REPORT_CACHE = 'wildu-blackbox-report-v1';
+const WILDU_IOS_BLACKBOX_REPORT_DIR = '__wildu-ios-blackbox-report/';
 const WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY = 12;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT = 7;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS = 4500;
@@ -16860,6 +17114,9 @@ const WilduIOSBlackBox = (() => {
 
     function shouldRecordEvent(event) {
         const cleanEvent = String(event || '');
+        if (/^(AUTH_|GOOGLE_AUTH_|GOOGLE_IDENTITY_|FIREBASE_AUTH_|CLIENT_AUTH_)/.test(cleanEvent)) {
+            return true;
+        }
         return [
             'app_boot_start',
             'shell_cache_gate_start',
@@ -17010,6 +17267,8 @@ const WilduIOSBlackBox = (() => {
             'blackbox_enabled_by_footer_taps',
             'blackbox_current_build_attribution',
             'blackbox_frame_window',
+            'blackbox_report_file_published',
+            'blackbox_report_file_publish_failed',
             'SHELL_RELOAD_TRIGGERED',
             'SHELL_VERSION_CHANGED',
             'GLOBAL_CACHE_RELOAD_SCHEDULED',
@@ -17240,8 +17499,8 @@ const WilduIOSBlackBox = (() => {
                 '<p id="wildu-ios-blackbox-summary">Diagnostica locale attiva. Il report e redatto e non contiene credenziali.</p>',
                 '<div class="wildu-ios-blackbox-actions">',
                     '<button type="button" id="wildu-ios-blackbox-copy">Copia report</button>',
-                    '<button type="button" id="wildu-ios-blackbox-share">Condividi</button>',
-                    '<button type="button" id="wildu-ios-blackbox-download">Scarica .txt</button>',
+                    '<button type="button" id="wildu-ios-blackbox-share">Condividi file</button>',
+                    '<button type="button" id="wildu-ios-blackbox-download">Scarica/Condividi .txt</button>',
                     '<button type="button" id="wildu-ios-blackbox-clear" class="wildu-ios-blackbox-secondary">Cancella log</button>',
                     '<button type="button" id="wildu-ios-blackbox-close" class="wildu-ios-blackbox-secondary">Chiudi</button>',
                 '</div>',
@@ -17306,10 +17565,160 @@ const WilduIOSBlackBox = (() => {
         return false;
     }
 
+    function createReportFile(text, fileName) {
+        try {
+            if (!window.File) return null;
+            return new File([text], fileName, { type: 'text/plain' });
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function canShareReportFiles(files) {
+        try {
+            return !!(
+                navigator.share &&
+                Array.isArray(files) &&
+                files.length &&
+                (!navigator.canShare || navigator.canShare({ files }))
+            );
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function buildReportFileName(prefix) {
+        return String(prefix || 'wildu-ios-blackbox') + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+    }
+
+    function reserveIOSReportWindow() {
+        if (!isLikelyIOS()) return null;
+        try {
+            const reserved = window.open('', '_blank');
+            if (reserved && reserved.document) {
+                reserved.document.title = 'Download log Wild-U';
+                reserved.document.body.style.cssText = 'margin:0;background:#061307;color:#f5ffe8;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;padding:28px;';
+                reserved.document.body.innerHTML = '<div><h1 style="font-size:22px;margin:0 0 12px;">Preparo il file log...</h1><p style="opacity:.75;font-size:15px;line-height:1.5;">Se iOS non salva automaticamente il TXT, usa Condividi > Salva su File nella pagina che si apre.</p></div>';
+            }
+            return reserved;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function closeReservedReportWindow(reservedWindow) {
+        try {
+            if (reservedWindow && !reservedWindow.closed) reservedWindow.close();
+        } catch (e) {}
+    }
+
+    function getReportDownloadBaseUrl(fileName) {
+        const safeName = String(fileName || buildReportFileName('wildu-ios-blackbox'))
+            .replace(/[^A-Za-z0-9._-]/g, '-')
+            .replace(/-+/g, '-')
+            .slice(0, 120);
+        const url = new URL(WILDU_IOS_BLACKBOX_REPORT_DIR + encodeURIComponent(safeName), window.location.href);
+        url.searchParams.set('id', String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10));
+        return url.toString();
+    }
+
+    async function trimReportDownloadCache(cache, keepCount) {
+        try {
+            const keys = await cache.keys();
+            const reportKeys = keys
+                .filter((request) => String(request && request.url || '').indexOf('/' + WILDU_IOS_BLACKBOX_REPORT_DIR) !== -1)
+                .sort((a, b) => String(a.url).localeCompare(String(b.url)));
+            const removeCount = Math.max(0, reportKeys.length - Math.max(1, keepCount || 4));
+            for (let i = 0; i < removeCount; i += 1) {
+                await cache.delete(reportKeys[i]);
+            }
+        } catch (e) {}
+    }
+
+    async function publishReportDownloadText(text, fileName) {
+        try {
+            if (!('caches' in window)) return '';
+            if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return '';
+            const downloadUrl = getReportDownloadBaseUrl(fileName);
+            const cache = await caches.open(WILDU_IOS_BLACKBOX_REPORT_CACHE);
+            await cache.put(downloadUrl, new Response(String(text || ''), {
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                    'Cache-Control': 'no-store'
+                }
+            }));
+            const probe = await fetch(downloadUrl, { cache: 'no-store' });
+            if (!probe.ok || probe.headers.get('X-WildU-Blackbox-Report') !== '1') {
+                try { await cache.delete(downloadUrl); } catch (e) {}
+                throw new Error('BLACKBOX_REPORT_SW_ROUTE_NOT_ACTIVE');
+            }
+            await trimReportDownloadCache(cache, 5);
+            record('blackbox_report_file_published', {
+                fileName,
+                chars: String(text || '').length,
+                via: 'service_worker_cache_url'
+            });
+            return downloadUrl;
+        } catch (e) {
+            try {
+                record('blackbox_report_file_publish_failed', {
+                    code: String(e && (e.code || e.name || e.message) || 'UNKNOWN')
+                });
+            } catch (ignore) {}
+            return '';
+        }
+    }
+
+    function openReportDownloadUrl(downloadUrl, fileName, reservedWindow) {
+        try {
+            if (!downloadUrl) return false;
+            if (reservedWindow && !reservedWindow.closed) {
+                reservedWindow.location.replace(downloadUrl);
+                return true;
+            }
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = fileName;
+            link.rel = 'noopener';
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(function () {
+                try { link.remove(); } catch (e) {}
+            }, 1200);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function shareReportFiles(text, fileName, forceParts) {
+        const shouldSplit = forceParts || text.length > WILDU_IOS_BLACKBOX_MAX_TEXT;
+        const parts = shouldSplit
+            ? buildReportDownloadParts(text, fileName)
+            : [{ name: fileName, text }];
+        const files = parts.map((part) => createReportFile(part.text, part.name)).filter(Boolean);
+        try {
+            if (canShareReportFiles(files)) {
+                await navigator.share({
+                    files,
+                    title: files.length > 1 ? 'Wild-U log tecnico iOS in parti' : 'Wild-U log tecnico iOS'
+                });
+                notify(files.length > 1 ? 'Condivisione aperta: ' + files.length + ' file .txt.' : 'Condivisione file .txt aperta.');
+                return true;
+            }
+        } catch (e) {
+            return false;
+        }
+        return false;
+    }
+
     async function shareReport() {
         const text = getReportText();
+        const fileName = buildReportFileName('wildu-ios-blackbox');
+        if (await shareReportFiles(text, fileName, false)) return true;
         try {
-            if (navigator.share) {
+            if (navigator.share && text.length <= 120000) {
                 await navigator.share({
                     title: 'Wild-U log tecnico iOS',
                     text
@@ -17320,25 +17729,18 @@ const WilduIOSBlackBox = (() => {
         return copyReport();
     }
 
-    function triggerReportTextDownload(text, fileName, preferDataUrl) {
+    function triggerReportTextDownload(text, fileName) {
         try {
             const link = document.createElement('a');
             link.download = fileName;
             link.rel = 'noopener';
-            let url = '';
-            if (preferDataUrl) {
-                url = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
-            } else {
-                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                url = URL.createObjectURL(blob);
-            }
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
             link.href = url;
             document.body.appendChild(link);
             link.click();
             setTimeout(function () {
-                try {
-                    if (!preferDataUrl && url) URL.revokeObjectURL(url);
-                } catch (e) {}
+                try { URL.revokeObjectURL(url); } catch (e) {}
                 try { link.remove(); } catch (e) {}
             }, 1200);
             return true;
@@ -17375,34 +17777,38 @@ const WilduIOSBlackBox = (() => {
         });
     }
 
-    function downloadReportTextFile() {
+    async function downloadReportTextFile() {
         const text = getReportText();
-        const fileName = 'wildu-ios-blackbox-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
-        const useChunks = isLikelyIOS() || text.length > WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS;
-        if (!useChunks && triggerReportTextDownload(text, fileName, false)) {
+        const fileName = buildReportFileName('wildu-ios-blackbox');
+        const reservedWindow = reserveIOSReportWindow();
+        const downloadUrl = await publishReportDownloadText(text, fileName);
+        if (downloadUrl && openReportDownloadUrl(downloadUrl, fileName, reservedWindow)) {
+            notify('File .txt pronto. Se iOS non lo salva in Download, usa Condividi > Salva su File.');
+            return true;
+        }
+        closeReservedReportWindow(reservedWindow);
+        if (isLikelyIOS()) {
+            if (await shareReportFiles(text, fileName, false)) return true;
+            if (await shareReportFiles(text, fileName, true)) return true;
+            openPanel();
+            notify('Condivisione file non disponibile: report mostrato nel pannello.');
+            return false;
+        }
+        const useChunks = text.length > WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS;
+        if (!useChunks && triggerReportTextDownload(text, fileName)) {
             notify('Download report avviato.');
             return true;
         }
         const parts = buildReportDownloadParts(text, fileName);
         let started = 0;
         parts.forEach((part) => {
-            if (triggerReportTextDownload(part.text, part.name, isLikelyIOS())) started += 1;
+            if (triggerReportTextDownload(part.text, part.name)) started += 1;
         });
         if (started > 0) {
             notify(parts.length > 1 ? 'Download report avviato in ' + parts.length + ' parti.' : 'Download report avviato.');
             return true;
         }
-        try {
-            if (navigator.share && window.File) {
-                const shareText = text.length > WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS
-                    ? parts[0].text
-                    : text;
-                const file = new File([shareText], fileName, { type: 'text/plain' });
-                navigator.share({ files: [file], title: 'Wild-U log tecnico iOS' });
-                return true;
-            }
-        } catch (shareError) {
-        }
+        if (await shareReportFiles(text, fileName, false)) return true;
         openPanel();
         notify('Download non disponibile: usa il testo nel pannello.');
         return false;
@@ -26267,24 +26673,37 @@ function wilduGetAuthProfileCriticalSnapshot() {
     let sessionState = '';
     let hasFirebaseUser = false;
     let googleTransition = false;
+    let bridgeRuntime = false;
     try { sessionState = String(clientSession && clientSession.authState || ''); } catch (e) {}
     try { hasFirebaseUser = !!(typeof auth !== 'undefined' && auth && auth.currentUser); } catch (e) {}
     try { googleTransition = !!(typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()); } catch (e) {}
+    try { bridgeRuntime = !!(typeof wilduIsAuthBridgeRuntimeActive === 'function' && wilduIsAuthBridgeRuntimeActive()); } catch (e) {}
+    const authProbeMeaningful = !!(authProbeInProgress && (hasFirebaseUser || googleTransition || bridgeRuntime || authRefreshLock));
+    const activeAuthWork = !!(
+        googleTransition ||
+        bridgeRuntime ||
+        authProbeMeaningful ||
+        authRefreshLock ||
+        isRegistrationCompletionInProgress
+    );
+    const pendingWithoutFirebaseUser = sessionState === 'AUTH_PENDING' && !hasFirebaseUser;
+    const stalePending = pendingWithoutFirebaseUser && !activeAuthWork;
     return {
         active: !!(
-            googleTransition ||
-            authProbeInProgress ||
-            authRefreshLock ||
-            isRegistrationCompletionInProgress ||
-            sessionState === 'AUTH_PENDING' ||
+            activeAuthWork ||
+            (sessionState === 'AUTH_PENDING' && hasFirebaseUser) ||
             (hasFirebaseUser && sessionState !== 'LOGGED')
-        ),
+        ) && !stalePending,
         googleTransition,
+        bridgeRuntime,
         authProbeInProgress: !!authProbeInProgress,
+        authProbeMeaningful,
         authRefreshLock: !!authRefreshLock,
         registrationCompletion: !!isRegistrationCompletionInProgress,
         sessionState,
-        hasFirebaseUser
+        hasFirebaseUser,
+        pendingWithoutFirebaseUser,
+        stalePending
     };
 }
 
@@ -26294,7 +26713,12 @@ function wilduIsAuthProfileCriticalPathActive() {
 
 function wilduShouldAuthProfileGuardBlock(reason, surface) {
     if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
-    if (!wilduIsAuthProfileCriticalPathActive()) return false;
+    const authSnapshot = wilduGetAuthProfileCriticalSnapshot();
+    if (authSnapshot.stalePending && typeof resetStaleClientAuthPendingToGuest === 'function') {
+        try { resetStaleClientAuthPendingToGuest('IOS_AUTH_GUARD_STALE_PENDING', { force: true }); } catch (e) {}
+        return false;
+    }
+    if (!authSnapshot.active) return false;
     const cleanReason = String(reason || '');
     const cleanSurface = String(surface || '');
     if (/visible_restore|critical_visible|active_travel_band|travelhub_force_hydrate|POST_AUTH_VISIBLE_RESTORE/i.test(cleanReason)) {
