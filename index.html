@@ -12511,7 +12511,9 @@ window.WilduMediaClient = WilduMediaClient;
         if (typeof pauseWilduCatalogCoverPreload === 'function') {
             pauseWilduCatalogCoverPreload('GOOGLE_AUTH', { cancelInFlight: true });
         }
-        if (typeof wilduReleaseIOSManagedImages === 'function') {
+        if (typeof wilduEnterIOSAuthProfileQuietMode === 'function' && wilduEnterIOSAuthProfileQuietMode('GOOGLE_AUTH_START:' + state.mode, WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS)) {
+            // iOS PWA: il percorso auth/profilo resta prioritario. Niente release globale.
+        } else if (typeof wilduReleaseIOSManagedImages === 'function') {
             wilduReleaseIOSManagedImages('GOOGLE_AUTH');
         }
         try {
@@ -12526,11 +12528,17 @@ window.WilduMediaClient = WilduMediaClient;
             window.clearTimeout(wilduGoogleAuthTransitionTimer);
             wilduGoogleAuthTransitionTimer = null;
         }
-        if (typeof resumeWilduCatalogCoverPreload === 'function') {
-            resumeWilduCatalogCoverPreload('GOOGLE_AUTH');
-        }
-        if (typeof wilduRefreshIOSImageMemoryWindow === 'function') {
-            wilduRefreshIOSImageMemoryWindow('GOOGLE_AUTH_END');
+        if (typeof wilduEnterIOSAuthProfileQuietMode === 'function' && wilduEnterIOSAuthProfileQuietMode('GOOGLE_AUTH_END:' + String(reason || 'UNKNOWN'), WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS)) {
+            if (typeof wilduScheduleIOSPostAuthResourceResume === 'function') {
+                wilduScheduleIOSPostAuthResourceResume(String(reason || 'UNKNOWN'), 0);
+            }
+        } else {
+            if (typeof resumeWilduCatalogCoverPreload === 'function') {
+                resumeWilduCatalogCoverPreload('GOOGLE_AUTH');
+            }
+            if (typeof wilduRefreshIOSImageMemoryWindow === 'function') {
+                wilduRefreshIOSImageMemoryWindow('GOOGLE_AUTH_END');
+            }
         }
         if (wasActive) {
             try {
@@ -16126,7 +16134,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.72';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.73';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16143,9 +16151,10 @@ const DEBUG_WILDU_PAGE = true;
 const WILDU_IOS_BLACKBOX_STORAGE_KEY = 'wildu.debug.ios.blackbox.v1';
 const WILDU_IOS_BLACKBOX_ENABLED_KEY = 'wildu.debug.ios.blackbox.enabled';
 const WILDU_IOS_BLACKBOX_DOC_ID = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const WILDU_IOS_BLACKBOX_MAX_EVENTS = 1400;
-const WILDU_IOS_BLACKBOX_MIN_EVENTS = 480;
-const WILDU_IOS_BLACKBOX_MAX_TEXT = 1400000;
+const WILDU_IOS_BLACKBOX_MAX_EVENTS = 900;
+const WILDU_IOS_BLACKBOX_MIN_EVENTS = 260;
+const WILDU_IOS_BLACKBOX_MAX_TEXT = 950000;
+const WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS = 220000;
 const WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY = 12;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT = 7;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS = 4500;
@@ -16201,12 +16210,30 @@ const WilduIOSBlackBox = (() => {
         try {
             const clean = state && typeof state === 'object' ? state : {};
             clean.version = 1;
-            clean.events = Array.isArray(clean.events) ? clean.events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) : [];
+            clean.events = Array.isArray(clean.events) ?
+                clean.events.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) :
+                [];
             clean.bootDiary = Array.isArray(clean.bootDiary) ? clean.bootDiary.slice(-WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY) : [];
             let text = JSON.stringify(clean);
+            let removed = 0;
             while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > WILDU_IOS_BLACKBOX_MIN_EVENTS) {
                 clean.events.shift();
+                removed += 1;
                 text = JSON.stringify(clean);
+            }
+            while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > 1) {
+                clean.events.shift();
+                removed += 1;
+                text = JSON.stringify(clean);
+            }
+            if (removed) {
+                clean.truncatedEvents = (clean.truncatedEvents || 0) + removed;
+                text = JSON.stringify(clean);
+                while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > 1) {
+                    clean.events.shift();
+                    clean.truncatedEvents = (clean.truncatedEvents || 0) + 1;
+                    text = JSON.stringify(clean);
+                }
             }
             localStorage.setItem(WILDU_IOS_BLACKBOX_STORAGE_KEY, text);
             return true;
@@ -16715,6 +16742,12 @@ const WilduIOSBlackBox = (() => {
             fastScrollActiveMs: mem.fastScrollActiveMs,
             fastScrollRestoreScheduled: mem.fastScrollRestoreScheduled,
             lastScrollVelocity: mem.lastScrollVelocity,
+            authProfileQuietMs: mem.authProfileQuietMs,
+            authProfileQuietReason: mem.authProfileQuietReason,
+            authProfileResumeScheduled: mem.authProfileResumeScheduled,
+            authProfileResumeDueMs: mem.authProfileResumeDueMs,
+            authProfileResumeAttempts: mem.authProfileResumeAttempts,
+            authProfileCritical: mem.authProfileCritical,
             smartOptimizeAttempted: mem.smartOptimizeAttempted,
             smartOptimizePromoted: mem.smartOptimizePromoted,
             smartOptimizeFailed: mem.smartOptimizeFailed,
@@ -16726,6 +16759,76 @@ const WilduIOSBlackBox = (() => {
             fixedStickyNodes: snapshot.fixedStickyNodes,
             transformNodes: snapshot.transformNodes
         }, 0);
+    }
+
+    function compactBlackboxEventForStorage(entry) {
+        if (!entry || typeof entry !== 'object') return entry;
+        return sanitizeValue({
+            ts: entry.ts,
+            relMs: entry.relMs,
+            event: entry.event,
+            appReloadIntent: entry.appReloadIntent || 'none',
+            details: entry.details || {},
+            snapshot: compactBlackBoxSnapshot(entry.snapshot || {})
+        }, 0);
+    }
+
+    function collectLightSnapshot() {
+        const snapshot = {
+            build: String(typeof WILDU_EMBEDDED_SHELL_VERSION !== 'undefined' ? WILDU_EMBEDDED_SHELL_VERSION : 'n/d'),
+            docId: WILDU_IOS_BLACKBOX_DOC_ID,
+            timeOrigin: Math.round(Number(performance && performance.timeOrigin ? performance.timeOrigin : Date.now())),
+            visibility: String(document.visibilityState || ''),
+            route: String(window.currentTab || location.hash || location.pathname || ''),
+            detailPhase: getDetailPhase(),
+            modalOpen: getOpenModalId(),
+            imagesLive: 0,
+            imagesLoaded: 0,
+            imageSurfaces: {},
+            iframesLive: 0,
+            mapsIframeLive: false,
+            iosImageMemory: null,
+            mapRuntime: null,
+            activeTimers: null,
+            visibleGuarantee: null
+        };
+        try {
+            const imgs = Array.from(document.images || []);
+            snapshot.imagesLive = imgs.filter((img) => !!(img.currentSrc || img.getAttribute('src'))).length;
+            snapshot.imagesLoaded = imgs.filter((img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0).length;
+            snapshot.imageSurfaces = collectImageSurfaceCountsForBlackbox(imgs);
+        } catch (e) {}
+        try {
+            const frames = Array.from(document.querySelectorAll('iframe'));
+            const liveFrames = frames.filter((frame) => !!(frame.currentSrc || frame.getAttribute('src')));
+            snapshot.iframesLive = liveFrames.length;
+            snapshot.mapsIframeLive = liveFrames.some((frame) => frame.id === 'od-map-iframe');
+        } catch (e) {}
+        try {
+            if (typeof getWilduIOSImageMemorySnapshot === 'function') {
+                snapshot.iosImageMemory = getWilduIOSImageMemorySnapshot();
+            }
+        } catch (e) {}
+        try {
+            if (typeof getWilduDetailMapRuntimeSnapshot === 'function') {
+                snapshot.mapRuntime = getWilduDetailMapRuntimeSnapshot();
+            }
+        } catch (e) {}
+        try {
+            snapshot.activeTimers = typeof getWilduRuntimeTimerSnapshot === 'function'
+                ? sanitizeValue(getWilduRuntimeTimerSnapshot(), 0)
+                : null;
+        } catch (e) {}
+        try {
+            snapshot.visibleGuarantee = typeof getWilduVisibleResourceGuaranteeSnapshot === 'function'
+                ? sanitizeValue(getWilduVisibleResourceGuaranteeSnapshot(), 0)
+                : null;
+        } catch (e) {}
+        return snapshot;
+    }
+
+    function shouldUseFullSnapshotForEvent(event) {
+        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_blocked|ios_auth_profile_quiet_entered|ios_auth_profile_guard_blocked|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|blackbox_current_build_attribution)$/.test(String(event || ''));
     }
 
     function appendBootDiaryEntry(state, bootEntry, previousEvents) {
@@ -16819,6 +16922,10 @@ const WilduIOSBlackBox = (() => {
             'ios_surface_transition_stale',
             'ios_surface_guard_blocked',
             'ios_runtime_work_cancelled',
+            'ios_auth_profile_quiet_entered',
+            'ios_auth_profile_guard_blocked',
+            'ios_post_auth_resource_resume_deferred',
+            'ios_post_auth_resource_resume_started',
             'ios_detail_related_transaction_started',
             'ios_detail_related_transaction_phase',
             'ios_detail_related_transaction_cancelled',
@@ -16832,6 +16939,7 @@ const WilduIOSBlackBox = (() => {
             'ios_fast_scroll_detected',
             'ios_fast_scroll_quiet_restore',
             'ios_deferred_registration_flush_delayed_by_surface_transition',
+            'ios_page_lifecycle_freeze',
             'ios_resource_recovery_entered',
             'ios_resource_recovery_blocked',
             'soft_modal_image_hydration_deferred',
@@ -17060,7 +17168,9 @@ const WilduIOSBlackBox = (() => {
             event: cleanEvent,
             appReloadIntent: 'none',
             details: sanitizeValue(details || {}, 0),
-            snapshot: collectSnapshot()
+            snapshot: compactBlackBoxSnapshot(
+                shouldUseFullSnapshotForEvent(cleanEvent) ? collectSnapshot() : collectLightSnapshot()
+            )
         };
         if (/SHELL_RELOAD_TRIGGERED|GLOBAL_CACHE_RELOAD_SCHEDULED|GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED/.test(cleanEvent)) {
             entry.appReloadIntent = cleanEvent;
@@ -17090,7 +17200,9 @@ const WilduIOSBlackBox = (() => {
 
     function buildReport() {
         const state = readState();
-        const events = Array.isArray(state.events) ? state.events : [];
+        const events = Array.isArray(state.events) ?
+            state.events.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) :
+            [];
         const classification = classifyPreviousSession(events);
         const currentSnapshot = collectSnapshot();
         const buildAttribution = buildBlackboxBuildAttribution(events, currentSnapshot);
@@ -17208,35 +17320,91 @@ const WilduIOSBlackBox = (() => {
         return copyReport();
     }
 
-    function downloadReportTextFile() {
-        const text = getReportText();
-        const fileName = 'wildu-ios-blackbox-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+    function triggerReportTextDownload(text, fileName, preferDataUrl) {
         try {
-            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.href = url;
             link.download = fileName;
             link.rel = 'noopener';
+            let url = '';
+            if (preferDataUrl) {
+                url = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+            } else {
+                const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                url = URL.createObjectURL(blob);
+            }
+            link.href = url;
             document.body.appendChild(link);
             link.click();
             setTimeout(function () {
-                try { URL.revokeObjectURL(url); } catch (e) {}
+                try {
+                    if (!preferDataUrl && url) URL.revokeObjectURL(url);
+                } catch (e) {}
                 try { link.remove(); } catch (e) {}
             }, 1200);
-            notify('Download report avviato.');
             return true;
         } catch (e) {
-            try {
-                if (navigator.share && window.File) {
-                    const file = new File([text], fileName, { type: 'text/plain' });
-                    navigator.share({ files: [file], title: 'Wild-U log tecnico iOS' });
-                    return true;
-                }
-            } catch (shareError) {}
+            return false;
+        }
+    }
+
+    function buildReportDownloadParts(text, baseName) {
+        const chunkSize = Math.max(80000, WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS);
+        const chunks = [];
+        for (let start = 0; start < text.length; start += chunkSize) {
+            chunks.push(text.slice(start, start + chunkSize));
+        }
+        if (!chunks.length) chunks.push(text);
+        const total = chunks.length;
+        const reportId = baseName.replace(/\.txt$/i, '');
+        return chunks.map((chunk, index) => {
+            const part = index + 1;
+            const prefix = [
+                'Wild-U iOS Blackbox report',
+                'Report-ID: ' + reportId,
+                'File: ' + baseName,
+                'Parte: ' + part + ' / ' + total,
+                'Nota: se il report e diviso, conserva tutte le parti nello stesso ordine.',
+                '--- BEGIN REPORT PART ---',
+                ''
+            ].join('\n');
+            const suffix = '\n--- END REPORT PART ' + part + ' / ' + total + ' ---\n';
+            return {
+                name: baseName.replace(/\.txt$/i, '.part-' + String(part).padStart(2, '0') + '-of-' + String(total).padStart(2, '0') + '.txt'),
+                text: prefix + chunk + suffix
+            };
+        });
+    }
+
+    function downloadReportTextFile() {
+        const text = getReportText();
+        const fileName = 'wildu-ios-blackbox-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt';
+        const useChunks = isLikelyIOS() || text.length > WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS;
+        if (!useChunks && triggerReportTextDownload(text, fileName, false)) {
+            notify('Download report avviato.');
+            return true;
+        }
+        const parts = buildReportDownloadParts(text, fileName);
+        let started = 0;
+        parts.forEach((part) => {
+            if (triggerReportTextDownload(part.text, part.name, isLikelyIOS())) started += 1;
+        });
+        if (started > 0) {
+            notify(parts.length > 1 ? 'Download report avviato in ' + parts.length + ' parti.' : 'Download report avviato.');
+            return true;
+        }
+        try {
+            if (navigator.share && window.File) {
+                const shareText = text.length > WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS
+                    ? parts[0].text
+                    : text;
+                const file = new File([shareText], fileName, { type: 'text/plain' });
+                navigator.share({ files: [file], title: 'Wild-U log tecnico iOS' });
+                return true;
+            }
+        } catch (shareError) {
         }
         openPanel();
-        notify('Download non disponibile: usa Copia o Condividi.');
+        notify('Download non disponibile: usa il testo nel pannello.');
         return false;
     }
 
@@ -25893,7 +26061,12 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     fastScrollRestoreDue: 0,
     fastScrollGeneration: 0,
     fastScrollLastReleaseAt: 0,
-    fastScrollLastRecordAt: 0
+    fastScrollLastRecordAt: 0,
+    authProfileQuietUntil: 0,
+    authProfileQuietReason: '',
+    authProfileResumeTimer: 0,
+    authProfileResumeDue: 0,
+    authProfileResumeAttempts: 0
 };
 
 function getWilduImageMemoryPolicy() {
@@ -26088,6 +26261,122 @@ function getWilduVisibleResourceGuaranteeSnapshot() {
 
 function wilduShouldUseIOSPWASmartImageGuard() {
     return !!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice() && wilduIsStandaloneDisplayMode());
+}
+
+function wilduGetAuthProfileCriticalSnapshot() {
+    let sessionState = '';
+    let hasFirebaseUser = false;
+    let googleTransition = false;
+    try { sessionState = String(clientSession && clientSession.authState || ''); } catch (e) {}
+    try { hasFirebaseUser = !!(typeof auth !== 'undefined' && auth && auth.currentUser); } catch (e) {}
+    try { googleTransition = !!(typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()); } catch (e) {}
+    return {
+        active: !!(
+            googleTransition ||
+            authProbeInProgress ||
+            authRefreshLock ||
+            isRegistrationCompletionInProgress ||
+            sessionState === 'AUTH_PENDING' ||
+            (hasFirebaseUser && sessionState !== 'LOGGED')
+        ),
+        googleTransition,
+        authProbeInProgress: !!authProbeInProgress,
+        authRefreshLock: !!authRefreshLock,
+        registrationCompletion: !!isRegistrationCompletionInProgress,
+        sessionState,
+        hasFirebaseUser
+    };
+}
+
+function wilduIsAuthProfileCriticalPathActive() {
+    return !!(wilduGetAuthProfileCriticalSnapshot().active);
+}
+
+function wilduShouldAuthProfileGuardBlock(reason, surface) {
+    if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
+    if (!wilduIsAuthProfileCriticalPathActive()) return false;
+    const cleanReason = String(reason || '');
+    const cleanSurface = String(surface || '');
+    if (/visible_restore|critical_visible|active_travel_band|travelhub_force_hydrate|POST_AUTH_VISIBLE_RESTORE/i.test(cleanReason)) {
+        return false;
+    }
+    if (/^(official-list|openday-list|payday-list|ondemand-list|guest-profile|travelhub)$/.test(cleanSurface) && /restore|visible|guarantee/i.test(cleanReason)) {
+        return false;
+    }
+    return true;
+}
+
+function wilduEnterIOSAuthProfileQuietMode(reason, durationMs) {
+    if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const delay = Math.max(1800, Number(durationMs || WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS || 0));
+    const until = Date.now() + delay;
+    runtime.authProfileQuietUntil = Math.max(Number(runtime.authProfileQuietUntil || 0), until);
+    runtime.authProfileQuietReason = String(reason || 'auth_profile_quiet');
+    runtime.optimizePausedUntil = Math.max(Number(runtime.optimizePausedUntil || 0), until);
+    try { wilduCancelIOSImageRuntimeWork('auth_profile_quiet:' + runtime.authProfileQuietReason); } catch (e) {}
+    try { wilduNoteIOSResourceRecovery('auth_profile_quiet', delay, wilduGetAuthProfileCriticalSnapshot()); } catch (e) {}
+    try {
+        if (typeof pauseAmazonAutoScroll === 'function') pauseAmazonAutoScroll('auth_profile_quiet');
+    } catch (e) {}
+    try {
+        if (typeof wilduIOSBlackBoxRecord === 'function') {
+            wilduIOSBlackBoxRecord('ios_auth_profile_quiet_entered', {
+                reason: runtime.authProfileQuietReason,
+                durationMs: delay,
+                snapshot: wilduGetAuthProfileCriticalSnapshot()
+            });
+        }
+    } catch (e) {}
+    return true;
+}
+
+function wilduScheduleIOSPostAuthResourceResume(reason, delayMs) {
+    if (!wilduShouldUseIOSPWASmartImageGuard()) {
+        try { if (typeof resumeWilduCatalogCoverPreload === 'function') resumeWilduCatalogCoverPreload('GOOGLE_AUTH'); } catch (e) {}
+        try { if (typeof wilduRefreshIOSImageMemoryWindow === 'function') wilduRefreshIOSImageMemoryWindow('GOOGLE_AUTH_END'); } catch (e) {}
+        return true;
+    }
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    if (runtime.authProfileResumeTimer) {
+        try { window.clearTimeout(runtime.authProfileResumeTimer); } catch (e) {}
+    }
+    const quietRemaining = Math.max(0, Number(runtime.authProfileQuietUntil || 0) - Date.now());
+    const delay = Math.max(350, Number(delayMs || 0), Math.min(quietRemaining, 2600));
+    runtime.authProfileResumeDue = Date.now() + delay;
+    runtime.authProfileResumeTimer = window.setTimeout(function () {
+        runtime.authProfileResumeTimer = 0;
+        runtime.authProfileResumeDue = 0;
+        const authSnapshot = wilduGetAuthProfileCriticalSnapshot();
+        if (authSnapshot.active && runtime.authProfileResumeAttempts < 8) {
+            runtime.authProfileResumeAttempts += 1;
+            try {
+                if (typeof wilduIOSBlackBoxRecord === 'function') {
+                    wilduIOSBlackBoxRecord('ios_post_auth_resource_resume_deferred', {
+                        reason: String(reason || ''),
+                        attempt: runtime.authProfileResumeAttempts,
+                        snapshot: authSnapshot
+                    });
+                }
+            } catch (e) {}
+            wilduScheduleIOSPostAuthResourceResume(reason || 'AUTH_STILL_CRITICAL', 1800);
+            return;
+        }
+        runtime.authProfileResumeAttempts = 0;
+        try { if (typeof resumeWilduCatalogCoverPreload === 'function') resumeWilduCatalogCoverPreload('GOOGLE_AUTH_POST_STABLE'); } catch (e) {}
+        try { wilduScheduleCriticalVisibleImageRestore('POST_AUTH_VISIBLE_RESTORE:' + String(reason || ''), 120, WILDU_IOS_CRITICAL_VISIBLE_RESTORE_LIMIT); } catch (e) {}
+        try { wilduScheduleActiveTravelBandRestoreForIOS('POST_AUTH_TRAVEL_BAND:' + String(reason || ''), 420, WILDU_IOS_ACTIVE_TRAVEL_BAND_RESTORE_LIMIT); } catch (e) {}
+        try { wilduScheduleDeferredSmartImageRefresh('POST_AUTH_STABLE:' + String(reason || ''), 900); } catch (e) {}
+        try {
+            if (typeof wilduIOSBlackBoxRecord === 'function') {
+                wilduIOSBlackBoxRecord('ios_post_auth_resource_resume_started', {
+                    reason: String(reason || ''),
+                    snapshot: authSnapshot
+                });
+            }
+        } catch (e) {}
+    }, delay);
+    return true;
 }
 
 function wilduRecordIOSResourceRecoveryEvent(eventName, details) {
@@ -26306,7 +26595,26 @@ function wilduGetIOSResourceRecoveryGuardStatus(reason, surface) {
         if (runtime.resourceRecoveryReason !== 'google_auth_transition' || authRemaining < Math.max(1200, WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS - 700)) {
             wilduNoteIOSResourceRecovery('google_auth_transition', WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS, { surface: cleanSurface, reason: String(reason || '') });
         }
-        return { blocked: true, guard: 'google_auth_transition', retryMs: WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS, surface: cleanSurface };
+        return { blocked: true, guard: 'google_auth_transition', retryMs: 1800, surface: cleanSurface };
+    }
+    if (wilduShouldAuthProfileGuardBlock(reason, cleanSurface)) {
+        const authRemaining = Math.max(0, Number(runtime.authProfileQuietUntil || 0) - now);
+        if (authRemaining < 1200) {
+            wilduEnterIOSAuthProfileQuietMode('guard:' + cleanSurface + ':' + String(reason || ''), WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS);
+        }
+        wilduRecordIOSResourceRecoveryEvent('ios_auth_profile_guard_blocked', {
+            surface: cleanSurface,
+            reason: String(reason || ''),
+            retryMs: Math.min(2600, Math.max(900, authRemaining || 1800)),
+            auth: wilduGetAuthProfileCriticalSnapshot()
+        });
+        return {
+            blocked: true,
+            guard: 'auth_profile_critical_path',
+            retryMs: Math.min(2600, Math.max(900, authRemaining || 1800)),
+            surface: cleanSurface,
+            detail: wilduGetAuthProfileCriticalSnapshot()
+        };
     }
     const manualRecoveryRemaining = Math.max(0, Number(runtime.resourceRecoveryUntil || 0) - now);
     if (manualRecoveryRemaining > 0) {
@@ -26503,7 +26811,7 @@ function wilduRunCriticalVisibleImageRestore(reason, limit) {
             return 0;
         }
         if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) {
-            wilduScheduleCriticalVisibleImageRestore('auth_wait:' + cleanReason, WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS, limit);
+            wilduScheduleCriticalVisibleImageRestore('auth_wait:' + cleanReason, 1800, limit);
             wilduRecordSmartImageEvent('ios_critical_visible_restore_progress', {
                 reason: cleanReason,
                 blocked: true,
@@ -27389,6 +27697,17 @@ function wilduGetSmartImageOptimizationGuard(img, reason, stage) {
         return { allowed: true, surface };
     }
 
+    if (wilduShouldAuthProfileGuardBlock('smart_image_' + String(stage || '') + ':' + cleanReason, surface)) {
+        return {
+            allowed: false,
+            surface,
+            guard: 'auth_profile_critical_path',
+            retryMs: 2200,
+            releaseOnly: false,
+            auth: wilduGetAuthProfileCriticalSnapshot()
+        };
+    }
+
     if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) {
         return { allowed: false, surface, guard: 'page_hidden', retryMs: 1600 };
     }
@@ -27405,8 +27724,8 @@ function wilduGetSmartImageOptimizationGuard(img, reason, stage) {
     }
 
     if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) {
-        runtime.optimizePausedUntil = Math.max(runtime.optimizePausedUntil || 0, Date.now() + WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS);
-        return { allowed: false, surface, guard: 'google_auth_transition', retryMs: WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS };
+        runtime.optimizePausedUntil = Math.max(runtime.optimizePausedUntil || 0, Date.now() + WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS);
+        return { allowed: false, surface, guard: 'google_auth_transition', retryMs: 1800 };
     }
 
     const travelTabRemaining = Math.max(0, Number(runtime.travelTabTransitionUntil || 0) - Date.now());
@@ -28531,9 +28850,14 @@ function wilduRefreshIOSImageMemoryWindow(reason) {
     const refreshReason = String(reason || 'REFRESH');
     if (refreshReason.indexOf('GOOGLE_AUTH') === 0 && !(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) return false;
     if (wilduShouldUseIOSPWASmartImageGuard() && refreshReason === 'GOOGLE_AUTH_END') {
-        runtime.optimizePausedUntil = Math.max(runtime.optimizePausedUntil || 0, Date.now() + WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS);
-        wilduNoteIOSResourceRecovery('google_auth_end', WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS, { reason: refreshReason });
-        wilduScheduleDeferredSmartImageRefresh('GOOGLE_AUTH_END_DELAYED_OPTIMIZE', WILDU_SMART_IMAGE_IOS_PWA_AUTH_PAUSE_MS);
+        wilduEnterIOSAuthProfileQuietMode('refresh:' + refreshReason, WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS);
+        wilduScheduleIOSPostAuthResourceResume(refreshReason, 900);
+        return false;
+    }
+    if (wilduShouldUseIOSPWASmartImageGuard() && wilduIsAuthProfileCriticalPathActive() && !/POST_AUTH|visible_restore|critical_visible|PAGE_LIFECYCLE_STABLE/i.test(refreshReason)) {
+        wilduEnterIOSAuthProfileQuietMode('refresh_blocked:' + refreshReason, WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS);
+        wilduScheduleIOSPostAuthResourceResume(refreshReason, 1200);
+        return false;
     }
     if (wilduShouldUseIOSPWASmartImageGuard() && !/^PAGE_LIFECYCLE_STABLE/i.test(refreshReason)) {
         const lifecycleGuard = wilduGetIOSPageLifecycleGuardStatus('refresh:' + refreshReason);
@@ -28708,6 +29032,14 @@ function getWilduIOSImageMemorySnapshot() {
         fastScrollRestoreScheduled: !!runtime.fastScrollRestoreTimer,
         fastScrollRestoreDueMs: Math.max(0, Number(runtime.fastScrollRestoreDue || 0) - Date.now()),
         fastScrollGeneration: runtime.fastScrollGeneration || 0,
+        authProfileQuietMs: Math.max(0, Number(runtime.authProfileQuietUntil || 0) - Date.now()),
+        authProfileQuietReason: runtime.authProfileQuietReason || '',
+        authProfileResumeScheduled: !!runtime.authProfileResumeTimer,
+        authProfileResumeDueMs: Math.max(0, Number(runtime.authProfileResumeDue || 0) - Date.now()),
+        authProfileResumeAttempts: runtime.authProfileResumeAttempts || 0,
+        authProfileCritical: typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+            ? wilduGetAuthProfileCriticalSnapshot()
+            : null,
         deferredRegistration: runtime.deferredRegistrations || 0,
         lastDeferredRegistrationReason: runtime.lastDeferredRegistrationReason || '',
         travelTabTransitionMs: Math.max(0, Number(runtime.travelTabTransitionUntil || 0) - Date.now()),
