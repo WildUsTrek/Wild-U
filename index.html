@@ -16577,7 +16577,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.77';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.78';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16860,6 +16860,7 @@ const WilduIOSBlackBox = (() => {
             const id = String(frame.id || '');
             const src = String(frame.currentSrc || frame.getAttribute('src') || '');
             if (/^about:blank$/i.test(src)) return 'blank';
+            if (/\/__\/auth\/iframe(?:$|[?#])|firebaseapp\.com\/__\/auth\/iframe/i.test(src)) return 'auth';
             if (id === 'od-map-iframe' || /google\.[^/]+\/maps|maps\.google/i.test(src)) return 'maps';
             if (id === 'game-frame' || /(^|\/)giochi\//i.test(src)) return 'game';
             if (id === 'wildu-rewards-video-frame' || /youtube(?:-nocookie)?\.com\/embed/i.test(src)) return 'rewards-video';
@@ -17419,7 +17420,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldUseFullSnapshotForEvent(event) {
-        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_blocked|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
+        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_released_terminal|ios_resource_recovery_blocked|ios_terminal_auth_resource_guard_violation|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
     }
 
     function appendBootDiaryEntry(state, bootEntry, previousEvents) {
@@ -17544,7 +17545,9 @@ const WilduIOSBlackBox = (() => {
             'ios_deferred_registration_flush_delayed_by_owner_guard',
             'ios_page_lifecycle_freeze',
             'ios_resource_recovery_entered',
+            'ios_resource_recovery_released_terminal',
             'ios_resource_recovery_blocked',
+            'ios_terminal_auth_resource_guard_violation',
             'soft_modal_image_hydration_deferred',
             'soft_modal_image_hydration_window',
             'soft_modal_image_hydration_limit_reached',
@@ -23328,13 +23331,18 @@ function getWilduRuntimeTimerSnapshot() {
             optimizeActive: !!WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeActive,
             optimizeQueued: WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeQueue ? WILDU_IOS_IMAGE_MEMORY_RUNTIME.optimizeQueue.length : 0,
             recoveryRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.resourceRecoveryUntil || 0) - Date.now()),
+            resourceRecoveryReason: WILDU_IOS_IMAGE_MEMORY_RUNTIME.resourceRecoveryReason || '',
             pageLifecycleFreezeRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.pageLifecycleFreezeUntil || 0) - Date.now()),
             pageLifecycleGeneration: WILDU_IOS_IMAGE_MEMORY_RUNTIME.pageLifecycleGeneration || 0,
             lastPageLifecycleEvent: WILDU_IOS_IMAGE_MEMORY_RUNTIME.lastPageLifecycleEvent || null,
             travelTabTransitionRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionUntil || 0) - Date.now()),
             travelTabTransitionGeneration: WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionGeneration || 0,
             activeTravelTab: WILDU_IOS_IMAGE_MEMORY_RUNTIME.activeTravelTab || '',
-            lastTravelTabTransition: WILDU_IOS_IMAGE_MEMORY_RUNTIME.lastTravelTabTransition || null
+            lastTravelTabTransition: WILDU_IOS_IMAGE_MEMORY_RUNTIME.lastTravelTabTransition || null,
+            authProfileQuietRemainingMs: Math.max(0, Number(WILDU_IOS_IMAGE_MEMORY_RUNTIME.authProfileQuietUntil || 0) - Date.now()),
+            authProfileQuietReason: WILDU_IOS_IMAGE_MEMORY_RUNTIME.authProfileQuietReason || '',
+            authProfileTerminalReleaseReason: WILDU_IOS_IMAGE_MEMORY_RUNTIME.authProfileTerminalReleaseReason || '',
+            authResourceRecoveryTerminalReleaseReason: WILDU_IOS_IMAGE_MEMORY_RUNTIME.authResourceRecoveryTerminalReleaseReason || ''
         };
     } catch (e) {}
     try {
@@ -25378,6 +25386,19 @@ function wilduRecordIOSOwnerGuardBlocked(lane, guardName, retryMs, reason, detai
         if (runtime.ownerGuardLastKey === key && now - Number(runtime.ownerGuardLastRecordAt || 0) < 700) return;
         runtime.ownerGuardLastKey = key;
         runtime.ownerGuardLastRecordAt = now;
+        const authDetail = detail && typeof detail === 'object' ? detail : null;
+        const terminalAuthBlocked = !!(
+            /auth_profile/i.test(String(guardName || '')) &&
+            authDetail &&
+            authDetail.hasFirebaseUser === true &&
+            String(authDetail.sessionState || '') === 'LOGGED' &&
+            authDetail.active === false &&
+            authDetail.googleTransition === false &&
+            authDetail.bridgeRuntime === false &&
+            authDetail.authProbeInProgress === false &&
+            authDetail.authRefreshLock === false &&
+            authDetail.registrationCompletion === false
+        );
         wilduIOSBlackBoxRecord('ios_owner_guard_blocked', {
             lane: String(lane || ''),
             reason: String(reason || ''),
@@ -25389,8 +25410,18 @@ function wilduRecordIOSOwnerGuardBlocked(lane, guardName, retryMs, reason, detai
             token: runtime.surfaceTransitionToken || 0,
             cleanupPending: runtime.cleanupPending || 0,
             inputGuardRemainingMs: wilduGetSoftModalInputGuardRemainingMs(),
+            terminalAuthBlocked,
             detail: detail || null
         });
+        if (terminalAuthBlocked) {
+            wilduIOSBlackBoxRecord('ios_terminal_auth_resource_guard_violation', {
+                lane: String(lane || ''),
+                reason: String(reason || ''),
+                guard: String(guardName || ''),
+                retryMs: retryMs || 0,
+                detail: authDetail
+            });
+        }
     } catch (e) {}
 }
 
@@ -25486,7 +25517,16 @@ function wilduGetIOSRuntimeOwnerGuard(lane, reason, options) {
             if (travelRemaining > 0 && !/^(critical-visible-restore|active-travel-band-restore|travel-tab-transition)$/i.test(cleanLane)) {
                 return block('ios_owner:travel_tab_transition', travelRemaining, imageRuntime.lastTravelTabTransition || null);
             }
-            const recoveryRemaining = Math.max(0, Number(imageRuntime.resourceRecoveryUntil || 0) - now);
+            let recoveryRemaining = Math.max(0, Number(imageRuntime.resourceRecoveryUntil || 0) - now);
+            if (recoveryRemaining > 0 && opts.ignoreResourceRecovery !== true && !visibleRestoreLane && typeof wilduReleaseAuthResourceRecoveryForTerminalLiveness === 'function') {
+                const surface = String(opts.surface || '');
+                const authSnapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+                    ? wilduGetAuthProfileCriticalSnapshot()
+                    : null;
+                if (wilduReleaseAuthResourceRecoveryForTerminalLiveness('owner_guard:' + cleanLane + ':' + String(reason || ''), surface, authSnapshot)) {
+                    recoveryRemaining = Math.max(0, Number(imageRuntime.resourceRecoveryUntil || 0) - now);
+                }
+            }
             if (recoveryRemaining > 0 && opts.ignoreResourceRecovery !== true && !visibleRestoreLane) {
                 return block('ios_owner:resource_recovery:' + String(imageRuntime.resourceRecoveryReason || 'active'), recoveryRemaining, imageRuntime.resourceRecoveryDetail || null);
             }
@@ -27136,6 +27176,8 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     authProfileResumeAttempts: 0,
     authProfileTerminalReleaseLastAt: 0,
     authProfileTerminalReleaseReason: '',
+    authResourceRecoveryTerminalReleaseLastAt: 0,
+    authResourceRecoveryTerminalReleaseReason: '',
     authProfileLivenessLastRecordAt: 0,
     authProfileLivenessLastKey: ''
 };
@@ -27410,6 +27452,9 @@ function wilduReleaseAuthProfileQuietForTerminalLiveness(reason, surface, authSn
             String(runtime.authProfileQuietReason || '')
         ].join(':');
         if (!wilduIsAuthProfileTerminalForResourceLiveness(auth, text)) return false;
+        const clearedResourceRecovery = typeof wilduReleaseAuthResourceRecoveryForTerminalLiveness === 'function'
+            ? wilduReleaseAuthResourceRecoveryForTerminalLiveness('auth_profile_terminal_release:' + String(reason || ''), surface, auth)
+            : false;
         runtime.authProfileQuietUntil = 0;
         runtime.authProfileQuietReason = '';
         runtime.authProfileResumeAttempts = 0;
@@ -27424,7 +27469,8 @@ function wilduReleaseAuthProfileQuietForTerminalLiveness(reason, surface, authSn
                 sessionState: auth.sessionState,
                 hasFirebaseUser: !!auth.hasFirebaseUser,
                 stalePending: !!auth.stalePending
-            }
+            },
+            clearedResourceRecovery: !!clearedResourceRecovery
         });
         window.setTimeout(function () {
             try {
@@ -27442,7 +27488,63 @@ function wilduReleaseAuthProfileQuietForTerminalLiveness(reason, surface, authSn
                     wilduScheduleAmazonImageHydration('auth_terminal_quiet_release', 240);
                 }
             } catch (e) {}
+            try {
+                if (typeof wilduScheduleDeferredIOSImageRegistrationFlush === 'function') {
+                    wilduScheduleDeferredIOSImageRegistrationFlush('auth_terminal_quiet_release', 220);
+                }
+            } catch (e) {}
         }, 60);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduIsAuthProfileResourceRecoveryReason(reason) {
+    return /auth_profile_quiet|auth_profile_critical_path/i.test(String(reason || ''));
+}
+
+function wilduReleaseAuthResourceRecoveryForTerminalLiveness(reason, surface, authSnapshot) {
+    try {
+        if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
+        const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+        const now = Date.now();
+        const recoveryUntil = Number(runtime.resourceRecoveryUntil || 0);
+        const recoveryRemaining = Math.max(0, recoveryUntil - now);
+        if (recoveryRemaining <= 0) return false;
+        const recoveryReason = String(runtime.resourceRecoveryReason || '');
+        if (!wilduIsAuthProfileResourceRecoveryReason(recoveryReason)) return false;
+        const auth = authSnapshot || wilduGetAuthProfileCriticalSnapshot();
+        const context = [
+            String(reason || ''),
+            String(surface || ''),
+            recoveryReason,
+            String(runtime.authProfileQuietReason || '')
+        ].join(':');
+        if (!wilduIsAuthProfileTerminalForResourceLiveness(auth, context)) return false;
+        const previousOptimizeUntil = Number(runtime.optimizePausedUntil || 0);
+        runtime.resourceRecoveryUntil = 0;
+        runtime.resourceRecoveryReason = '';
+        runtime.resourceRecoveryDetail = null;
+        if (previousOptimizeUntil <= recoveryUntil + 250) {
+            runtime.optimizePausedUntil = 0;
+        }
+        runtime.authProfileResumeAttempts = 0;
+        runtime.authResourceRecoveryTerminalReleaseLastAt = now;
+        runtime.authResourceRecoveryTerminalReleaseReason = String(reason || 'terminal_resource_liveness');
+        wilduIOSBlackBoxRecord('ios_resource_recovery_released_terminal', {
+            reason: String(reason || ''),
+            surface: String(surface || ''),
+            recoveryReason,
+            recoveryRemainingMs: recoveryRemaining,
+            optimizePausedCleared: previousOptimizeUntil <= recoveryUntil + 250,
+            auth: {
+                active: !!auth.active,
+                sessionState: auth.sessionState,
+                hasFirebaseUser: !!auth.hasFirebaseUser,
+                stalePending: !!auth.stalePending
+            }
+        });
         return true;
     } catch (e) {
         return false;
@@ -27622,12 +27724,16 @@ function wilduScheduleIOSPostAuthResourceResume(reason, delayMs) {
             return;
         }
         runtime.authProfileResumeAttempts = 0;
+        const clearedResourceRecovery = typeof wilduReleaseAuthResourceRecoveryForTerminalLiveness === 'function'
+            ? wilduReleaseAuthResourceRecoveryForTerminalLiveness('post_auth_resource_resume:' + String(reason || ''), 'post-auth', authSnapshot)
+            : false;
         if (liveness && liveness.allow) {
             try {
                 if (typeof wilduIOSBlackBoxRecord === 'function') {
                     wilduIOSBlackBoxRecord('ios_post_auth_visual_resume_unblocked', {
                         reason: String(reason || ''),
                         mode: liveness.mode || '',
+                        clearedResourceRecovery: !!clearedResourceRecovery,
                         snapshot: authSnapshot
                     });
                 }
@@ -27641,6 +27747,7 @@ function wilduScheduleIOSPostAuthResourceResume(reason, delayMs) {
             if (typeof wilduIOSBlackBoxRecord === 'function') {
                 wilduIOSBlackBoxRecord('ios_post_auth_resource_resume_started', {
                     reason: String(reason || ''),
+                    clearedResourceRecovery: !!clearedResourceRecovery,
                     snapshot: authSnapshot
                 });
             }
@@ -27890,6 +27997,12 @@ function wilduGetIOSResourceRecoveryGuardStatus(reason, surface) {
             surface: cleanSurface,
             detail: wilduGetAuthProfileCriticalSnapshot()
         };
+    }
+    if (typeof wilduReleaseAuthResourceRecoveryForTerminalLiveness === 'function') {
+        const authSnapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+            ? wilduGetAuthProfileCriticalSnapshot()
+            : null;
+        wilduReleaseAuthResourceRecoveryForTerminalLiveness('resource_guard:' + String(reason || ''), cleanSurface, authSnapshot);
     }
     const manualRecoveryRemaining = Math.max(0, Number(runtime.resourceRecoveryUntil || 0) - now);
     if (manualRecoveryRemaining > 0) {
@@ -30375,6 +30488,8 @@ function getWilduIOSImageMemorySnapshot() {
         smartOptimizePromoted: runtime.optimizePromoted,
         smartOptimizeFailed: runtime.optimizeFailed,
         smartOptimizePausedMs: Math.max(0, Number(runtime.optimizePausedUntil || 0) - Date.now()),
+        resourceRecoveryMs: Math.max(0, Number(runtime.resourceRecoveryUntil || 0) - Date.now()),
+        resourceRecoveryReason: runtime.resourceRecoveryReason || '',
         smartOptimizeListDisabled: !!runtime.listOptimizationDisabledForSession,
         smartOptimizeListDisabledReason: runtime.listOptimizationDisabledReason || '',
         smartOptimizeListDisabledMs: Math.max(0, Number(runtime.listOptimizationDisabledUntil || 0) - Date.now()),
@@ -30402,6 +30517,10 @@ function getWilduIOSImageMemorySnapshot() {
             ? Math.max(0, Date.now() - Number(runtime.authProfileTerminalReleaseLastAt || 0))
             : null,
         authProfileTerminalReleaseReason: runtime.authProfileTerminalReleaseReason || '',
+        authResourceRecoveryTerminalReleaseAgoMs: runtime.authResourceRecoveryTerminalReleaseLastAt
+            ? Math.max(0, Date.now() - Number(runtime.authResourceRecoveryTerminalReleaseLastAt || 0))
+            : null,
+        authResourceRecoveryTerminalReleaseReason: runtime.authResourceRecoveryTerminalReleaseReason || '',
         authProfileLivenessLastKey: runtime.authProfileLivenessLastKey || '',
         authProfileCritical: typeof wilduGetAuthProfileCriticalSnapshot === 'function'
             ? wilduGetAuthProfileCriticalSnapshot()
