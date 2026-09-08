@@ -10892,6 +10892,74 @@ const WilduMediaClient = (() => {
         if (modal) modal.style.display = "none";
     }
 
+    function isWilduRewardsSurfaceVisibleForIOS() {
+        try {
+            const section = document.getElementById("sec-rewards");
+            if (!section || section.classList.contains("hidden")) return false;
+            const tab = typeof currentTab !== "undefined" ? currentTab : window.currentTab;
+            if (String(tab || "") !== "rewards") return false;
+            const rect = section.getBoundingClientRect();
+            return !!(rect && rect.width > 0 && rect.height > 0);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function wilduReleaseHiddenRewardsResourcesForIOS(reason) {
+        try {
+            if (!(typeof wilduShouldUseIOSPWASmartImageGuard === "function" && wilduShouldUseIOSPWASmartImageGuard())) return null;
+            if (isWilduRewardsSurfaceVisibleForIOS()) return null;
+            const section = document.getElementById("sec-rewards");
+            const modal = document.getElementById("wildu-rewards-video-modal");
+            let iframesCleared = 0;
+            let imagesReleased = 0;
+            const roots = [section, modal].filter(Boolean);
+            roots.forEach(function (root) {
+                root.querySelectorAll("iframe").forEach(function (frame) {
+                    const src = frame.currentSrc || frame.getAttribute("src") || "";
+                    if (!src) return;
+                    try {
+                        if (frame.dataset) {
+                            frame.dataset.wilduIosIframeReleased = "1";
+                            frame.dataset.wilduIosIframeReleaseReason = String(reason || "").slice(0, 120);
+                        }
+                        frame.src = "about:blank";
+                        window.setTimeout(function () {
+                            try {
+                                if (!isWilduRewardsSurfaceVisibleForIOS() && frame.getAttribute("src") === "about:blank") {
+                                    frame.removeAttribute("src");
+                                }
+                            } catch (e) {}
+                        }, 250);
+                    } catch (e) {
+                        try { frame.removeAttribute("src"); } catch (ignored) {}
+                    }
+                    iframesCleared += 1;
+                });
+                root.querySelectorAll("img").forEach(function (img) {
+                    if (typeof wilduReleaseImageElementPreservingSource === "function") {
+                        if (wilduReleaseImageElementPreservingSource(img, "hidden_rewards:" + String(reason || ""))) imagesReleased += 1;
+                    } else if (img && img.getAttribute("src")) {
+                        if (img.dataset && !img.dataset.wilduTabOriginalSrc) img.dataset.wilduTabOriginalSrc = img.getAttribute("src") || "";
+                        img.removeAttribute("src");
+                        imagesReleased += 1;
+                    }
+                });
+            });
+            if (iframesCleared || imagesReleased) {
+                wilduIOSBlackBoxRecord("ios_hidden_rewards_resources_released", {
+                    reason: String(reason || ""),
+                    iframesCleared,
+                    imagesReleased,
+                    tab: String((typeof currentTab !== "undefined" ? currentTab : window.currentTab) || "")
+                });
+            }
+            return { iframesCleared, imagesReleased };
+        } catch (e) {
+            return null;
+        }
+    }
+
     function openWilduRewardsVideoModal(video) {
         video = video || {};
 
@@ -16509,7 +16577,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.76';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.77';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16786,6 +16854,58 @@ const WilduIOSBlackBox = (() => {
         return out;
     }
 
+    function classifyIframeForBlackbox(frame) {
+        try {
+            if (!frame) return 'other';
+            const id = String(frame.id || '');
+            const src = String(frame.currentSrc || frame.getAttribute('src') || '');
+            if (/^about:blank$/i.test(src)) return 'blank';
+            if (id === 'od-map-iframe' || /google\.[^/]+\/maps|maps\.google/i.test(src)) return 'maps';
+            if (id === 'game-frame' || /(^|\/)giochi\//i.test(src)) return 'game';
+            if (id === 'wildu-rewards-video-frame' || /youtube(?:-nocookie)?\.com\/embed/i.test(src)) return 'rewards-video';
+            if (frame.closest && frame.closest('#sec-rewards,#wildu-rewards-video-modal')) return 'rewards';
+            if (frame.closest && frame.closest('#amazon-footer-wrapper,#amazon-detail-overlay,#amazon-slider-engine')) return 'shop';
+        } catch (e) {}
+        return 'other';
+    }
+
+    function redactIframeSrcForBlackbox(frame) {
+        try {
+            const raw = String(frame && (frame.currentSrc || frame.getAttribute('src')) || '');
+            if (!raw) return '';
+            const parsed = new URL(raw, window.location.href);
+            return parsed.origin + parsed.pathname;
+        } catch (e) {
+            return String(frame && (frame.currentSrc || frame.getAttribute('src')) || '').split('?')[0].split('#')[0].slice(0, 220);
+        }
+    }
+
+    function collectLiveIframesForBlackbox() {
+        const frames = [];
+        try {
+            Array.from(document.querySelectorAll('iframe')).forEach((frame) => {
+                const src = String(frame.currentSrc || frame.getAttribute('src') || '');
+                if (!src) return;
+                let rect = null;
+                let style = null;
+                try { rect = frame.getBoundingClientRect(); } catch (e) { rect = null; }
+                try { style = window.getComputedStyle(frame); } catch (e) { style = null; }
+                frames.push({
+                    id: String(frame.id || '').slice(0, 80),
+                    cls: String(frame.className || '').slice(0, 120),
+                    kind: classifyIframeForBlackbox(frame),
+                    src: redactIframeSrcForBlackbox(frame),
+                    released: !!(frame.dataset && frame.dataset.wilduIosIframeReleased === '1'),
+                    visible: !!(rect && rect.width > 0 && rect.height > 0 && (!style || (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) !== 0))),
+                    width: rect ? Math.round(rect.width) : null,
+                    height: rect ? Math.round(rect.height) : null,
+                    owner: frame.closest && frame.closest('[id]') ? String(frame.closest('[id]').id || '').slice(0, 80) : ''
+                });
+            });
+        } catch (e) {}
+        return frames;
+    }
+
     function collectFixedStickySamplesForBlackbox() {
         const samples = [];
         try {
@@ -16874,6 +16994,10 @@ const WilduIOSBlackBox = (() => {
             const related = document.getElementById('wildu-related-modal');
             const dates = document.getElementById('wildu-date-options-modal');
             const amazon = document.getElementById('amazon-slider-engine');
+            const rewards = document.getElementById('sec-rewards');
+            const liveIframes = typeof collectLiveIframesForBlackbox === 'function'
+                ? collectLiveIframesForBlackbox()
+                : [];
             const out = {
                 relatedVisible: !!(related && related.classList && related.classList.contains('is-visible')),
                 relatedImgs: related ? related.querySelectorAll('img').length : 0,
@@ -16883,7 +17007,12 @@ const WilduIOSBlackBox = (() => {
                 datesLiveImgs: dates ? dates.querySelectorAll('img[src],img[srcset],img[sizes]').length : 0,
                 amazonCards: amazon ? amazon.querySelectorAll('.amazon-card').length : 0,
                 amazonImgs: amazon ? amazon.querySelectorAll('img').length : 0,
-                amazonPendingImgs: amazon ? amazon.querySelectorAll('[data-wildu-shop-image-src]').length : 0
+                amazonPendingImgs: amazon ? amazon.querySelectorAll('[data-wildu-shop-image-src]').length : 0,
+                rewardsVisible: !!(rewards && !rewards.classList.contains('hidden')),
+                rewardsImgs: rewards ? rewards.querySelectorAll('img').length : 0,
+                rewardsLiveImgs: rewards ? rewards.querySelectorAll('img[src],img[srcset],img[sizes]').length : 0,
+                hiddenNonMapsIframes: liveIframes.filter((frame) => frame && frame.kind !== 'maps' && frame.kind !== 'blank' && frame.visible === false).length,
+                liveIframes
             };
             if (typeof getWilduSoftModalRuntimeSnapshot === 'function') {
                 out.softModalRuntime = getWilduSoftModalRuntimeSnapshot();
@@ -16929,6 +17058,7 @@ const WilduIOSBlackBox = (() => {
             iframesLive: 0,
             mapsIframeLive: false,
             gameFrameLive: false,
+            liveIframes: [],
             domNodes: 0,
             fixedStickyNodes: 0,
             fixedStickySamples: [],
@@ -16961,11 +17091,11 @@ const WilduIOSBlackBox = (() => {
         } catch (e) {}
 
         try {
-            const frames = Array.from(document.querySelectorAll('iframe'));
-            const liveFrames = frames.filter((frame) => !!(frame.currentSrc || frame.getAttribute('src')));
+            const liveFrames = collectLiveIframesForBlackbox();
+            snapshot.liveIframes = liveFrames;
             snapshot.iframesLive = liveFrames.length;
-            snapshot.mapsIframeLive = liveFrames.some((frame) => frame.id === 'od-map-iframe');
-            snapshot.gameFrameLive = liveFrames.some((frame) => /(^|\/)giochi\//i.test(String(frame.currentSrc || frame.getAttribute('src') || '')));
+            snapshot.mapsIframeLive = liveFrames.some((frame) => frame && frame.kind === 'maps');
+            snapshot.gameFrameLive = liveFrames.some((frame) => frame && frame.kind === 'game');
         } catch (e) {}
 
         try {
@@ -17289,7 +17419,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldUseFullSnapshotForEvent(event) {
-        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_blocked|ios_auth_profile_quiet_entered|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
+        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_blocked|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
     }
 
     function appendBootDiaryEntry(state, bootEntry, previousEvents) {
@@ -17297,7 +17427,7 @@ const WilduIOSBlackBox = (() => {
         const history = Array.isArray(previousEvents) ? previousEvents : [];
         const previous = history.length ? history[history.length - 1] : null;
         const previousCritical = [...history].reverse().find((entry) => {
-            return entry && /detail|related|dates|pagehide|visibilitychange|catalog_image|map_iframe/.test(String(entry.event || ''));
+            return entry && /detail|related|dates|pagehide|visibilitychange|catalog_image|map_iframe|iframe|rewards|auth_profile|amazon/.test(String(entry.event || ''));
         }) || previous;
         const previousSnapshot = previousCritical && previousCritical.snapshot ? previousCritical.snapshot : (previous && previous.snapshot ? previous.snapshot : null);
         const bootSnapshot = bootEntry.snapshot || {};
@@ -25305,15 +25435,19 @@ function wilduGetIOSRuntimeOwnerGuard(lane, reason, options) {
                     ? wilduGetAuthProfileCriticalSnapshot()
                     : null;
                 const surface = String(opts.surface || '');
-                const liveness = typeof wilduGetAuthProfileLivenessDecision === 'function'
-                    ? wilduGetAuthProfileLivenessDecision(cleanLane, reason, surface, authSnapshot, imageRuntime.authProfileQuietReason || '')
-                    : { allow: false };
-                if (liveness && liveness.allow) {
-                    if (typeof wilduRecordAuthProfileLivenessBypass === 'function') {
-                        wilduRecordAuthProfileLivenessBypass(cleanLane, reason, surface, liveness, authSnapshot);
+                const terminalRelease = typeof wilduReleaseAuthProfileQuietForTerminalLiveness === 'function' &&
+                    wilduReleaseAuthProfileQuietForTerminalLiveness('owner_guard:' + cleanLane + ':' + String(reason || ''), surface, authSnapshot);
+                if (!terminalRelease) {
+                    const liveness = typeof wilduGetAuthProfileLivenessDecision === 'function'
+                        ? wilduGetAuthProfileLivenessDecision(cleanLane, reason, surface, authSnapshot, imageRuntime.authProfileQuietReason || '')
+                        : { allow: false };
+                    if (liveness && liveness.allow) {
+                        if (typeof wilduRecordAuthProfileLivenessBypass === 'function') {
+                            wilduRecordAuthProfileLivenessBypass(cleanLane, reason, surface, liveness, authSnapshot);
+                        }
+                    } else {
+                        return block('ios_owner:auth_profile_critical_path', authProfileRemaining, { reason: imageRuntime.authProfileQuietReason || '' });
                     }
-                } else {
-                    return block('ios_owner:auth_profile_critical_path', authProfileRemaining, { reason: imageRuntime.authProfileQuietReason || '' });
                 }
             }
         }
@@ -25398,6 +25532,11 @@ function wilduScheduleIOSOwnerStableResume(reason, delayMs) {
                     owner: WILDU_SOFT_MODAL_FLOW_RUNTIME.surfaceTransitionOwner || '',
                     activeModal: WILDU_SOFT_MODAL_FLOW_RUNTIME.activeModalId || ''
                 });
+            } catch (e) {}
+            try {
+                if (typeof wilduReleaseHiddenRewardsResourcesForIOS === 'function') {
+                    wilduReleaseHiddenRewardsResourcesForIOS('owner_stable_resume:' + String(reason || ''));
+                }
             } catch (e) {}
             try {
                 if (typeof wilduScheduleCriticalVisibleImageRestore === 'function') {
@@ -26858,6 +26997,10 @@ const WILDU_IOS_IMAGE_MEMORY_ROOT_SELECTOR = [
     '#payday-list',
     '#ondemand-list',
     '#amazon-slider-engine',
+    '#amazon-footer-wrapper',
+    '#amazon-detail-overlay',
+    '#sec-rewards',
+    '#wildu-rewards-video-modal',
     '#wildu-rewards-horizontal-videos',
     '#sec-travelhub .wildu-travelhub-carousel',
     '#wildu-guest-profile-media',
@@ -26991,6 +27134,8 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     authProfileResumeTimer: 0,
     authProfileResumeDue: 0,
     authProfileResumeAttempts: 0,
+    authProfileTerminalReleaseLastAt: 0,
+    authProfileTerminalReleaseReason: '',
     authProfileLivenessLastRecordAt: 0,
     authProfileLivenessLastKey: ''
 };
@@ -27073,8 +27218,9 @@ function wilduGetSmartImageSurface(img) {
     if (img.closest('#ondemand-list')) return 'ondemand-list';
     if (img.closest('#wildu-guest-profile-media,#wildu-guest-profile-carousel')) return 'guest-profile';
     if (img.closest('#sec-travelhub .wildu-travelhub-carousel')) return 'travelhub';
-    if (img.closest('#amazon-slider-engine')) return 'shop';
-    if (img.closest('#wildu-rewards-horizontal-videos')) return 'rewards';
+    if (img.id === 'trip-modal-img' || img.closest('#od-details-modal')) return 'detail';
+    if (img.closest('#amazon-slider-engine,#amazon-footer-wrapper,#amazon-detail-overlay')) return 'shop';
+    if (img.closest('#sec-rewards,#wildu-rewards-horizontal-videos,#wildu-rewards-video-modal')) return 'rewards';
     return 'other';
 }
 
@@ -27231,6 +27377,78 @@ function wilduIsAuthProfileCriticalPathActive() {
     return !!(wilduGetAuthProfileCriticalSnapshot().active);
 }
 
+function wilduIsAuthProfileTerminalForResourceLiveness(authSnapshot, contextText) {
+    try {
+        if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
+        const auth = authSnapshot || wilduGetAuthProfileCriticalSnapshot();
+        if (!auth) return false;
+        if (auth.googleTransition || auth.bridgeRuntime || auth.authRefreshLock || auth.registrationCompletion) return false;
+        const text = [
+            String(contextText || ''),
+            String(auth.sessionState || '')
+        ].join(':');
+        if (auth.hasFirebaseUser && auth.sessionState === 'LOGGED') return true;
+        if (auth.hasFirebaseUser && /PROFILE_CONFIRMED|BACKEND_SESSION_FINALIZED|BACKEND_LOGGED|BACKEND_SESSION_CONFIRMED|AUTH_BRIDGE_USER_AVAILABLE/i.test(text)) {
+            return true;
+        }
+        if (auth.stalePending && !auth.hasFirebaseUser) return true;
+    } catch (e) {}
+    return false;
+}
+
+function wilduReleaseAuthProfileQuietForTerminalLiveness(reason, surface, authSnapshot) {
+    try {
+        if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
+        const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+        const now = Date.now();
+        const remaining = Math.max(0, Number(runtime.authProfileQuietUntil || 0) - now);
+        if (remaining <= 0) return false;
+        const auth = authSnapshot || wilduGetAuthProfileCriticalSnapshot();
+        const text = [
+            String(reason || ''),
+            String(surface || ''),
+            String(runtime.authProfileQuietReason || '')
+        ].join(':');
+        if (!wilduIsAuthProfileTerminalForResourceLiveness(auth, text)) return false;
+        runtime.authProfileQuietUntil = 0;
+        runtime.authProfileQuietReason = '';
+        runtime.authProfileResumeAttempts = 0;
+        runtime.authProfileTerminalReleaseLastAt = now;
+        runtime.authProfileTerminalReleaseReason = String(reason || 'terminal_liveness');
+        wilduIOSBlackBoxRecord('ios_auth_profile_quiet_released_terminal', {
+            reason: String(reason || ''),
+            surface: String(surface || ''),
+            remainingMs: remaining,
+            auth: {
+                active: !!auth.active,
+                sessionState: auth.sessionState,
+                hasFirebaseUser: !!auth.hasFirebaseUser,
+                stalePending: !!auth.stalePending
+            }
+        });
+        window.setTimeout(function () {
+            try {
+                if (typeof wilduScheduleCriticalVisibleImageRestore === 'function') {
+                    wilduScheduleCriticalVisibleImageRestore('auth_terminal_quiet_release', 80, WILDU_IOS_CRITICAL_VISIBLE_RESTORE_LIMIT);
+                }
+            } catch (e) {}
+            try {
+                if (typeof wilduScheduleActiveTravelBandRestoreForIOS === 'function') {
+                    wilduScheduleActiveTravelBandRestoreForIOS('auth_terminal_quiet_release', 140, WILDU_IOS_ACTIVE_TRAVEL_BAND_RESTORE_LIMIT);
+                }
+            } catch (e) {}
+            try {
+                if (typeof wilduScheduleAmazonImageHydration === 'function') {
+                    wilduScheduleAmazonImageHydration('auth_terminal_quiet_release', 240);
+                }
+            } catch (e) {}
+        }, 60);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 function wilduGetAuthProfileLivenessDecision(lane, reason, surface, authSnapshot, quietReason) {
     const decision = {
         allow: false,
@@ -27243,7 +27461,7 @@ function wilduGetAuthProfileLivenessDecision(lane, reason, surface, authSnapshot
     try {
         if (!wilduShouldUseIOSPWASmartImageGuard()) return decision;
         const auth = authSnapshot || wilduGetAuthProfileCriticalSnapshot();
-        if (!auth || !auth.active || !auth.hasFirebaseUser) return decision;
+        if (!auth || !auth.hasFirebaseUser) return decision;
         if (auth.googleTransition || auth.bridgeRuntime || auth.authRefreshLock || auth.registrationCompletion) return decision;
         const text = [
             decision.lane,
@@ -27254,6 +27472,7 @@ function wilduGetAuthProfileLivenessDecision(lane, reason, surface, authSnapshot
         ].join(':');
         const terminalProfile = auth.sessionState === 'LOGGED' ||
             /PROFILE_CONFIRMED|BACKEND_SESSION_FINALIZED|BACKEND_LOGGED|BACKEND_SESSION_CONFIRMED|AUTH_BRIDGE_USER_AVAILABLE|AUTH_LIVENESS_RETRY/i.test(text);
+        if (!auth.active && !terminalProfile) return decision;
         const criticalVisual = /critical-visible-restore|active-travel-band-restore|visible_restore|critical_visible|active_travel_band|travelhub_force_hydrate|SCROLL_VISIBLE|FAST_SCROLL_QUIET_RESTORE|blocked_flush_visible_band|DEFERRED_IOS_IMAGE_REGISTRATION|POST_AUTH_VISIBLE_RESTORE|POST_AUTH_TRAVEL_BAND/i.test(text) ||
             (/^(official-list|openday-list|payday-list|ondemand-list|guest-profile|travelhub|shop|rewards)$/.test(decision.surface) && /restore|visible|guarantee|flush|hydrate|recovery/i.test(text));
         const cleanupPrune = /soft-modal-prune|soft_modal_dom_prune|soft_modal_resource_cleanup|soft_modal_cleanup|resource_cleanup/i.test(text);
@@ -27308,13 +27527,16 @@ function wilduRecordAuthProfileLivenessBypass(lane, reason, surface, decision, a
 function wilduShouldAuthProfileGuardBlock(reason, surface) {
     if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
     const authSnapshot = wilduGetAuthProfileCriticalSnapshot();
+    const cleanReason = String(reason || '');
+    const cleanSurface = String(surface || '');
     if (authSnapshot.stalePending && typeof resetStaleClientAuthPendingToGuest === 'function') {
         try { resetStaleClientAuthPendingToGuest('IOS_AUTH_GUARD_STALE_PENDING', { force: true }); } catch (e) {}
         return false;
     }
+    if (wilduReleaseAuthProfileQuietForTerminalLiveness(cleanReason, cleanSurface, authSnapshot)) {
+        return false;
+    }
     if (!authSnapshot.active) return false;
-    const cleanReason = String(reason || '');
-    const cleanSurface = String(surface || '');
     if (/visible_restore|critical_visible|active_travel_band|travelhub_force_hydrate|POST_AUTH_VISIBLE_RESTORE/i.test(cleanReason)) {
         return false;
     }
@@ -27564,6 +27786,11 @@ function wilduHandleIOSPageLifecycleEvent(eventName, detail) {
     try {
         if (typeof wilduReleaseIOSImagesOutsideActiveWindow === 'function') {
             wilduReleaseIOSImagesOutsideActiveWindow('page_lifecycle:' + name);
+        }
+    } catch (e) {}
+    try {
+        if (typeof wilduReleaseHiddenRewardsResourcesForIOS === 'function') {
+            wilduReleaseHiddenRewardsResourcesForIOS('page_lifecycle:' + name);
         }
     } catch (e) {}
     try {
@@ -30171,6 +30398,10 @@ function getWilduIOSImageMemorySnapshot() {
         authProfileResumeScheduled: !!runtime.authProfileResumeTimer,
         authProfileResumeDueMs: Math.max(0, Number(runtime.authProfileResumeDue || 0) - Date.now()),
         authProfileResumeAttempts: runtime.authProfileResumeAttempts || 0,
+        authProfileTerminalReleaseAgoMs: runtime.authProfileTerminalReleaseLastAt
+            ? Math.max(0, Date.now() - Number(runtime.authProfileTerminalReleaseLastAt || 0))
+            : null,
+        authProfileTerminalReleaseReason: runtime.authProfileTerminalReleaseReason || '',
         authProfileLivenessLastKey: runtime.authProfileLivenessLastKey || '',
         authProfileCritical: typeof wilduGetAuthProfileCriticalSnapshot === 'function'
             ? wilduGetAuthProfileCriticalSnapshot()
@@ -37978,6 +38209,10 @@ if (profKeyEl) {
             targetSection.classList.remove('hidden');
         }
 
+        if (id !== 'rewards' && typeof wilduReleaseHiddenRewardsResourcesForIOS === 'function') {
+            wilduReleaseHiddenRewardsResourcesForIOS('tab_show:' + String(previousTab || '') + '_to_' + String(id || ''));
+        }
+
         if (iosTravelTabTransition && typeof wilduCompleteIOSTravelTabTransition === 'function') {
             wilduCompleteIOSTravelTabTransition(iosTravelTabTransition);
         }
@@ -38002,6 +38237,9 @@ if (profKeyEl) {
 
             if (typeof renderWilduRewardsBottom === 'function') {
                 renderWilduRewardsBottom();
+            }
+            if (typeof wilduScheduleCriticalVisibleImageRestore === 'function') {
+                wilduScheduleCriticalVisibleImageRestore('rewards_tab_open', 180, WILDU_IOS_CRITICAL_VISIBLE_RESTORE_LIMIT);
             }
         }
         
@@ -42832,10 +43070,19 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
         const reasonText = String(reason || '');
         const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|resume_timer|deferred|auto_scroll_tick|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
         if (!visibleReason) return false;
-        if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|recent_document_restart|travel_tab_transition|resource_recovery/i.test(guardName)) return false;
+        if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|travel_tab_transition/i.test(guardName)) return false;
         const hydrated = wilduCountAmazonLiveHydratedImages(slider);
         const visibleLimit = wilduGetAmazonVisibleHydrationLimit(slider, true);
         if (hydrated >= visibleLimit) return false;
+        if (/recent_document_restart|ios_resource_recovery|resource_recovery/i.test(guardName)) {
+            wilduRecordAmazonCarouselEvent('amazon_visible_image_hydration_recovery_bypass', {
+                reason: reasonText,
+                guard: guardName,
+                hydrated,
+                limit: visibleLimit
+            });
+            return true;
+        }
         if (/ios_owner:auth_profile_critical_path|auth_profile/i.test(guardName)) {
             const runtime = typeof WILDU_IOS_IMAGE_MEMORY_RUNTIME === 'object' ? WILDU_IOS_IMAGE_MEMORY_RUNTIME : {};
             const authSnapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
