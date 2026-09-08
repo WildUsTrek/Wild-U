@@ -12423,10 +12423,14 @@ window.WilduMediaClient = WilduMediaClient;
     let authProbeSequence = 0;
     let profileCompletionRequired = false;
     let authRecoveryTimer = null;
+    let authLivenessRetryTimer = null;
     let authRecoveryAttempt = 0;
+    let authProbeStartedAt = 0;
     let lastBackendVerifiedUid = '';
     let isRegistrationCompletionInProgress = false;
     const AUTH_RECOVERY_DELAYS_MS = [250, 1000, 3000, 8000];
+    const AUTH_PROFILE_PROBE_STALE_MS = 15000;
+    const AUTH_PROFILE_LIVENESS_RETRY_MS = 15000;
     const REGISTRATION_PROFILE_CONFIRM_DELAYS_MS = [0, 450];
     const WILDU_GOOGLE_AUTH_TRANSITION_KEY = 'wilduGoogleAuthTransition:v1';
     const WILDU_GOOGLE_AUTH_TRANSITION_TTL_MS = 2 * 60 * 1000;
@@ -13267,6 +13271,15 @@ function requireLoggedAccess(reason, options = {}) {
         return false;
     }
 
+    if (auth.currentUser && clientSession.authState !== 'LOGGED') {
+        ensureAuthProfileLiveness('REQUIRE_LOGGED_ACCESS:' + String(reason || 'AUTH_REQUIRED'), {
+            reset: true
+        });
+        show('profile');
+        showToast("Accesso Google presente. Completo la verifica del profilo...");
+        return false;
+    }
+
     openRegistrationCTA(reason, { force: true });
     return false;
 }
@@ -13274,6 +13287,16 @@ function requireLoggedAccess(reason, options = {}) {
     function createBookingAuthContext() {
         const firebaseUser = auth.currentUser;
         const uid = String(firebaseUser?.uid || '');
+        if (firebaseUser && uid && !isClientLogged()) {
+            ensureAuthProfileLiveness('BOOKING_AUTH_CONTEXT_PENDING', {
+                reset: true
+            });
+            show('profile');
+            showToast("Accesso Google presente. Completo la verifica del profilo prima della prenotazione...");
+            const pendingError = new Error('AUTH_REQUIRED');
+            pendingError.code = 'AUTH_REQUIRED';
+            throw pendingError;
+        }
         if (!isClientLogged() || !firebaseUser || !uid) {
             openRegistrationCTA('AUTH_FALLBACK', { force: true });
             throw new Error('AUTH_REQUIRED');
@@ -14533,20 +14556,94 @@ async function handleTelegramAuth(tgUser) {
 // LISTENER AUTH GOOGLE (POST-REDIRECT SAFE)
 // ==========================================
 
-function clearClientAuthRecovery(options = {}) {
-    if (authRecoveryTimer) {
-        window.clearTimeout(authRecoveryTimer);
-        authRecoveryTimer = null;
+    function clearClientAuthRecovery(options = {}) {
+        if (authRecoveryTimer) {
+            window.clearTimeout(authRecoveryTimer);
+            authRecoveryTimer = null;
+        }
+        if (authLivenessRetryTimer) {
+            window.clearTimeout(authLivenessRetryTimer);
+            authLivenessRetryTimer = null;
+        }
+        if (options.keepAttempt !== true) {
+            authRecoveryAttempt = 0;
+        }
     }
-    if (options.keepAttempt !== true) {
-        authRecoveryAttempt = 0;
-    }
+
+function releaseStaleAuthProfileProbeIfNeeded(reason, options = {}) {
+    if (!authProbeInProgress) return false;
+    if (authRefreshLock || isRegistrationCompletionInProgress) return false;
+    const startedAt = Number(authProbeStartedAt || 0);
+    const ageMs = startedAt ? Date.now() - startedAt : Number.POSITIVE_INFINITY;
+    const force = options.force === true;
+    if (!force && Number.isFinite(ageMs) && ageMs < AUTH_PROFILE_PROBE_STALE_MS) return false;
+
+    authProbeSequence += 1;
+    authProbeInProgress = false;
+    authProbeStartedAt = 0;
+    try {
+        pageDebug('AUTH_PROFILE_PROBE_STALE_RELEASED', {
+            reason: String(reason || 'AUTH_PROFILE_PROBE_STALE'),
+            ageMs: Number.isFinite(ageMs) ? Math.round(ageMs) : null,
+            missingStartedAt: !startedAt,
+            force,
+            hasFirebaseUser: !!auth.currentUser,
+            clientAuthState: String(clientSession?.authState || '')
+        });
+    } catch (e) {}
+    return true;
 }
 
-function scheduleClientAuthRecovery(reason, options = {}) {
-    if (isTelegramContext() || !auth.currentUser) {
-        try {
-            pageDebug('AUTH_RECOVERY_SKIPPED_NO_USER', {
+function scheduleAuthProfileLivenessRetry(reason) {
+    if (authLivenessRetryTimer || isTelegramContext() || !auth.currentUser || clientSession.authState === 'LOGGED') return false;
+    authLivenessRetryTimer = window.setTimeout(function authProfileLivenessRetry() {
+        authLivenessRetryTimer = null;
+        if (!auth.currentUser || clientSession.authState === 'LOGGED' || isTelegramContext()) return;
+        releaseStaleAuthProfileProbeIfNeeded('AUTH_LIVENESS_RETRY:' + String(reason || ''), { force: true });
+        authRecoveryAttempt = 0;
+        scheduleClientAuthRecovery('AUTH_LIVENESS_RETRY:' + String(reason || ''), {
+            reset: true,
+            immediate: true
+        });
+    }, AUTH_PROFILE_LIVENESS_RETRY_MS);
+    try {
+        pageDebug('AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED', {
+            reason: String(reason || ''),
+            delayMs: AUTH_PROFILE_LIVENESS_RETRY_MS
+        });
+    } catch (e) {}
+    return true;
+}
+
+function ensureAuthProfileLiveness(reason, options = {}) {
+    if (isTelegramContext() || !auth.currentUser || clientSession.authState === 'LOGGED') return false;
+    const cleanReason = String(reason || 'AUTH_PROFILE_LIVENESS');
+    const released = releaseStaleAuthProfileProbeIfNeeded(cleanReason, { force: options.forceReleaseProbe === true });
+    try {
+        pageDebug('AUTH_PROFILE_LIVENESS_REQUESTED', {
+            reason: cleanReason,
+            releasedStaleProbe: released,
+            clientAuthState: String(clientSession?.authState || ''),
+            authProbeInProgress: !!authProbeInProgress,
+            authRefreshLock: !!authRefreshLock,
+            hasFirebaseUser: !!auth.currentUser
+        });
+    } catch (e) {}
+    if (!authRefreshLock && !isRegistrationCompletionInProgress) {
+        scheduleClientAuthRecovery(cleanReason, {
+            reset: options.reset !== false,
+            immediate: true
+        });
+    } else {
+        scheduleAuthProfileLivenessRetry(cleanReason);
+    }
+    return true;
+}
+
+    function scheduleClientAuthRecovery(reason, options = {}) {
+        if (isTelegramContext() || !auth.currentUser) {
+            try {
+                pageDebug('AUTH_RECOVERY_SKIPPED_NO_USER', {
                 reason: String(reason || 'AUTH_RECOVERY'),
                 isTelegram: !!isTelegramContext(),
                 hasFirebaseUser: !!auth.currentUser
@@ -14559,19 +14656,20 @@ function scheduleClientAuthRecovery(reason, options = {}) {
         clearClientAuthRecovery();
     } else if (authRecoveryTimer) {
         return;
-    }
+        }
 
-    if (authRecoveryAttempt >= AUTH_RECOVERY_DELAYS_MS.length) {
-        try {
-            pageDebug('AUTH_RECOVERY_EXHAUSTED', {
+        if (authRecoveryAttempt >= AUTH_RECOVERY_DELAYS_MS.length) {
+            try {
+                pageDebug('AUTH_RECOVERY_EXHAUSTED', {
                 reason: String(reason || 'AUTH_RECOVERY'),
                 attempt: authRecoveryAttempt,
                 hasFirebaseUser: !!auth.currentUser,
-                clientAuthState: String(clientSession?.authState || '')
-            });
-        } catch (e) {}
-        return;
-    }
+                    clientAuthState: String(clientSession?.authState || '')
+                });
+            } catch (e) {}
+            scheduleAuthProfileLivenessRetry(reason || 'AUTH_RECOVERY_EXHAUSTED');
+            return;
+        }
 
     const delay = options.immediate === true
         ? 0
@@ -14602,6 +14700,13 @@ function scheduleClientAuthRecovery(reason, options = {}) {
         }
 
         if (authRefreshLock || authProbeInProgress) {
+            if (releaseStaleAuthProfileProbeIfNeeded(reason || 'AUTH_RECOVERY_BUSY')) {
+                scheduleClientAuthRecovery(reason || 'AUTH_RECOVERY_PROBE_RELEASED', {
+                    reset: true,
+                    immediate: true
+                });
+                return;
+            }
             try {
                 pageDebug('AUTH_RECOVERY_BUSY_DEFERRED', {
                     reason: String(reason || 'AUTH_RECOVERY'),
@@ -14661,6 +14766,7 @@ function holdClientAuthPending(user, message, reason, options = {}) {
         clearClientPrivateRuntimeState();
     }
     authProbeInProgress = options.probeInProgress === true;
+    authProbeStartedAt = authProbeInProgress ? Date.now() : 0;
 
     const loginDesc = document.getElementById('login-desc');
     if (loginDesc) {
@@ -14709,6 +14815,7 @@ function resetStaleClientAuthPendingToGuest(reason, options = {}) {
 
     authRefreshLock = false;
     authProbeInProgress = false;
+    authProbeStartedAt = 0;
     profileCompletionRequired = false;
     tempGoogleUser = null;
     tempTelegramUser = null;
@@ -14881,6 +14988,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
         tempGoogleUser = user;
         profileCompletionRequired = true;
         authProbeInProgress = false;
+        authProbeStartedAt = 0;
         endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
         reconcileProfileShellWithClientSession();
         try { pageDebug('AUTH_PROFILE_FINALIZE_PROFILE_REQUIRED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
@@ -14907,6 +15015,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
     clearPendingClientAuthStateReplay();
     profileCompletionRequired = false;
     authProbeInProgress = false;
+    authProbeStartedAt = 0;
     endWilduGoogleAuthTransition('BACKEND_SESSION_FINALIZED');
     reconcileProfileShellWithClientSession();
     updateProfileUI();
@@ -15061,6 +15170,7 @@ if (docSnap.exists) {
 
     clearClientAuthRecovery();
     authProbeInProgress = false;
+    authProbeStartedAt = 0;
     endWilduGoogleAuthTransition('PROFILE_CONFIRMED');
     updateProfileUI();
 } else {
@@ -15070,6 +15180,7 @@ if (docSnap.exists) {
                 clearClientPrivateRuntimeState();
                 profileCompletionRequired = true;
                 authProbeInProgress = false;
+                authProbeStartedAt = 0;
                 endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
                 reconcileProfileShellWithClientSession();
             }
@@ -15126,6 +15237,7 @@ if (docSnap.exists) {
     tempTelegramUser = null;
     profileCompletionRequired = false;
     authProbeInProgress = false;
+    authProbeStartedAt = 0;
 
     clientSession = {
         authState: 'GUEST',
@@ -15431,6 +15543,7 @@ async function pollWilduAuthBridgeAttempt(state) {
         if (auth.currentUser) {
             clearWilduAuthBridgeAttempt('FIREBASE_USER_ALREADY_AVAILABLE');
             authProbeInProgress = false;
+            authProbeStartedAt = 0;
             try { pageDebug('AUTH_BRIDGE_POLL_FIREBASE_USER_AVAILABLE', { reason: 'FIREBASE_USER_ALREADY_AVAILABLE' }); } catch (e) {}
             scheduleClientAuthRecovery('AUTH_BRIDGE_USER_AVAILABLE', {
                 reset: true,
@@ -15463,6 +15576,7 @@ async function pollWilduAuthBridgeAttempt(state) {
                 clearWilduAuthBridgeAttempt(code || 'EXPIRED');
                 endWilduGoogleAuthTransition(code || 'AUTH_BRIDGE_EXPIRED');
                 authProbeInProgress = false;
+                authProbeStartedAt = 0;
                 if (!auth.currentUser) {
                     resetStaleClientAuthPendingToGuest(code || 'AUTH_BRIDGE_EXPIRED', { force: true });
                 }
@@ -15481,6 +15595,7 @@ async function pollWilduAuthBridgeAttempt(state) {
     }
 
     authProbeInProgress = false;
+    authProbeStartedAt = 0;
     if (!auth.currentUser) {
         resetStaleClientAuthPendingToGuest('AUTH_BRIDGE_POLL_TIMEOUT', { force: true });
     }
@@ -15524,6 +15639,7 @@ async function resumeWilduAuthBridgeAttempt() {
             code: String(error?.code || 'AUTH_BRIDGE_RESUME_FAILED')
         });
         authProbeInProgress = false;
+        authProbeStartedAt = 0;
         if (!auth.currentUser) {
             resetStaleClientAuthPendingToGuest(error?.code || 'AUTH_BRIDGE_RESUME_FAILED', { force: true });
         }
@@ -15993,6 +16109,7 @@ async function completeRegistration() {
     const submitButton = document.getElementById('complete-registration-btn');
     if (phone.length < 8) {
         authProbeInProgress = false;
+        authProbeStartedAt = 0;
         profileCompletionRequired = true;
         reconcileProfileShellWithClientSession();
         showToast("Inserisci un numero valido per le prenotazioni.");
@@ -16088,6 +16205,7 @@ async function completeRegistration() {
 
         if (mode === 'WEB' && String(auth.currentUser?.uid || '') !== String(userId)) {
             authProbeInProgress = false;
+            authProbeStartedAt = 0;
             reconcileProfileShellWithClientSession();
             return;
         }
@@ -16113,6 +16231,7 @@ async function completeRegistration() {
 
         profileCompletionRequired = false;
         authProbeInProgress = mode === 'WEB';
+        authProbeStartedAt = authProbeInProgress ? Date.now() : 0;
         reconcileProfileShellWithClientSession();
 
         if (mode === 'WEB') {
@@ -16159,6 +16278,7 @@ async function completeRegistration() {
             } catch (refreshError) {
                 console.error("Profilo salvato, ma aggiornamento dati fallito:", refreshError);
                 authProbeInProgress = false;
+                authProbeStartedAt = 0;
                 if (auth.currentUser && String(auth.currentUser.uid || '') === String(userId)) {
                     holdClientAuthPending(
                         auth.currentUser,
@@ -16172,6 +16292,7 @@ async function completeRegistration() {
                 return;
             }
             authProbeInProgress = false;
+            authProbeStartedAt = 0;
             updateProfileUI();
             showToast(existingSnap.exists ? "Profilo completato senza toccare i progressi." : "Avventura iniziata! Benvenuto.");
             return;
@@ -16207,6 +16328,7 @@ async function completeRegistration() {
     } catch (e) {
         console.error("Errore registrazione:", e);
         authProbeInProgress = false;
+        authProbeStartedAt = 0;
         profileCompletionRequired = true;
         reconcileProfileShellWithClientSession();
         showToast("Errore durante la registrazione. Riprova.");
@@ -16253,6 +16375,7 @@ function logout() {
     pendingAuthStateUser = undefined;
     authRefreshLock = false;
     authProbeInProgress = false;
+    authProbeStartedAt = 0;
     profileCompletionRequired = false;
     lastBackendVerifiedUid = '';
 
@@ -16386,7 +16509,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.75';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.76';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16409,7 +16532,8 @@ const WILDU_IOS_BLACKBOX_MAX_TEXT = 950000;
 const WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS = 220000;
 const WILDU_IOS_BLACKBOX_REPORT_CACHE = 'wildu-blackbox-report-v1';
 const WILDU_IOS_BLACKBOX_REPORT_DIR = '__wildu-ios-blackbox-report/';
-const WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY = 12;
+const WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY = 20;
+const WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING = 180;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_COUNT = 7;
 const WILDU_IOS_BLACKBOX_FOOTER_TAP_WINDOW_MS = 4500;
 
@@ -16453,10 +16577,11 @@ const WilduIOSBlackBox = (() => {
                 createdAt: new Date().toISOString(),
                 lastClassification: null,
                 bootDiary: [],
+                criticalRing: [],
                 events: []
             });
         } catch (e) {
-            return { version: 1, enabled: false, bootDiary: [], events: [] };
+            return { version: 1, enabled: false, bootDiary: [], criticalRing: [], events: [] };
         }
     }
 
@@ -16468,6 +16593,9 @@ const WilduIOSBlackBox = (() => {
                 clean.events.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) :
                 [];
             clean.bootDiary = Array.isArray(clean.bootDiary) ? clean.bootDiary.slice(-WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY) : [];
+            clean.criticalRing = Array.isArray(clean.criticalRing) ?
+                clean.criticalRing.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING) :
+                [];
             let text = JSON.stringify(clean);
             let removed = 0;
             while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > WILDU_IOS_BLACKBOX_MIN_EVENTS) {
@@ -16486,6 +16614,10 @@ const WilduIOSBlackBox = (() => {
                 while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > 1) {
                     clean.events.shift();
                     clean.truncatedEvents = (clean.truncatedEvents || 0) + 1;
+                    text = JSON.stringify(clean);
+                }
+                while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.criticalRing.length > 80) {
+                    clean.criticalRing.shift();
                     text = JSON.stringify(clean);
                 }
             }
@@ -16783,6 +16915,12 @@ const WilduIOSBlackBox = (() => {
             hidden: !!document.hidden,
             visibility: String(document.visibilityState || ''),
             route: String(window.currentTab || location.hash || location.pathname || ''),
+            clientSessionAuthState: '',
+            authUserPresent: false,
+            authProbeInProgress: false,
+            authRefreshLock: false,
+            profileCompletionRequired: false,
+            registrationCompletion: false,
             detailPhase: getDetailPhase(),
             modalOpen: getOpenModalId(),
             imagesLive: 0,
@@ -16805,6 +16943,15 @@ const WilduIOSBlackBox = (() => {
             preload: null,
             lastDetailCycle: 0
         };
+
+        try {
+            snapshot.clientSessionAuthState = String(clientSession && clientSession.authState || '');
+            snapshot.authUserPresent = !!(typeof auth !== 'undefined' && auth && auth.currentUser);
+            snapshot.authProbeInProgress = !!authProbeInProgress;
+            snapshot.authRefreshLock = !!authRefreshLock;
+            snapshot.profileCompletionRequired = !!profileCompletionRequired;
+            snapshot.registrationCompletion = !!isRegistrationCompletionInProgress;
+        } catch (e) {}
 
         try {
             const imgs = Array.from(document.images || []);
@@ -16913,7 +17060,51 @@ const WilduIOSBlackBox = (() => {
         return snapshot;
     }
 
-    function classifyPreviousSession(events) {
+    function buildDirtyBootTimelineFromDiary(state, currentSnapshot) {
+        const diary = Array.isArray(state && state.bootDiary) ? state.bootDiary : [];
+        const currentDoc = String(currentSnapshot && currentSnapshot.docId || WILDU_IOS_BLACKBOX_DOC_ID || '');
+        const currentTimeOrigin = currentSnapshot && currentSnapshot.timeOrigin;
+        return diary.map((entry) => {
+            const previousDocId = String(entry && (entry.previousCriticalSnapshot?.docId || entry.previousDocId || '') || '');
+            const entryDocId = String(entry && entry.docId || '');
+            const newBootDocId = String(entry && entry.newBootSnapshot && entry.newBootSnapshot.docId || '');
+            const previousTimeOrigin = entry && (entry.previousCriticalSnapshot?.timeOrigin || entry.previousTimeOrigin || null);
+            const docChanged = !!(
+                (previousDocId && (entryDocId || newBootDocId) && previousDocId !== (entryDocId || newBootDocId)) ||
+                (entryDocId && currentDoc && entryDocId !== currentDoc)
+            );
+            const timeOriginChanged = !!(
+                previousTimeOrigin &&
+                entry &&
+                entry.timeOrigin &&
+                Number(previousTimeOrigin) !== Number(entry.timeOrigin)
+            );
+            return sanitizeValue({
+                at: entry && entry.at || '',
+                build: entry && entry.build || '',
+                docId: entryDocId,
+                currentDocId: currentDoc,
+                timeOrigin: entry && entry.timeOrigin || null,
+                currentTimeOrigin,
+                previousEvent: entry && entry.previousEvent || '',
+                previousCriticalEvent: entry && entry.previousCriticalEvent || '',
+                previousDocId,
+                previousCriticalDocId: entry && entry.previousCriticalSnapshot && entry.previousCriticalSnapshot.docId || '',
+                previousNavigationType: entry && entry.previousCriticalSnapshot && entry.previousCriticalSnapshot.navigationType || '',
+                newNavigationType: entry && entry.newBootSnapshot && entry.newBootSnapshot.navigationType || '',
+                docChanged,
+                timeOriginChanged
+            }, 0);
+        }).filter((entry) => entry && (entry.docChanged || entry.timeOriginChanged || /app_boot_start|pagehide|pageshow|visibilitychange|related|dates|detail|travel_tab|catalog_image|map_iframe|amazon/i.test(String(entry.previousCriticalEvent || entry.previousEvent || '')))).slice(-WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY);
+    }
+
+    function findDirtyBootRestartEvidence(state, currentSnapshot) {
+        const timeline = buildDirtyBootTimelineFromDiary(state, currentSnapshot);
+        const dirty = [...timeline].reverse().find((entry) => entry && (entry.docChanged || entry.timeOriginChanged));
+        return dirty || null;
+    }
+
+    function classifyPreviousSession(events, state, currentSnapshot) {
         if (!Array.isArray(events) || !events.length) return null;
         const last = events[events.length - 1] || {};
         const reload = [...events].reverse().find((entry) => entry && entry.appReloadIntent && entry.appReloadIntent !== 'none');
@@ -16939,6 +17130,15 @@ const WilduIOSBlackBox = (() => {
             );
         });
         if (reload) return { code: 'APP_REQUESTED_RELOAD', reason: reload.appReloadIntent, at: reload.ts };
+        const dirtyBoot = findDirtyBootRestartEvidence(state, currentSnapshot);
+        if (dirtyBoot) {
+            return {
+                code: 'DOCUMENT_RESTART_OBSERVED',
+                reason: 'boot_diary_doc_or_time_origin_changed',
+                at: dirtyBoot.at || last.ts,
+                evidence: dirtyBoot
+            };
+        }
         if (last.event === 'pageshow' && last.details && last.details.persisted === true) {
             return { code: 'BF_CACHE_RESTORE_RISK', reason: 'pageshow.persisted', at: last.ts };
         }
@@ -17011,7 +17211,14 @@ const WilduIOSBlackBox = (() => {
             visibleGuarantee: snapshot.visibleGuarantee,
             domNodes: snapshot.domNodes,
             fixedStickyNodes: snapshot.fixedStickyNodes,
-            transformNodes: snapshot.transformNodes
+            transformNodes: snapshot.transformNodes,
+            navigationType: snapshot.navigation && snapshot.navigation.type ? snapshot.navigation.type : '',
+            clientSessionAuthState: snapshot.clientSessionAuthState,
+            authUserPresent: snapshot.authUserPresent,
+            authProbeInProgress: snapshot.authProbeInProgress,
+            authRefreshLock: snapshot.authRefreshLock,
+            profileCompletionRequired: snapshot.profileCompletionRequired,
+            registrationCompletion: snapshot.registrationCompletion
         }, 0);
     }
 
@@ -17082,7 +17289,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldUseFullSnapshotForEvent(event) {
-        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_blocked|ios_auth_profile_quiet_entered|ios_auth_profile_guard_blocked|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|blackbox_current_build_attribution)$/.test(String(event || ''));
+        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_blocked|ios_auth_profile_quiet_entered|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
     }
 
     function appendBootDiaryEntry(state, bootEntry, previousEvents) {
@@ -17186,8 +17393,10 @@ const WilduIOSBlackBox = (() => {
             'ios_runtime_work_cancelled',
             'ios_auth_profile_quiet_entered',
             'ios_auth_profile_guard_blocked',
+            'ios_auth_profile_liveness_bypass',
             'ios_post_auth_resource_resume_deferred',
             'ios_post_auth_resource_resume_started',
+            'ios_post_auth_visual_resume_unblocked',
             'ios_detail_related_transaction_started',
             'ios_detail_related_transaction_phase',
             'ios_detail_related_transaction_cancelled',
@@ -17275,6 +17484,7 @@ const WilduIOSBlackBox = (() => {
             'map_iframe_autoload_rearmed',
             'blackbox_enabled_by_footer_taps',
             'blackbox_current_build_attribution',
+            'blackbox_dirty_boot_restart_detected',
             'blackbox_frame_window',
             'blackbox_report_file_published',
             'blackbox_report_file_publish_failed',
@@ -17283,6 +17493,10 @@ const WilduIOSBlackBox = (() => {
             'GLOBAL_CACHE_RELOAD_SCHEDULED',
             'GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED'
         ].indexOf(cleanEvent) >= 0;
+    }
+
+    function shouldKeepCriticalRingEvent(event) {
+        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource/i.test(String(event || ''));
     }
 
     function shouldSampleFramesForEvent(event) {
@@ -17409,6 +17623,8 @@ const WilduIOSBlackBox = (() => {
     function buildBlackboxSummary(state, events, classification, buildAttribution) {
         const currentSnapshot = collectSnapshot();
         const bootDiary = Array.isArray(state && state.bootDiary) ? state.bootDiary : [];
+        const dirtyBootTimeline = buildDirtyBootTimelineFromDiary(state, currentSnapshot);
+        const criticalRing = Array.isArray(state && state.criticalRing) ? state.criticalRing : [];
         return sanitizeValue({
             build: currentSnapshot.build,
             docId: currentSnapshot.docId,
@@ -17420,7 +17636,9 @@ const WilduIOSBlackBox = (() => {
             current: compactBlackBoxSnapshot(currentSnapshot),
             eventCounts: buildEventCounts(events),
             recentBlocks: buildRecentBlackboxBlocks(events),
-            lastBootDiary: bootDiary.slice(-6)
+            lastBootDiary: bootDiary.slice(-8),
+            dirtyBootTimeline: dirtyBootTimeline.slice(-8),
+            criticalRingTail: criticalRing.slice(-40)
         }, 0);
     }
 
@@ -17446,10 +17664,22 @@ const WilduIOSBlackBox = (() => {
         if (cleanEvent === 'app_boot_start') {
             appendBootDiaryEntry(state, entry, events);
         }
+        if (shouldKeepCriticalRingEvent(cleanEvent)) {
+            state.criticalRing = Array.isArray(state.criticalRing) ? state.criticalRing : [];
+            state.criticalRing.push(sanitizeValue({
+                ts: entry.ts,
+                relMs: entry.relMs,
+                event: entry.event,
+                appReloadIntent: entry.appReloadIntent,
+                details: entry.details,
+                snapshot: compactBlackBoxSnapshot(entry.snapshot || {})
+            }, 0));
+            state.criticalRing = state.criticalRing.slice(-WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING);
+        }
         events.push(entry);
         state.enabled = true;
         state.lastWriteAt = entry.ts;
-        state.lastClassification = classifyPreviousSession(events);
+        state.lastClassification = classifyPreviousSession(events, state, entry.snapshot);
         state.events = events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS);
         const wrote = writeState(state);
         if (wrote && shouldSampleFramesForEvent(cleanEvent)) {
@@ -17471,18 +17701,21 @@ const WilduIOSBlackBox = (() => {
         const events = Array.isArray(state.events) ?
             state.events.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) :
             [];
-        const classification = classifyPreviousSession(events);
         const currentSnapshot = collectSnapshot();
+        const classification = classifyPreviousSession(events, state, currentSnapshot);
         const buildAttribution = buildBlackboxBuildAttribution(events, currentSnapshot);
+        const dirtyBootTimeline = buildDirtyBootTimelineFromDiary(state, currentSnapshot);
         return {
             reportType: 'WILDU_IOS_BLACKBOX_V1',
             generatedAt: new Date().toISOString(),
-            blackboxPlan: 'extended-ios-resource-and-transition-sensors-v4-build-attribution-visible-recovery',
+            blackboxPlan: 'extended-ios-resource-and-transition-sensors-v5-dirty-boot-auth-liveness',
             currentSnapshot,
             classification,
             buildAttribution,
             summary: buildBlackboxSummary(state, events, classification, buildAttribution),
             bootDiary: Array.isArray(state.bootDiary) ? state.bootDiary : [],
+            dirtyBootTimeline,
+            criticalRing: Array.isArray(state.criticalRing) ? state.criticalRing : [],
             eventCount: events.length,
             eventLimit: WILDU_IOS_BLACKBOX_MAX_EVENTS,
             events
@@ -23156,7 +23389,8 @@ function wilduGetDetailMapAutoLoadGuard(reason, explicitUser) {
         const ownerGuard = typeof wilduGetIOSRuntimeOwnerGuard === 'function'
             ? wilduGetIOSRuntimeOwnerGuard('maps-autoload', rawReason, {
                 allowInsideDetail: true,
-                ignoreResourceRecovery: true
+                ignoreResourceRecovery: true,
+                surface: 'maps'
             })
             : null;
         if (ownerGuard && ownerGuard.blocked) {
@@ -25067,7 +25301,20 @@ function wilduGetIOSRuntimeOwnerGuard(lane, reason, options) {
         if (imageRuntime) {
             const authProfileRemaining = Math.max(0, Number(imageRuntime.authProfileQuietUntil || 0) - now);
             if (authProfileRemaining > 0 && !/^auth/i.test(cleanLane)) {
-                return block('ios_owner:auth_profile_critical_path', authProfileRemaining, { reason: imageRuntime.authProfileQuietReason || '' });
+                const authSnapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+                    ? wilduGetAuthProfileCriticalSnapshot()
+                    : null;
+                const surface = String(opts.surface || '');
+                const liveness = typeof wilduGetAuthProfileLivenessDecision === 'function'
+                    ? wilduGetAuthProfileLivenessDecision(cleanLane, reason, surface, authSnapshot, imageRuntime.authProfileQuietReason || '')
+                    : { allow: false };
+                if (liveness && liveness.allow) {
+                    if (typeof wilduRecordAuthProfileLivenessBypass === 'function') {
+                        wilduRecordAuthProfileLivenessBypass(cleanLane, reason, surface, liveness, authSnapshot);
+                    }
+                } else {
+                    return block('ios_owner:auth_profile_critical_path', authProfileRemaining, { reason: imageRuntime.authProfileQuietReason || '' });
+                }
             }
         }
     } catch (e) {}
@@ -26743,7 +26990,9 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     authProfileQuietReason: '',
     authProfileResumeTimer: 0,
     authProfileResumeDue: 0,
-    authProfileResumeAttempts: 0
+    authProfileResumeAttempts: 0,
+    authProfileLivenessLastRecordAt: 0,
+    authProfileLivenessLastKey: ''
 };
 
 function getWilduImageMemoryPolicy() {
@@ -26982,6 +27231,80 @@ function wilduIsAuthProfileCriticalPathActive() {
     return !!(wilduGetAuthProfileCriticalSnapshot().active);
 }
 
+function wilduGetAuthProfileLivenessDecision(lane, reason, surface, authSnapshot, quietReason) {
+    const decision = {
+        allow: false,
+        mode: '',
+        lane: String(lane || ''),
+        reason: String(reason || ''),
+        surface: String(surface || ''),
+        quietReason: String(quietReason || '')
+    };
+    try {
+        if (!wilduShouldUseIOSPWASmartImageGuard()) return decision;
+        const auth = authSnapshot || wilduGetAuthProfileCriticalSnapshot();
+        if (!auth || !auth.active || !auth.hasFirebaseUser) return decision;
+        if (auth.googleTransition || auth.bridgeRuntime || auth.authRefreshLock || auth.registrationCompletion) return decision;
+        const text = [
+            decision.lane,
+            decision.reason,
+            decision.surface,
+            decision.quietReason,
+            String(auth.sessionState || '')
+        ].join(':');
+        const terminalProfile = auth.sessionState === 'LOGGED' ||
+            /PROFILE_CONFIRMED|BACKEND_SESSION_FINALIZED|BACKEND_LOGGED|BACKEND_SESSION_CONFIRMED|AUTH_BRIDGE_USER_AVAILABLE|AUTH_LIVENESS_RETRY/i.test(text);
+        const criticalVisual = /critical-visible-restore|active-travel-band-restore|visible_restore|critical_visible|active_travel_band|travelhub_force_hydrate|SCROLL_VISIBLE|FAST_SCROLL_QUIET_RESTORE|blocked_flush_visible_band|DEFERRED_IOS_IMAGE_REGISTRATION|POST_AUTH_VISIBLE_RESTORE|POST_AUTH_TRAVEL_BAND/i.test(text) ||
+            (/^(official-list|openday-list|payday-list|ondemand-list|guest-profile|travelhub|shop|rewards)$/.test(decision.surface) && /restore|visible|guarantee|flush|hydrate|recovery/i.test(text));
+        const cleanupPrune = /soft-modal-prune|soft_modal_dom_prune|soft_modal_resource_cleanup|soft_modal_cleanup|resource_cleanup/i.test(text);
+        const mapsAutoload = /maps-autoload|map_iframe|map_autoload/i.test(text);
+        const amazonVisible = /amazon-carousel|shop|amazon_image_hydration|visible_recovery|render_reused|owner_stable_resume|image_hydration/i.test(text);
+        if (criticalVisual) {
+            decision.allow = true;
+            decision.mode = 'critical_visible_liveness';
+        } else if (cleanupPrune) {
+            decision.allow = true;
+            decision.mode = 'modal_cleanup_liveness';
+        } else if (terminalProfile && mapsAutoload) {
+            decision.allow = true;
+            decision.mode = 'terminal_profile_maps_liveness';
+        } else if (terminalProfile && amazonVisible) {
+            decision.allow = true;
+            decision.mode = 'terminal_profile_amazon_visible_liveness';
+        }
+        decision.auth = {
+            sessionState: auth.sessionState,
+            hasFirebaseUser: auth.hasFirebaseUser,
+            authProbeInProgress: auth.authProbeInProgress,
+            authProbeMeaningful: auth.authProbeMeaningful
+        };
+    } catch (e) {}
+    return decision;
+}
+
+function wilduRecordAuthProfileLivenessBypass(lane, reason, surface, decision, authSnapshot) {
+    try {
+        const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+        const now = Date.now();
+        const key = [
+            lane,
+            reason,
+            surface,
+            decision && decision.mode
+        ].map((value) => String(value || '').slice(0, 90)).join('|');
+        if (runtime.authProfileLivenessLastKey === key && now - Number(runtime.authProfileLivenessLastRecordAt || 0) < 900) return;
+        runtime.authProfileLivenessLastKey = key;
+        runtime.authProfileLivenessLastRecordAt = now;
+        wilduIOSBlackBoxRecord('ios_auth_profile_liveness_bypass', {
+            lane: String(lane || ''),
+            reason: String(reason || ''),
+            surface: String(surface || ''),
+            mode: decision && decision.mode || '',
+            auth: authSnapshot || (decision && decision.auth) || null
+        });
+    } catch (e) {}
+}
+
 function wilduShouldAuthProfileGuardBlock(reason, surface) {
     if (!wilduShouldUseIOSPWASmartImageGuard()) return false;
     const authSnapshot = wilduGetAuthProfileCriticalSnapshot();
@@ -26996,6 +27319,18 @@ function wilduShouldAuthProfileGuardBlock(reason, surface) {
         return false;
     }
     if (/^(official-list|openday-list|payday-list|ondemand-list|guest-profile|travelhub)$/.test(cleanSurface) && /restore|visible|guarantee/i.test(cleanReason)) {
+        return false;
+    }
+    const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
+    const liveness = wilduGetAuthProfileLivenessDecision(
+        'resource-guard',
+        cleanReason,
+        cleanSurface,
+        authSnapshot,
+        runtime.authProfileQuietReason || ''
+    );
+    if (liveness.allow) {
+        wilduRecordAuthProfileLivenessBypass('resource-guard', cleanReason, cleanSurface, liveness, authSnapshot);
         return false;
     }
     return true;
@@ -27043,7 +27378,14 @@ function wilduScheduleIOSPostAuthResourceResume(reason, delayMs) {
         runtime.authProfileResumeTimer = 0;
         runtime.authProfileResumeDue = 0;
         const authSnapshot = wilduGetAuthProfileCriticalSnapshot();
-        if (authSnapshot.active && runtime.authProfileResumeAttempts < 8) {
+        const liveness = wilduGetAuthProfileLivenessDecision(
+            'post-auth-resource-resume',
+            reason,
+            'post-auth',
+            authSnapshot,
+            runtime.authProfileQuietReason || ''
+        );
+        if (authSnapshot.active && !(liveness && liveness.allow) && runtime.authProfileResumeAttempts < 8) {
             runtime.authProfileResumeAttempts += 1;
             try {
                 if (typeof wilduIOSBlackBoxRecord === 'function') {
@@ -27058,6 +27400,17 @@ function wilduScheduleIOSPostAuthResourceResume(reason, delayMs) {
             return;
         }
         runtime.authProfileResumeAttempts = 0;
+        if (liveness && liveness.allow) {
+            try {
+                if (typeof wilduIOSBlackBoxRecord === 'function') {
+                    wilduIOSBlackBoxRecord('ios_post_auth_visual_resume_unblocked', {
+                        reason: String(reason || ''),
+                        mode: liveness.mode || '',
+                        snapshot: authSnapshot
+                    });
+                }
+            } catch (e) {}
+        }
         try { if (typeof resumeWilduCatalogCoverPreload === 'function') resumeWilduCatalogCoverPreload('GOOGLE_AUTH_POST_STABLE'); } catch (e) {}
         try { wilduScheduleCriticalVisibleImageRestore('POST_AUTH_VISIBLE_RESTORE:' + String(reason || ''), 120, WILDU_IOS_CRITICAL_VISIBLE_RESTORE_LIMIT); } catch (e) {}
         try { wilduScheduleActiveTravelBandRestoreForIOS('POST_AUTH_TRAVEL_BAND:' + String(reason || ''), 420, WILDU_IOS_ACTIVE_TRAVEL_BAND_RESTORE_LIMIT); } catch (e) {}
@@ -29818,6 +30171,7 @@ function getWilduIOSImageMemorySnapshot() {
         authProfileResumeScheduled: !!runtime.authProfileResumeTimer,
         authProfileResumeDueMs: Math.max(0, Number(runtime.authProfileResumeDue || 0) - Date.now()),
         authProfileResumeAttempts: runtime.authProfileResumeAttempts || 0,
+        authProfileLivenessLastKey: runtime.authProfileLivenessLastKey || '',
         authProfileCritical: typeof wilduGetAuthProfileCriticalSnapshot === 'function'
             ? wilduGetAuthProfileCriticalSnapshot()
             : null,
@@ -37572,6 +37926,11 @@ if (profKeyEl) {
             : null;
 
         currentTab = id;
+        if (id === 'profile' && typeof ensureAuthProfileLiveness === 'function') {
+            ensureAuthProfileLiveness('PROFILE_TAB_OPENED', {
+                reset: true
+            });
+        }
 
         // ==========================================
         // 🛡️ SCUDO ANTI-PARADOSSO RUOTA INLINE
@@ -42470,12 +42829,33 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
             return false;
         }
         const guardName = String(guard && guard.guard || '');
-        if (/amazon_quiet|ios_owner:|top_layer_open|page_hidden|document_hidden|google_auth|auth_profile|ios_page_lifecycle|recent_document_restart|travel_tab_transition|resource_recovery/i.test(guardName)) return false;
-        if (!/image_memory_not_stable/i.test(guardName)) return false;
+        const reasonText = String(reason || '');
+        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|resume_timer|deferred|auto_scroll_tick|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
+        if (!visibleReason) return false;
+        if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|recent_document_restart|travel_tab_transition|resource_recovery/i.test(guardName)) return false;
         const hydrated = wilduCountAmazonLiveHydratedImages(slider);
         const visibleLimit = wilduGetAmazonVisibleHydrationLimit(slider, true);
         if (hydrated >= visibleLimit) return false;
-        return /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|resume_timer|deferred|auto_scroll_tick/i.test(String(reason || ''));
+        if (/ios_owner:auth_profile_critical_path|auth_profile/i.test(guardName)) {
+            const runtime = typeof WILDU_IOS_IMAGE_MEMORY_RUNTIME === 'object' ? WILDU_IOS_IMAGE_MEMORY_RUNTIME : {};
+            const authSnapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+                ? wilduGetAuthProfileCriticalSnapshot()
+                : null;
+            const liveness = typeof wilduGetAuthProfileLivenessDecision === 'function'
+                ? wilduGetAuthProfileLivenessDecision('amazon-carousel', 'image_hydration:' + reasonText, 'shop', authSnapshot, runtime.authProfileQuietReason || '')
+                : { allow: false };
+            if (liveness && liveness.allow) {
+                if (typeof wilduRecordAuthProfileLivenessBypass === 'function') {
+                    wilduRecordAuthProfileLivenessBypass('amazon-carousel', 'image_hydration:' + reasonText, 'shop', liveness, authSnapshot);
+                }
+                return true;
+            }
+            return false;
+        }
+        if (/ios_owner:/i.test(guardName)) return false;
+        if (/amazon_quiet/i.test(guardName)) return true;
+        if (!/image_memory_not_stable/i.test(guardName)) return false;
+        return true;
     } catch (e) {
         return false;
     }
@@ -42520,7 +42900,8 @@ function wilduHydrateVisibleAmazonImages(reason) {
     const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
     const guard = wilduGetAmazonCarouselGuard('image_hydration:' + String(reason || ''));
     if (guard && guard.blocked) {
-        if (wilduIsIOSOwnerHardParkingGuard(guard.guard)) {
+        const guardedVisibleBypass = wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason);
+        if (wilduIsIOSOwnerHardParkingGuard(guard.guard) && !guardedVisibleBypass) {
             wilduRecordAmazonCarouselEvent('amazon_image_hydration_parked_by_owner', {
                 reason: String(reason || ''),
                 guard: guard.guard || 'guarded',
@@ -42532,7 +42913,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
             } catch (e) {}
             return 0;
         }
-        if (!wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason)) {
+        if (!guardedVisibleBypass) {
             wilduRecordAmazonCarouselEvent('amazon_carousel_resume_blocked', {
                 reason: String(reason || ''),
                 guard: guard.guard || 'guarded',
@@ -43426,6 +43807,7 @@ function renderAmazonSponsors(products, options = {}) {
     if (!slider || !wrapper) return;
 
     const renderReason = wilduNormalizeAmazonRenderReason(options.reason || 'render');
+    wilduAnchorAmazonFooter('render_preflight:' + renderReason);
     const guard = wilduGetAmazonCarouselGuard('render:' + renderReason);
     const inputSignature = wilduGetAmazonInputSignature(products);
     let amazonPlaceholderOnly = false;
