@@ -16577,7 +16577,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.79';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.80';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17420,7 +17420,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldUseFullSnapshotForEvent(event) {
-        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_resource_recovery_entered|ios_resource_recovery_released_terminal|ios_soft_modal_recovery_released_stable|ios_resource_recovery_blocked|ios_terminal_auth_resource_guard_violation|ios_soft_modal_resource_guard_violation|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
+        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_surface_transition_released_stable|ios_resource_recovery_entered|ios_resource_recovery_released_terminal|ios_soft_modal_recovery_released_stable|ios_resource_recovery_blocked|ios_terminal_auth_resource_guard_violation|ios_soft_modal_resource_guard_violation|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
     }
 
     function appendBootDiaryEntry(state, bootEntry, previousEvents) {
@@ -17513,6 +17513,7 @@ const WilduIOSBlackBox = (() => {
             'ios_critical_visible_image_restored',
             'ios_visible_image_registration_kept',
             'ios_surface_transition_started',
+            'ios_surface_transition_released_stable',
             'ios_surface_transition_settled',
             'ios_surface_transition_settle_deferred',
             'ios_surface_transition_stale',
@@ -17618,6 +17619,8 @@ const WilduIOSBlackBox = (() => {
             'travel_tab_swipe_edge_guarded',
             'catalog_image_release_only_quiet',
             'map_iframe_autoload_rearmed',
+            'map_iframe_watchdog_terminal_wait',
+            'amazon_image_hydration_visible_bypass_coalesced',
             'blackbox_enabled_by_footer_taps',
             'blackbox_current_build_attribution',
             'blackbox_dirty_boot_restart_detected',
@@ -17632,7 +17635,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldKeepCriticalRingEvent(event) {
-        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource/i.test(String(event || ''));
+        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_surface_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource/i.test(String(event || ''));
     }
 
     function shouldSampleFramesForEvent(event) {
@@ -23830,6 +23833,15 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
             if (generation !== WILDU_DETAIL_MAP_RUNTIME.generation) return;
             if (!wilduIsDetailModalVisible()) return;
             if (mapIframe.getAttribute('src')) return;
+            if (!mapIframe.getAttribute('data-wildu-map-src') && !WILDU_DETAIL_MAP_RUNTIME.pendingUrl) {
+                WILDU_DETAIL_MAP_RUNTIME.loadState = 'idle';
+                wilduRecordDetailMapEvent('map_iframe_watchdog_terminal_wait', {
+                    source: String(source || 'watchdog'),
+                    attempt: WILDU_DETAIL_MAP_RUNTIME.watchdogAttempts || 0,
+                    reason: 'missing_map_source'
+                });
+                return;
+            }
             WILDU_DETAIL_MAP_RUNTIME.watchdogAttempts = Number(WILDU_DETAIL_MAP_RUNTIME.watchdogAttempts || 0) + 1;
             wilduRecordDetailMapEvent('map_iframe_autoload_rearmed', {
                 source: String(source || 'watchdog'),
@@ -23843,6 +23855,23 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
             }
             if (WILDU_DETAIL_MAP_RUNTIME.watchdogAttempts < 18 && !mapIframe.getAttribute('src')) {
                 scheduleAutoloadWatchdog('watchdog_repeat');
+            } else if (!mapIframe.getAttribute('src')) {
+                const retryMs = 12000;
+                WILDU_DETAIL_MAP_RUNTIME.loadState = 'guarded_slow_retry';
+                wilduRecordDetailMapEvent('map_iframe_watchdog_terminal_wait', {
+                    source: String(source || 'watchdog'),
+                    attempt: WILDU_DETAIL_MAP_RUNTIME.watchdogAttempts,
+                    retryMs,
+                    loadState: WILDU_DETAIL_MAP_RUNTIME.loadState,
+                    pendingUrl: !!WILDU_DETAIL_MAP_RUNTIME.pendingUrl,
+                    hasDataSrc: !!mapIframe.getAttribute('data-wildu-map-src')
+                });
+                wilduClearDetailMapDwellTimer();
+                WILDU_DETAIL_MAP_RUNTIME.dwellTimer = window.setTimeout(function () {
+                    WILDU_DETAIL_MAP_RUNTIME.dwellTimer = 0;
+                    if (!wilduIsDetailModalVisible()) return;
+                    scheduleStableLoad('watchdog_slow_retry', 0);
+                }, retryMs);
             }
         }, 1800);
         return true;
@@ -25214,6 +25243,8 @@ const WILDU_SOFT_MODAL_FLOW_RUNTIME = {
     surfaceTransitionUntil: 0,
     surfaceTransitionSettleTimer: 0,
     surfaceTransitionLastSettleAt: 0,
+    surfaceTransitionLastStableReleaseAt: 0,
+    surfaceTransitionLastStableReleaseReason: '',
     ownerStableResumeTimer: 0,
     ownerStableResumeDue: 0,
     ownerGuardLastRecordAt: 0,
@@ -25315,6 +25346,14 @@ function wilduRecordDetailRelatedTransactionPhase(phase, detail) {
 
 function wilduGetIOSSurfaceTransitionGuard(reason, silent) {
     if (!wilduShouldUseIOSSurfaceTransitionGuard()) return { blocked: false };
+    try {
+        if (typeof wilduReleaseIOSSurfaceTransitionForStableLiveness === 'function') {
+            wilduReleaseIOSSurfaceTransitionForStableLiveness('surface_guard:' + String(reason || ''), {
+                requestedBy: String(reason || ''),
+                source: 'surface_guard'
+            });
+        }
+    } catch (e) {}
     const runtime = WILDU_SOFT_MODAL_FLOW_RUNTIME;
     const remaining = Math.max(0, Number(runtime.surfaceTransitionUntil || 0) - Date.now());
     if (remaining <= 0) return { blocked: false };
@@ -25528,7 +25567,17 @@ function wilduGetIOSRuntimeOwnerGuard(lane, reason, options) {
         return block('ios_owner:soft_modal_cleanup_pending', WILDU_SOFT_MODAL_IOS_CLEANUP_RETRY_MS, { cleanupPending: runtime.cleanupPending || 0 });
     }
 
-    const transitionRemaining = Math.max(0, Number(runtime.surfaceTransitionUntil || 0) - now);
+    try {
+        if (typeof wilduReleaseIOSSurfaceTransitionForStableLiveness === 'function') {
+            wilduReleaseIOSSurfaceTransitionForStableLiveness('owner_guard:' + cleanLane + ':' + String(reason || ''), {
+                lane: cleanLane,
+                surface: String(opts.surface || ''),
+                topLayer: topLayerKind,
+                source: 'owner_guard'
+            });
+        }
+    } catch (e) {}
+    const transitionRemaining = Math.max(0, Number(runtime.surfaceTransitionUntil || 0) - Date.now());
     if (transitionRemaining > 0 && !wilduIsIOSOwnerLaneAllowedDuringTransition(cleanLane, reason, opts, topLayerKind)) {
         return block('ios_owner:surface_transition:' + String(runtime.surfaceTransitionOwner || 'unknown'), transitionRemaining, {
             owner: runtime.surfaceTransitionOwner || '',
@@ -25718,6 +25767,51 @@ function wilduScheduleIOSSurfaceTransitionSettle(token, reason, delayMs, options
         } catch (e) {}
     }, delay);
     return true;
+}
+
+function wilduReleaseIOSSurfaceTransitionForStableLiveness(reason, detail) {
+    try {
+        if (!wilduShouldUseIOSSurfaceTransitionGuard()) return false;
+        const runtime = WILDU_SOFT_MODAL_FLOW_RUNTIME;
+        const now = Date.now();
+        const remaining = Math.max(0, Number(runtime.surfaceTransitionUntil || 0) - now);
+        if (remaining <= 0) return false;
+        const owner = String(runtime.surfaceTransitionOwner || '');
+        const ownerReason = String(runtime.surfaceTransitionReason || '');
+        if (!/^soft_modal_close$/i.test(owner)) return false;
+        const snapshot = typeof wilduGetStableSoftModalRecoverySnapshot === 'function'
+            ? wilduGetStableSoftModalRecoverySnapshot({ ignoreSurfaceTransition: true })
+            : null;
+        if (!snapshot || !snapshot.stable) return false;
+        if (runtime.surfaceTransitionSettleTimer) {
+            try { window.clearTimeout(runtime.surfaceTransitionSettleTimer); } catch (e) {}
+            runtime.surfaceTransitionSettleTimer = 0;
+        }
+        const token = runtime.surfaceTransitionToken || 0;
+        runtime.surfaceTransitionUntil = 0;
+        runtime.surfaceTransitionOwner = '';
+        runtime.surfaceTransitionReason = '';
+        runtime.surfaceTransitionLastSettleAt = now;
+        runtime.surfaceTransitionLastStableReleaseAt = now;
+        runtime.surfaceTransitionLastStableReleaseReason = String(reason || 'stable_liveness');
+        try {
+            wilduIOSBlackBoxRecord('ios_surface_transition_released_stable', {
+                reason: String(reason || ''),
+                token,
+                owner,
+                ownerReason,
+                remainingMs: remaining,
+                detail: detail || null,
+                softModal: snapshot
+            });
+        } catch (e) {}
+        try {
+            wilduScheduleIOSOwnerStableResume('surface_transition_released_stable:' + String(reason || ''), 180);
+        } catch (e) {}
+        return true;
+    } catch (e) {
+        return false;
+    }
 }
 
 function wilduGetSoftModalEventDiagnostics(evt) {
@@ -27192,6 +27286,8 @@ const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     deferredFlushActive: false,
     deferredFlushReason: '',
     deferredFlushBlockedAt: 0,
+    deferredFlushSurfaceBlockedAt: 0,
+    deferredFlushSurfaceBlockedKey: '',
     criticalVisibleRestoreTimer: 0,
     criticalVisibleRestoreDue: 0,
     criticalVisibleRestoreActive: false,
@@ -27601,9 +27697,11 @@ function wilduIsSoftModalCloseResourceRecoveryReason(reason) {
     return /^soft_modal_close:/i.test(String(reason || ''));
 }
 
-function wilduGetStableSoftModalRecoverySnapshot() {
+function wilduGetStableSoftModalRecoverySnapshot(options) {
     const now = Date.now();
     const runtime = WILDU_SOFT_MODAL_FLOW_RUNTIME;
+    const opts = options || {};
+    const ignoreSurfaceTransition = opts.ignoreSurfaceTransition === true;
     let visibleSoftModal = false;
     try {
         visibleSoftModal = !!document.querySelector('#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible,.wildu-soft-modal.is-visible,#wildu-maps-soft-confirm-modal');
@@ -27615,20 +27713,26 @@ function wilduGetStableSoftModalRecoverySnapshot() {
         : Math.max(0, Number(runtime.inputGuardUntil || 0) - now);
     const quarantineRemainingMs = Math.max(0, Number(runtime.quarantineUntil || 0) - now);
     const surfaceTransitionRemainingMs = Math.max(0, Number(runtime.surfaceTransitionUntil || 0) - now);
+    const surfaceTransitionOwner = String(runtime.surfaceTransitionOwner || '');
+    const surfaceTransitionReason = String(runtime.surfaceTransitionReason || '');
     const lastCloseAgoMs = runtime.lastCloseAt ? Math.max(0, now - Number(runtime.lastCloseAt || 0)) : null;
-    const stable = !!(
+    const stableWithoutSurfaceTransition = !!(
         !visibleSoftModal &&
         !runtime.activeModalId &&
         !runtime.activeSurface &&
         Number(runtime.cleanupPending || 0) <= 0 &&
         inputGuardRemainingMs <= 0 &&
         quarantineRemainingMs <= 0 &&
-        surfaceTransitionRemainingMs <= 0 &&
         lastCloseAgoMs !== null &&
         lastCloseAgoMs >= WILDU_IOS_SOFT_MODAL_RECOVERY_STABLE_RELEASE_MS
     );
+    const surfaceTransitionCompatible = surfaceTransitionRemainingMs <= 0 ||
+        (ignoreSurfaceTransition && /^soft_modal_close$/i.test(surfaceTransitionOwner));
+    const stable = !!(stableWithoutSurfaceTransition && surfaceTransitionCompatible);
     return {
         stable,
+        stableWithoutSurfaceTransition,
+        ignoreSurfaceTransition,
         visibleSoftModal,
         activeModalId: runtime.activeModalId || '',
         activeSurface: runtime.activeSurface || '',
@@ -27636,6 +27740,8 @@ function wilduGetStableSoftModalRecoverySnapshot() {
         inputGuardRemainingMs,
         quarantineRemainingMs,
         surfaceTransitionRemainingMs,
+        surfaceTransitionOwner,
+        surfaceTransitionReason,
         lastCloseAgoMs,
         lastCloseSurface: runtime.lastCloseSurface || '',
         lastCloseToken: runtime.lastCloseToken || 0,
@@ -27653,8 +27759,16 @@ function wilduReleaseSoftModalResourceRecoveryForStableLiveness(reason, surface)
         if (recoveryRemaining <= 0) return false;
         const recoveryReason = String(runtime.resourceRecoveryReason || '');
         if (!wilduIsSoftModalCloseResourceRecoveryReason(recoveryReason)) return false;
-        const snapshot = wilduGetStableSoftModalRecoverySnapshot();
+        const snapshot = wilduGetStableSoftModalRecoverySnapshot({ ignoreSurfaceTransition: true });
         if (!snapshot || !snapshot.stable) return false;
+        try {
+            if (typeof wilduReleaseIOSSurfaceTransitionForStableLiveness === 'function') {
+                wilduReleaseIOSSurfaceTransitionForStableLiveness('soft_modal_resource_recovery:' + String(reason || ''), {
+                    surface: String(surface || ''),
+                    recoveryReason
+                });
+            }
+        } catch (e) {}
         const previousOptimizeUntil = Number(runtime.optimizePausedUntil || 0);
         runtime.resourceRecoveryUntil = 0;
         runtime.resourceRecoveryReason = '';
@@ -28990,14 +29104,35 @@ function wilduScheduleDeferredIOSImageRegistrationFlush(reason, delayMs) {
             : null;
         if (surfaceGuard && surfaceGuard.blocked && !/^critical_visible_restore/i.test(String(reason || ''))) {
             delay = Math.max(delay, Math.min(5000, Number(surfaceGuard.retryMs || 0) + 180));
+            const blockKey = [String(reason || ''), String(surfaceGuard.guard || ''), String(surfaceGuard.detail && surfaceGuard.detail.token || '')].join('|');
+            const now = Date.now();
+            const shouldRecordSurfaceDelay = runtime.deferredFlushSurfaceBlockedKey !== blockKey ||
+                now - Number(runtime.deferredFlushSurfaceBlockedAt || 0) > 1400;
+            runtime.deferredFlushSurfaceBlockedKey = blockKey;
+            runtime.deferredFlushSurfaceBlockedAt = now;
             try {
-                wilduIOSBlackBoxRecord('ios_deferred_registration_flush_delayed_by_surface_transition', {
-                    reason: String(reason || ''),
-                    guard: surfaceGuard.guard || '',
-                    retryMs: surfaceGuard.retryMs || 0,
-                    delayMs: delay,
-                    detail: surfaceGuard.detail || null
-                });
+                if (shouldRecordSurfaceDelay) {
+                    wilduIOSBlackBoxRecord('ios_deferred_registration_flush_delayed_by_surface_transition', {
+                        reason: String(reason || ''),
+                        guard: surfaceGuard.guard || '',
+                        retryMs: surfaceGuard.retryMs || 0,
+                        delayMs: delay,
+                        detail: surfaceGuard.detail || null
+                    });
+                }
+            } catch (e) {}
+            try {
+                if (typeof wilduScheduleIOSSurfaceTransitionSettle === 'function') {
+                    wilduScheduleIOSSurfaceTransitionSettle(
+                        surfaceGuard.detail && surfaceGuard.detail.token,
+                        'deferred_flush_surface_guard:' + String(reason || ''),
+                        Math.min(WILDU_IOS_SURFACE_TRANSITION_SETTLE_MS, Math.max(120, Number(surfaceGuard.retryMs || 0) || WILDU_IOS_SURFACE_TRANSITION_SETTLE_MS)),
+                        { detail: { reason: String(reason || ''), guard: surfaceGuard.guard || '' } }
+                    );
+                }
+            } catch (e) {}
+            try {
+                wilduScheduleIOSOwnerStableResume('deferred_flush_surface_transition:' + String(reason || ''), delay);
             } catch (e) {}
         }
         const due = Date.now() + delay;
@@ -42981,6 +43116,8 @@ let amazonDeferredRenderTimer = 0;
 let amazonDeferredRenderProducts = null;
 let amazonImageHydrationTimer = 0;
 let amazonImageHydrationDue = 0;
+let amazonImageHydrationVisibleBypassLastAt = 0;
+let amazonImageHydrationVisibleBypassLastKey = '';
 const WILDU_AMAZON_IOS_RENDER_RETRY_MS = 2600;
 const WILDU_AMAZON_IOS_IMAGE_STEP_MS = 760;
 const WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT = 8;
@@ -43316,11 +43453,6 @@ function wilduScheduleAmazonImageHydration(reason, delayMs) {
         const guardedVisibleBypass = typeof wilduCanHydrateAmazonVisibleImageWhileGuarded === 'function' &&
             wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, preflightGuard, reason);
         if (guardedVisibleBypass) {
-            wilduRecordAmazonCarouselEvent('amazon_image_hydration_visible_bypass_scheduled', {
-                reason: String(reason || ''),
-                guard: preflightGuard.guard || 'guarded',
-                requestedRetryMs: preflightGuard.retryMs || 0
-            });
             visibleBypassScheduled = true;
         } else {
             wilduRecordAmazonCarouselEvent('amazon_image_hydration_parked_by_owner', {
@@ -43342,11 +43474,41 @@ function wilduScheduleAmazonImageHydration(reason, delayMs) {
         : Math.max(120, requestedDelay);
     const due = Date.now() + delay;
     if (amazonImageHydrationTimer) {
-        if (amazonImageHydrationDue && amazonImageHydrationDue <= due + 50) return;
+        if (amazonImageHydrationDue && amazonImageHydrationDue <= due + 50) {
+            if (visibleBypassScheduled) {
+                const bypassKey = [String(reason || ''), String(preflightGuard && preflightGuard.guard || '')].join('|');
+                const now = Date.now();
+                if (amazonImageHydrationVisibleBypassLastKey !== bypassKey || now - Number(amazonImageHydrationVisibleBypassLastAt || 0) > 1200) {
+                    amazonImageHydrationVisibleBypassLastKey = bypassKey;
+                    amazonImageHydrationVisibleBypassLastAt = now;
+                    wilduRecordAmazonCarouselEvent('amazon_image_hydration_visible_bypass_coalesced', {
+                        reason: String(reason || ''),
+                        guard: preflightGuard.guard || 'guarded',
+                        requestedRetryMs: preflightGuard.retryMs || 0,
+                        existingDueMs: Math.max(0, Number(amazonImageHydrationDue || 0) - now)
+                    });
+                }
+            }
+            return true;
+        }
         try { window.clearTimeout(amazonImageHydrationTimer); } catch (e) {}
         amazonImageHydrationTimer = 0;
     }
     amazonImageHydrationDue = due;
+    if (visibleBypassScheduled) {
+        const bypassKey = [String(reason || ''), String(preflightGuard && preflightGuard.guard || '')].join('|');
+        const now = Date.now();
+        if (amazonImageHydrationVisibleBypassLastKey !== bypassKey || now - Number(amazonImageHydrationVisibleBypassLastAt || 0) > 900) {
+            amazonImageHydrationVisibleBypassLastKey = bypassKey;
+            amazonImageHydrationVisibleBypassLastAt = now;
+            wilduRecordAmazonCarouselEvent('amazon_image_hydration_visible_bypass_scheduled', {
+                reason: String(reason || ''),
+                guard: preflightGuard.guard || 'guarded',
+                requestedRetryMs: preflightGuard.retryMs || 0,
+                delayMs: delay
+            });
+        }
+    }
     amazonImageHydrationTimer = window.setTimeout(function () {
         amazonImageHydrationTimer = 0;
         amazonImageHydrationDue = 0;
