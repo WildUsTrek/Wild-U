@@ -55,6 +55,15 @@ loadSwConsoleSwitch()
 
 self.addEventListener('message', (event) => {
     const data = event && event.data;
+    if (data && data.type === 'WILDU_RUNTIME_POLICY_QUERY') {
+        // Bounded read-only handshake: no cache enumeration, bodies or URLs of
+        // user requests. It identifies the worker actually answering the page.
+        const port = event.ports && event.ports[0];
+        if (port) port.postMessage({ policy: 'runtime-bounded-v1', maxBodyBytes: RUNTIME_CACHE_MAX_BODY_BYTES,
+            maxWrites: RUNTIME_CACHE_MAX_WRITES, maxRefreshes: RUNTIME_REFRESH_MAX_ACTIVE,
+            activeWrites: runtimeCacheWrites, activeRefreshes: runtimeRefreshes.size, activeTrims: runtimeTrims.size });
+        return;
+    }
     if (!data || data.type !== 'WILDU_CONSOLE_SWITCH') return;
 
     setSwConsoleSwitch(data.value === true);
@@ -110,6 +119,78 @@ const MODULE_CACHE_TRIM_TO = 24;
 // AUMENTIAMO LA CAPIENZA PER LE FOTO:
 const ASSET_CACHE_MAX_ENTRIES = 300; 
 const ASSET_CACHE_TRIM_TO = 250;
+
+// Runtime cache work is best-effort, bounded and independent of foreground
+// delivery. Shell/auth/report/game routing below retains its own contracts.
+const RUNTIME_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const RUNTIME_CACHE_MAX_WRITES = 2;
+const RUNTIME_CACHE_WRITE_TIMEOUT_MS = 10000;
+const RUNTIME_REFRESH_MAX_ACTIVE = 4;
+let runtimeCacheWrites = 0;
+const runtimeRefreshes = new Map();
+const runtimeTrims = new Map();
+
+function respondWithRuntime(event, handler) {
+    const background = [];
+    const response = handler(event.request, background);
+    event.respondWith(response);
+    // Registered synchronously in the fetch event, including tasks discovered
+    // while matching the cache. Neither a rejected write nor trim breaks UI.
+    event.waitUntil(response.catch(() => null).then(() => Promise.allSettled(background)));
+}
+
+function runtimeCacheAdmission(req, response) {
+    if (!response || response.status !== 200 || !response.body || response.type === 'opaque') return false;
+    if (req.method !== 'GET' || req.headers.has('range') || req.headers.has('authorization')) return false;
+    if (/no-store|private/i.test(response.headers.get('cache-control') || '') || response.headers.get('vary') === '*') return false;
+    const size = Number(response.headers.get('content-length'));
+    return !(size > RUNTIME_CACHE_MAX_BODY_BYTES);
+}
+
+function scheduleRuntimeTrim(cacheName, maxEntries, trimTo) {
+    let state = runtimeTrims.get(cacheName);
+    if (state) {
+        state.maxEntries = Math.min(state.maxEntries, maxEntries);
+        state.trimTo = Math.min(state.trimTo, trimTo);
+        state.dirty = true;
+        return state.promise;
+    }
+    state = { dirty: true, promise: null, maxEntries, trimTo };
+    runtimeTrims.set(cacheName, state);
+    state.promise = (async () => {
+        try {
+            do {
+                state.dirty = false;
+                await trimCacheByLimit(cacheName, state.maxEntries, state.trimTo);
+            } while (state.dirty);
+        } finally { runtimeTrims.delete(cacheName); }
+    })();
+    return state.promise;
+}
+
+function runtimeRefreshKey(req) {
+    return JSON.stringify([req.url, req.method, req.mode, req.credentials, req.redirect,
+        req.cache, req.integrity, req.referrer, req.referrerPolicy, Array.from(req.headers.entries()).sort()]);
+}
+
+function refreshRuntimeAsset(req) {
+    const key = runtimeRefreshKey(req);
+    if (runtimeRefreshes.has(key)) return runtimeRefreshes.get(key);
+    if (runtimeRefreshes.size >= RUNTIME_REFRESH_MAX_ACTIVE) return Promise.resolve(false);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const task = (async () => {
+        try {
+            // A cached consumer's abort must not cancel another cached consumer's
+            // shared revalidation. No Response body is shared with the UI.
+            const fresh = await fetch(new Request(req, { signal: controller.signal }));
+            return await safeCachePut(ASSET_CACHE, req, fresh, ASSET_CACHE_MAX_ENTRIES, ASSET_CACHE_TRIM_TO, true);
+        } catch (_) { return false; }
+        finally { clearTimeout(timeout); runtimeRefreshes.delete(key); }
+    })();
+    runtimeRefreshes.set(key, task);
+    return task;
+}
 
 self.addEventListener('install', (e) => {
     self.skipWaiting();
@@ -170,7 +251,7 @@ if (!isSameOrigin) {
     // Continuiamo invece a cacheare gli asset esterni utili già previsti:
     // Cloudinary, www.wildu.it/public/, Google Docs, immagini viaggio, cover, ecc.
     if (isAssetRequest(req, url)) {
-        e.respondWith(handleAssetRequest(req));
+        respondWithRuntime(e, handleAssetRequest);
     }
     return;
 }
@@ -299,12 +380,12 @@ if (getScopeRelativePath(url) === 'data/youtube-playlists-config.json') {
     }
 
     if (isModuleRequest(url)) {
-        e.respondWith(handleModuleRequest(req));
+        respondWithRuntime(e, handleModuleRequest);
         return;
     }
 
     if (isAssetRequest(req, url)) {
-        e.respondWith(handleAssetRequest(req));
+        respondWithRuntime(e, handleAssetRequest);
         return;
     }
 
@@ -556,23 +637,67 @@ function isQuotaLikeError(err) {
     );
 }
 
-async function safeCachePut(cacheName, req, response, maxEntries, trimTo) {
-    if (!response || !response.ok) return;
-
-    const cache = await caches.open(cacheName);
-
+async function safeCachePut(cacheName, req, response, maxEntries, trimTo, ownsResponse) {
+    if (!runtimeCacheAdmission(req, response) || runtimeCacheWrites >= RUNTIME_CACHE_MAX_WRITES) {
+        if (ownsResponse && response && response.body) response.body.cancel().catch(() => {});
+        return false;
+    }
+    runtimeCacheWrites += 1;
+    let reader, timer, streamController, copyError;
+    let bytes = 0;
+    const cancelCopy = (error) => {
+        copyError = error || new Error('RUNTIME_CACHE_COPY_CANCELLED');
+        try { if (streamController) streamController.error(error); } catch (_) {}
+        // Never await cancellation of one tee branch: it can wait for the other
+        // (foreground) reader. Its response must remain usable and independent.
+        try { if (reader) reader.cancel(error).catch(() => {}); } catch (_) {}
+    };
     try {
-        await cache.put(req, response.clone());
-    } catch (err) {
-        if (!isQuotaLikeError(err)) return;
-
-        await trimCacheByLimit(cacheName, 0, trimTo);
-
-        try {
-            await cache.put(req, response.clone());
-        } catch (_) {
-            // fallback silenzioso: meglio servire la rete che rompere tutto
+        reader = (ownsResponse ? response : response.clone()).body.getReader();
+        timer = setTimeout(() => cancelCopy(new Error('RUNTIME_CACHE_WRITE_TIMEOUT')), RUNTIME_CACHE_WRITE_TIMEOUT_MS);
+        if (!ownsResponse) {
+            // Drain a bounded prefix BEFORE awaiting CacheStorage. A slow put
+            // must not be the consumer that leaves the foreground tee queued.
+            // No second fetch; reject/cancel once the byte budget is exceeded.
+            const chunks = [];
+            while (true) {
+                const part = await reader.read();
+                if (copyError) throw copyError;
+                if (part.done) break;
+                bytes += part.value.byteLength;
+                if (bytes > RUNTIME_CACHE_MAX_BODY_BYTES) throw new Error('RUNTIME_CACHE_BODY_BUDGET');
+                chunks.push(part.value);
+            }
+            reader = new Response(new Blob(chunks)).body.getReader();
+            bytes = 0;
         }
+        const stream = new ReadableStream({
+            start(controller) { streamController = controller; },
+            async pull(controller) {
+                try {
+                    const part = await reader.read();
+                    if (part.done) { controller.close(); return; }
+                    bytes += part.value.byteLength;
+                    if (bytes > RUNTIME_CACHE_MAX_BODY_BYTES) { cancelCopy(new Error('RUNTIME_CACHE_BODY_BUDGET')); return; }
+                    controller.enqueue(part.value);
+                } catch (error) { cancelCopy(error); }
+            },
+            cancel(error) { cancelCopy(error); }
+        });
+        const cache = await caches.open(cacheName);
+        if (copyError) throw copyError;
+        await cache.put(req, new Response(stream, { status: response.status, statusText: response.statusText, headers: response.headers }));
+        clearTimeout(timer);
+        await scheduleRuntimeTrim(cacheName, maxEntries, trimTo);
+        return true;
+    } catch (err) {
+        cancelCopy(err);
+        // No second clone of a partly consumed response on quota failure.
+        if (isQuotaLikeError(err)) await scheduleRuntimeTrim(cacheName, 0, trimTo).catch(() => {});
+        return false;
+    } finally {
+        clearTimeout(timer);
+        runtimeCacheWrites -= 1;
     }
 }
 
@@ -628,7 +753,8 @@ async function handleShellRequest(req, url) {
     }
 }
 
-async function handleModuleRequest(req) {
+async function handleModuleRequest(req, background = []) {
+    if (req.headers.has('range') || req.headers.has('authorization')) return fetch(req);
     const cache = await caches.open(MODULE_CACHE);
     const cached = await cache.match(req);
 
@@ -647,25 +773,23 @@ async function handleModuleRequest(req) {
         const fresh = await fetch(req, { cache: 'no-store' });
 
         if (fresh && fresh.ok) {
-            await safeCachePut(
+            background.push(safeCachePut(
                 MODULE_CACHE,
                 req,
                 fresh,
                 MODULE_CACHE_MAX_ENTRIES,
                 MODULE_CACHE_TRIM_TO
-            );
+            ).then((stored) => {
+                swDebug(stored ? 'MODULE_CACHE_REFRESHED' : 'MODULE_CACHE_WRITE_SKIPPED', {
+                    request: req.url, cacheName: MODULE_CACHE,
+                    status: fresh.status, mode: 'network-first'
+                });
+            }));
 
             swDebug('MODULE_NETWORK_OK', {
                 request: req.url,
                 cacheName: MODULE_CACHE,
                 status: fresh.status
-            });
-
-            swDebug('MODULE_CACHE_REFRESHED', {
-                request: req.url,
-                cacheName: MODULE_CACHE,
-                status: fresh.status,
-                mode: 'network-first'
             });
 
             return fresh;
@@ -716,52 +840,22 @@ async function handleModuleRequest(req) {
     }
 }
 
-async function handleAssetRequest(req) {
+async function handleAssetRequest(req, background = []) {
+    if (req.headers.has('range') || req.headers.has('authorization')) return fetch(req);
     const cache = await caches.open(ASSET_CACHE);
     const cached = await cache.match(req);
-
-    const networkPromise = fetch(req)
-        .then(async (fresh) => {
-            if (fresh && fresh.ok) {
-                await safeCachePut(
-                    ASSET_CACHE,
-                    req,
-                    fresh,
-                    ASSET_CACHE_MAX_ENTRIES,
-                    ASSET_CACHE_TRIM_TO
-                );
-
-                swDebug('ASSET_NETWORK_OK', {
-                    request: req.url,
-                    cacheName: ASSET_CACHE,
-                    status: fresh.status
-                });
-            } else {
-                swDebug('ASSET_NETWORK_NON_OK', {
-                    request: req.url,
-                    cacheName: ASSET_CACHE,
-                    status: fresh ? fresh.status : 'NO_RESPONSE'
-                });
-            }
-            return fresh;
-        })
-        .catch((e) => {
-            swDebug('ASSET_NETWORK_ERROR', {
-                request: req.url,
-                cacheName: ASSET_CACHE,
-                error: e && e.message ? e.message : 'unknown'
-            });
-            return null;
-        });
-
     if (cached) {
-        swDebug('ASSET_CACHE_HIT', {
-            request: req.url,
-            cacheName: ASSET_CACHE
-        });
+        background.push(refreshRuntimeAsset(req));
+        swDebug('ASSET_CACHE_HIT', { request: req.url, cacheName: ASSET_CACHE });
         return cached;
     }
-
-    const fresh = await networkPromise;
-    return fresh || Response.error();
+    try {
+        const fresh = await fetch(req);
+        background.push(safeCachePut(ASSET_CACHE, req, fresh, ASSET_CACHE_MAX_ENTRIES, ASSET_CACHE_TRIM_TO));
+        swDebug('ASSET_NETWORK_OK', { request: req.url, cacheName: ASSET_CACHE, status: fresh.status });
+        return fresh;
+    } catch (error) {
+        swDebug('ASSET_NETWORK_ERROR', { request: req.url, cacheName: ASSET_CACHE, error: error && error.message });
+        return Response.error();
+    }
 }

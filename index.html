@@ -16672,7 +16672,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.84';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.85';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16717,6 +16717,93 @@ const WilduIOSBlackBox = (() => {
     let resourceSampleAt = 0;
     let recording = false;
     const storageMetrics = { writes: 0, checkpoints: 0, failures: 0, lastWriteMs: 0, maxRecordMs: 0, lastPersistedAt: '', pending: false };
+    let swPolicyController = null;
+    let swResourcePolicy = { status: 'NOT_SAMPLED' };
+
+    function sampleSWResourcePolicy() {
+        try {
+            const controller = navigator.serviceWorker && navigator.serviceWorker.controller;
+            if (!controller || controller === swPolicyController || typeof MessageChannel !== 'function') return;
+            swPolicyController = controller;
+            const channel = new MessageChannel();
+            swResourcePolicy = { status: 'PENDING', scriptURL: controller.scriptURL, requestedAt: new Date().toISOString() };
+            let done = false;
+            const finish = function (data) {
+                if (done) return;
+                done = true; clearTimeout(timeout); channel.port1.close(); channel.port2.close();
+                if (navigator.serviceWorker.controller !== controller) return;
+                swResourcePolicy = Object.assign({}, swResourcePolicy, { status: data ? 'REPLIED' : 'NO_REPLY',
+                    sampledAt: new Date().toISOString(), details: data ? sanitizeValue(data, 0) : null });
+                record('sw_resource_policy_sampled', swResourcePolicy);
+            };
+            const timeout = setTimeout(function () { finish(null); }, 1500);
+            channel.port1.onmessage = function (event) { finish(event.data); };
+            try { controller.postMessage({ type: 'WILDU_RUNTIME_POLICY_QUERY' }, [channel.port2]); }
+            catch (_) { finish(null); }
+        } catch (_) { swResourcePolicy = { status: 'UNAVAILABLE' }; }
+    }
+
+    // Native highwater can predate the last UI event by tens of seconds. Keep
+    // compact time buckets separately from rich snapshots; repeated scheduling
+    // must not evict the preceding document or cause a DOM sample on every call.
+    function noteCausalTimeline(state, event, details) {
+        const now = Date.now();
+        const documents = Array.isArray(state.causalTimeline) ? state.causalTimeline : [];
+        let doc = documents.find(function (item) { return item.docId === WILDU_IOS_BLACKBOX_DOC_ID; });
+        if (!doc) {
+            doc = { docId: WILDU_IOS_BLACKBOX_DOC_ID, timeOrigin: performance.timeOrigin,
+                build: String(WILDU_EMBEDDED_SHELL_VERSION), buckets: [], truncatedBuckets: 0, aggregatedEvents: 0 };
+            documents.push(doc);
+        }
+        const slot = Math.floor(now / 2000) * 2000;
+        let bucket = doc.buckets[doc.buckets.length - 1];
+        if (!bucket || bucket.at !== slot) {
+            bucket = { at: slot, first: now, last: now, count: 0, events: {}, lanes: {}, milestones: [], overflow: 0 };
+            doc.buckets.push(bucket);
+            if (doc.buckets.length > 64) { doc.buckets.shift(); doc.truncatedBuckets += 1; }
+        }
+        bucket.last = now;
+        bucket.count += 1;
+        const eventKey = Object.prototype.hasOwnProperty.call(bucket.events, event) || Object.keys(bucket.events).length < 15 ? event : 'other';
+        const previous = Number(bucket.events[eventKey] || 0);
+        bucket.events[eventKey] = previous + 1;
+        if (eventKey === 'other') bucket.overflow += 1;
+        const data = details || {};
+        const lane = String(data.lane || data.surface || '').slice(0, 48);
+        if (lane && (Object.prototype.hasOwnProperty.call(bucket.lanes, lane) || Object.keys(bucket.lanes).length < 8)) {
+            bucket.lanes[lane] = { generation: Number(data.generation || data.ownerSequence || 0),
+                count: Number(bucket.lanes[lane] && bucket.lanes[lane].count || 0) + 1,
+                pending: Number(data.pending || data.debt || 0),
+                reason: String(sanitizeValue(data.guard || data.reason || '', 0)).slice(0, 120) };
+        }
+        if (/app_boot_start|pagehide|pageshow|visibilitychange|reload|_requested$|_committed$|travel_tab_transition|atomic_close_(start|done)/.test(event)) {
+            bucket.milestones.push({ at: now, event: event, generation: Number(data.generation || 0) });
+            if (bucket.milestones.length > 8) { bucket.milestones.shift(); bucket.overflow += 1; }
+        }
+        state.causalTimeline = documents.slice(-2);
+        const repeatedNoise = /coalesced$|^ios_resource_coordinator_job_(enqueued|blocked)$/.test(event) && previous > 0;
+        if (repeatedNoise) doc.aggregatedEvents += 1;
+        return repeatedNoise;
+    }
+
+    function recoverCausalTail(state, tail) {
+        const documents = Array.isArray(state.causalTimeline) ? state.causalTimeline : [];
+        (Array.isArray(tail) ? tail : []).slice(-2).forEach(function (saved) {
+            if (!saved || typeof saved.docId !== 'string') return;
+            let doc = documents.find(function (item) { return item.docId === saved.docId; });
+            if (!doc) { doc = Object.assign({}, saved, { buckets: [] }); documents.push(doc); }
+            if (!Array.isArray(doc.buckets)) doc.buckets = [];
+            (Array.isArray(saved.buckets) ? saved.buckets : []).slice(-2).forEach(function (bucket) {
+                if (!bucket || !Number.isFinite(Number(bucket.at))) return;
+                const index = doc.buckets.findIndex(function (item) { return item.at === bucket.at; });
+                if (index < 0) doc.buckets.push(bucket);
+                else if (Number(bucket.last) > Number(doc.buckets[index].last)) doc.buckets[index] = bucket;
+            });
+            doc.buckets.sort(function (a, b) { return a.at - b.at; });
+            doc.buckets = doc.buckets.slice(-64);
+        });
+        state.causalTimeline = documents.slice(-2);
+    }
 
     function mergeRecordedEntries(left, right, limit) {
         const seen = new Set();
@@ -16781,6 +16868,7 @@ const WilduIOSBlackBox = (() => {
                 events: []
             });
             const checkpoint = safeJsonParse(localStorage.getItem(WILDU_IOS_BLACKBOX_CHECKPOINT_KEY), {});
+            recoverCausalTail(state, checkpoint.causalTail);
             const recovered = Array.isArray(checkpoint.entries) ? checkpoint.entries.map(compactBlackboxEventForStorage) : [];
             state.events = mergeRecordedEntries(state.events, recovered, WILDU_IOS_BLACKBOX_MAX_EVENTS).map(compactBlackboxEventForStorage);
             state.criticalRing = mergeRecordedEntries(state.criticalRing, recovered, WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING).map(compactBlackboxEventForStorage);
@@ -16864,10 +16952,13 @@ const WilduIOSBlackBox = (() => {
                             clientSessionAuthState: snap.clientSessionAuthState, activeTimers: { detail: snap.activeTimers && snap.activeTimers.detail,
                                 softModal: snap.activeTimers && snap.activeTimers.softModal }, resourceSampleAt: snap.resourceSampleAt } };
                 });
-                let journal = JSON.stringify({ version: 2, entries });
+                const causalTail = (state.causalTimeline || []).slice(-2).map(function (doc) {
+                    return Object.assign({}, doc, { buckets: doc.buckets.slice(-2) });
+                });
+                let journal = JSON.stringify({ version: 2, entries, causalTail });
                 while (journal.length > 64000 && entries.length > 1) {
                     entries.splice(0, Math.max(1, Math.floor(entries.length / 4)));
-                    journal = JSON.stringify({ version: 2, entries });
+                    journal = JSON.stringify({ version: 2, entries, causalTail });
                 }
                 if (journal.length > 64000) throw new Error('BLACKBOX_CHECKPOINT_BUDGET');
                 localStorage.setItem(WILDU_IOS_BLACKBOX_CHECKPOINT_KEY, journal);
@@ -17977,6 +18068,12 @@ const WilduIOSBlackBox = (() => {
         const started = performance.now();
         try {
         const state = readState();
+        if (noteCausalTimeline(state, cleanEvent, details)) {
+            // Count every call, but rich snapshots are retained once per event
+            // class/time bucket. Persistence uses the existing single timer.
+            return stageState(state, { event: cleanEvent });
+        }
+        if (cleanEvent === 'app_boot_start') sampleSWResourcePolicy();
         const events = Array.isArray(state.events) ? state.events : [];
         let fragile = false;
         try { fragile = WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending > 0 || /opening|closing/.test(getDetailPhase()); } catch (e) {}
@@ -18043,7 +18140,11 @@ const WilduIOSBlackBox = (() => {
         return {
             reportType: 'WILDU_IOS_BLACKBOX_V1',
             generatedAt: new Date().toISOString(),
-            blackboxPlan: 'ios-causal-trace-v7-idempotent-batched-storage',
+            blackboxPlan: 'ios-causal-trace-v8-bounded-two-document-timeline',
+            swResourcePolicy: Object.assign({}, swResourcePolicy),
+            causalTimeline: Array.isArray(state.causalTimeline) ? state.causalTimeline : [],
+            causalTimelinePolicy: { documents: 2, bucketsPerDocument: 64, bucketMs: 2000,
+                eventClassesPerBucket: 16, lanesPerBucket: 8, milestonesPerBucket: 8, countersIncludeAggregatedCalls: true },
             persistence: Object.assign({}, storageMetrics, { pendingTimer: !!persistenceTimer, checkpointMaxChars: 64000, batchDelayMs: 900,
                 truncatedEvents: state.truncatedEvents || 0, truncatedCriticalEvents: state.truncatedCriticalEvents || 0 }),
             currentSnapshot,
@@ -18107,6 +18208,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function openPanel() {
+        sampleSWResourcePolicy();
         const modal = ensureModal();
         const text = modal.querySelector('#wildu-ios-blackbox-text');
         const summary = modal.querySelector('#wildu-ios-blackbox-summary');
@@ -26060,7 +26162,14 @@ function wilduGetIOSResourceCoordinatorOwnerGuard(lane, reason) {
                 surface: /amazon/i.test(cleanLane) ? 'shop' : ''
             })
             : null;
-        if (ownerGuard && ownerGuard.blocked) return ownerGuard;
+        if (ownerGuard && ownerGuard.blocked) {
+            // The final owner decision must use the same narrow visible-image
+            // admission as the Amazon lane above. Do not undo it with a broader
+            // recovery guard; real auth/transition/hidden guards still reject.
+            const visibleAdmission = cleanLane === 'amazon-visible' &&
+                wilduCanHydrateAmazonVisibleImageWhileGuarded(document.getElementById('amazon-slider-engine'), ownerGuard, 'image_hydration:' + reasonText);
+            if (!visibleAdmission) return ownerGuard;
+        }
         return { blocked: false };
     } catch (e) {
         return { blocked: false };
@@ -28236,7 +28345,11 @@ function getWilduVisibleResourceGuaranteeSnapshot() {
     const openday = collect('#openday-list img', 10);
     const payday = collect('#payday-list img', 10);
     const ondemand = collect('#ondemand-list img', 10);
-    const shop = collect('#amazon-slider-engine img', 10);
+    const shop = wilduGetAmazonImageBand(document.getElementById('amazon-slider-engine')).map(function (entry) {
+        return { visible: entry.visible, hasSrc: entry.assigned, loaded: entry.loaded,
+            released: entry.node.dataset.wilduIosImageReleased === '1', pendingSoft: !entry.assigned && !entry.failed,
+            failed: entry.failed, surface: 'shop' };
+    });
     const rewards = collect('#wildu-rewards-horizontal-videos img', 10);
     function summary(items) {
         items = Array.isArray(items) ? items : [];
@@ -29477,6 +29590,91 @@ function wilduGetTravelListCardForImage(img) {
     return img.closest('.wildu-adventure-card,.card');
 }
 
+// A released IMG may have no box. Membership belongs to its stable card, not
+// to an IMG observer with an unrelated, much larger rootMargin.
+const WILDU_TRAVEL_IMAGE_OBSERVATION = { roots: new Map(), observer: null, pending: new Set(), timer: 0 };
+
+function wilduScheduleObservedTravelBand(root) {
+    const observation = WILDU_TRAVEL_IMAGE_OBSERVATION;
+    if (!root || !root.isConnected || document.hidden) return;
+    observation.pending.add(root);
+    if (observation.timer) return;
+    observation.timer = window.setTimeout(function () {
+        observation.timer = 0;
+        const pending = Array.from(observation.pending);
+        observation.pending.clear();
+        if (document.hidden) return;
+        pending.forEach(function (list) {
+            const state = observation.roots.get(list);
+            if (!state || !list.isConnected) return;
+            const band = wilduGetTravelListActiveBand(list, 'observed_card_band');
+            const cards = wilduGetTravelListCards(list);
+            const active = new Set(band.start < 0 ? [] : cards.slice(band.start, band.end + 1));
+            state.active.forEach(function (card) {
+                if (active.has(card)) return;
+                (state.images.get(card) || []).forEach(function (img) { wilduScheduleIOSImageMemoryRelease(img, getWilduImageMemoryPolicy().releaseDelay); });
+            });
+            state.active = active;
+            if (wilduShouldUseIOSPWASmartImageGuard()) {
+                if (active.size) wilduScheduleActiveTravelBandRestoreForIOS('observed_card_band', 240, WILDU_IOS_ACTIVE_TRAVEL_BAND_RESTORE_LIMIT);
+                return;
+            }
+            let restored = 0, remaining = false;
+            active.forEach(function (card) {
+                (state.images.get(card) || []).forEach(function (img) {
+                    const tracked = WILDU_IOS_IMAGE_MEMORY_RUNTIME.states.get(img);
+                    if (!img.isConnected || !tracked || !tracked.released) return;
+                    if (restored >= 2) { remaining = true; return; }
+                    if (wilduShouldRestoreManagedImageNow(img, 'observed_card_band') && wilduRestoreIOSManagedImage(img)) restored += 1;
+                });
+            });
+            if (remaining) wilduScheduleObservedTravelBand(list);
+        });
+    }, 120);
+}
+
+function wilduObserveTravelCardImage(img, imageState) {
+    const root = wilduGetTravelListRootForImage(img), card = wilduGetTravelListCardForImage(img);
+    if (!root || !card) return false;
+    const observation = WILDU_TRAVEL_IMAGE_OBSERVATION;
+    if (!observation.observer) observation.observer = new IntersectionObserver(function (entries) {
+        const changed = new Set();
+        entries.forEach(function (entry) {
+            const list = entry.target.closest('#event-list,#openday-list,#payday-list,#ondemand-list');
+            const state = observation.roots.get(list);
+            if (!state || !state.images.has(entry.target)) return;
+            state.ready = true;
+            if (entry.isIntersecting) state.visible.add(entry.target); else state.visible.delete(entry.target);
+            changed.add(list);
+        });
+        changed.forEach(wilduScheduleObservedTravelBand);
+    }, { root: null, rootMargin: '96px 0px', threshold: 0 });
+    let state = observation.roots.get(root);
+    if (!state) {
+        state = { images: new Map(), visible: new Set(), active: new Set(), ready: false, cards: null, indices: new Map() };
+        observation.roots.set(root, state);
+    }
+    if (!state.images.has(card)) { state.images.set(card, new Set()); observation.observer.observe(card); state.cards = null; }
+    state.images.get(card).add(img);
+    imageState.travelObservation = { root, card };
+    return true;
+}
+
+function wilduUnobserveTravelCardImage(img, imageState) {
+    const target = imageState && imageState.travelObservation;
+    if (!target) return;
+    delete imageState.travelObservation;
+    const observation = WILDU_TRAVEL_IMAGE_OBSERVATION, state = observation.roots.get(target.root);
+    if (!state) return;
+    const images = state.images.get(target.card);
+    if (images) images.delete(img);
+    if (images && !images.size) {
+        observation.observer.unobserve(target.card);
+        state.images.delete(target.card); state.visible.delete(target.card); state.active.delete(target.card); state.cards = null;
+    }
+    if (!state.images.size) { observation.roots.delete(target.root); observation.pending.delete(target.root); }
+}
+
 function wilduNormalizeTravelTabId(tabId) {
     const clean = String(tabId || '');
     if (clean === 'wheel') return 'events';
@@ -29540,9 +29738,13 @@ function wilduIsTravelListRootActiveForImages(root) {
 function wilduGetTravelListCards(root) {
     try {
         if (!root) return [];
-        return Array.prototype.filter.call(root.children || [], function (node) {
+        const observed = WILDU_TRAVEL_IMAGE_OBSERVATION.roots.get(root);
+        if (observed && observed.cards) return observed.cards;
+        const cards = Array.prototype.filter.call(root.children || [], function (node) {
             return !!(node && node.nodeType === 1 && node.matches && node.matches('.wildu-adventure-card,.card'));
         });
+        if (observed) { observed.cards = cards; observed.indices = new Map(cards.map(function (card, index) { return [card, index]; })); }
+        return cards;
     } catch (e) {
         return [];
     }
@@ -29571,6 +29773,17 @@ function wilduGetTravelListActiveBand(root, reason) {
         return result;
     }
     if (!rootActive && !rootRenderable) return result;
+
+    const observed = WILDU_TRAVEL_IMAGE_OBSERVATION.roots.get(root);
+    if (observed && observed.ready) {
+        const indices = Array.from(observed.visible).map(function (card) { return observed.indices.get(card); }).filter(Number.isInteger);
+        if (indices.length) {
+            result.firstVisible = Math.min.apply(null, indices); result.lastVisible = Math.max.apply(null, indices);
+            result.start = Math.max(0, result.firstVisible - 1); result.end = Math.min(count - 1, result.lastVisible + 1);
+        }
+        result.fallback = 'observed_card_band';
+        return result;
+    }
 
     const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
     const margin = Math.max(
@@ -29620,7 +29833,8 @@ function wilduIsTravelListImageInsideActiveBand(img) {
     if (!root || !card || !root.contains(card)) return null;
 
     const cards = wilduGetTravelListCards(root);
-    const cardIndex = cards.indexOf(card);
+    const observed = WILDU_TRAVEL_IMAGE_OBSERVATION.roots.get(root);
+    const cardIndex = observed ? (observed.indices.has(card) ? observed.indices.get(card) : -1) : cards.indexOf(card);
     if (cardIndex < 0) return null;
     const band = wilduGetTravelListActiveBand(root, 'active_band_check');
     if (band.start < 0 || band.end < 0) return false;
@@ -31508,7 +31722,18 @@ function wilduScheduleIOSImageMemoryRelease(img, delay) {
 
 function wilduRegisterIOSImageMemoryCandidate(img) {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
-    if (!wilduIsIOSImageMemoryCandidate(img) || runtime.states.has(img)) return false;
+    if (!wilduIsIOSImageMemoryCandidate(img)) return false;
+    const existing = runtime.states.get(img);
+    if (existing) {
+        const root = wilduGetTravelListRootForImage(img), card = wilduGetTravelListCardForImage(img);
+        const previous = existing.travelObservation;
+        if ((previous && (previous.root !== root || previous.card !== card)) || (!previous && root && card)) {
+            wilduUnobserveTravelCardImage(img, existing);
+            runtime.intersectionObserver.unobserve(img);
+            if (!wilduObserveTravelCardImage(img, existing)) runtime.intersectionObserver.observe(img);
+        }
+        return false;
+    }
 
     const state = {
         src: '',
@@ -31528,7 +31753,7 @@ function wilduRegisterIOSImageMemoryCandidate(img) {
     wilduReadIOSImageMemoryAttributes(img, state);
     runtime.states.set(img, state);
     runtime.images.add(img);
-    runtime.intersectionObserver.observe(img);
+    if (!wilduObserveTravelCardImage(img, state)) runtime.intersectionObserver.observe(img);
     if (!wilduShouldSkipSmartImageOptimizationAtRegistration(img, 'register')) {
         wilduQueueSmartImageOptimization(img, 'register');
     }
@@ -31540,6 +31765,7 @@ function wilduUnregisterIOSImageMemoryCandidate(img) {
     const state = runtime.states.get(img);
     if (!state) return;
     wilduCancelIOSImageMemoryRelease(state);
+    wilduUnobserveTravelCardImage(img, state);
     try { runtime.intersectionObserver.unobserve(img); } catch (e) {}
     runtime.images.delete(img);
     runtime.states.delete(img);
@@ -31590,6 +31816,7 @@ function wilduRefreshIOSImageMemoryWindow(reason) {
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
     if (!runtime.installed || !wilduShouldUseImageMemoryWindow()) return false;
     const refreshReason = String(reason || 'REFRESH');
+    WILDU_TRAVEL_IMAGE_OBSERVATION.roots.forEach(function (_, root) { wilduScheduleObservedTravelBand(root); });
     if (refreshReason.indexOf('GOOGLE_AUTH') === 0 && !(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) return false;
     if (wilduShouldUseIOSPWASmartImageGuard() && refreshReason === 'GOOGLE_AUTH_END') {
         wilduEnterIOSAuthProfileQuietMode('refresh:' + refreshReason, WILDU_IOS_RESOURCE_RECOVERY_AUTH_MS);
@@ -31943,9 +32170,14 @@ function installWilduIOSImageMemoryWindow() {
     runtime.mutationObserver = new MutationObserver(function (mutations) {
         mutations.forEach(function (mutation) {
             if (mutation.type === 'childList') {
+                const observed = WILDU_TRAVEL_IMAGE_OBSERVATION.roots.get(mutation.target);
+                if (observed) { observed.cards = null; wilduScheduleObservedTravelBand(mutation.target); }
                 mutation.addedNodes.forEach(wilduRegisterIOSImagesIn);
                 mutation.removedNodes.forEach(function (node) {
                     if (!node || node.nodeType !== 1) return;
+                    // A DOM move is not a removal. Preserve source state and
+                    // rebind observation if the same card moved between lists.
+                    if (node.isConnected) { wilduRegisterIOSImagesIn(node); return; }
                     if (String(node.tagName || '').toUpperCase() === 'IMG') {
                         wilduUnregisterIOSImageMemoryCandidate(node);
                     }
@@ -34117,7 +34349,7 @@ function renderTrips(trips, targetId) {
         // --- IMMAGINE ---
         const imgUrl = ev.immagine || ev.fotoUrl || "";
         let imgHtml = imgUrl && imgUrl.trim() !== ""
-            ? `<div style="position: relative; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), index, targetId, 'travel_render')} style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}${xpFloatingBadge}</div>`
+            ? `<div class="wildu-travel-card-media" style="position: relative; height:185px; min-height:185px; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), index, targetId, 'travel_render')} style="display:block; width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}${xpFloatingBadge}</div>`
             : `<div style="margin-bottom:15px; position:relative; min-height:38px;">${badgeHtml}${xpFloatingBadge}</div>`;
 
         // --- RENDER IBRIDO ---
@@ -35527,9 +35759,9 @@ configureWilduDetailDateOptions('trip', ev, id);
             const imgUrl = od["immagine"] || od["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), odIndex, 'openday-list', 'openday_render')} style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
+                imgHtml = `<div class="wildu-travel-card-media" style="position: relative; height:185px; min-height:185px; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), odIndex, 'openday-list', 'openday_render')} style="display:block; width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
             } else {
-                imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
+                imgHtml = `<div style="margin-bottom:15px; position:relative; min-height:38px;">${badgeHtml}</div>`;
             }
             
             // INSERIMENTO DELLA REGIONE E TESTI
@@ -35656,9 +35888,9 @@ function renderPayDays() {
             const imgUrl = pd["immagine"] || pd["fotoUrl"] || "";
             let imgHtml = "";
             if (imgUrl && imgUrl.trim() !== "") {
-                imgHtml = `<div style="position: relative; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), pdIndex, 'payday-list', 'payday_render')} style="width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
+                imgHtml = `<div class="wildu-travel-card-media" style="position: relative; height:185px; min-height:185px; margin-bottom:15px;"><img ${wilduBuildTravelListImageSrcAttributes(formatAssetLink(imgUrl), pdIndex, 'payday-list', 'payday_render')} style="display:block; width:100%; height:180px; object-fit:cover; border-radius:8px;" loading="lazy" decoding="async" width="700" height="360">${badgeHtml}</div>`;
             } else {
-                imgHtml = `<div style="margin-bottom:15px; position:relative;">${badgeHtml}</div>`;
+                imgHtml = `<div style="margin-bottom:15px; position:relative; min-height:38px;">${badgeHtml}</div>`;
             }
 
             html += `
@@ -44308,16 +44540,21 @@ function wilduReleaseAmazonQuietModeIfStable(reason) {
 function wilduGetAmazonImageBand(slider) {
     if (!slider || !slider.isConnected) return [];
     const viewport = slider.getBoundingClientRect();
-    if (!viewport.width || !viewport.height) return [];
+    if (!viewport.width || !viewport.height || document.hidden || viewport.bottom <= 0 || viewport.top >= window.innerHeight) return [];
     const placeholder = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
     const entries = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]')).map(function (node) {
         const card = node.closest('.amazon-card') || node;
         const rect = card.getBoundingClientRect();
-        const visible = rect.right > viewport.left && rect.left < viewport.right;
+        const visible = rect.bottom > Math.max(0, viewport.top) && rect.top < Math.min(window.innerHeight, viewport.bottom) &&
+            rect.right > Math.max(0, viewport.left) && rect.left < Math.min(window.innerWidth, viewport.right);
         const released = node.dataset.wilduTabImageReleased === '1' || node.dataset.wilduIosImageReleased === '1';
         const src = node.getAttribute('src') || '';
         const assigned = node.tagName === 'IMG' && !!src && src !== placeholder && !released;
-        return { node, visible, inBand: visible, assigned, loaded: assigned && node.complete && node.naturalWidth > 0 };
+        const retryAt = Number(node.dataset.wilduAmazonImageRetryAt || 0);
+        const retryable = node.dataset.wilduAmazonImageFailed === '1' && Number(node.dataset.wilduAmazonImageAttempts || 0) < 2;
+        const retryReady = retryable && retryAt > 0 && Date.now() >= retryAt;
+        const failed = !retryReady && (node.dataset.wilduAmazonImageFailed === '1' || (assigned && node.complete && node.naturalWidth === 0));
+        return { node, visible, inBand: visible, assigned, failed, retryAt: retryable ? retryAt : 0, loaded: assigned && node.complete && node.naturalWidth > 0 };
     });
     const first = entries.findIndex(function (entry) { return entry.visible; });
     if (first >= 0) {
@@ -44336,7 +44573,9 @@ function wilduGetAmazonVisibleHydrationDebt(slider) {
         const band = all.filter(function (entry) { return entry.inBand; });
         const hydrated = band.filter(function (entry) { return entry.assigned; }).length;
         const loaded = band.filter(function (entry) { return entry.loaded; }).length;
-        return { pending: band.length - hydrated, hydrated, loaded, inFlight: hydrated - loaded,
+        const failed = band.filter(function (entry) { return entry.failed; }).length;
+        return { pending: band.filter(function (entry) { return !entry.assigned && !entry.failed; }).length,
+            hydrated, loaded, failed, inFlight: band.filter(function (entry) { return entry.assigned && !entry.loaded && !entry.failed; }).length,
             liveTotal: all.filter(function (entry) { return entry.assigned; }).length,
             limit: wilduGetAmazonVisibleHydrationLimit(slider, true, all), visibleCandidates: band.length };
     } catch (e) {
@@ -44795,9 +45034,31 @@ function wilduHydrateVisibleAmazonImages(reason) {
     }
     const guarded = !!(guard && guard.blocked);
     const band = wilduGetAmazonImageBand(slider);
-    const candidates = band.filter(function (entry) { return entry.inBand && !entry.assigned; });
+    band.forEach(function (entry) {
+        if (entry.loaded) delete entry.node.dataset.wilduAmazonImageAttempts;
+    });
+    const inflight = band.find(function (entry) { return entry.assigned && !entry.loaded && !entry.failed; });
+    if (inflight) {
+        const since = Number(inflight.node.dataset.wilduAmazonLoadStartedAt || 0);
+        if (!since) inflight.node.dataset.wilduAmazonLoadStartedAt = String(Date.now());
+        else if (Date.now() - since >= 30000) {
+            inflight.node.dataset.wilduAmazonImageFailed = '1';
+            inflight.node.dataset.wilduAmazonImageAttempts = String(Number(inflight.node.dataset.wilduAmazonImageAttempts || 0) + 1);
+            inflight.node.dataset.wilduAmazonImageRetryAt = String(Date.now() + 30000);
+            inflight.node.src = placeholder;
+            delete inflight.node.dataset.wilduAmazonVisibleHydrating;
+        }
+        wilduScheduleAmazonImageHydration('progressive_next', 500);
+        return 0;
+    }
+    const candidates = band.filter(function (entry) { return entry.inBand && !entry.assigned && !entry.failed; });
     const selected = candidates.find(function (entry) { return entry.visible; }) || candidates[0];
-    if (!selected) return 0;
+    if (!selected) {
+        const retry = band.filter(function (entry) { return entry.inBand && entry.retryAt > Date.now(); })
+            .reduce(function (at, entry) { return Math.min(at, entry.retryAt); }, Infinity);
+        if (Number.isFinite(retry)) wilduScheduleAmazonImageHydration('progressive_next', Math.max(500, retry - Date.now()));
+        return 0;
+    }
     const hydratedCount = band.filter(function (entry) { return entry.assigned; }).length;
     const hydrationLimit = wilduGetAmazonVisibleHydrationLimit(slider, guarded, band);
     if (hydratedCount >= hydrationLimit) {
@@ -44846,14 +45107,21 @@ function wilduHydrateVisibleAmazonImages(reason) {
         hydrated.setAttribute('data-wildu-shop-image-src', src);
         hydrated.setAttribute('data-wildu-amazon-visible-hydrating', '1');
         hydrated.setAttribute('data-wildu-amazon-hydrated', '1');
-        hydrated.onerror = function () {
-            hydrated.onerror = null;
-            hydrated.src = placeholder;
-            hydrated.removeAttribute('data-wildu-shop-image-src');
-        };
         img.replaceWith(hydrated);
         registeredTarget = hydrated;
     }
+    registeredTarget.dataset.wilduAmazonLoadStartedAt = String(Date.now());
+    delete registeredTarget.dataset.wilduAmazonImageFailed;
+    delete registeredTarget.dataset.wilduAmazonImageRetryAt;
+    registeredTarget.onerror = function () {
+        registeredTarget.onerror = null;
+        registeredTarget.dataset.wilduAmazonImageFailed = '1';
+        registeredTarget.dataset.wilduAmazonImageAttempts = String(Number(registeredTarget.dataset.wilduAmazonImageAttempts || 0) + 1);
+        registeredTarget.dataset.wilduAmazonImageRetryAt = String(Date.now() + 30000);
+        registeredTarget.src = placeholder;
+        delete registeredTarget.dataset.wilduAmazonVisibleHydrating;
+        wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
+    };
     try {
         if (typeof wilduRegisterIOSImagesIn === 'function') wilduRegisterIOSImagesIn(registeredTarget);
     } catch (e) {}
@@ -44913,7 +45181,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
         limit: hydrationLimit,
         guarded
     });
-    if (candidates.length > (hydrationCommitted ? 1 : 0)) {
+    if (candidates.length > (hydrationCommitted ? 1 : 0) || !registeredTarget.complete) {
         wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
     }
     return hydrationCommitted ? 1 : 0;
@@ -46532,9 +46800,24 @@ function startAmazonAutoScroll() {
     }, 4500);
 }
 
+function wilduRearmAmazonFailedImages(reason) {
+    const slider = document.getElementById('amazon-slider-engine');
+    const now = Date.now();
+    let rearmed = 0;
+    wilduGetAmazonImageBand(slider).forEach(function (entry) {
+        if (!entry.inBand || entry.node.dataset.wilduAmazonImageFailed !== '1' ||
+            Number(entry.node.dataset.wilduAmazonImageRetryAt || 0) > now) return;
+        entry.node.dataset.wilduAmazonImageAttempts = '0';
+        rearmed += 1;
+    });
+    if (rearmed) wilduScheduleAmazonImageHydration('visible_recovery:' + String(reason || 'interaction'), 180);
+    return rearmed;
+}
+
 function bindAmazonSliderEventsOnce(slider) {
     if (!slider || amazonSliderEventsBound) return;
     amazonSliderEventsBound = true;
+    window.addEventListener('online', function () { wilduRearmAmazonFailedImages('network_online'); });
 
     slider.addEventListener('touchstart', pauseAmazonAutoScroll, { passive: true });
     slider.addEventListener('mousedown', pauseAmazonAutoScroll);
@@ -46595,6 +46878,9 @@ function pauseAmazonAutoScroll(reason) {
         return;
     }
     wilduScheduleAmazonResume(String(reason && reason.type ? reason.type : (reason || 'manual_or_interaction')), resumeDelay);
+    if (reason && reason.isTrusted && /^(touchstart|mousedown|wheel|keydown)$/.test(reason.type)) {
+        wilduRearmAmazonFailedImages('user_interaction');
+    }
 }    
 
 
