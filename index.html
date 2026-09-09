@@ -16672,7 +16672,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.83';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.84';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16692,6 +16692,7 @@ const WILDU_IOS_BLACKBOX_DOC_ID = 'd' + Date.now().toString(36) + Math.random().
 const WILDU_IOS_BLACKBOX_MAX_EVENTS = 900;
 const WILDU_IOS_BLACKBOX_MIN_EVENTS = 260;
 const WILDU_IOS_BLACKBOX_MAX_TEXT = 950000;
+const WILDU_IOS_BLACKBOX_CHECKPOINT_KEY = 'wildu.debug.ios.blackbox.checkpoint.v2';
 const WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS = 220000;
 const WILDU_IOS_BLACKBOX_REPORT_CACHE = 'wildu-blackbox-report-v1';
 const WILDU_IOS_BLACKBOX_REPORT_DIR = '__wildu-ios-blackbox-report/';
@@ -16708,6 +16709,26 @@ const WilduIOSBlackBox = (() => {
     let frameSamplerReason = '';
     let lastDomProxyAt = 0;
     let lastDomProxySnapshot = null;
+    let cachedState = null;
+    let stateNeedsReload = false;
+    let persistenceTimer = 0;
+    let recordSequence = 0;
+    let resourceSample = null;
+    let resourceSampleAt = 0;
+    let recording = false;
+    const storageMetrics = { writes: 0, checkpoints: 0, failures: 0, lastWriteMs: 0, maxRecordMs: 0, lastPersistedAt: '', pending: false };
+
+    function mergeRecordedEntries(left, right, limit) {
+        const seen = new Set();
+        return (Array.isArray(left) ? left : []).concat(Array.isArray(right) ? right : [])
+            .filter(function (entry) {
+                if (!entry || typeof entry !== 'object') return false;
+                const key = [entry.snapshot && entry.snapshot.docId, entry.seq || '', entry.ts, entry.event].join('|');
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            }).sort(function (a, b) { return String(a.ts || '').localeCompare(String(b.ts || '')); }).slice(-limit);
+    }
 
     function safeJsonParse(value, fallback) {
         try {
@@ -16733,8 +16754,24 @@ const WilduIOSBlackBox = (() => {
     }
 
     function readState() {
+        if (cachedState && !stateNeedsReload) {
+            // Storage.clear() in this same document (historical logout/reset) does
+            // not emit a storage event. Check key presence without reading the
+            // large value; never resurrect an explicitly removed persisted log.
+            try {
+                if (storageMetrics.writes > 0 && !(WILDU_IOS_BLACKBOX_STORAGE_KEY in localStorage)) {
+                    if (persistenceTimer) window.clearTimeout(persistenceTimer);
+                    persistenceTimer = 0;
+                    storageMetrics.pending = false;
+                    cachedState = null;
+                    resourceSample = null;
+                    resourceSampleAt = 0;
+                    localStorage.removeItem(WILDU_IOS_BLACKBOX_CHECKPOINT_KEY);
+                } else return cachedState;
+            } catch (e) { return cachedState; }
+        }
         try {
-            return safeJsonParse(localStorage.getItem(WILDU_IOS_BLACKBOX_STORAGE_KEY), {
+            const state = safeJsonParse(localStorage.getItem(WILDU_IOS_BLACKBOX_STORAGE_KEY), {
                 version: 1,
                 enabled: false,
                 createdAt: new Date().toISOString(),
@@ -16743,52 +16780,104 @@ const WilduIOSBlackBox = (() => {
                 criticalRing: [],
                 events: []
             });
+            const checkpoint = safeJsonParse(localStorage.getItem(WILDU_IOS_BLACKBOX_CHECKPOINT_KEY), {});
+            const recovered = Array.isArray(checkpoint.entries) ? checkpoint.entries.map(compactBlackboxEventForStorage) : [];
+            state.events = mergeRecordedEntries(state.events, recovered, WILDU_IOS_BLACKBOX_MAX_EVENTS).map(compactBlackboxEventForStorage);
+            state.criticalRing = mergeRecordedEntries(state.criticalRing, recovered, WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING).map(compactBlackboxEventForStorage);
+            if (cachedState && storageMetrics.pending) {
+                state.events = mergeRecordedEntries(state.events, cachedState.events, WILDU_IOS_BLACKBOX_MAX_EVENTS);
+                state.criticalRing = mergeRecordedEntries(state.criticalRing, cachedState.criticalRing, WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING);
+            }
+            cachedState = state;
+            stateNeedsReload = false;
+            return cachedState;
         } catch (e) {
-            return { version: 1, enabled: false, bootDiary: [], criticalRing: [], events: [] };
+            cachedState = cachedState || { version: 1, enabled: false, bootDiary: [], criticalRing: [], events: [] };
+            stateNeedsReload = false;
+            return cachedState;
         }
     }
 
     function writeState(state) {
+        const started = performance.now();
         try {
             const clean = state && typeof state === 'object' ? state : {};
             clean.version = 1;
-            clean.events = Array.isArray(clean.events) ?
-                clean.events.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) :
-                [];
+            clean.storageFormat = 2;
+            clean.events = Array.isArray(clean.events) ? clean.events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) : [];
             clean.bootDiary = Array.isArray(clean.bootDiary) ? clean.bootDiary.slice(-WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY) : [];
-            clean.criticalRing = Array.isArray(clean.criticalRing) ?
-                clean.criticalRing.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING) :
-                [];
+            clean.criticalRing = Array.isArray(clean.criticalRing) ? clean.criticalRing.slice(-WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING) : [];
             let text = JSON.stringify(clean);
-            let removed = 0;
-            while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > WILDU_IOS_BLACKBOX_MIN_EVENTS) {
-                clean.events.shift();
-                removed += 1;
+            // Trim bounded chunks, not one JSON.stringify per removed event.
+            for (let pass = 0; text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && pass < 32; pass += 1) {
+                if (clean.events.length > WILDU_IOS_BLACKBOX_MIN_EVENTS) {
+                    const remove = Math.min(clean.events.length - WILDU_IOS_BLACKBOX_MIN_EVENTS, Math.max(1, Math.ceil(clean.events.length / 4)));
+                    clean.events.splice(0, remove);
+                    clean.truncatedEvents = Number(clean.truncatedEvents || 0) + remove;
+                } else if (clean.criticalRing.length > 40) {
+                    const remove = Math.min(clean.criticalRing.length - 40, Math.max(1, Math.ceil(clean.criticalRing.length / 4)));
+                    clean.criticalRing.splice(0, remove);
+                    clean.truncatedCriticalEvents = Number(clean.truncatedCriticalEvents || 0) + remove;
+                } else if (clean.events.length > 1) {
+                    const remove = Math.max(1, Math.floor(clean.events.length / 4));
+                    clean.events.splice(0, remove);
+                    clean.truncatedEvents = Number(clean.truncatedEvents || 0) + remove;
+                } else break;
                 text = JSON.stringify(clean);
             }
-            while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > 1) {
-                clean.events.shift();
-                removed += 1;
-                text = JSON.stringify(clean);
-            }
-            if (removed) {
-                clean.truncatedEvents = (clean.truncatedEvents || 0) + removed;
-                text = JSON.stringify(clean);
-                while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.events.length > 1) {
-                    clean.events.shift();
-                    clean.truncatedEvents = (clean.truncatedEvents || 0) + 1;
-                    text = JSON.stringify(clean);
-                }
-                while (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT && clean.criticalRing.length > 80) {
-                    clean.criticalRing.shift();
-                    text = JSON.stringify(clean);
-                }
-            }
+            if (text.length > WILDU_IOS_BLACKBOX_MAX_TEXT) throw new Error('BLACKBOX_STORAGE_BUDGET');
             localStorage.setItem(WILDU_IOS_BLACKBOX_STORAGE_KEY, text);
+            cachedState = clean;
+            storageMetrics.pending = false;
+            storageMetrics.writes += 1;
+            storageMetrics.lastPersistedAt = new Date().toISOString();
+            if (!clean.events.length && !clean.bootDiary.length) localStorage.removeItem(WILDU_IOS_BLACKBOX_CHECKPOINT_KEY);
             return true;
         } catch (e) {
+            storageMetrics.failures += 1;
             return false;
+        } finally {
+            storageMetrics.lastWriteMs = Math.round((performance.now() - started) * 100) / 100;
         }
+    }
+
+    function flushState() {
+        if (persistenceTimer) window.clearTimeout(persistenceTimer);
+        persistenceTimer = 0;
+        if (!storageMetrics.pending) return true;
+        return writeState(readState());
+    }
+
+    function stageState(state, entry) {
+        cachedState = state;
+        storageMetrics.pending = true;
+        // Crash-safe small journal: no DOM scans or full-history serialization here.
+        if (/app_boot_start|pagehide|pageshow|visibilitychange|reload|_requested$|_committed$|soft_modal_(atomic_close|close_phase|resource_cleanup_(batch|done))|travel_tab_transition_(start|complete)/i.test(entry.event)) {
+            try {
+                const entries = (state.criticalRing || []).slice(-40).map(function (item) {
+                    const snap = item.snapshot || {};
+                    return { ts: item.ts, relMs: item.relMs, seq: item.seq, event: item.event, appReloadIntent: item.appReloadIntent,
+                        details: item.details, snapshot: { build: snap.build, docId: snap.docId, timeOrigin: snap.timeOrigin,
+                            detailPhase: snap.detailPhase, modalOpen: snap.modalOpen, navigationType: snap.navigationType,
+                            ownerSequence: snap.ownerSequence, imagesLive: snap.imagesLive, iframesLive: snap.iframesLive,
+                            mapsIframeLive: snap.mapsIframeLive, approxDecodedMiB: snap.approxDecodedMiB,
+                            clientSessionAuthState: snap.clientSessionAuthState, activeTimers: { detail: snap.activeTimers && snap.activeTimers.detail,
+                                softModal: snap.activeTimers && snap.activeTimers.softModal }, resourceSampleAt: snap.resourceSampleAt } };
+                });
+                let journal = JSON.stringify({ version: 2, entries });
+                while (journal.length > 64000 && entries.length > 1) {
+                    entries.splice(0, Math.max(1, Math.floor(entries.length / 4)));
+                    journal = JSON.stringify({ version: 2, entries });
+                }
+                if (journal.length > 64000) throw new Error('BLACKBOX_CHECKPOINT_BUDGET');
+                localStorage.setItem(WILDU_IOS_BLACKBOX_CHECKPOINT_KEY, journal);
+                storageMetrics.checkpoints += 1;
+            } catch (e) { storageMetrics.failures += 1; }
+        }
+        if (!persistenceTimer) persistenceTimer = window.setTimeout(flushState, 900);
+        // Boot identity is immediately available to existing recovery readers.
+        if (entry.event === 'app_boot_start') flushState();
+        return true;
     }
 
     function setEnabled(value, reason) {
@@ -17355,15 +17444,21 @@ const WilduIOSBlackBox = (() => {
                 Number(snap.imagesLive || 0) > 30
             );
         });
-        if (reload) return { code: 'APP_REQUESTED_RELOAD', reason: reload.appReloadIntent, at: reload.ts };
         const dirtyBoot = findDirtyBootRestartEvidence(state, currentSnapshot);
         if (dirtyBoot) {
+            const matchingIntent = [...events].reverse().find((entry) => entry && entry.appReloadIntent && entry.appReloadIntent !== 'none' &&
+                entry.snapshot && entry.snapshot.docId === dirtyBoot.previousDocId &&
+                Date.parse(entry.ts) <= Date.parse(dirtyBoot.at) && Date.parse(dirtyBoot.at) - Date.parse(entry.ts) <= 10000);
+            if (matchingIntent) return { code: 'APP_REQUESTED_RELOAD', reason: matchingIntent.appReloadIntent, at: matchingIntent.ts, evidence: dirtyBoot };
             return {
                 code: 'DOCUMENT_RESTART_OBSERVED',
                 reason: 'boot_diary_doc_or_time_origin_changed',
                 at: dirtyBoot.at || last.ts,
                 evidence: dirtyBoot
             };
+        }
+        if (reload && reload.snapshot && reload.snapshot.docId === (currentSnapshot && currentSnapshot.docId)) {
+            return { code: 'APP_REQUESTED_RELOAD', reason: reload.appReloadIntent, at: reload.ts };
         }
         if (last.event === 'pageshow' && last.details && last.details.persisted === true) {
             return { code: 'BF_CACHE_RESTORE_RISK', reason: 'pageshow.persisted', at: last.ts };
@@ -17399,7 +17494,8 @@ const WilduIOSBlackBox = (() => {
         snapshot = snapshot || {};
         const mem = snapshot.iosImageMemory || {};
         const map = snapshot.mapRuntime || {};
-        return sanitizeValue({
+        const compact = {
+            formatVersion: 2,
             build: snapshot.build,
             docId: snapshot.docId,
             timeOrigin: snapshot.timeOrigin,
@@ -17438,30 +17534,52 @@ const WilduIOSBlackBox = (() => {
             domNodes: snapshot.domNodes,
             fixedStickyNodes: snapshot.fixedStickyNodes,
             transformNodes: snapshot.transformNodes,
-            navigationType: snapshot.navigation && snapshot.navigation.type ? snapshot.navigation.type : '',
+            navigationType: snapshot.navigation && snapshot.navigation.type ? snapshot.navigation.type : (snapshot.navigationType || ''),
             clientSessionAuthState: snapshot.clientSessionAuthState,
             authUserPresent: snapshot.authUserPresent,
             authProbeInProgress: snapshot.authProbeInProgress,
             authRefreshLock: snapshot.authRefreshLock,
             profileCompletionRequired: snapshot.profileCompletionRequired,
-            registrationCompletion: snapshot.registrationCompletion
-        }, 0);
+            registrationCompletion: snapshot.registrationCompletion,
+            liveIframes: snapshot.liveIframes,
+            fixedStickySamples: snapshot.fixedStickySamples,
+            transientSurfaces: snapshot.transientSurfaces,
+            iosOrphanAudit: snapshot.iosOrphanAudit,
+            resourceSampleAt: snapshot.resourceSampleAt,
+            resourceSampleAgeMs: snapshot.resourceSampleAgeMs,
+            ownerSequence: snapshot.ownerSequence
+        };
+        // A stored snapshot is already flat. Never erase its fields on the next save.
+        Object.keys(compact).forEach(function (key) {
+            if (compact[key] === undefined && snapshot[key] !== undefined) compact[key] = snapshot[key];
+            compact[key] = sanitizeValue(compact[key], 0);
+        });
+        return compact;
     }
 
     function compactBlackboxEventForStorage(entry) {
         if (!entry || typeof entry !== 'object') return entry;
-        return sanitizeValue({
+        return {
+            formatVersion: 2,
             ts: entry.ts,
             relMs: entry.relMs,
-            event: entry.event,
-            appReloadIntent: entry.appReloadIntent || 'none',
-            details: entry.details || {},
+            seq: Number(entry.seq || 0),
+            event: sanitizeValue(entry.event, 0),
+            appReloadIntent: sanitizeValue(entry.appReloadIntent || 'none', 0),
+            details: sanitizeValue(entry.details || {}, 0),
             snapshot: compactBlackBoxSnapshot(entry.snapshot || {})
-        }, 0);
+        };
     }
 
-    function collectLightSnapshot() {
-        const snapshot = {
+    function collectLightSnapshot(includeResourceInventory) {
+        // Repeated events point to the dated resource sample; they do not duplicate
+        // iframe/DOM/image inventories. Scalar proxies and ownership stay current.
+        const sampled = {};
+        Object.keys(resourceSample || {}).forEach(function (key) {
+            const value = resourceSample[key];
+            if (includeResourceInventory || value === null || typeof value !== 'object') sampled[key] = value;
+        });
+        const snapshot = Object.assign(sampled, {
             build: String(typeof WILDU_EMBEDDED_SHELL_VERSION !== 'undefined' ? WILDU_EMBEDDED_SHELL_VERSION : 'n/d'),
             docId: WILDU_IOS_BLACKBOX_DOC_ID,
             timeOrigin: Math.round(Number(performance && performance.timeOrigin ? performance.timeOrigin : Date.now())),
@@ -17469,46 +17587,21 @@ const WilduIOSBlackBox = (() => {
             route: String(window.currentTab || location.hash || location.pathname || ''),
             detailPhase: getDetailPhase(),
             modalOpen: getOpenModalId(),
-            imagesLive: 0,
-            imagesLoaded: 0,
-            imageSurfaces: {},
-            iframesLive: 0,
-            mapsIframeLive: false,
-            iosImageMemory: null,
-            mapRuntime: null,
-            activeTimers: null,
-            visibleGuarantee: null
-        };
+            resourceSampleAt,
+            resourceSampleAgeMs: resourceSampleAt ? Math.max(0, Date.now() - resourceSampleAt) : null
+        });
         try {
-            const imgs = Array.from(document.images || []);
-            snapshot.imagesLive = imgs.filter((img) => !!(img.currentSrc || img.getAttribute('src'))).length;
-            snapshot.imagesLoaded = imgs.filter((img) => img.complete && img.naturalWidth > 0 && img.naturalHeight > 0).length;
-            snapshot.imageSurfaces = collectImageSurfaceCountsForBlackbox(imgs);
-        } catch (e) {}
-        try {
-            const frames = Array.from(document.querySelectorAll('iframe'));
-            const liveFrames = frames.filter((frame) => !!(frame.currentSrc || frame.getAttribute('src')));
-            snapshot.iframesLive = liveFrames.length;
-            snapshot.mapsIframeLive = liveFrames.some((frame) => frame.id === 'od-map-iframe');
-        } catch (e) {}
-        try {
-            if (typeof getWilduIOSImageMemorySnapshot === 'function') {
-                snapshot.iosImageMemory = getWilduIOSImageMemorySnapshot();
-            }
-        } catch (e) {}
-        try {
-            if (typeof getWilduDetailMapRuntimeSnapshot === 'function') {
-                snapshot.mapRuntime = getWilduDetailMapRuntimeSnapshot();
-            }
+            snapshot.ownerSequence = Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.surfaceTransitionToken || 0);
+            snapshot.clientSessionAuthState = String(clientSession && clientSession.authState || '');
+            snapshot.authUserPresent = !!(typeof auth !== 'undefined' && auth && auth.currentUser);
+            snapshot.authProbeInProgress = !!authProbeInProgress;
+            snapshot.authRefreshLock = !!authRefreshLock;
+            snapshot.profileCompletionRequired = !!profileCompletionRequired;
+            snapshot.registrationCompletion = !!isRegistrationCompletionInProgress;
         } catch (e) {}
         try {
             snapshot.activeTimers = typeof getWilduRuntimeTimerSnapshot === 'function'
                 ? sanitizeValue(getWilduRuntimeTimerSnapshot(), 0)
-                : null;
-        } catch (e) {}
-        try {
-            snapshot.visibleGuarantee = typeof getWilduVisibleResourceGuaranteeSnapshot === 'function'
-                ? sanitizeValue(getWilduVisibleResourceGuaranteeSnapshot(), 0)
                 : null;
         } catch (e) {}
         return snapshot;
@@ -17528,7 +17621,7 @@ const WilduIOSBlackBox = (() => {
         const previousSnapshot = previousCritical && previousCritical.snapshot ? previousCritical.snapshot : (previous && previous.snapshot ? previous.snapshot : null);
         const bootSnapshot = bootEntry.snapshot || {};
         state.bootDiary = Array.isArray(state.bootDiary) ? state.bootDiary : [];
-        state.bootDiary.push(sanitizeValue({
+        state.bootDiary.push({
             at: bootEntry.ts,
             build: bootSnapshot.build,
             docId: bootSnapshot.docId,
@@ -17541,13 +17634,13 @@ const WilduIOSBlackBox = (() => {
             previousCriticalEvent: previousCritical ? previousCritical.event : '',
             previousCriticalSnapshot: compactBlackBoxSnapshot(previousSnapshot),
             newBootSnapshot: compactBlackBoxSnapshot(bootSnapshot)
-        }, 0));
+        });
         state.bootDiary = state.bootDiary.slice(-WILDU_IOS_BLACKBOX_MAX_BOOT_DIARY);
     }
 
     function shouldRecordEvent(event) {
         const cleanEvent = String(event || '');
-        if (/^(AUTH_|GOOGLE_AUTH_|GOOGLE_IDENTITY_|FIREBASE_AUTH_|CLIENT_AUTH_)/.test(cleanEvent)) {
+        if (/^(AUTH_|GOOGLE_AUTH_|GOOGLE_IDENTITY_|FIREBASE_AUTH_|CLIENT_AUTH_|ios_resource_coordinator_job_|amazon_visible_liveness_|amazon_image_hydration_band_budget$|ios_post_surface_visible_liveness_|amazon_visible_lane_guard_bypass$|detail_open_admission_)/.test(cleanEvent)) {
             return true;
         }
         return [
@@ -17729,7 +17822,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldKeepCriticalRingEvent(event) {
-        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_surface_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource/i.test(String(event || ''));
+        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_resource_coordinator_|ios_post_surface_|ios_surface_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource/i.test(String(event || ''));
     }
 
     function shouldSampleFramesForEvent(event) {
@@ -17853,8 +17946,8 @@ const WilduIOSBlackBox = (() => {
             }, 0));
     }
 
-    function buildBlackboxSummary(state, events, classification, buildAttribution) {
-        const currentSnapshot = collectSnapshot();
+    function buildBlackboxSummary(state, events, classification, buildAttribution, currentSnapshot) {
+        currentSnapshot = currentSnapshot || collectSnapshot();
         const bootDiary = Array.isArray(state && state.bootDiary) ? state.bootDiary : [];
         const dirtyBootTimeline = buildDirtyBootTimelineFromDiary(state, currentSnapshot);
         const criticalRing = Array.isArray(state && state.criticalRing) ? state.criticalRing : [];
@@ -17879,19 +17972,30 @@ const WilduIOSBlackBox = (() => {
         if (!isEnabled()) return false;
         const cleanEvent = String(event || 'event').slice(0, 80);
         if (!shouldRecordEvent(cleanEvent)) return false;
+        if (recording) return false;
+        recording = true;
+        const started = performance.now();
+        try {
         const state = readState();
         const events = Array.isArray(state.events) ? state.events : [];
+        let fragile = false;
+        try { fragile = WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending > 0 || /opening|closing/.test(getDetailPhase()); } catch (e) {}
+        const sampledNow = !resourceSample || (!fragile && shouldUseFullSnapshotForEvent(cleanEvent) && Date.now() - resourceSampleAt >= 1500);
+        if (sampledNow) {
+            resourceSample = compactBlackBoxSnapshot(collectSnapshot());
+            resourceSampleAt = Date.now();
+        }
         const entry = {
+            formatVersion: 2,
+            seq: ++recordSequence,
             ts: new Date().toISOString(),
             relMs: Math.round(performance.now ? performance.now() : 0),
             event: cleanEvent,
             appReloadIntent: 'none',
             details: sanitizeValue(details || {}, 0),
-            snapshot: compactBlackBoxSnapshot(
-                shouldUseFullSnapshotForEvent(cleanEvent) ? collectSnapshot() : collectLightSnapshot()
-            )
+            snapshot: compactBlackBoxSnapshot(collectLightSnapshot(sampledNow))
         };
-        if (/SHELL_RELOAD_TRIGGERED|GLOBAL_CACHE_RELOAD_SCHEDULED|GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED/.test(cleanEvent)) {
+        if (/reload_requested_by_app|SHELL_RELOAD_TRIGGERED|GLOBAL_CACHE_RELOAD_SCHEDULED|GLOBAL_CACHE_RELOAD_ALREADY_SCHEDULED/.test(cleanEvent)) {
             entry.appReloadIntent = cleanEvent;
         }
         if (cleanEvent === 'app_boot_start') {
@@ -17899,14 +18003,7 @@ const WilduIOSBlackBox = (() => {
         }
         if (shouldKeepCriticalRingEvent(cleanEvent)) {
             state.criticalRing = Array.isArray(state.criticalRing) ? state.criticalRing : [];
-            state.criticalRing.push(sanitizeValue({
-                ts: entry.ts,
-                relMs: entry.relMs,
-                event: entry.event,
-                appReloadIntent: entry.appReloadIntent,
-                details: entry.details,
-                snapshot: compactBlackBoxSnapshot(entry.snapshot || {})
-            }, 0));
+            state.criticalRing.push(entry);
             state.criticalRing = state.criticalRing.slice(-WILDU_IOS_BLACKBOX_MAX_CRITICAL_RING);
         }
         events.push(entry);
@@ -17914,11 +18011,15 @@ const WilduIOSBlackBox = (() => {
         state.lastWriteAt = entry.ts;
         state.lastClassification = classifyPreviousSession(events, state, entry.snapshot);
         state.events = events.slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS);
-        const wrote = writeState(state);
+        const wrote = stageState(state, entry);
         if (wrote && shouldSampleFramesForEvent(cleanEvent)) {
             try { startFrameGapSampler(cleanEvent); } catch (e) {}
         }
         return wrote;
+        } finally {
+            recording = false;
+            storageMetrics.maxRecordMs = Math.max(storageMetrics.maxRecordMs, Math.round((performance.now() - started) * 100) / 100);
+        }
     }
 
     function markReloadIntent(reason, targetUrl) {
@@ -17930,6 +18031,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function buildReport() {
+        flushState();
         const state = readState();
         const events = Array.isArray(state.events) ?
             state.events.map(compactBlackboxEventForStorage).slice(-WILDU_IOS_BLACKBOX_MAX_EVENTS) :
@@ -17941,11 +18043,13 @@ const WilduIOSBlackBox = (() => {
         return {
             reportType: 'WILDU_IOS_BLACKBOX_V1',
             generatedAt: new Date().toISOString(),
-            blackboxPlan: 'extended-ios-resource-and-transition-sensors-v6-resource-coordinator-guard-audit',
+            blackboxPlan: 'ios-causal-trace-v7-idempotent-batched-storage',
+            persistence: Object.assign({}, storageMetrics, { pendingTimer: !!persistenceTimer, checkpointMaxChars: 64000, batchDelayMs: 900,
+                truncatedEvents: state.truncatedEvents || 0, truncatedCriticalEvents: state.truncatedCriticalEvents || 0 }),
             currentSnapshot,
             classification,
             buildAttribution,
-            summary: buildBlackboxSummary(state, events, classification, buildAttribution),
+            summary: buildBlackboxSummary(state, events, classification, buildAttribution, currentSnapshot),
             bootDiary: Array.isArray(state.bootDiary) ? state.bootDiary : [],
             dirtyBootTimeline,
             criticalRing: Array.isArray(state.criticalRing) ? state.criticalRing : [],
@@ -18383,6 +18487,19 @@ const WilduIOSBlackBox = (() => {
 
     function install() {
         handleActivationFromUrl();
+        window.addEventListener('storage', function (event) {
+            if (event.key === WILDU_IOS_BLACKBOX_STORAGE_KEY || event.key === WILDU_IOS_BLACKBOX_CHECKPOINT_KEY || event.key === null) {
+                const externalState = event.key === WILDU_IOS_BLACKBOX_STORAGE_KEY ? safeJsonParse(event.newValue, null) : null;
+                if (event.key === null || (event.key === WILDU_IOS_BLACKBOX_STORAGE_KEY && (!externalState ||
+                    (!externalState.events?.length && !externalState.bootDiary?.length)))) {
+                    if (persistenceTimer) window.clearTimeout(persistenceTimer);
+                    persistenceTimer = 0;
+                    storageMetrics.pending = false;
+                    cachedState = null;
+                }
+                stateNeedsReload = true;
+            }
+        });
 
         const enabledAtInstall = isEnabled();
         if (enabledAtInstall) {
@@ -18403,6 +18520,8 @@ const WilduIOSBlackBox = (() => {
         }, { passive: true });
         window.addEventListener('pagehide', function (event) {
             record('pagehide', { persisted: !!event.persisted });
+            if (persistenceTimer) window.clearTimeout(persistenceTimer);
+            persistenceTimer = 0;
             try {
                 if (typeof wilduHandleIOSPageLifecycleEvent === 'function') {
                     wilduHandleIOSPageLifecycleEvent('pagehide', { persisted: !!event.persisted });
@@ -18451,6 +18570,8 @@ const WilduIOSBlackBox = (() => {
         getReportText,
         isEnabled,
         setEnabled,
+        getState: readState,
+        flush: flushState,
         buildReport
     };
 })();
@@ -23470,6 +23591,8 @@ function getWilduRuntimeTimerSnapshot() {
             resumeTimer: !!amazonResumeTimer,
             deferredRenderTimer: !!amazonDeferredRenderTimer,
             imageHydrationTimer: !!amazonImageHydrationTimer,
+            visibleLivenessTimer: !!amazonVisibleLivenessTimer,
+            visibleLivenessDueMs: Math.max(0, Number(amazonVisibleLivenessDue || 0) - Date.now()),
             pendingRenderProducts: Array.isArray(amazonDeferredRenderProducts) ? amazonDeferredRenderProducts.length : 0,
             quietRemainingMs: typeof wilduGetAmazonQuietRemainingMs === 'function' ? wilduGetAmazonQuietRemainingMs() : 0,
             quietReason: typeof amazonQuietReason !== 'undefined' ? amazonQuietReason || '' : ''
@@ -23508,6 +23631,7 @@ function wilduParseBlackboxTimeMs(value) {
 
 function wilduReadIOSBlackBoxStorageState() {
     try {
+        if (window.WilduIOSBlackBox && typeof window.WilduIOSBlackBox.getState === 'function') return window.WilduIOSBlackBox.getState();
         if (!window.localStorage) return null;
         const raw = localStorage.getItem(WILDU_IOS_BLACKBOX_STORAGE_KEY);
         if (!raw) return null;
@@ -26390,8 +26514,9 @@ function wilduGetSoftModalEventDiagnostics(evt) {
         out.type = String(evt.type || '');
         out.isTrusted = evt.isTrusted === true;
         out.pointerType = String(evt.pointerType || '');
-        out.clientX = Number.isFinite(evt.clientX) ? Math.round(evt.clientX) : null;
-        out.clientY = Number.isFinite(evt.clientY) ? Math.round(evt.clientY) : null;
+        const point = Number.isFinite(evt.clientX) ? evt : ((evt.changedTouches && evt.changedTouches[0]) || (evt.touches && evt.touches[0]) || evt);
+        out.clientX = Number.isFinite(point.clientX) ? Math.round(point.clientX) : null;
+        out.clientY = Number.isFinite(point.clientY) ? Math.round(point.clientY) : null;
         try {
             const viewportWidth = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
             const edgeGuardPx = 28;
@@ -26399,7 +26524,7 @@ function wilduGetSoftModalEventDiagnostics(evt) {
             out.edgeZone = out.clientX === null
                 ? ''
                 : (out.clientX <= edgeGuardPx ? 'left' : (out.clientX >= viewportWidth - edgeGuardPx ? 'right' : 'center'));
-            out.nativeEdgeGestureRisk = out.edgeZone === 'left' || out.edgeZone === 'right';
+            out.nativeEdgeGestureRisk = out.clientX === null ? null : (out.edgeZone === 'left' || out.edgeZone === 'right');
         } catch (e) {}
         const target = evt.target && evt.target.nodeType === 1 ? evt.target : null;
         if (target) {
@@ -26919,6 +27044,9 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
     const key = String(ref.type) + ':' + String(ref.id);
     const token = WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseToken;
     const startedAt = Date.now();
+    const intendedTab = currentTab;
+    const detailGeneration = WILDU_DETAIL_RUNTIME.generation;
+    const travelGeneration = WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionGeneration;
     const baseDelay = WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_DELAY_MS + Math.min(520, wilduGetSoftModalInputGuardRemainingMs());
 
     function getOpenGuard(attempt) {
@@ -26926,23 +27054,20 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
             return { blocked: true, terminal: true, guard: 'stale_token', retryMs: 0 };
         }
         if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) {
-            return { blocked: true, guard: 'page_hidden', retryMs: 900 };
+            return { blocked: true, terminal: true, guard: 'page_hidden', retryMs: 0 };
+        }
+        if (currentTab !== intendedTab || WILDU_DETAIL_RUNTIME.generation !== detailGeneration ||
+            WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionGeneration !== travelGeneration) {
+            return { blocked: true, terminal: true, guard: 'superseded_intention', retryMs: 0 };
         }
         if (wilduAnySoftModalVisible()) {
             return { blocked: true, guard: 'soft_modal_still_visible', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
         }
-        if ((WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0) > 0) {
-            return { blocked: true, guard: 'soft_modal_cleanup_pending', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
-        }
+        const admissionGuard = wilduGetDetailOpenResourceAdmissionGuard('post_close:' + key);
+        if (admissionGuard.blocked) return admissionGuard;
         const inputGuard = wilduGetSoftModalInputGuardRemainingMs();
         if (inputGuard > 0) {
             return { blocked: true, guard: 'soft_modal_input_guard', retryMs: Math.max(WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS, inputGuard + 80) };
-        }
-        const transitionGuard = typeof wilduGetIOSSurfaceTransitionGuard === 'function'
-            ? wilduGetIOSSurfaceTransitionGuard('post_soft_modal_detail_open:' + key + ':attempt_' + attempt)
-            : null;
-        if (transitionGuard && transitionGuard.blocked) {
-            return transitionGuard;
         }
         return { blocked: false };
     }
@@ -26983,6 +27108,9 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
             } catch (e) {}
             if (!guard.terminal && attempt < WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_MAX_ATTEMPTS) {
                 scheduleAttempt(attempt + 1, guard.retryMs || WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS, guard);
+            } else if (!guard.terminal) {
+                wilduIOSBlackBoxRecord('detail_open_admission_timeout', { key, guard: guard.guard, attempt });
+                showToast('Dettaglio non ancora pronto. Tocca nuovamente per aprirlo.');
             }
             return;
         }
@@ -27056,7 +27184,14 @@ function wilduCancelScheduledDetailOpen() {
     wilduSetDetailTransitionBusy(false);
 }
 
-function wilduAcceptDetailOpen(type, id) {
+function wilduGetDetailOpenResourceAdmissionGuard(reason) {
+    if (Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0) > 0) {
+        return { blocked: true, guard: 'soft_modal_cleanup_pending', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
+    }
+    return wilduGetIOSSurfaceTransitionGuard('detail_admission:' + String(reason || ''), true);
+}
+
+function wilduAcceptDetailOpen(type, id, options) {
     const key = String(type || '') + ':' + String(id || '');
     if (!key || key === ':') return false;
     if (typeof wilduIsSoftModalInputGuardActive === 'function' &&
@@ -27075,6 +27210,14 @@ function wilduAcceptDetailOpen(type, id) {
     if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return false;
     if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return false;
 
+    const admission = wilduGetDetailOpenResourceAdmissionGuard(key);
+    if (admission.blocked) {
+        wilduIOSBlackBoxRecord('detail_open_admission_deferred', { key, guard: admission.guard, cleanupPending: WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0 });
+        wilduSchedulePostSoftModalDetailOpen({ type, id }, options || {}, 'direct_admission');
+        return false;
+    }
+
+    wilduCancelPostSoftModalDetailOpen('detail_admitted');
     wilduCancelScheduledDetailOpen();
     WILDU_DETAIL_RUNTIME.phase = 'opening';
     WILDU_DETAIL_RUNTIME.key = key;
@@ -30614,6 +30757,7 @@ function wilduReleaseIOSManagedImage(img) {
 }
 
 function wilduRestoreIOSManagedImage(img) {
+    if (img && img.dataset && img.dataset.wilduAmazonBandEvicted === '1' && img.dataset.wilduAmazonVisibleHydrating !== '1') return false;
     const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
     const state = runtime.states.get(img);
     if (!state || !state.released || !img.isConnected) return false;
@@ -31030,6 +31174,7 @@ function wilduFlushDeferredIOSImageRegistrations(reason) {
 }
 
 function wilduRestoreImageElementPreservedSource(img, reason) {
+    if (img && img.dataset && img.dataset.wilduAmazonBandEvicted === '1' && img.dataset.wilduAmazonVisibleHydrating !== '1') return false;
     if (!img || !img.isConnected || !img.dataset || img.dataset.wilduTabImageReleased !== '1') return false;
     try {
         const src = img.dataset.wilduTabOriginalSrc || '';
@@ -32009,6 +32154,9 @@ function wilduScheduleDetailOpen(ref, options) {
         return false;
     }
 
+    const admission = wilduGetDetailOpenResourceAdmissionGuard('schedule:' + key);
+    if (admission.blocked) return wilduSchedulePostSoftModalDetailOpen(ref, options, 'scheduled_admission');
+
     wilduIOSBlackBoxRecord('detail_open_requested', {
         key,
         skipSuggestions: !!options.skipSuggestions,
@@ -32050,12 +32198,15 @@ function wilduScheduleDetailOpen(ref, options) {
 function wilduOpenDetailByRef(ref, options) {
     if (!ref || !ref.type || !ref.id) return;
     options = options || {};
+    const admission = wilduGetDetailOpenResourceAdmissionGuard('dispatch:' + ref.type + ':' + ref.id);
+    if (admission.blocked) return wilduSchedulePostSoftModalDetailOpen(ref, options, 'dispatch_admission');
     if (options.skipSuggestions === true) {
         WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
     }
     if (ref.type === 'openday') showOpenDayDetails(ref.id);
     else if (ref.type === 'payday') showPayDayDetails(ref.id);
-    else showTripDetails(ref.id);
+    else if (ref.type === 'ondemand') openOnDemandDetails(ref.id);
+    else showTripDetails(ref.id, options.detailContext || null);
 }
 
 function wilduCollectDetailRefs() {
@@ -34579,7 +34730,7 @@ function showTripDetails(id, detailContext = null) {
         showToast("⚠️ Dettagli non trovati.");
         return;
     }
-    if (!wilduAcceptDetailOpen('trip', id)) return;
+    if (!wilduAcceptDetailOpen('trip', id, { detailContext })) return;
 
     wilduSetActiveDetailContext('trip', ev, id);
     prepareWilduDetailModalMode('official');
@@ -38077,10 +38228,15 @@ if (profKeyEl) {
     }
 
     function hydrateWilduTravelHubImages(force) {
-        if (wilduTravelHubImagesHydrated && force !== true) return;
+        // The common entry point owns visibility, including force calls at boot/auth.
+        if (!isWilduTravelHubVisible()) return;
 
         const slots = Array.from(document.querySelectorAll('[data-wildu-travelhub-image-slot]'));
         if (!slots.length) return;
+        const needsRestore = slots.some(function (img) {
+            return !img.getAttribute('src') || (img.dataset && (img.dataset.wilduIosImageReleased === '1' || img.dataset.wilduTabImageReleased === '1'));
+        });
+        if (wilduTravelHubImagesHydrated && force !== true && !needsRestore) return;
 
         let images = [];
         try {
@@ -38110,7 +38266,11 @@ if (profKeyEl) {
             if (!picked || !picked.url) return;
 
             used.add(picked.imageKey || picked.url);
-            img.src = picked.url;
+            if (img.getAttribute('src') !== picked.url || (img.dataset && (img.dataset.wilduIosImageReleased === '1' || img.dataset.wilduTabImageReleased === '1'))) {
+                img.src = picked.url;
+                delete img.dataset.wilduIosImageReleased;
+                delete img.dataset.wilduTabImageReleased;
+            }
             img.setAttribute('data-wildu-travelhub-source', picked.source || 'official');
             img.setAttribute('data-wildu-travelhub-title', picked.title || '');
             applied += 1;
@@ -44145,41 +44305,40 @@ function wilduReleaseAmazonQuietModeIfStable(reason) {
     return true;
 }
 
+function wilduGetAmazonImageBand(slider) {
+    if (!slider || !slider.isConnected) return [];
+    const viewport = slider.getBoundingClientRect();
+    if (!viewport.width || !viewport.height) return [];
+    const placeholder = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
+    const entries = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]')).map(function (node) {
+        const card = node.closest('.amazon-card') || node;
+        const rect = card.getBoundingClientRect();
+        const visible = rect.right > viewport.left && rect.left < viewport.right;
+        const released = node.dataset.wilduTabImageReleased === '1' || node.dataset.wilduIosImageReleased === '1';
+        const src = node.getAttribute('src') || '';
+        const assigned = node.tagName === 'IMG' && !!src && src !== placeholder && !released;
+        return { node, visible, inBand: visible, assigned, loaded: assigned && node.complete && node.naturalWidth > 0 };
+    });
+    const first = entries.findIndex(function (entry) { return entry.visible; });
+    if (first >= 0) {
+        let last = first;
+        entries.forEach(function (entry, index) { if (entry.visible) last = index; });
+        if (first > 0) entries[first - 1].inBand = true;
+        if (last + 1 < entries.length) entries[last + 1].inBand = true;
+    }
+    return entries;
+}
+
 function wilduGetAmazonVisibleHydrationDebt(slider) {
     try {
         if (!slider || !slider.querySelectorAll) return { pending: 0, hydrated: 0, limit: 0, visibleCandidates: 0 };
-        const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
-        const viewport = slider.getBoundingClientRect ? slider.getBoundingClientRect() : null;
-        const limit = wilduGetAmazonVisibleHydrationLimit(slider, true);
-        const hydrated = wilduCountAmazonLiveHydratedImages(slider);
-        const all = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]'));
-        let visibleCandidates = 0;
-        let pending = 0;
-        all.forEach(function (node) {
-            if (!node || !node.isConnected) return;
-            const preserved = String(node.getAttribute('data-wildu-shop-image-src') || '').trim();
-            if (!preserved) return;
-            let visible = true;
-            if (viewport && node.getBoundingClientRect) {
-                const rect = node.getBoundingClientRect();
-                visible = !!(rect && rect.right >= viewport.left - 180 && rect.left <= viewport.right + 180);
-            }
-            if (!visible) return;
-            visibleCandidates += 1;
-            if (String(node.tagName || '').toUpperCase() === 'IMG') {
-                const src = node.currentSrc || node.getAttribute('src') || '';
-                const released = !!(node.dataset && (node.dataset.wilduTabImageReleased === '1' || node.dataset.wilduIosImageReleased === '1'));
-                const liveNode = !!(src && src !== placeholder && !released);
-                if (liveNode) {
-                    if (node.dataset && node.dataset.wilduAmazonHydrated !== '1') {
-                        node.dataset.wilduAmazonHydrated = '1';
-                    }
-                    return;
-                }
-            }
-            pending += 1;
-        });
-        return { pending, hydrated, limit, visibleCandidates };
+        const all = wilduGetAmazonImageBand(slider);
+        const band = all.filter(function (entry) { return entry.inBand; });
+        const hydrated = band.filter(function (entry) { return entry.assigned; }).length;
+        const loaded = band.filter(function (entry) { return entry.loaded; }).length;
+        return { pending: band.length - hydrated, hydrated, loaded, inFlight: hydrated - loaded,
+            liveTotal: all.filter(function (entry) { return entry.assigned; }).length,
+            limit: wilduGetAmazonVisibleHydrationLimit(slider, true, all), visibleCandidates: band.length };
     } catch (e) {
         return { pending: 0, hydrated: 0, limit: 0, visibleCandidates: 0 };
     }
@@ -44192,7 +44351,7 @@ function wilduEnsureAmazonVisibleHydrationLiveness(reason, delayMs, forceDelayed
         const debt = wilduGetAmazonVisibleHydrationDebt(slider);
         const safeDebt = debt || { pending: 0, hydrated: 0, limit: 0, visibleCandidates: 0 };
         const forceCheck = forceDelayedCheck === true;
-        if (!forceCheck && (!debt || debt.pending <= 0 || debt.hydrated >= debt.limit)) return false;
+        if (!forceCheck && (!debt || debt.pending <= 0)) return false;
         const delay = Math.max(120, Math.min(2600, Number(delayMs || 0) || 420));
         const due = Date.now() + delay;
         if (!forceCheck && amazonImageHydrationTimer && amazonImageHydrationDue && amazonImageHydrationDue <= due + 80) return true;
@@ -44215,11 +44374,13 @@ function wilduEnsureAmazonVisibleHydrationLiveness(reason, delayMs, forceDelayed
             amazonVisibleLivenessTimer = 0;
             amazonVisibleLivenessDue = 0;
             const latestDebt = wilduGetAmazonVisibleHydrationDebt(slider);
-            if (!latestDebt || latestDebt.pending <= 0 || latestDebt.hydrated >= latestDebt.limit) {
+            if (!latestDebt || latestDebt.pending <= 0) {
                 wilduRecordAmazonCarouselEvent('amazon_visible_liveness_satisfied', {
                     reason: String(reason || ''),
                     hydrated: latestDebt && latestDebt.hydrated || 0,
-                    limit: latestDebt && latestDebt.limit || 0
+                    limit: latestDebt && latestDebt.limit || 0,
+                    loaded: latestDebt && latestDebt.loaded || 0,
+                    inFlight: latestDebt && latestDebt.inFlight || 0
                 });
                 return;
             }
@@ -44523,9 +44684,10 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
         const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|visible_liveness|resume_timer|deferred|auto_scroll_tick|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
         if (!visibleReason) return false;
         if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|travel_tab_transition/i.test(guardName)) return false;
-        const hydrated = wilduCountAmazonLiveHydratedImages(slider);
-        const visibleLimit = wilduGetAmazonVisibleHydrationLimit(slider, true);
-        if (hydrated >= visibleLimit) return false;
+        const debt = wilduGetAmazonVisibleHydrationDebt(slider);
+        const hydrated = debt.hydrated;
+        const visibleLimit = debt.limit;
+        if (debt.pending <= 0) return false;
         if (/recent_document_restart|ios_resource_recovery|resource_recovery/i.test(guardName)) {
             wilduRecordAmazonCarouselEvent('amazon_visible_image_hydration_recovery_allowed', {
                 reason: reasonText,
@@ -44560,19 +44722,15 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
     }
 }
 
-function wilduGetAmazonVisibleHydrationLimit(slider, guarded) {
+function wilduGetAmazonVisibleHydrationLimit(slider, guarded, entries) {
     try {
-        const cards = Array.from(slider.querySelectorAll('.amazon-card'));
-        if (!cards.length) return guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
-        const viewport = slider.getBoundingClientRect();
-        let visibleCards = 0;
-        cards.forEach(function (card) {
-            const rect = card.getBoundingClientRect();
-            if (rect && rect.right >= viewport.left - 160 && rect.left <= viewport.right + 160) visibleCards += 1;
-        });
+        const band = entries || wilduGetAmazonImageBand(slider);
+        const visibleCards = band.filter(function (entry) { return entry.visible; }).length;
         const target = Math.max(4, visibleCards + 2);
         const cap = guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
-        return Math.min(cap, target);
+        // A wide viewport may legitimately exceed the mobile default cap. Its
+        // visible band (including the two neighbours) must remain satisfiable.
+        return Math.max(band.filter(function (entry) { return entry.inBand; }).length, Math.min(cap, target));
     } catch (e) {
         return guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
     }
@@ -44635,47 +44793,34 @@ function wilduHydrateVisibleAmazonImages(reason) {
             retryMs: guard.retryMs || 0
         });
     }
-    let viewport = null;
-    try {
-        viewport = slider.getBoundingClientRect();
-    } catch (e) {
-        viewport = null;
-    }
     const guarded = !!(guard && guard.blocked);
-    const hydratedCount = wilduCountAmazonLiveHydratedImages(slider);
-    const hydrationLimit = wilduGetAmazonVisibleHydrationLimit(slider, guarded);
+    const band = wilduGetAmazonImageBand(slider);
+    const candidates = band.filter(function (entry) { return entry.inBand && !entry.assigned; });
+    const selected = candidates.find(function (entry) { return entry.visible; }) || candidates[0];
+    if (!selected) return 0;
+    const hydratedCount = band.filter(function (entry) { return entry.assigned; }).length;
+    const hydrationLimit = wilduGetAmazonVisibleHydrationLimit(slider, guarded, band);
     if (hydratedCount >= hydrationLimit) {
-        wilduRecordAmazonCarouselEvent('amazon_image_hydration_limit_reached', {
+        // One far source per turn, through the existing release owner. Never
+        // confuse images behind the viewport with fulfillment of visible debt.
+        const releasable = band.filter(function (entry) {
+            return entry.assigned && !entry.visible && entry.node.dataset.wilduAmazonVisibleHydrating !== '1';
+        });
+        const far = releasable.find(function (entry) { return !entry.inBand; }) || releasable[0];
+        const released = !!(far && (wilduReleaseIOSManagedImage(far.node) || wilduReleaseImageElementPreservingSource(far.node, 'amazon_band_eviction')));
+        if (released) far.node.dataset.wilduAmazonBandEvicted = '1';
+        wilduRecordAmazonCarouselEvent('amazon_image_hydration_band_budget', {
             reason: String(reason || ''),
             hydrated: hydratedCount,
             limit: hydrationLimit,
+            released,
+            pending: candidates.length,
             guarded
         });
+        wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
         return 0;
     }
-    const imgs = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]')).filter(function (img) {
-        const preserved = String(img.getAttribute('data-wildu-shop-image-src') || '').trim();
-        if (!preserved) return false;
-        if (String(img.tagName || '').toUpperCase() === 'IMG') {
-            const src = img.currentSrc || img.getAttribute('src') || '';
-            const released = !!(img.dataset && (img.dataset.wilduTabImageReleased === '1' || img.dataset.wilduIosImageReleased === '1'));
-            const liveNode = !!(src && src !== placeholder && !released);
-            if (liveNode) {
-                if (img.dataset && img.dataset.wilduAmazonHydrated !== '1') {
-                    img.dataset.wilduAmazonHydrated = '1';
-                }
-                return false;
-            }
-        }
-        return true;
-    });
-    const candidates = imgs.filter(function (img) {
-        if (!img.isConnected) return false;
-        if (!viewport) return true;
-        const rect = img.getBoundingClientRect();
-        return rect && rect.right >= viewport.left - 180 && rect.left <= viewport.right + 180;
-    });
-    const img = candidates[0] || imgs[0];
+    const img = selected.node;
     if (!img) return 0;
     const src = String(img.getAttribute('data-wildu-shop-image-src') || '');
     if (!src) return 0;
@@ -44683,13 +44828,17 @@ function wilduHydrateVisibleAmazonImages(reason) {
     let hydrationCommitted = true;
     if (String(img.tagName || '').toUpperCase() === 'IMG') {
         img.setAttribute('data-wildu-amazon-visible-hydrating', '1');
+        delete img.dataset.wilduAmazonBandEvicted;
+        wilduRestoreIOSManagedImage(img);
         img.setAttribute('src', src);
+        delete img.dataset.wilduTabImageReleased;
+        delete img.dataset.wilduIosImageReleased;
         img.setAttribute('data-wildu-amazon-hydrated', '1');
     } else {
         const hydrated = document.createElement('img');
         hydrated.src = src;
         hydrated.alt = img.getAttribute('aria-label') || '';
-        hydrated.loading = 'lazy';
+        hydrated.loading = 'eager';
         hydrated.decoding = 'async';
         hydrated.fetchPriority = 'low';
         hydrated.width = 58;
@@ -44700,6 +44849,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
         hydrated.onerror = function () {
             hydrated.onerror = null;
             hydrated.src = placeholder;
+            hydrated.removeAttribute('data-wildu-shop-image-src');
         };
         img.replaceWith(hydrated);
         registeredTarget = hydrated;
@@ -44759,11 +44909,11 @@ function wilduHydrateVisibleAmazonImages(reason) {
     wilduRecordAmazonCarouselEvent('amazon_image_hydrated', {
         reason: String(reason || ''),
         committed: hydrationCommitted,
-        remaining: Math.max(0, imgs.length - (hydrationCommitted ? 1 : 0)),
+        remaining: Math.max(0, candidates.length - (hydrationCommitted ? 1 : 0)),
         limit: hydrationLimit,
         guarded
     });
-    if (imgs.length > (hydrationCommitted ? 1 : 0) && hydratedCount + (hydrationCommitted ? 1 : 0) < hydrationLimit) {
+    if (candidates.length > (hydrationCommitted ? 1 : 0)) {
         wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
     }
     return hydrationCommitted ? 1 : 0;
