@@ -16672,7 +16672,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.82';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.83';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -17515,7 +17515,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldUseFullSnapshotForEvent(event) {
-        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_WATCHDOG_SCHEDULED|AUTH_PROFILE_WATCHDOG_FIRED|AUTH_PROFILE_WATCHDOG_TERMINAL_BACKOFF|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_runtime_staged_resume_scheduled|ios_resource_coordinator_job_enqueued|ios_resource_coordinator_job_coalesced|ios_resource_coordinator_job_blocked|ios_resource_coordinator_job_dropped|ios_resource_coordinator_job_started|ios_resource_coordinator_job_finished|ios_deferred_registration_flush_no_progress_quieted|ios_critical_visible_restore_watchdog|ios_critical_visible_restore_watchdog_quieted|ios_surface_transition_released_stable|ios_resource_recovery_entered|ios_resource_recovery_released_terminal|ios_soft_modal_recovery_released_stable|ios_resource_recovery_blocked|ios_terminal_auth_resource_guard_violation|ios_soft_modal_resource_guard_violation|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
+        return /^(app_boot_start|pagehide|pageshow|visibilitychange|reload_requested_by_app|shell_cache_gate_start|shell_cache_gate_end|auth_state_known|AUTH_PROFILE_WATCHDOG_SCHEDULED|AUTH_PROFILE_WATCHDOG_FIRED|AUTH_PROFILE_WATCHDOG_TERMINAL_BACKOFF|AUTH_PROFILE_LIVENESS_REQUESTED|AUTH_PROFILE_PROBE_STALE_RELEASED|AUTH_PROFILE_LIVENESS_RETRY_SCHEDULED|detail_open_requested|detail_open_committed|detail_close_requested|detail_release_phase|detail_resources_released|related_open_requested|related_close_requested|dates_open_requested|dates_close_requested|soft_modal_atomic_close_start|soft_modal_atomic_close_done|travel_tab_transition_start|travel_tab_transition_complete|ios_runtime_staged_resume_scheduled|ios_resource_coordinator_job_enqueued|ios_resource_coordinator_job_coalesced|ios_resource_coordinator_job_blocked|ios_resource_coordinator_job_dropped|ios_resource_coordinator_job_started|ios_resource_coordinator_job_finished|ios_deferred_registration_flush_no_progress_quieted|ios_critical_visible_restore_watchdog|ios_critical_visible_restore_watchdog_quieted|ios_surface_transition_released_stable|ios_post_surface_visible_liveness_scheduled|ios_resource_recovery_entered|ios_resource_recovery_released_terminal|ios_soft_modal_recovery_released_stable|ios_resource_recovery_blocked|ios_terminal_auth_resource_guard_violation|ios_soft_modal_resource_guard_violation|ios_auth_profile_quiet_entered|ios_auth_profile_quiet_released_terminal|ios_auth_profile_guard_blocked|ios_auth_profile_liveness_bypass|ios_hidden_rewards_resources_released|ios_post_auth_resource_resume_deferred|ios_post_auth_resource_resume_started|ios_post_auth_visual_resume_unblocked|blackbox_current_build_attribution|blackbox_dirty_boot_restart_detected)$/.test(String(event || ''));
     }
 
     function appendBootDiaryEntry(state, bootEntry, previousEvents) {
@@ -25900,7 +25900,27 @@ function wilduGetIOSResourceCoordinatorOwnerGuard(lane, reason) {
             const amazonGuard = typeof wilduGetAmazonCarouselGuard === 'function'
                 ? wilduGetAmazonCarouselGuard('resource_coordinator:' + reasonText)
                 : null;
-            if (amazonGuard && amazonGuard.blocked) return amazonGuard;
+            if (amazonGuard && amazonGuard.blocked) {
+                const canRunVisibleHydration = cleanLane === 'amazon-visible' &&
+                    typeof wilduCanHydrateAmazonVisibleImageWhileGuarded === 'function' &&
+                    wilduCanHydrateAmazonVisibleImageWhileGuarded(
+                        document.getElementById('amazon-slider-engine'),
+                        amazonGuard,
+                        'resource_coordinator:' + reasonText
+                    );
+                if (canRunVisibleHydration) {
+                    try {
+                        wilduIOSBlackBoxRecord('amazon_visible_lane_guard_bypass', {
+                            lane: cleanLane,
+                            reason: reasonText,
+                            guard: amazonGuard.guard || 'guarded',
+                            retryMs: amazonGuard.retryMs || 0
+                        });
+                    } catch (e) {}
+                } else {
+                    return amazonGuard;
+                }
+            }
         }
         const ignoreRecovery = /critical-visible|active-travel-band/i.test(cleanLane);
         const ownerLane = cleanLane === 'critical-visible'
@@ -26002,12 +26022,19 @@ function wilduRunIOSResourceCoordinator(reason) {
             const livenessLane = /critical-visible|active-travel-band|amazon-visible|amazon-resume|deferred-flush/i.test(String(job.lane || ''));
             const dropped = !livenessLane && job.attempts > WILDU_IOS_RESOURCE_COORDINATOR_MAX_ATTEMPTS;
             if (!dropped) queue.push(job);
+            const guardName = String(guard.guard || '');
+            const globalGuard = /page_hidden|document_hidden|google_auth_transition|top_layer/i.test(guardName);
+            const nextGlobalGap = globalGuard
+                ? retry
+                : Math.min(retry, WILDU_IOS_RESOURCE_COORDINATOR_MIN_GAP_MS);
             try {
                 wilduIOSBlackBoxRecord('ios_resource_coordinator_job_blocked', {
                     lane: job.lane,
                     reason: job.reason,
                     guard: guard.guard || 'guarded',
                     retryMs: retry,
+                    globalGuard,
+                    nextGlobalGap,
                     attempts: job.attempts,
                     dropped,
                     detail: guard.detail || null,
@@ -26024,7 +26051,7 @@ function wilduRunIOSResourceCoordinator(reason) {
                     });
                 } catch (e) {}
             }
-            runtime.resourceCoordinatorNextAllowedAt = Date.now() + retry;
+            runtime.resourceCoordinatorNextAllowedAt = Date.now() + nextGlobalGap;
             wilduArmIOSResourceCoordinator('guarded:' + String(job.lane || ''), retry);
             return true;
         }
@@ -26265,6 +26292,14 @@ function wilduScheduleIOSSurfaceTransitionSettle(token, reason, delayMs, options
         try {
             wilduScheduleIOSOwnerStableResume('surface_transition_settled:' + String(reason || ''), 180);
         } catch (e) {}
+        try {
+            wilduScheduleIOSPostSurfaceVisibleLiveness('surface_transition_settled:' + String(reason || ''), 420, {
+                token: cleanToken,
+                reason: String(reason || ''),
+                allowVisibleSoftModal,
+                softModalVisible
+            });
+        } catch (e) {}
     }, delay);
     return true;
 }
@@ -26308,7 +26343,41 @@ function wilduReleaseIOSSurfaceTransitionForStableLiveness(reason, detail) {
         try {
             wilduScheduleIOSOwnerStableResume('surface_transition_released_stable:' + String(reason || ''), 180);
         } catch (e) {}
+        try {
+            wilduScheduleIOSPostSurfaceVisibleLiveness('surface_transition_released_stable:' + String(reason || ''), 360, {
+                owner,
+                ownerReason,
+                token
+            });
+        } catch (e) {}
         return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduScheduleIOSPostSurfaceVisibleLiveness(reason, delayMs, detail) {
+    try {
+        if (!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())) return false;
+        const cleanReason = String(reason || 'post_surface_visible_liveness').slice(0, 180);
+        const delay = Math.max(180, Math.min(2400, Number(delayMs || 0) || 360));
+        let scheduled = false;
+        try {
+            wilduIOSBlackBoxRecord('ios_post_surface_visible_liveness_scheduled', {
+                reason: cleanReason,
+                delayMs: delay,
+                detail: detail || null
+            });
+        } catch (e) {}
+        if (typeof wilduScheduleIOSResourceCoordinatorJob === 'function') {
+            scheduled = wilduScheduleIOSResourceCoordinatorJob('amazon-visible', cleanReason, {
+                delayMs: delay
+            }) || scheduled;
+        }
+        if (typeof wilduEnsureAmazonVisibleHydrationLiveness === 'function') {
+            scheduled = wilduEnsureAmazonVisibleHydrationLiveness(cleanReason, delay + 420, true) || scheduled;
+        }
+        return scheduled;
     } catch (e) {
         return false;
     }
@@ -27378,6 +27447,13 @@ function wilduUnlockOverlayScrollAfterSoftModalClose(surface, source) {
                 );
             }
         } catch (e) {}
+        try {
+            wilduScheduleIOSPostSurfaceVisibleLiveness('soft_modal_scroll_unlocked:' + String(surface || '') + ':' + String(source || ''), 520, {
+                surface: String(surface || ''),
+                source: String(source || ''),
+                cleanupPending: WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0
+            });
+        } catch (e) {}
     }, delay);
 }
 
@@ -27938,6 +28014,24 @@ function wilduIsSmartImageLongListSurface(surface) {
     return /^(official|openday|payday|ondemand)-list$/.test(String(surface || ''));
 }
 
+function wilduIsAmazonImageInsideSliderWindow(img) {
+    try {
+        if (!img || !img.isConnected || typeof img.closest !== 'function' || document.hidden) return false;
+        const slider = img.closest('#amazon-slider-engine');
+        if (!slider || !slider.getBoundingClientRect || !img.getBoundingClientRect) return false;
+        const sliderRect = slider.getBoundingClientRect();
+        const rect = img.getBoundingClientRect();
+        if (!sliderRect || !rect || rect.width <= 0 || rect.height <= 0) return false;
+        const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+        return rect.bottom >= -180 &&
+            rect.top <= viewportHeight + 180 &&
+            rect.right >= sliderRect.left - 220 &&
+            rect.left <= sliderRect.right + 220;
+    } catch (e) {
+        return false;
+    }
+}
+
 function wilduGetTravelTabRootMap() {
     return {
         travelhub: ['sec-travelhub'],
@@ -28045,6 +28139,57 @@ function wilduShouldUseIOSPWASmartImageGuard() {
     return !!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice() && wilduIsStandaloneDisplayMode());
 }
 
+function wilduHasRecentIOSDocumentRestartEvidenceForResourceCreation() {
+    try {
+        if (!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) return null;
+        const state = typeof wilduReadIOSBlackBoxStorageState === 'function'
+            ? wilduReadIOSBlackBoxStorageState()
+            : null;
+        const diary = state && Array.isArray(state.bootDiary) ? state.bootDiary : [];
+        if (!diary.length) return null;
+        const now = Date.now();
+        for (let i = diary.length - 1; i >= 0 && i >= diary.length - 10; i -= 1) {
+            const entry = diary[i] || {};
+            const at = typeof wilduParseBlackboxTimeMs === 'function'
+                ? wilduParseBlackboxTimeMs(entry.at)
+                : Date.parse(String(entry.at || ''));
+            const ageMs = at ? Math.max(0, now - at) : 0;
+            if (!at || ageMs > WILDU_SMART_IMAGE_IOS_PWA_RESTART_GUARD_MS) continue;
+            const previousDocId = String(entry.previousDocId || '');
+            const docId = String(entry.docId || '');
+            if (previousDocId && docId && previousDocId !== docId) {
+                return {
+                    ageMs,
+                    previousDocId,
+                    docId,
+                    previousEvent: entry.previousEvent || '',
+                    previousCriticalEvent: entry.previousCriticalEvent || ''
+                };
+            }
+        }
+    } catch (e) {}
+    return null;
+}
+
+function wilduShouldUseIOSResourceCreationGuard(reason) {
+    try {
+        if (!(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice())) return false;
+        if (typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard()) return true;
+        if (typeof wilduIsStandaloneDisplayMode === 'function' && wilduIsStandaloneDisplayMode()) return true;
+        const restart = wilduHasRecentIOSDocumentRestartEvidenceForResourceCreation();
+        if (restart) {
+            try {
+                wilduIOSBlackBoxRecord('ios_resource_creation_guard_from_boot_diary', {
+                    reason: String(reason || ''),
+                    restart
+                });
+            } catch (e) {}
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
 function wilduGetAuthProfileCriticalSnapshot() {
     let sessionState = '';
     let hasFirebaseUser = false;
@@ -28101,6 +28246,7 @@ function wilduIsAuthProfileTerminalForResourceLiveness(authSnapshot, contextText
         if (auth.hasFirebaseUser && /PROFILE_CONFIRMED|BACKEND_SESSION_FINALIZED|BACKEND_LOGGED|BACKEND_SESSION_CONFIRMED|AUTH_BRIDGE_USER_AVAILABLE/i.test(text)) {
             return true;
         }
+        if (!auth.hasFirebaseUser && auth.sessionState === 'GUEST' && !auth.active) return true;
         if (auth.stalePending && !auth.hasFirebaseUser) return true;
     } catch (e) {}
     return false;
@@ -29075,7 +29221,25 @@ function wilduRunCriticalVisibleImageRestore(reason, limit) {
         });
         runtime.criticalVisibleRestoreActive = false;
         try {
-            if (typeof hydrateWilduTravelHubImages === 'function' && madeProgress) hydrateWilduTravelHubImages(true);
+            const activeTravelSurface = typeof wilduGetCurrentTravelTabForImageRecovery === 'function'
+                ? wilduGetCurrentTravelTabForImageRecovery()
+                : '';
+            const travelHubRoot = document.getElementById('sec-travelhub');
+            const travelHubRenderable = activeTravelSurface === 'travelhub' &&
+                travelHubRoot &&
+                typeof wilduIsElementInsideViewportBand === 'function' &&
+                wilduIsElementInsideViewportBand(travelHubRoot, 260, 180);
+            if (typeof hydrateWilduTravelHubImages === 'function' && madeProgress && travelHubRenderable) {
+                hydrateWilduTravelHubImages(true);
+            } else if (madeProgress && activeTravelSurface !== 'travelhub') {
+                try {
+                    wilduIOSBlackBoxRecord('travelhub_force_hydrate_skipped_scope', {
+                        reason: cleanReason,
+                        activeTravelSurface: String(activeTravelSurface || ''),
+                        travelHubRenderable: !!travelHubRenderable
+                    });
+                } catch (e) {}
+            }
         } catch (e) {}
         try {
             if (
@@ -30345,6 +30509,7 @@ function wilduIsImageInsideIOSMemoryWindow(img) {
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
     const policy = getWilduImageMemoryPolicy();
     const surface = wilduGetSmartImageSurface(img);
+    if (surface === 'shop' && wilduIsAmazonImageInsideSliderWindow(img)) return true;
     const useTightIOSSurfaceWindow = wilduShouldUseIOSPWASmartImageGuard() &&
         /^(shop|guest-profile|travelhub|rewards|related|dates)$/.test(surface);
     const verticalMargin = useTightIOSSurfaceWindow ? 220 : policy.verticalMargin;
@@ -30393,6 +30558,7 @@ function wilduIsIOSCriticalVisibleImage(img, reason) {
                 wilduIsElementInsideViewportBand(img, 280, 180);
         }
         if (surface === 'shop' || surface === 'rewards') {
+            if (surface === 'shop' && wilduIsAmazonImageInsideSliderWindow(img)) return true;
             return wilduIsElementInsideViewportBand(img, 260, 180);
         }
     } catch (e) {}
@@ -31650,6 +31816,15 @@ function installWilduIOSImageMemoryWindow() {
             if (!state) return;
             const name = mutation.attributeName;
             const value = img.getAttribute(name) || '';
+            if (img.dataset && img.dataset.wilduAmazonVisibleHydrating === '1') {
+                state[name] = value;
+                if ((name === 'src' || name === 'srcset') && value) {
+                    state.released = false;
+                    if (name === 'src') state.src = value;
+                    if (name === 'srcset') state.srcset = value;
+                }
+                return;
+            }
             if (name === 'src') {
                 const cleanValue = wilduNormalizeSmartImageUrl(value);
                 const knownOptimized = wilduNormalizeSmartImageUrl(state.optimizedSrc || '');
@@ -31693,13 +31868,11 @@ function installWilduIOSImageMemoryWindow() {
     }
     wilduRegisterIOSImagesIn(document.body);
     if (wilduShouldUseIOSPWASmartImageGuard()) {
-        try { wilduRestoreCriticalVisibleDeferredImages('install_visible_guarantee', 8); } catch (e) {}
         try {
-            wilduRestoreActiveTravelBandImagesForIOS(
-                wilduGetCurrentTravelTabForImageRecovery(),
-                'install_visible_guarantee',
-                WILDU_IOS_ACTIVE_TRAVEL_BAND_RESTORE_LIMIT
-            );
+            wilduIOSBlackBoxRecord('ios_install_visible_guarantee_coordinated', {
+                reason: 'install_visible_guarantee',
+                directRestoreSuppressed: true
+            });
         } catch (e) {}
         try { wilduScheduleCriticalVisibleImageRestore('install_visible_guarantee', WILDU_IOS_CRITICAL_VISIBLE_RESTORE_DELAY_MS, WILDU_IOS_CRITICAL_VISIBLE_RESTORE_LIMIT); } catch (e) {}
         try { wilduScheduleActiveTravelBandRestoreForIOS('install_visible_guarantee', WILDU_IOS_ACTIVE_TRAVEL_BAND_RETRY_MS, WILDU_IOS_ACTIVE_TRAVEL_BAND_RESTORE_LIMIT); } catch (e) {}
@@ -31979,11 +32152,14 @@ const WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 650;
 const WILDU_SOFT_MODAL_IOS_RESTART_HYDRATION_GRACE_MS = 7000;
-const WILDU_IOS_LONG_LIST_INITIAL_VISIBLE_IMAGE_LIMIT = 3;
+const WILDU_IOS_LONG_LIST_INITIAL_VISIBLE_IMAGE_LIMIT = 4;
 
 function wilduShouldDeferInitialTravelListImage(index, targetId) {
     try {
-        if (!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())) return false;
+        const creationGuard = typeof wilduShouldUseIOSResourceCreationGuard === 'function'
+            ? wilduShouldUseIOSResourceCreationGuard('initial_travel_list:' + String(targetId || ''))
+            : !!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard());
+        if (!creationGuard) return false;
         const numericIndex = Math.max(0, Number(index || 0));
         const root = String(targetId || '');
         if (!/^(event-list|openday-list|payday-list|ondemand-list)$/.test(root)) return false;
@@ -32011,7 +32187,7 @@ function wilduBuildTravelListImageSrcAttributes(rawUrl, index, targetId, reason)
             });
         }
     } catch (e) {}
-    return 'src="' + WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC + '" data-wildu-tab-original-src="' + safeSrc + '" data-wildu-tab-image-released="1" data-wildu-ios-initial-list-deferred="1"';
+    return 'src="' + WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC + '" data-wildu-tab-original-src="' + safeSrc + '" data-wildu-tab-image-released="1" data-wildu-ios-initial-list-deferred="1" data-wildu-ios-image-register-deferred="1"';
 }
 
 function wilduGetSoftModalImageHydrationLimit() {
@@ -39410,6 +39586,22 @@ if (profKeyEl) {
             renderOnDemandTrips();
         }
 
+        if (
+            typeof wilduShouldUseIOSPWASmartImageGuard === 'function' &&
+            wilduShouldUseIOSPWASmartImageGuard() &&
+            typeof wilduEnsureAmazonVisibleHydrationLiveness === 'function'
+        ) {
+            window.setTimeout(function () {
+                try {
+                    wilduEnsureAmazonVisibleHydrationLiveness(
+                        'tab_show:' + String(previousTab || '') + '_to_' + String(id || ''),
+                        260,
+                        true
+                    );
+                } catch (e) {}
+            }, 180);
+        }
+
         // Se un vecchio richiamo usa show('wheel'), apro Premi e Giochi
         // e scorro fino alla Ruota.
         if (requestedTab === 'wheel') {
@@ -43803,6 +43995,8 @@ let amazonImageHydrationTimer = 0;
 let amazonImageHydrationDue = 0;
 let amazonImageHydrationVisibleBypassLastAt = 0;
 let amazonImageHydrationVisibleBypassLastKey = '';
+let amazonVisibleLivenessTimer = 0;
+let amazonVisibleLivenessDue = 0;
 const WILDU_AMAZON_IOS_RENDER_RETRY_MS = 2600;
 const WILDU_AMAZON_IOS_IMAGE_STEP_MS = 760;
 const WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT = 8;
@@ -43939,12 +44133,102 @@ function wilduReleaseAmazonQuietModeIfStable(reason) {
     const remaining = wilduGetAmazonQuietRemainingMs();
     if (remaining > 0) return false;
     if (!amazonQuietReason) return true;
+    const previousReason = amazonQuietReason;
     wilduRecordAmazonCarouselEvent('amazon_carousel_quiet_released', {
         reason: String(reason || ''),
-        previousReason: amazonQuietReason
+        previousReason
     });
     amazonQuietReason = '';
+    try {
+        wilduEnsureAmazonVisibleHydrationLiveness('quiet_released:' + String(reason || ''), 240);
+    } catch (e) {}
     return true;
+}
+
+function wilduGetAmazonVisibleHydrationDebt(slider) {
+    try {
+        if (!slider || !slider.querySelectorAll) return { pending: 0, hydrated: 0, limit: 0, visibleCandidates: 0 };
+        const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
+        const viewport = slider.getBoundingClientRect ? slider.getBoundingClientRect() : null;
+        const limit = wilduGetAmazonVisibleHydrationLimit(slider, true);
+        const hydrated = wilduCountAmazonLiveHydratedImages(slider);
+        const all = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]'));
+        let visibleCandidates = 0;
+        let pending = 0;
+        all.forEach(function (node) {
+            if (!node || !node.isConnected) return;
+            const preserved = String(node.getAttribute('data-wildu-shop-image-src') || '').trim();
+            if (!preserved) return;
+            let visible = true;
+            if (viewport && node.getBoundingClientRect) {
+                const rect = node.getBoundingClientRect();
+                visible = !!(rect && rect.right >= viewport.left - 180 && rect.left <= viewport.right + 180);
+            }
+            if (!visible) return;
+            visibleCandidates += 1;
+            if (String(node.tagName || '').toUpperCase() === 'IMG') {
+                const src = node.currentSrc || node.getAttribute('src') || '';
+                const released = !!(node.dataset && (node.dataset.wilduTabImageReleased === '1' || node.dataset.wilduIosImageReleased === '1'));
+                const liveNode = !!(src && src !== placeholder && !released);
+                if (liveNode) {
+                    if (node.dataset && node.dataset.wilduAmazonHydrated !== '1') {
+                        node.dataset.wilduAmazonHydrated = '1';
+                    }
+                    return;
+                }
+            }
+            pending += 1;
+        });
+        return { pending, hydrated, limit, visibleCandidates };
+    } catch (e) {
+        return { pending: 0, hydrated: 0, limit: 0, visibleCandidates: 0 };
+    }
+}
+
+function wilduEnsureAmazonVisibleHydrationLiveness(reason, delayMs, forceDelayedCheck) {
+    try {
+        const slider = document.getElementById('amazon-slider-engine');
+        if (!slider || !slider.querySelector('.amazon-card')) return false;
+        const debt = wilduGetAmazonVisibleHydrationDebt(slider);
+        const safeDebt = debt || { pending: 0, hydrated: 0, limit: 0, visibleCandidates: 0 };
+        const forceCheck = forceDelayedCheck === true;
+        if (!forceCheck && (!debt || debt.pending <= 0 || debt.hydrated >= debt.limit)) return false;
+        const delay = Math.max(120, Math.min(2600, Number(delayMs || 0) || 420));
+        const due = Date.now() + delay;
+        if (!forceCheck && amazonImageHydrationTimer && amazonImageHydrationDue && amazonImageHydrationDue <= due + 80) return true;
+        if (amazonVisibleLivenessTimer) {
+            if (Number(amazonVisibleLivenessDue || 0) && Number(amazonVisibleLivenessDue || 0) <= due + 120) return true;
+            try { window.clearTimeout(amazonVisibleLivenessTimer); } catch (e) {}
+            amazonVisibleLivenessTimer = 0;
+        }
+        amazonVisibleLivenessDue = due;
+        wilduRecordAmazonCarouselEvent('amazon_visible_liveness_scheduled', {
+            reason: String(reason || ''),
+            delayMs: delay,
+            pending: safeDebt.pending,
+            hydrated: safeDebt.hydrated,
+            limit: safeDebt.limit,
+            visibleCandidates: safeDebt.visibleCandidates,
+            forceCheck
+        });
+        amazonVisibleLivenessTimer = window.setTimeout(function () {
+            amazonVisibleLivenessTimer = 0;
+            amazonVisibleLivenessDue = 0;
+            const latestDebt = wilduGetAmazonVisibleHydrationDebt(slider);
+            if (!latestDebt || latestDebt.pending <= 0 || latestDebt.hydrated >= latestDebt.limit) {
+                wilduRecordAmazonCarouselEvent('amazon_visible_liveness_satisfied', {
+                    reason: String(reason || ''),
+                    hydrated: latestDebt && latestDebt.hydrated || 0,
+                    limit: latestDebt && latestDebt.limit || 0
+                });
+                return;
+            }
+            wilduScheduleAmazonImageHydration('visible_liveness:' + String(reason || ''), 0);
+        }, delay);
+        return true;
+    } catch (e) {
+        return false;
+    }
 }
 
 function wilduScheduleAmazonResume(reason, delayMs) {
@@ -43965,6 +44249,7 @@ function wilduScheduleAmazonResume(reason, delayMs) {
             reason: String(reason || ''),
             cause: 'no_rendered_cards'
         });
+        try { wilduEnsureAmazonVisibleHydrationLiveness('resume_suppressed_no_cards:' + String(reason || ''), 420); } catch (e) {}
         return false;
     }
     const preflightGuard = wilduGetAmazonCarouselGuard('resume_preflight:' + String(reason || ''));
@@ -43978,6 +44263,7 @@ function wilduScheduleAmazonResume(reason, delayMs) {
             try {
                 wilduScheduleIOSOwnerStableResume('amazon_resume:' + String(reason || ''), preflightGuard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
             } catch (e) {}
+            try { wilduEnsureAmazonVisibleHydrationLiveness('resume_parked:' + String(reason || ''), Math.min(1800, preflightGuard.retryMs || 900)); } catch (e) {}
             return true;
         }
         wilduRecordAmazonCarouselEvent('amazon_carousel_resume_deferred_by_gate', {
@@ -44234,20 +44520,20 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
         }
         const guardName = String(guard && guard.guard || '');
         const reasonText = String(reason || '');
-        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|resume_timer|deferred|auto_scroll_tick|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
+        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|visible_liveness|resume_timer|deferred|auto_scroll_tick|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
         if (!visibleReason) return false;
         if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|travel_tab_transition/i.test(guardName)) return false;
         const hydrated = wilduCountAmazonLiveHydratedImages(slider);
         const visibleLimit = wilduGetAmazonVisibleHydrationLimit(slider, true);
         if (hydrated >= visibleLimit) return false;
         if (/recent_document_restart|ios_resource_recovery|resource_recovery/i.test(guardName)) {
-            wilduRecordAmazonCarouselEvent('amazon_visible_image_hydration_recovery_deferred', {
+            wilduRecordAmazonCarouselEvent('amazon_visible_image_hydration_recovery_allowed', {
                 reason: reasonText,
                 guard: guardName,
                 hydrated,
                 limit: visibleLimit
             });
-            return false;
+            return true;
         }
         if (/ios_owner:auth_profile_critical_path|auth_profile/i.test(guardName)) {
             const runtime = typeof WILDU_IOS_IMAGE_MEMORY_RUNTIME === 'object' ? WILDU_IOS_IMAGE_MEMORY_RUNTIME : {};
@@ -44296,11 +44582,15 @@ function wilduCountAmazonLiveHydratedImages(slider) {
     try {
         if (!slider) return 0;
         const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
-        return Array.from(slider.querySelectorAll('img[data-wildu-amazon-hydrated="1"]')).filter(function (img) {
+        return Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src]')).filter(function (img) {
             if (!img || !img.isConnected || !img.dataset) return false;
             if (img.dataset.wilduTabImageReleased === '1' || img.dataset.wilduIosImageReleased === '1') return false;
             const src = img.currentSrc || img.getAttribute('src') || '';
-            return !!(src && src !== placeholder);
+            if (!(src && src !== placeholder)) return false;
+            if (img.dataset.wilduAmazonHydrated !== '1') {
+                img.dataset.wilduAmazonHydrated = '1';
+            }
+            return true;
         }).length;
     } catch (e) {
         return 0;
@@ -44369,8 +44659,13 @@ function wilduHydrateVisibleAmazonImages(reason) {
         if (String(img.tagName || '').toUpperCase() === 'IMG') {
             const src = img.currentSrc || img.getAttribute('src') || '';
             const released = !!(img.dataset && (img.dataset.wilduTabImageReleased === '1' || img.dataset.wilduIosImageReleased === '1'));
-            const hydrated = !!(img.dataset && img.dataset.wilduAmazonHydrated === '1');
-            if (hydrated && src && src !== placeholder && !released) return false;
+            const liveNode = !!(src && src !== placeholder && !released);
+            if (liveNode) {
+                if (img.dataset && img.dataset.wilduAmazonHydrated !== '1') {
+                    img.dataset.wilduAmazonHydrated = '1';
+                }
+                return false;
+            }
         }
         return true;
     });
@@ -44414,7 +44709,13 @@ function wilduHydrateVisibleAmazonImages(reason) {
     } catch (e) {}
     try {
         if (registeredTarget && registeredTarget.dataset) {
-            delete registeredTarget.dataset.wilduAmazonVisibleHydrating;
+            window.setTimeout(function () {
+                try {
+                    if (registeredTarget && registeredTarget.dataset) {
+                        delete registeredTarget.dataset.wilduAmazonVisibleHydrating;
+                    }
+                } catch (e) {}
+            }, 1400);
         }
     } catch (e) {}
     try {
@@ -45264,6 +45565,7 @@ function renderAmazonSponsors(products, options = {}) {
                 wilduEnterAmazonQuietMode('render_reused_guarded:' + String(guard.guard || 'guarded'), guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
             }
             wilduScheduleAmazonImageHydration('render_reused_guarded:' + String(guard.guard || 'guarded'), Math.max(900, Math.min(3200, guard.retryMs || WILDU_AMAZON_IOS_IMAGE_STEP_MS)));
+            wilduEnsureAmazonVisibleHydrationLiveness('render_reused_guarded:' + String(guard.guard || 'guarded'), Math.max(420, Math.min(2200, guard.retryMs || WILDU_AMAZON_IOS_IMAGE_STEP_MS)));
             wilduScheduleAmazonResume('render_reused_guarded:' + String(guard.guard || 'guarded'), guard.retryMs || WILDU_AMAZON_IOS_QUIET_RETRY_MS);
             return;
         } else {
@@ -45378,6 +45680,9 @@ function renderAmazonSponsors(products, options = {}) {
     try {
         requestAnimationFrame(function () {
             wilduAnchorAmazonFooter('rendered_next_frame:' + renderReason);
+            try {
+                wilduEnsureAmazonVisibleHydrationLiveness('rendered_next_frame:' + renderReason, amazonPlaceholderOnly ? 1200 : 320, true);
+            } catch (e) {}
         });
     } catch (e) {}
 
@@ -45391,6 +45696,7 @@ function renderAmazonSponsors(products, options = {}) {
 
     bindAmazonSliderEventsOnce(slider);
     wilduScheduleAmazonImageHydration(amazonPlaceholderOnly ? 'rendered_shell_only' : 'rendered', amazonPlaceholderOnly ? 1600 : 460);
+    wilduEnsureAmazonVisibleHydrationLiveness(amazonPlaceholderOnly ? 'rendered_shell_only' : 'rendered', amazonPlaceholderOnly ? 2200 : 900, true);
     wilduRecordAmazonCarouselEvent('amazon_carousel_rendered', {
         reason: renderReason,
         cardCount: mixedList.length,
@@ -46135,6 +46441,7 @@ function pauseAmazonAutoScroll(reason) {
             reason: String(reason || ''),
             cause: 'resource_recovery_without_active_autoscroll'
         });
+        try { wilduEnsureAmazonVisibleHydrationLiveness('resource_recovery_without_autoscroll:' + String(reason || ''), 520); } catch (e) {}
         return;
     }
     wilduScheduleAmazonResume(String(reason && reason.type ? reason.type : (reason || 'manual_or_interaction')), resumeDelay);
