@@ -3866,6 +3866,18 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     box-shadow: 0 8px 22px rgba(0,0,0,.36) !important;
 }
 
+/* WILDU IOS CARD COMPOSITING V1: a backdrop child can keep a clipped
+   card composited even after its image is released. Keep badge backgrounds,
+   geometry and image policy; avoid that persistent filter only on iOS lists.
+   No drag/idle toggling, observers or changes to modal/auth lifecycles. */
+html.wildu-ios-card-compositing-v1 #event-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-ios-card-compositing-v1 #openday-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-ios-card-compositing-v1 #payday-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-ios-card-compositing-v1 #ondemand-list > .wildu-adventure-card [style*="backdrop-filter"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
 /* WILDU PERF P4 - containment progressivo, con fallback CSS nativo. */
 @supports (content-visibility: auto) {
     #event-list > .wildu-adventure-card:not(:focus-within),
@@ -16672,7 +16684,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.85';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.86';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -20710,6 +20722,12 @@ function isWilduIOSClientDevice() {
     } catch (e) {
         return false;
     }
+}
+
+// One-time platform scope; existing detector also covers iPad desktop UA.
+// Does not depend on auth, recovery, scroll or asynchronous resource gates.
+if (isWilduIOSClientDevice()) {
+    document.documentElement.classList.add('wildu-ios-card-compositing-v1');
 }
 
 function getWilduCatalogCoverRaw(item) {
