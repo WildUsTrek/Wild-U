@@ -6461,50 +6461,6 @@ html.wildu-detail-transition-busy body {
     .wildu-program-confirm-card { padding: 18px; }
     .wildu-program-confirm-actions { grid-template-columns: minmax(0, 1fr); }
 }
-/* =========================================================
-   WILDU MOBILE — SCORRIMENTO VERTICALE CARD ASSISTITO
-   ---------------------------------------------------------
-   Proximity resta una guida, non una gabbia: il gesto breve si
-   assesta sulla card vicina; uno swipe lungo puo' oltrepassarne
-   diverse grazie a scroll-snap-stop:normal. Il browser anima sul
-   proprio compositor, senza listener touchmove o frame JavaScript.
-   ========================================================= */
-@media (max-width: 760px) and (hover: none) {
-    html {
-        scroll-snap-type: y proximity;
-        scroll-padding-block: clamp(64px, 10svh, 104px);
-    }
-
-    #event-list > .card,
-    #event-list > .wildu-adventure-card,
-    #openday-list > .card,
-    #openday-list > .wildu-adventure-card,
-    #payday-list > .card,
-    #payday-list > .wildu-adventure-card,
-    #ondemand-list > .card,
-    #ondemand-list > .wildu-adventure-card {
-        scroll-snap-align: center;
-        scroll-snap-stop: normal;
-        scroll-margin-block: clamp(48px, 8svh, 88px);
-    }
-}
-
-@media (max-width: 760px) and (hover: none) and (prefers-reduced-motion: reduce) {
-    html {
-        scroll-snap-type: none;
-    }
-
-    #event-list > .card,
-    #event-list > .wildu-adventure-card,
-    #openday-list > .card,
-    #openday-list > .wildu-adventure-card,
-    #payday-list > .card,
-    #payday-list > .wildu-adventure-card,
-    #ondemand-list > .card,
-    #ondemand-list > .wildu-adventure-card {
-        scroll-snap-align: none;
-    }
-}
 
 </style>
     
@@ -11042,12 +10998,21 @@ const WilduMediaClient = (() => {
         });
     }
 
+    let wilduRewardsVideoRenderGeneration = 0;
     async function renderWilduRewardsHorizontalVideos() {
         const box = document.getElementById("wildu-rewards-horizontal-videos");
         if (!box) return;
+        const generation = ++wilduRewardsVideoRenderGeneration;
+        const canCommit = function () {
+            return generation === wilduRewardsVideoRenderGeneration && box.isConnected &&
+                box === document.getElementById("wildu-rewards-horizontal-videos") &&
+                isWilduRewardsSurfaceVisibleForIOS();
+        };
 
         try {
             const manifest = await loadWilduRewardsYoutubeManifest();
+            // A late manifest must not rebuild a surface the user has left.
+            if (!canCommit()) return;
             const videos = getWilduRewardsHorizontalVideos(manifest);
 
             if (!videos.length) {
@@ -11067,7 +11032,7 @@ const WilduMediaClient = (() => {
             bindWilduRewardsHorizontalVideoCards(box);
         } catch (e) {
             console.warn("[WILDU REWARDS] Video orizzontali non disponibili:", e);
-            box.innerHTML = "";
+            if (canCommit()) box.innerHTML = "";
         }
     }
 
@@ -12720,6 +12685,9 @@ window.WilduMediaClient = WilduMediaClient;
         if (nameInput) nameInput.value = cachedXPData.nome;
         if (phoneInput) phoneInput.value = cachedXPData.telefono;
         rememberWilduLastKnownPhone(cachedXPData.telefono);
+
+        // Identity is checked above; facts must not wait for the XP animation.
+        syncWilduPassportSummary(cachedXPData);
 
         return true;
     }
@@ -16684,7 +16652,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.86';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.87';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -16758,6 +16726,18 @@ const WilduIOSBlackBox = (() => {
     // Native highwater can predate the last UI event by tens of seconds. Keep
     // compact time buckets separately from rich snapshots; repeated scheduling
     // must not evict the preceding document or cause a DOM sample on every call.
+    function retainCausalDocuments(documents) {
+        // Same global budget (128 buckets), now spanning reload + error + return.
+        const kept = documents.slice().sort(function (a, b) { return Number(a.timeOrigin || 0) - Number(b.timeOrigin || 0); }).slice(-3);
+        kept.forEach(function (doc, index) {
+            const limit = kept.length === 3 && index < 2 ? 32 : 64;
+            const buckets = Array.isArray(doc.buckets) ? doc.buckets : [];
+            doc.truncatedBuckets = Number(doc.truncatedBuckets || 0) + Math.max(0, buckets.length - limit);
+            doc.buckets = buckets.slice(-limit);
+        });
+        return kept;
+    }
+
     function noteCausalTimeline(state, event, details) {
         const now = Date.now();
         const documents = Array.isArray(state.causalTimeline) ? state.causalTimeline : [];
@@ -16776,7 +16756,19 @@ const WilduIOSBlackBox = (() => {
         }
         bucket.last = now;
         bucket.count += 1;
-        const eventKey = Object.prototype.hasOwnProperty.call(bucket.events, event) || Object.keys(bucket.events).length < 15 ? event : 'other';
+        const milestone = /app_boot_start|pagehide|pageshow|visibilitychange|reload|_requested$|_committed$|travel_tab_transition|atomic_close_(start|done)/;
+        const keys = Object.keys(bucket.events);
+        if (!Object.prototype.hasOwnProperty.call(bucket.events, event) && keys.length >= 15 && milestone.test(event)) {
+            const replaceable = keys.find(function (key) { return key !== 'other' && !milestone.test(key); });
+            if (replaceable) {
+                const count = Number(bucket.events[replaceable] || 0);
+                delete bucket.events[replaceable];
+                bucket.events.other = Number(bucket.events.other || 0) + count;
+                bucket.overflow += count;
+            }
+        }
+        const eventKey = Object.prototype.hasOwnProperty.call(bucket.events, event) ||
+            Object.keys(bucket.events).filter(function (key) { return key !== 'other'; }).length < 15 ? event : 'other';
         const previous = Number(bucket.events[eventKey] || 0);
         bucket.events[eventKey] = previous + 1;
         if (eventKey === 'other') bucket.overflow += 1;
@@ -16792,7 +16784,7 @@ const WilduIOSBlackBox = (() => {
             bucket.milestones.push({ at: now, event: event, generation: Number(data.generation || 0) });
             if (bucket.milestones.length > 8) { bucket.milestones.shift(); bucket.overflow += 1; }
         }
-        state.causalTimeline = documents.slice(-2);
+        state.causalTimeline = retainCausalDocuments(documents);
         const repeatedNoise = /coalesced$|^ios_resource_coordinator_job_(enqueued|blocked)$/.test(event) && previous > 0;
         if (repeatedNoise) doc.aggregatedEvents += 1;
         return repeatedNoise;
@@ -16800,7 +16792,7 @@ const WilduIOSBlackBox = (() => {
 
     function recoverCausalTail(state, tail) {
         const documents = Array.isArray(state.causalTimeline) ? state.causalTimeline : [];
-        (Array.isArray(tail) ? tail : []).slice(-2).forEach(function (saved) {
+        (Array.isArray(tail) ? tail : []).slice(-3).forEach(function (saved) {
             if (!saved || typeof saved.docId !== 'string') return;
             let doc = documents.find(function (item) { return item.docId === saved.docId; });
             if (!doc) { doc = Object.assign({}, saved, { buckets: [] }); documents.push(doc); }
@@ -16814,7 +16806,7 @@ const WilduIOSBlackBox = (() => {
             doc.buckets.sort(function (a, b) { return a.at - b.at; });
             doc.buckets = doc.buckets.slice(-64);
         });
-        state.causalTimeline = documents.slice(-2);
+        state.causalTimeline = retainCausalDocuments(documents);
     }
 
     function mergeRecordedEntries(left, right, limit) {
@@ -16964,7 +16956,7 @@ const WilduIOSBlackBox = (() => {
                             clientSessionAuthState: snap.clientSessionAuthState, activeTimers: { detail: snap.activeTimers && snap.activeTimers.detail,
                                 softModal: snap.activeTimers && snap.activeTimers.softModal }, resourceSampleAt: snap.resourceSampleAt } };
                 });
-                const causalTail = (state.causalTimeline || []).slice(-2).map(function (doc) {
+                const causalTail = (state.causalTimeline || []).slice(-3).map(function (doc) {
                     return Object.assign({}, doc, { buckets: doc.buckets.slice(-2) });
                 });
                 let journal = JSON.stringify({ version: 2, entries, causalTail });
@@ -18152,10 +18144,10 @@ const WilduIOSBlackBox = (() => {
         return {
             reportType: 'WILDU_IOS_BLACKBOX_V1',
             generatedAt: new Date().toISOString(),
-            blackboxPlan: 'ios-causal-trace-v8-bounded-two-document-timeline',
+            blackboxPlan: 'ios-causal-trace-v9-bounded-three-document-timeline',
             swResourcePolicy: Object.assign({}, swResourcePolicy),
             causalTimeline: Array.isArray(state.causalTimeline) ? state.causalTimeline : [],
-            causalTimelinePolicy: { documents: 2, bucketsPerDocument: 64, bucketMs: 2000,
+            causalTimelinePolicy: { documents: 3, bucketsPerDocument: 64, priorDocumentBuckets: 32, totalBuckets: 128, bucketMs: 2000,
                 eventClassesPerBucket: 16, lanesPerBucket: 8, milestonesPerBucket: 8, countersIncludeAggregatedCalls: true },
             persistence: Object.assign({}, storageMetrics, { pendingTimer: !!persistenceTimer, checkpointMaxChars: 64000, batchDelayMs: 900,
                 truncatedEvents: state.truncatedEvents || 0, truncatedCriticalEvents: state.truncatedCriticalEvents || 0 }),
@@ -18371,7 +18363,8 @@ const WilduIOSBlackBox = (() => {
             }
             const link = document.createElement('a');
             link.href = downloadUrl;
-            link.download = fileName;
+            // Navigate through the worker; Content-Disposition supplies the file
+            // name. A download-attribute request can bypass this cached route.
             link.rel = 'noopener';
             link.target = '_blank';
             document.body.appendChild(link);
@@ -26142,7 +26135,7 @@ function wilduGetIOSResourceCoordinatorOwnerGuard(lane, reason) {
         }
         if (/amazon/i.test(cleanLane)) {
             const amazonGuard = typeof wilduGetAmazonCarouselGuard === 'function'
-                ? wilduGetAmazonCarouselGuard('resource_coordinator:' + reasonText)
+                ? wilduGetAmazonCarouselGuard('resource_coordinator:' + reasonText, cleanLane === 'amazon-resume')
                 : null;
             if (amazonGuard && amazonGuard.blocked) {
                 const canRunVisibleHydration = cleanLane === 'amazon-visible' &&
@@ -26241,7 +26234,13 @@ function wilduRunIOSResourceCoordinator(reason) {
             const selected = queue[selectedIndex];
             const jp = getPriority(job);
             const sp = getPriority(selected);
-            if (jp < sp || (jp === sp && due < Number(selected && selected.due || 0))) {
+            const selectedDue = Number(selected && selected.due || 0);
+            // Priority decides fresh work; continuous producers cannot starve
+            // an already-ready lane. Admission still runs after selection.
+            const aged = now - due >= 1800;
+            const selectedAged = now - selectedDue >= 1800;
+            if ((aged && !selectedAged) || (aged && selectedAged && due < selectedDue) ||
+                (!aged && !selectedAged && (jp < sp || (jp === sp && due < selectedDue)))) {
                 selectedIndex = idx;
             }
         });
@@ -32546,6 +32545,12 @@ const WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC = 'data:image/svg+xml,%3Csvg%20xmlns
 const WILDU_SOFT_MODAL_IOS_IMAGE_ACTIVE_LIMIT = 10;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_ACTIVE_LIMIT = 8;
 const WILDU_SOFT_MODAL_DEFAULT_IMAGE_HYDRATION_STEP_MS = 140;
+// Local rollback switch: prior timings retained, not a second scheduler.
+const WILDU_SECONDARY_TIMING_MODE = 'responsive';
+const WILDU_SECONDARY_TIMINGS = Object.freeze({
+    conservative: Object.freeze({ popupNextGapMs: 320, amazonImageStepMs: 760, amazonResumeMs: 9000, amazonInteractionMs: 14000 }),
+    responsive: Object.freeze({ popupNextGapMs: 0, amazonImageStepMs: 400, amazonResumeMs: 4000, amazonInteractionMs: 8000 })
+}[WILDU_SECONDARY_TIMING_MODE]);
 const WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STEP_MS = 320;
 const WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STRESS_STEP_MS = 320;
 const WILDU_SOFT_MODAL_IOS_IMAGE_BUDGET_MIB = 17;
@@ -32653,6 +32658,12 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
             detail: ownerGuard.detail || null
         };
     }
+    if (img.dataset.wilduSoftImageUseOriginal === '1' &&
+        wilduGetSoftModalApproxDecodedMiB() > WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB) {
+        if (typeof wilduReleaseIOSImagesOutsideActiveWindow === 'function') wilduReleaseIOSImagesOutsideActiveWindow('soft_modal_original_preflight');
+        if (wilduGetSoftModalApproxDecodedMiB() > WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB)
+            return { allowed: false, guard: 'original_fallback_budget', retryMs: WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS };
+    }
     try {
         const visiblePriority = wilduGetSoftModalHydrationWindow(list).indexOf(img) >= 0;
         const hydratedNow = wilduCountSoftModalHydratedImages(list);
@@ -32739,7 +32750,7 @@ function wilduReleaseSoftModalImage(img, reason) {
 function wilduBuildSoftModalHydrationSource(img, originalSrc) {
     const original = String(originalSrc || '').trim();
     if (!original) return null;
-    if (!wilduShouldUseSoftModalImageGuard()) {
+    if (!wilduShouldUseSoftModalImageGuard() || img.dataset.wilduSoftImageUseOriginal === '1') {
         return {
             src: original,
             original,
@@ -32769,60 +32780,44 @@ function wilduBuildSoftModalHydrationSource(img, originalSrc) {
 function wilduAssignSoftModalImageSource(img, sourceInfo, reason) {
     if (!img || !sourceInfo || !sourceInfo.src) return false;
     const original = sourceInfo.original || sourceInfo.src;
+    const list = img.closest('#wildu-related-list,#wildu-date-options-list');
+    const generation = wilduGetSoftModalGenerationForList(list);
     img.setAttribute('data-wildu-soft-image-hydrated', '1');
     img.setAttribute('data-wildu-soft-image-current-src', sourceInfo.src);
     img.setAttribute('data-wildu-soft-image-provider', sourceInfo.provider || '');
     img.classList.remove('wildu-soft-card-img-pending');
     img.onerror = function () {
         img.onerror = null;
+        if (!img.isConnected || img.dataset.wilduSoftImageHydrated !== '1' ||
+            !wilduIsSoftModalGenerationCurrent(list, generation)) return;
         const approxDecodedMiB = wilduGetSoftModalApproxDecodedMiB();
+        // A missing thumbnail must not be retried forever. Keep the known original.
+        if (sourceInfo.reduced) img.dataset.wilduSoftImageUseOriginal = '1';
         if (sourceInfo.reduced && approxDecodedMiB <= WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB) {
-            img.setAttribute('data-wildu-soft-image-current-src', original);
-            img.setAttribute('data-wildu-soft-image-provider', 'original-fallback');
-            img.src = original;
-            return;
+            return wilduAssignSoftModalImageSource(img, { src: original, original,
+                provider: 'original-fallback', reduced: false }, reason);
         }
-        const failures = Math.min(9, Number(img.getAttribute('data-wildu-soft-image-failures') || 0) + 1);
-        img.setAttribute('data-wildu-soft-image-failures', String(failures));
-        img.removeAttribute('src');
+        const failures = sourceInfo.reduced ? 0 : Math.min(2, Number(img.dataset.wilduSoftImageFailures || 0) + 1);
+        img.dataset.wilduSoftImageFailures = String(failures);
         img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
         img.classList.add('wildu-soft-card-img-pending');
-        img.setAttribute('data-wildu-soft-image-hydrated', '0');
-        if (!sourceInfo.reduced && failures >= 2) {
-            img.removeAttribute('data-wildu-soft-image-src');
-            img.setAttribute('data-wildu-soft-image-hydrated', 'failed');
-            try {
-                wilduIOSBlackBoxRecord('soft_modal_image_final_fallback', {
-                    provider: sourceInfo.provider || '',
-                    approxDecodedMiB,
-                    reason: String(reason || ''),
-                    failures
-                });
-            } catch (e) {}
-            return;
-        }
-        try {
-            wilduIOSBlackBoxRecord('soft_modal_image_fallback_deferred', {
-                provider: sourceInfo.provider || '',
-                approxDecodedMiB,
-                reason: String(reason || '')
-            });
-        } catch (e) {}
+        img.dataset.wilduSoftImageHydrated = failures >= 2 ? 'failed' : '0';
+        wilduIOSBlackBoxRecord(failures >= 2 ? 'soft_modal_image_final_fallback' : 'soft_modal_image_fallback_deferred', {
+            provider: sourceInfo.provider || '', approxDecodedMiB, failures, reason: String(reason || '')
+        });
+        // Existing owner/generation scheduler only. Terminal errors rearm on online/reopen.
+        if (failures < 2) wilduScheduleSoftModalImageHydration(list, 'soft_modal_image_error');
     };
     img.src = sourceInfo.src;
-    try {
-        wilduIOSBlackBoxRecord('soft_modal_image_hydrated', {
-            provider: sourceInfo.provider || '',
-            reduced: !!sourceInfo.reduced,
-            reason: String(reason || ''),
-            approxDecodedMiB: wilduGetSoftModalApproxDecodedMiB()
-        });
-    } catch (e) {}
+    try { wilduIOSBlackBoxRecord('soft_modal_image_hydrated', {
+        provider: sourceInfo.provider || '', reduced: !!sourceInfo.reduced,
+        reason: String(reason || ''), approxDecodedMiB: wilduGetSoftModalApproxDecodedMiB()
+    }); } catch (e) {}
     return true;
 }
 
 function wilduHydrateSoftModalImage(img, reason, list) {
-    if (!img || img.getAttribute('data-wildu-soft-image-hydrated') === '1') return false;
+    if (!img || /^(1|failed)$/.test(img.getAttribute('data-wildu-soft-image-hydrated') || '')) return false;
     const src = String(img.getAttribute('data-wildu-soft-image-src') || '').trim();
     if (!src) return false;
     const modalList = list || img.closest('#wildu-related-list,#wildu-date-options-list');
@@ -32902,7 +32897,7 @@ function wilduHydrateSoftModalImage(img, reason, list) {
 function wilduGetSoftModalHydrationWindow(list) {
     if (!list) return [];
     const cards = Array.from(list.querySelectorAll('.wildu-soft-card'));
-    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"])'));
+    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])'));
     if (!pending.length) return [];
     if (!cards.length) return pending.slice(0, wilduGetSoftModalImageHydrationLimit());
 
@@ -32941,7 +32936,7 @@ function wilduGetSoftModalHydrationWindow(list) {
     const end = Math.min(cards.length - 1, lastVisible + 1);
     const wanted = [];
     for (let i = start; i <= end; i += 1) {
-        const img = cards[i] ? cards[i].querySelector('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"])') : null;
+        const img = cards[i] ? cards[i].querySelector('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])') : null;
         if (img) wanted.push(img);
     }
 
@@ -33080,6 +33075,16 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
         } catch (e) {}
         return false;
     }
+    if (list.dataset.wilduSoftOnlineBound !== '1') {
+        list.dataset.wilduSoftOnlineBound = '1';
+        window.addEventListener('online', function () {
+            if (!list.isConnected || !modal || !modal.classList.contains('is-visible')) return;
+            list.querySelectorAll('img[data-wildu-soft-image-hydrated="failed"]').forEach(function (img) {
+                img.dataset.wilduSoftImageFailures = '0'; img.dataset.wilduSoftImageHydrated = '0';
+            });
+            wilduScheduleSoftModalImageHydration(list, 'soft_modal_network_online');
+        });
+    }
     const scroller = list.closest('.wildu-soft-modal-card') || list;
     if (scroller && scroller.dataset.wilduSoftImageHydrationBound !== '1') {
         scroller.dataset.wilduSoftImageHydrationBound = '1';
@@ -33184,7 +33189,15 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
             } catch (e) {}
             return;
         }
-        const img = images[0];
+        let img = images[0];
+        // A large original waiting for admission must not block small thumbnails.
+        // This is selection only: the same owner/budget guard still runs below.
+        if (img.dataset.wilduSoftImageUseOriginal === '1' &&
+            wilduGetSoftModalApproxDecodedMiB() > WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB) {
+            img = images.find(function (candidate) {
+                return candidate.dataset.wilduSoftImageUseOriginal !== '1';
+            }) || img;
+        }
         list.__wilduSoftImageHydrating = true;
         list.__wilduSoftImageHydratingSince = Date.now();
         if (list.__wilduSoftImageHydrationTimer) {
@@ -33254,7 +33267,7 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 list.__wilduSoftImageHydrating = false;
                 list.__wilduSoftImageHydratingSince = 0;
                 if (list.isConnected) wilduScheduleSoftModalImageHydration(list, 'soft_modal_progressive_next');
-            }, wilduGetSoftModalHydrationStepMs());
+            }, WILDU_SECONDARY_TIMINGS.popupNextGapMs);
         }, wilduGetSoftModalHydrationStepMs());
         try {
             wilduIOSBlackBoxRecord('soft_modal_image_hydration_timer_scheduled', {
@@ -36403,11 +36416,12 @@ if (result.alreadyBooked === true) {
     // GRAFICA PROFILO E RUOTA
     // ==========================================
     async function renderProfile(data) {
-        if (isAnimatingXP || !data) return;
+        if (!data) return;
+        syncWilduPassportSummary(data);
+        if (isAnimatingXP) return;
         
 const currentConfig = data.config || config || {};
 const finalXP = parseInt(data.xp || 0);
-syncWilduPassportSummary(data);
 const shouldOpenPassportForXP = currentTab === 'profile' && finalXP > lastVXP;
 if (shouldOpenPassportForXP) {
     openWilduPassportForXPAnimation();
@@ -39534,190 +39548,12 @@ if (profKeyEl) {
         }, { passive: true });
     }
 
-    const WILDU_TRAVEL_CARD_SNAP_ROOT_IDS = ['event-list', 'openday-list', 'payday-list', 'ondemand-list'];
-    const WILDU_TRAVEL_CARD_SNAP_MIN_DY = 34;
-    const WILDU_TRAVEL_CARD_SNAP_FREE_HOLD_MS = 620;
-    const WILDU_TRAVEL_CARD_SNAP_FREE_DISTANCE_PX = 340;
-    const WILDU_TRAVEL_CARD_SNAP_DEBOUNCE_MS = 115;
-    const WILDU_TRAVEL_CARD_SNAP_LOCK_MS = 620;
-    let wilduTravelCardSnapTouch = null;
-    let wilduTravelCardSnapTimer = 0;
-    let wilduTravelCardSnapProgrammaticUntil = 0;
-    let wilduTravelCardSnapFreeUntil = 0;
-
-    function wilduCanUseTravelCardSnap() {
-        try {
-            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
-            if (window.matchMedia && !window.matchMedia('(hover: none)').matches) return false;
-        } catch (e) {}
-        return Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1) <= 760;
-    }
-
-    function wilduIsTravelCardSnapBlocked() {
-        if (!wilduCanUseTravelCardSnap()) return true;
-        if (wilduTravelTabSwipeTouch || wilduTravelTabSwipeTransitionInProgress) return true;
-        if (typeof isWilduGoogleAuthTransitionActive === 'function' && isWilduGoogleAuthTransitionActive()) return true;
-        if (typeof wilduIsDetailModalVisible === 'function' && wilduIsDetailModalVisible()) return true;
-        if (document.querySelector('.modal-overlay[style*="display: flex"],.modal-overlay.is-visible,.wildu-soft-modal.is-visible,#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible')) return true;
-        return false;
-    }
-
-    function wilduIsTravelCardSnapInteractiveTarget(target) {
-        return !!(target && typeof target.closest === 'function' && target.closest('button,a,input,select,textarea,[role="button"],.nav,.footer-nav,#wildu-nav-travel-hub,#wildu-travel-nav-menu'));
-    }
-
-    function wilduGetActiveTravelCardSnapRoot() {
-        let best = null;
-        let bestScore = -Infinity;
-        const viewportHeight = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
-        WILDU_TRAVEL_CARD_SNAP_ROOT_IDS.forEach(function (id) {
-            const root = document.getElementById(id);
-            if (!root || !root.children || !root.children.length) return;
-            const section = root.closest('.section,section,[id^="sec-"]');
-            if (section && section.classList && section.classList.contains('hidden')) return;
-            const rect = root.getBoundingClientRect();
-            if (!rect || rect.bottom < 0 || rect.top > viewportHeight) return;
-            const visible = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
-            if (visible > bestScore) {
-                bestScore = visible;
-                best = root;
-            }
-        });
-        return best;
-    }
-
-    function wilduGetTravelCardsInRoot(root) {
-        if (!root || !root.children) return [];
-        return Array.prototype.filter.call(root.children, function (node) {
-            return !!(node && node.nodeType === 1 && node.matches && node.matches('.wildu-adventure-card,.card'));
-        });
-    }
-
-    function wilduFindNearestTravelCard(root) {
-        const cards = wilduGetTravelCardsInRoot(root);
-        if (!cards.length) return null;
-        const center = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1) / 2;
-        let best = null;
-        let bestDistance = Infinity;
-        cards.forEach(function (card) {
-            const rect = card.getBoundingClientRect();
-            if (!rect || rect.height <= 0 || rect.bottom < -80 || rect.top > center * 2 + 80) return;
-            const cardCenter = rect.top + rect.height / 2;
-            const distance = Math.abs(cardCenter - center);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = card;
-            }
-        });
-        return best;
-    }
-
-    function wilduScheduleTravelCardSnap(reason) {
-        if (wilduIsTravelCardSnapBlocked()) return;
-        const now = Date.now();
-        if (now < wilduTravelCardSnapProgrammaticUntil || now < wilduTravelCardSnapFreeUntil) return;
-        if (wilduTravelCardSnapTimer) window.clearTimeout(wilduTravelCardSnapTimer);
-        wilduTravelCardSnapTimer = window.setTimeout(function () {
-            wilduTravelCardSnapTimer = 0;
-            if (wilduIsTravelCardSnapBlocked()) return;
-            const nowInside = Date.now();
-            if (nowInside < wilduTravelCardSnapProgrammaticUntil || nowInside < wilduTravelCardSnapFreeUntil) return;
-            const root = wilduGetActiveTravelCardSnapRoot();
-            const card = wilduFindNearestTravelCard(root);
-            if (!root || !card || typeof card.scrollIntoView !== 'function') return;
-            wilduTravelCardSnapProgrammaticUntil = Date.now() + WILDU_TRAVEL_CARD_SNAP_LOCK_MS;
-            try {
-                card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-            } catch (e) {
-                card.scrollIntoView();
-            }
-            try {
-                wilduIOSBlackBoxRecord('travel_card_snap_assisted', {
-                    reason: String(reason || 'scroll_end'),
-                    rootId: root.id || ''
-                });
-            } catch (e) {}
-            if (typeof wilduRefreshIOSImageMemoryWindow === 'function') {
-                window.setTimeout(function () {
-                    wilduRefreshIOSImageMemoryWindow('TRAVEL_CARD_SNAP');
-                }, 180);
-            }
-        }, WILDU_TRAVEL_CARD_SNAP_DEBOUNCE_MS);
-    }
-
-    function installWilduTravelCardSnapAssist() {
-        if (window.__wilduTravelCardSnapAssistInstalled) return;
-        window.__wilduTravelCardSnapAssistInstalled = true;
-
-        document.addEventListener('touchstart', function (event) {
-            if (wilduIsTravelCardSnapBlocked() || wilduIsTravelCardSnapInteractiveTarget(event.target)) {
-                wilduTravelCardSnapTouch = null;
-                return;
-            }
-            const root = wilduGetActiveTravelCardSnapRoot();
-            if (!root) {
-                wilduTravelCardSnapTouch = null;
-                return;
-            }
-            const touch = event.touches && event.touches[0];
-            if (!touch) return;
-            wilduTravelCardSnapTouch = {
-                y: touch.clientY,
-                x: touch.clientX,
-                startedAt: Date.now(),
-                maxDy: 0,
-                rootId: root.id || ''
-            };
-        }, { passive: true });
-
-        document.addEventListener('touchmove', function (event) {
-            if (!wilduTravelCardSnapTouch) return;
-            const touch = event.touches && event.touches[0];
-            if (!touch) return;
-            const dy = touch.clientY - wilduTravelCardSnapTouch.y;
-            const dx = touch.clientX - wilduTravelCardSnapTouch.x;
-            if (Math.abs(dx) > Math.abs(dy) * 1.25) {
-                wilduTravelCardSnapTouch = null;
-                return;
-            }
-            wilduTravelCardSnapTouch.maxDy = Math.max(wilduTravelCardSnapTouch.maxDy, Math.abs(dy));
-        }, { passive: true });
-
-        document.addEventListener('touchend', function () {
-            const state = wilduTravelCardSnapTouch;
-            wilduTravelCardSnapTouch = null;
-            if (!state || state.maxDy < WILDU_TRAVEL_CARD_SNAP_MIN_DY) return;
-            const duration = Date.now() - state.startedAt;
-            if (duration >= WILDU_TRAVEL_CARD_SNAP_FREE_HOLD_MS && state.maxDy >= WILDU_TRAVEL_CARD_SNAP_FREE_DISTANCE_PX) {
-                wilduTravelCardSnapFreeUntil = Date.now() + 1400;
-                try {
-                    wilduIOSBlackBoxRecord('travel_card_snap_free_scroll', {
-                        rootId: state.rootId || '',
-                        durationMs: duration,
-                        distancePx: Math.round(state.maxDy)
-                    });
-                } catch (e) {}
-                return;
-            }
-            wilduScheduleTravelCardSnap('touch_end');
-        }, { passive: true });
-
-        document.addEventListener('touchcancel', function () {
-            wilduTravelCardSnapTouch = null;
-        }, { passive: true });
-
-        window.addEventListener('scroll', function () {
-            if (Date.now() < wilduTravelCardSnapProgrammaticUntil || Date.now() < wilduTravelCardSnapFreeUntil) return;
-            wilduScheduleTravelCardSnap('scroll_idle');
-        }, { passive: true });
-    }
 
     function initWilduTravelNavHub() {
         syncWilduTravelNavHubState(currentTab || 'events');
         initWilduScreenWakeLock();
         installWilduTravelNavLongPress();
         installWilduTravelTabSwipe();
-        installWilduTravelCardSnapAssist();
 
         document.addEventListener('click', function (event) {
             const target = event && event.target;
@@ -44408,11 +44244,11 @@ let amazonImageHydrationVisibleBypassLastKey = '';
 let amazonVisibleLivenessTimer = 0;
 let amazonVisibleLivenessDue = 0;
 const WILDU_AMAZON_IOS_RENDER_RETRY_MS = 2600;
-const WILDU_AMAZON_IOS_IMAGE_STEP_MS = 760;
+const WILDU_AMAZON_IOS_IMAGE_STEP_MS = WILDU_SECONDARY_TIMINGS.amazonImageStepMs;
 const WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT = 8;
 const WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT = 14;
 const WILDU_AMAZON_IOS_SHELL_IMAGE_NODE_LIMIT = 6;
-const WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS = 9000;
+const WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS = WILDU_SECONDARY_TIMINGS.amazonResumeMs;
 const WILDU_AMAZON_IOS_HARD_GUARD_RETRY_MS = 5200;
 
 function wilduGetAmazonCardImageUrl(rawUrl) {
@@ -44506,6 +44342,9 @@ function wilduNormalizeAmazonRenderReason(reason) {
 
 function wilduEnterAmazonQuietMode(reason, durationMs) {
     if (!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())) return false;
+    // Image admission keeps its own bounded retry. It must not renew a global
+    // motion pause on every retry while the already-rendered cards are safe.
+    if (/^(image_hydration|render_reused_guarded|render_deferred):image_memory_not_stable$/.test(String(reason || ''))) return false;
     const delay = Math.max(1800, Math.min(45000, Number(durationMs || 0) || WILDU_AMAZON_IOS_QUIET_RETRY_MS));
     const until = Date.now() + delay;
     amazonQuietUntil = Math.max(Number(amazonQuietUntil || 0), until);
@@ -44650,6 +44489,7 @@ function wilduEnsureAmazonVisibleHydrationLiveness(reason, delayMs, forceDelayed
 }
 
 function wilduScheduleAmazonResume(reason, delayMs) {
+    if (!wilduIsAmazonAutoMotionAllowed()) return false;
     if (
         typeof wilduShouldUseIOSPWASmartImageGuard === 'function' &&
         wilduShouldUseIOSPWASmartImageGuard() &&
@@ -44670,7 +44510,7 @@ function wilduScheduleAmazonResume(reason, delayMs) {
         try { wilduEnsureAmazonVisibleHydrationLiveness('resume_suppressed_no_cards:' + String(reason || ''), 420); } catch (e) {}
         return false;
     }
-    const preflightGuard = wilduGetAmazonCarouselGuard('resume_preflight:' + String(reason || ''));
+    const preflightGuard = wilduGetAmazonCarouselGuard('resume_preflight:' + String(reason || ''), true);
     if (preflightGuard && preflightGuard.blocked) {
         if (wilduIsIOSOwnerHardParkingGuard(preflightGuard.guard)) {
             wilduRecordAmazonCarouselEvent('amazon_carousel_resume_parked_by_owner', {
@@ -44716,7 +44556,7 @@ function wilduScheduleAmazonResume(reason, delayMs) {
     });
     amazonResumeTimer = setTimeout(() => {
         amazonResumeTimer = null;
-        const resumeGuard = wilduGetAmazonCarouselGuard('resume_timer:' + String(reason || ''));
+        const resumeGuard = wilduGetAmazonCarouselGuard('resume_timer:' + String(reason || ''), true);
         if (resumeGuard && resumeGuard.blocked) {
             if (wilduIsIOSOwnerHardParkingGuard(resumeGuard.guard)) {
                 wilduRecordAmazonCarouselEvent('amazon_carousel_resume_parked_by_owner', {
@@ -44762,10 +44602,22 @@ function wilduGetAmazonInputSignature(products) {
     }
 }
 
-function wilduGetAmazonCarouselGuard(reason) {
+function wilduIsAmazonAutoMotionAllowed() {
+    if (document.hidden) return false;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    const active = document.activeElement;
+    return !(active && active.closest && active.closest('#amazon-footer-wrapper,#amazon-detail-overlay'));
+}
+
+function wilduGetAmazonCarouselGuard(reason, motionOnly) {
     try {
         const rawReason = String(reason || '');
         if (!(typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())) {
+            // Overlay motion pause is cross-platform; iOS resource budgets are not.
+            if (motionOnly && ((typeof wilduIsDetailModalVisible === 'function' && wilduIsDetailModalVisible()) ||
+                document.querySelector('#wildu-related-modal.is-visible,#wildu-date-options-modal.is-visible,.wildu-soft-modal.is-visible,#amazon-detail-overlay.amazon-overlay-visible'))) {
+                return { blocked: true, guard: 'top_layer_open', retryMs: 3200 };
+            }
             return { blocked: false };
         }
         const quietRemaining = wilduGetAmazonQuietRemainingMs();
@@ -44786,7 +44638,9 @@ function wilduGetAmazonCarouselGuard(reason) {
         if (ownerGuard && ownerGuard.blocked) return ownerGuard;
         if (typeof wilduGetIOSResourceRecoveryGuardStatus === 'function') {
             const recovery = wilduGetIOSResourceRecoveryGuardStatus('amazon:' + rawReason, 'shop');
-            if (recovery && recovery.blocked) {
+            // Existing-card motion is not admission of new decoded images.
+            // Their hydrator retains the memory, owner and band budgets.
+            if (recovery && recovery.blocked && !(motionOnly && recovery.guard === 'image_memory_not_stable')) {
                 return recovery;
             }
         }
@@ -44828,14 +44682,30 @@ function wilduScheduleAmazonRender(products, reason, retryMs) {
     }, delay);
 }
 
+function wilduHandleAmazonImageError(img) {
+    if (!img || !img.isConnected) return;
+    img.onerror = null;
+    const original = img.dataset.wilduShopImageOriginal || img.dataset.wilduShopImageSrc || '';
+    const reducedFailed = original && original !== img.dataset.wilduShopImageSrc;
+    if (reducedFailed) img.dataset.wilduShopImageSrc = original;
+    const attempts = reducedFailed ? 0 : Math.min(2, Number(img.dataset.wilduAmazonImageAttempts || 0) + 1);
+    img.dataset.wilduAmazonImageFailed = '1';
+    img.dataset.wilduAmazonImageAttempts = String(attempts);
+    img.dataset.wilduAmazonImageRetryAt = String(Date.now() + (attempts < 2 ? 3000 : 30000));
+    img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
+    delete img.dataset.wilduAmazonVisibleHydrating;
+    // Preserve source; the existing visible-band hydrator owns retries.
+    wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
+}
+
 function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
     options = options || {};
     const safeUrl = escapeWilduShopHtml(cardImageUrl);
     const safeTitle = escapeWilduShopHtml(title);
     const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
-    const fallback = ` onerror="this.onerror=null;this.src='${placeholder}';this.removeAttribute('data-wildu-shop-image-src');"`;
+    const fallback = ` onerror="wilduHandleAmazonImageError(this)"`;
     const shouldProgressive = typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard();
-    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}"` : '';
+    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}" data-wildu-shop-image-original="${escapeWilduShopHtml(options.originalSrc || cardImageUrl)}"` : '';
     if (!options.placeholderOnly && (!shouldProgressive || index < 2)) {
         return `<img src="${safeUrl || placeholder}"${dataAttr} alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
     }
@@ -45055,16 +44925,13 @@ function wilduHydrateVisibleAmazonImages(reason) {
     band.forEach(function (entry) {
         if (entry.loaded) delete entry.node.dataset.wilduAmazonImageAttempts;
     });
-    const inflight = band.find(function (entry) { return entry.assigned && !entry.loaded && !entry.failed; });
+    // A lazy source far outside the band is not an active visible transfer.
+    const inflight = band.find(function (entry) { return entry.inBand && entry.assigned && !entry.loaded && !entry.failed; });
     if (inflight) {
         const since = Number(inflight.node.dataset.wilduAmazonLoadStartedAt || 0);
         if (!since) inflight.node.dataset.wilduAmazonLoadStartedAt = String(Date.now());
         else if (Date.now() - since >= 30000) {
-            inflight.node.dataset.wilduAmazonImageFailed = '1';
-            inflight.node.dataset.wilduAmazonImageAttempts = String(Number(inflight.node.dataset.wilduAmazonImageAttempts || 0) + 1);
-            inflight.node.dataset.wilduAmazonImageRetryAt = String(Date.now() + 30000);
-            inflight.node.src = placeholder;
-            delete inflight.node.dataset.wilduAmazonVisibleHydrating;
+            wilduHandleAmazonImageError(inflight.node);
         }
         wilduScheduleAmazonImageHydration('progressive_next', 500);
         return 0;
@@ -45079,7 +44946,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
     }
     const hydratedCount = band.filter(function (entry) { return entry.assigned; }).length;
     const hydrationLimit = wilduGetAmazonVisibleHydrationLimit(slider, guarded, band);
-    if (hydratedCount >= hydrationLimit) {
+    if (wilduShouldUseIOSPWASmartImageGuard() && hydratedCount >= hydrationLimit) {
         // One far source per turn, through the existing release owner. Never
         // confuse images behind the viewport with fulfillment of visible debt.
         const releasable = band.filter(function (entry) {
@@ -45107,6 +44974,8 @@ function wilduHydrateVisibleAmazonImages(reason) {
     let hydrationCommitted = true;
     if (String(img.tagName || '').toUpperCase() === 'IMG') {
         img.setAttribute('data-wildu-amazon-visible-hydrating', '1');
+        img.loading = 'eager';
+        img.onerror = function () { wilduHandleAmazonImageError(img); };
         delete img.dataset.wilduAmazonBandEvicted;
         wilduRestoreIOSManagedImage(img);
         img.setAttribute('src', src);
@@ -45115,7 +44984,6 @@ function wilduHydrateVisibleAmazonImages(reason) {
         img.setAttribute('data-wildu-amazon-hydrated', '1');
     } else {
         const hydrated = document.createElement('img');
-        hydrated.src = src;
         hydrated.alt = img.getAttribute('aria-label') || '';
         hydrated.loading = 'eager';
         hydrated.decoding = 'async';
@@ -45123,23 +44991,17 @@ function wilduHydrateVisibleAmazonImages(reason) {
         hydrated.width = 58;
         hydrated.height = 58;
         hydrated.setAttribute('data-wildu-shop-image-src', src);
+        hydrated.dataset.wilduShopImageOriginal = img.dataset.wilduShopImageOriginal || src;
+        hydrated.onerror = function () { wilduHandleAmazonImageError(hydrated); };
         hydrated.setAttribute('data-wildu-amazon-visible-hydrating', '1');
         hydrated.setAttribute('data-wildu-amazon-hydrated', '1');
         img.replaceWith(hydrated);
+        hydrated.src = src;
         registeredTarget = hydrated;
     }
     registeredTarget.dataset.wilduAmazonLoadStartedAt = String(Date.now());
     delete registeredTarget.dataset.wilduAmazonImageFailed;
     delete registeredTarget.dataset.wilduAmazonImageRetryAt;
-    registeredTarget.onerror = function () {
-        registeredTarget.onerror = null;
-        registeredTarget.dataset.wilduAmazonImageFailed = '1';
-        registeredTarget.dataset.wilduAmazonImageAttempts = String(Number(registeredTarget.dataset.wilduAmazonImageAttempts || 0) + 1);
-        registeredTarget.dataset.wilduAmazonImageRetryAt = String(Date.now() + 30000);
-        registeredTarget.src = placeholder;
-        delete registeredTarget.dataset.wilduAmazonVisibleHydrating;
-        wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
-    };
     try {
         if (typeof wilduRegisterIOSImagesIn === 'function') wilduRegisterIOSImagesIn(registeredTarget);
     } catch (e) {}
@@ -46077,6 +45939,7 @@ function renderAmazonSponsors(products, options = {}) {
     mixedList.forEach((p, index) => {
         const cardImageUrl = p.isTravel ? String(p.img_url || '') : wilduGetAmazonCardImageUrl(p.img_url);
         const cardImageHtml = wilduBuildAmazonCardImageHtml(cardImageUrl, p.title, index, {
+            originalSrc: p.img_url,
             placeholderOnly: amazonPlaceholderOnly
         });
 
@@ -46716,7 +46579,8 @@ function startAmazonAutoScroll() {
     const wrapper = document.getElementById('amazon-footer-wrapper');
 
     if (!slider || !wrapper) return;
-    const guard = wilduGetAmazonCarouselGuard('auto_scroll_start');
+    if (!wilduIsAmazonAutoMotionAllowed()) return;
+    const guard = wilduGetAmazonCarouselGuard('auto_scroll_start', true);
     if (guard && guard.blocked) {
         wilduRecordAmazonCarouselEvent('amazon_carousel_resume_blocked', {
             reason: 'auto_scroll_start',
@@ -46741,7 +46605,12 @@ function startAmazonAutoScroll() {
         cardCount: slider.querySelectorAll('.amazon-card').length
     });
     amazonAutoScrollTimer = setInterval(() => {
-        const tickGuard = wilduGetAmazonCarouselGuard('auto_scroll_tick');
+        if (!wilduIsAmazonAutoMotionAllowed()) {
+            clearInterval(amazonAutoScrollTimer);
+            amazonAutoScrollTimer = null;
+            return;
+        }
+        const tickGuard = wilduGetAmazonCarouselGuard('auto_scroll_tick', true);
         if (tickGuard && tickGuard.blocked) {
             pauseAmazonAutoScroll('auto_scroll_tick:' + String(tickGuard.guard || 'guarded'));
             return;
@@ -46836,6 +46705,21 @@ function bindAmazonSliderEventsOnce(slider) {
     if (!slider || amazonSliderEventsBound) return;
     amazonSliderEventsBound = true;
     window.addEventListener('online', function () { wilduRearmAmazonFailedImages('network_online'); });
+    slider.addEventListener('focusin', function () { pauseAmazonAutoScroll('focus'); });
+    slider.addEventListener('focusout', function () {
+        // focusout fires before activeElement settles; reuse the single resume timer.
+        setTimeout(function () { wilduScheduleAmazonResume('focus_out', WILDU_SECONDARY_TIMINGS.amazonInteractionMs); }, 0);
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) wilduScheduleAmazonResume('page_visible', WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS);
+    });
+    const motionPreference = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (motionPreference && motionPreference.addEventListener) motionPreference.addEventListener('change', function () {
+        if (motionPreference.matches) {
+            if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+            amazonAutoScrollTimer = null;
+        } else wilduScheduleAmazonResume('motion_preference', WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS);
+    });
 
     slider.addEventListener('touchstart', pauseAmazonAutoScroll, { passive: true });
     slider.addEventListener('mousedown', pauseAmazonAutoScroll);
@@ -46885,7 +46769,7 @@ function pauseAmazonAutoScroll(reason) {
     }
 
     const resumeDelay = (typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard())
-        ? Math.max(14000, WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS)
+        ? Math.max(WILDU_SECONDARY_TIMINGS.amazonInteractionMs, WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS)
         : 12000;
     if (!hadActiveAutoScroll && /^ios_resource_recovery:/i.test(String(reason || ''))) {
         wilduRecordAmazonCarouselEvent('amazon_carousel_resume_suppressed', {
