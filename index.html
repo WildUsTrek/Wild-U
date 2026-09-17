@@ -5076,6 +5076,48 @@ html.wildu-detail-transition-busy body {
     pointer-events: none !important;
 }
 
+/* La protezione non deve lasciare per qualche frame la lista sottostante
+   visibile e apparentemente cliccabile. Lo scudo e' creato solo per un
+   handoff in corso: niente rete, immagini, observer o timer aggiuntivi. */
+#wildu-detail-transition-shield {
+    position: fixed;
+    inset: 0;
+    z-index: 29000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    background: rgba(7, 11, 8, .78);
+    color: #f5f7ed;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: auto;
+    transition: opacity .10s ease, visibility .10s ease;
+}
+#wildu-detail-transition-shield.is-visible { opacity: 1; visibility: visible; }
+.wildu-detail-transition-shield-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border: 1px solid rgba(212,175,55,.42);
+    border-radius: 999px;
+    background: rgba(19,28,21,.96);
+    box-shadow: 0 12px 36px rgba(0,0,0,.36);
+    font: 800 13px/1.1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: .01em;
+}
+.wildu-detail-transition-shield-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--w-gold, #d4af37);
+    box-shadow: 0 0 0 0 rgba(212,175,55,.55);
+    animation: wildu-detail-handoff-pulse .84s ease-in-out infinite alternate;
+}
+@keyframes wildu-detail-handoff-pulse { to { transform: scale(1.42); box-shadow: 0 0 0 7px rgba(212,175,55,0); } }
+
 .wildu-soft-modal-card {
     width: min(560px, 100%);
     max-height: min(78vh, 720px);
@@ -17013,7 +17055,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.95';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.97';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -26317,11 +26359,14 @@ function wilduIsIOSOwnerLaneAllowedInTopLayer(lane, reason, options, topLayerKin
         const activeModalId = String(WILDU_SOFT_MODAL_FLOW_RUNTIME.activeModalId || '');
         const modalVisible = !!(modal && modal.classList && modal.classList.contains('is-visible'));
         const modalMatches = !modal || !modal.id || activeModalId === String(modal.id || '');
+        const initialVisibleTicket = opts.allowInitialVisible === true &&
+            String(opts.initialVisibleGeneration || '') === String(wilduGetSoftModalGenerationForList(opts.list || null)) &&
+            /soft_modal_initial_visible/i.test(cleanReason);
         return topLayerKind === 'soft-modal' &&
             modalVisible &&
             modalMatches &&
             !WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending &&
-            wilduGetSoftModalInputGuardRemainingMs() <= 0 &&
+            (wilduGetSoftModalInputGuardRemainingMs() <= 0 || initialVisibleTicket) &&
             /soft_modal|related|dates|critical_visible_restore/i.test(cleanReason);
     }
     return false;
@@ -27759,6 +27804,16 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
     const travelGeneration = WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionGeneration;
     const iosHandoff = wilduShouldUseIOSSurfaceTransitionGuard();
     const selectedSoftCard = String(source || '') === 'soft_card_detail';
+    const handoff = selectedSoftCard && iosHandoff
+        ? {
+            kind: 'soft-card-detail-handoff',
+            postCloseToken: token,
+            generation: WILDU_SOFT_MODAL_FLOW_RUNTIME.generation,
+            surfaceTransitionToken: WILDU_SOFT_MODAL_FLOW_RUNTIME.surfaceTransitionToken,
+            key,
+            source: 'soft_card_detail'
+        }
+        : null;
     // Fuori dalla PWA iOS basta il frame successivo al close visivo. Su iOS
     // conserviamo la barriera, ma la card selezionata non paga un secondo
     // ritardo fisso dopo che le sue immagini sono gia' state rilasciate.
@@ -27782,19 +27837,21 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
         if (wilduAnySoftModalVisible()) {
             return { blocked: true, guard: 'soft_modal_still_visible', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
         }
-        if (iosHandoff) {
-            const admissionGuard = wilduGetDetailOpenResourceAdmissionGuard('post_close:' + key);
-            if (admissionGuard.blocked) return admissionGuard;
-        }
         const inputGuard = wilduGetSoftModalInputGuardRemainingMs();
         if (inputGuard > 0) {
             return { blocked: true, guard: 'soft_modal_input_guard', retryMs: Math.max(WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS, inputGuard + 80) };
+        }
+        if (iosHandoff) {
+            const admissionGuard = wilduGetDetailOpenResourceAdmissionGuard('post_close:' + key, handoff);
+            if (admissionGuard.blocked) return admissionGuard;
+            if (admissionGuard.handoff === true) return { blocked: false, handoff: true };
         }
         return { blocked: false };
     }
 
     function scheduleAttempt(attempt, delayMs, previousGuard) {
-        const delay = Math.max(80, Math.min(1800, Number(delayMs || 0) || WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS));
+        const minDelay = iosHandoff ? 80 : 16;
+        const delay = Math.max(minDelay, Math.min(1800, Number(delayMs || 0) || (iosHandoff ? WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS : 16)));
         WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = window.setTimeout(function () {
             WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
             runAttempt(attempt);
@@ -27815,6 +27872,20 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
         WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
         const guard = getOpenGuard(attempt);
         if (guard && guard.blocked) {
+            if (handoff) {
+                try {
+                    wilduIOSBlackBoxRecord('soft_modal_detail_handoff_blocked', {
+                        key,
+                        token,
+                        generation: handoff.generation,
+                        surfaceTransitionToken: handoff.surfaceTransitionToken,
+                        attempt,
+                        guard: String(guard.guard || 'guarded'),
+                        retryMs: guard.retryMs || 0,
+                        elapsedMs: Date.now() - startedAt
+                    });
+                } catch (e) {}
+            }
             try {
                 wilduIOSBlackBoxRecord('soft_modal_post_close_detail_cancelled', {
                     reason: String(guard.guard || 'guarded'),
@@ -27832,10 +27903,29 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
             } else if (!guard.terminal) {
                 wilduIOSBlackBoxRecord('detail_open_admission_timeout', { key, guard: guard.guard, attempt });
                 showToast('Dettaglio non ancora pronto. Tocca nuovamente per aprirlo.');
+                wilduSetDetailTransitionBusy(false);
+            } else {
+                wilduSetDetailTransitionBusy(false);
             }
             return;
         }
-        const openOptions = Object.assign({}, options || {}, { bypassSoftModalInputGuard: true });
+        if (handoff && guard && guard.handoff === true) {
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_detail_handoff_admitted', {
+                    key,
+                    token,
+                    generation: handoff.generation,
+                    surfaceTransitionToken: handoff.surfaceTransitionToken,
+                    attempt,
+                    elapsedMs: Date.now() - startedAt,
+                    surfaceTransitionRemainingMs: Math.max(0, Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.surfaceTransitionUntil || 0) - Date.now())
+                });
+            } catch (e) {}
+        }
+        const openOptions = Object.assign({}, options || {}, {
+            bypassSoftModalInputGuard: true,
+            softModalDetailHandoff: handoff || undefined
+        });
         const opened = wilduScheduleDetailOpen(ref, openOptions);
         try {
             wilduIOSBlackBoxRecord(opened ? 'soft_modal_post_close_detail_opened' : 'soft_modal_post_close_detail_cancelled', {
@@ -27855,7 +27945,22 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
 
 function wilduSetDetailTransitionBusy(busy) {
     if (!document.documentElement) return;
-    document.documentElement.classList.toggle('wildu-detail-transition-busy', busy === true);
+    const active = busy === true;
+    document.documentElement.classList.toggle('wildu-detail-transition-busy', active);
+    let shield = document.getElementById('wildu-detail-transition-shield');
+    if (active && !shield && document.body) {
+        shield = document.createElement('div');
+        shield.id = 'wildu-detail-transition-shield';
+        shield.setAttribute('aria-live', 'polite');
+        shield.setAttribute('aria-atomic', 'true');
+        shield.setAttribute('aria-hidden', 'true');
+        shield.innerHTML = '<div class="wildu-detail-transition-shield-card"><span class="wildu-detail-transition-shield-dot" aria-hidden="true"></span><span>Sto aprendo il dettaglio…</span></div>';
+        document.body.appendChild(shield);
+    }
+    if (shield) {
+        shield.classList.toggle('is-visible', active);
+        shield.setAttribute('aria-hidden', active ? 'false' : 'true');
+    }
 }
 
 function wilduIsDetailModalElementVisible(modal) {
@@ -27905,11 +28010,31 @@ function wilduCancelScheduledDetailOpen() {
     wilduSetDetailTransitionBusy(false);
 }
 
-function wilduGetDetailOpenResourceAdmissionGuard(reason) {
+function wilduGetSoftModalDetailHandoffAdmission(handoff) {
+    const ticket = handoff && typeof handoff === 'object' ? handoff : null;
+    if (!ticket || ticket.kind !== 'soft-card-detail-handoff') return { allowed: false, reason: 'not_handoff' };
+    const runtime = WILDU_SOFT_MODAL_FLOW_RUNTIME;
+    const currentToken = Number(runtime.postCloseToken || 0);
+    const currentGeneration = Number(runtime.generation || 0);
+    const currentTransitionToken = Number(runtime.surfaceTransitionToken || 0);
+    if (Number(ticket.postCloseToken || 0) !== currentToken) return { allowed: false, reason: 'stale_post_close_token' };
+    if (Number(ticket.generation || 0) !== currentGeneration) return { allowed: false, reason: 'stale_generation' };
+    if (Number(ticket.surfaceTransitionToken || 0) !== currentTransitionToken) return { allowed: false, reason: 'stale_surface_transition' };
+    if (String(runtime.surfaceTransitionOwner || '') !== 'soft_modal_close') return { allowed: false, reason: 'different_surface_owner' };
+    if (Number(runtime.cleanupPending || 0) > 0 || runtime.resourcesSettled !== true) return { allowed: false, reason: 'cleanup_not_settled' };
+    if (wilduAnySoftModalVisible()) return { allowed: false, reason: 'soft_modal_visible' };
+    if (wilduGetSoftModalInputGuardRemainingMs() > 0) return { allowed: false, reason: 'input_guard_active' };
+    if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) return { allowed: false, reason: 'page_hidden' };
+    return { allowed: true };
+}
+
+function wilduGetDetailOpenResourceAdmissionGuard(reason, handoff) {
     if (!wilduShouldUseIOSSurfaceTransitionGuard()) return { blocked: false };
     if (Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0) > 0) {
         return { blocked: true, guard: 'soft_modal_cleanup_pending', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
     }
+    const handoffAdmission = wilduGetSoftModalDetailHandoffAdmission(handoff);
+    if (handoffAdmission.allowed) return { blocked: false, handoff: true };
     return wilduGetIOSSurfaceTransitionGuard('detail_admission:' + String(reason || ''), true);
 }
 
@@ -27932,7 +28057,7 @@ function wilduAcceptDetailOpen(type, id, options) {
     if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return false;
     if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return false;
 
-    const admission = wilduGetDetailOpenResourceAdmissionGuard(key);
+    const admission = wilduGetDetailOpenResourceAdmissionGuard(key, options && options.softModalDetailHandoff);
     if (admission.blocked) {
         wilduIOSBlackBoxRecord('detail_open_admission_deferred', { key, guard: admission.guard, cleanupPending: WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0 });
         wilduSchedulePostSoftModalDetailOpen({ type, id }, options || {}, 'direct_admission');
@@ -33137,7 +33262,7 @@ function wilduScheduleDetailOpen(ref, options) {
         return false;
     }
 
-    const admission = wilduGetDetailOpenResourceAdmissionGuard('schedule:' + key);
+    const admission = wilduGetDetailOpenResourceAdmissionGuard('schedule:' + key, options.softModalDetailHandoff);
     if (admission.blocked) return wilduSchedulePostSoftModalDetailOpen(ref, options, 'scheduled_admission');
 
     wilduIOSBlackBoxRecord('detail_open_requested', {
@@ -33181,7 +33306,7 @@ function wilduScheduleDetailOpen(ref, options) {
 function wilduOpenDetailByRef(ref, options) {
     if (!ref || !ref.type || !ref.id) return;
     options = options || {};
-    const admission = wilduGetDetailOpenResourceAdmissionGuard('dispatch:' + ref.type + ':' + ref.id);
+    const admission = wilduGetDetailOpenResourceAdmissionGuard('dispatch:' + ref.type + ':' + ref.id, options.softModalDetailHandoff);
     if (admission.blocked) return wilduSchedulePostSoftModalDetailOpen(ref, options, 'dispatch_admission');
     if (options.skipSuggestions === true) {
         WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
@@ -33378,9 +33503,18 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
     if (!modal || !modal.classList || !modal.classList.contains('is-visible')) {
         return { allowed: false, guard: 'modal_not_visible', retryMs: 0 };
     }
+    const generation = wilduGetSoftModalGenerationForList(list);
+    const initialVisibleTicket =
+        String(list.dataset.wilduSoftInitialVisibleHydrationGeneration || '') === String(generation) &&
+        String(img.dataset.wilduSoftInitialVisibleHydrationGeneration || '') === String(generation) &&
+        String(img.dataset.wilduSoftInitialVisibleHydrationConsumed || '') !== String(generation) &&
+        /soft_modal_initial_visible/i.test(String(reason || ''));
     const ownerGuard = typeof wilduGetIOSRuntimeOwnerGuard === 'function'
         ? wilduGetIOSRuntimeOwnerGuard('soft-modal-hydration', String(reason || 'soft_modal_hydration'), {
             modal,
+            list,
+            allowInitialVisible: initialVisibleTicket,
+            initialVisibleGeneration: generation,
             ignoreResourceRecovery: true
         })
         : null;
@@ -33519,6 +33653,13 @@ function wilduAssignSoftModalImageSource(img, sourceInfo, reason) {
     const list = img.closest('#wildu-related-list,#wildu-date-options-list');
     const generation = wilduGetSoftModalGenerationForList(list);
     const lease = sourceInfo.reduced ? wilduImageVariantClaim(original, sourceInfo.src) : null;
+    const initialVisible = /soft_modal_initial_visible/i.test(String(reason || ''));
+    try {
+        if (initialVisible) {
+            img.loading = 'eager';
+            img.setAttribute('fetchpriority', 'high');
+        }
+    } catch (e) {}
     if (sourceInfo.reduced && !lease) {
         img.dataset.wilduSoftImageUseOriginal = '1';
         wilduScheduleSoftModalImageHydration(list, 'soft_modal_variant_busy');
@@ -33707,13 +33848,15 @@ function wilduGetSoftModalHydrationWindow(list) {
         lastVisible = firstVisible;
     }
 
-    const start = Math.max(0, firstVisible - 1);
-    const end = Math.min(cards.length - 1, lastVisible + 1);
+    const preferredIndexes = [];
+    for (let i = firstVisible; i <= lastVisible; i += 1) preferredIndexes.push(i);
+    if (firstVisible > 0) preferredIndexes.push(firstVisible - 1);
+    if (lastVisible < cards.length - 1) preferredIndexes.push(lastVisible + 1);
     const wanted = [];
-    for (let i = start; i <= end; i += 1) {
+    preferredIndexes.forEach(function (i) {
         const img = cards[i] ? cards[i].querySelector('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])') : null;
         if (img) wanted.push(img);
-    }
+    });
 
     if (!wanted.length) return [];
     return wanted.slice(0, wilduGetSoftModalImageHydrationLimit());
@@ -33985,13 +34128,32 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 return candidate.dataset.wilduSoftImageUseOriginal !== '1';
             }) || img;
         }
+        const initialVisible = !!(
+            img &&
+            String(list.dataset.wilduSoftInitialVisibleHydrationGeneration || '') !== String(generation) &&
+            /^(dates_open|related_open|soft_modal_shell)/i.test(String(reason || ''))
+        );
+        if (initialVisible) {
+            list.dataset.wilduSoftInitialVisibleHydrationGeneration = String(generation);
+            img.dataset.wilduSoftInitialVisibleHydrationGeneration = String(generation);
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_initial_visible_hydration_scheduled', {
+                    reason: String(reason || ''),
+                    generation,
+                    surface: list.id === 'wildu-date-options-list' ? 'dates' : 'related',
+                    pendingInWindow: images.length
+                });
+            } catch (e) {}
+        }
+        const hydrationReason = initialVisible ? 'soft_modal_initial_visible:' + String(reason || '') : String(reason || 'soft_modal_open');
+        const hydrationDelay = initialVisible ? 32 : wilduGetSoftModalHydrationStepMs();
         list.__wilduSoftImageHydrating = true;
         list.__wilduSoftImageHydratingSince = Date.now();
         if (list.__wilduSoftImageHydrationTimer) {
             try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
         }
         list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
-            const timerGuard = wilduGetSoftModalImageHydrationGuard(list, img, 'timer_preflight:' + String(reason || ''));
+            const timerGuard = wilduGetSoftModalImageHydrationGuard(list, img, 'timer_preflight:' + hydrationReason);
             if (!timerGuard.allowed) {
                 list.__wilduSoftImageHydrationTimer = 0;
                 list.__wilduSoftImageHydrating = false;
@@ -34038,7 +34200,8 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 list.__wilduSoftImageHydratingSince = 0;
                 return;
             }
-            wilduHydrateSoftModalImage(img, reason || 'soft_modal_open', list);
+            const hydrated = wilduHydrateSoftModalImage(img, hydrationReason, list);
+            if (initialVisible && hydrated) img.dataset.wilduSoftInitialVisibleHydrationConsumed = String(generation);
             window.setTimeout(function () {
                 if (!wilduIsSoftModalGenerationCurrent(list, generation)) {
                     try {
@@ -34055,11 +34218,11 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 list.__wilduSoftImageHydratingSince = 0;
                 if (list.isConnected) wilduScheduleSoftModalImageHydration(list, 'soft_modal_progressive_next');
             }, WILDU_SECONDARY_TIMINGS.popupNextGapMs);
-        }, wilduGetSoftModalHydrationStepMs());
+        }, hydrationDelay);
         try {
             wilduIOSBlackBoxRecord('soft_modal_image_hydration_timer_scheduled', {
-                reason: String(reason || ''),
-                delayMs: wilduGetSoftModalHydrationStepMs(),
+                reason: hydrationReason,
+                delayMs: hydrationDelay,
                 hydrated: wilduCountSoftModalHydratedImages(list),
                 pendingInWindow: images.length,
                 generation
@@ -34118,9 +34281,14 @@ function openWilduSoftCardDetail(type, id, evt) {
     closeWilduRelatedModal(false, evt, 'soft_card_detail');
     closeWilduDateOptionsModal(null, false, 'soft_card_detail');
     wilduCloseDetailModalOnly();
+    // Copre esclusivamente il breve handoff della card selezionata. Il
+    // coordinatore iOS continua a proteggere le lane di sfondo; non viene
+    // anticipato alcun restore, idratazione o cleanup globale.
+    wilduSetDetailTransitionBusy(true);
     if (!wilduSchedulePostSoftModalDetailOpen(ref, { skipSuggestions: true }, 'soft_card_detail') && sourceButton) {
         sourceButton.disabled = false;
         sourceButton.removeAttribute('aria-busy');
+        wilduSetDetailTransitionBusy(false);
     }
 }
 
@@ -34461,6 +34629,15 @@ function installWilduDetailDismissGestures() {
         if (modal.style.display === 'none') return;
         handleWilduDetailClose('escape');
     });
+
+    const amazonOverlay = document.getElementById('amazon-detail-overlay');
+    if (amazonOverlay) {
+        wilduInstallCommerceHorizontalDismiss(
+            amazonOverlay,
+            amazonOverlay.querySelector('.amazon-detail-card'),
+            closeAmazonDetail
+        );
+    }
 }
 
 function installWilduSoftModalHorizontalDismiss() {
@@ -34507,6 +34684,24 @@ function installWilduSoftModalHorizontalDismiss() {
                 cfg.close(evt || null, source || 'horizontal-swipe');
             }
         });
+    });
+}
+
+function wilduInstallCommerceHorizontalDismiss(modal, card, close) {
+    if (!modal || !card || card.dataset.wilduCommerceHorizontalDismiss === '1') return;
+    card.dataset.wilduCommerceHorizontalDismiss = '1';
+    wilduInstallPhysicalSwipe(card, {
+        threshold: 88,
+        ratio: 1.28,
+        maxRotate: 4,
+        canStart: function () { return wilduIsDisplayed(modal); },
+        isBlockedTarget: function (target) {
+            return !!(target && target.closest && target.closest('button,a,input,textarea,select,iframe,[role="button"]'));
+        },
+        onClose: function () {
+            wilduPlayCardInteractionFeedback('close');
+            if (typeof close === 'function') close();
+        }
     });
 }
 function wilduGetSameTitleDateRefs(type, item) {
@@ -43026,6 +43221,7 @@ async function loadWilduAudioBuffer(url) {
             '.wildu-adventure-card',
             '.wildu-soft-card',
             '.amazon-card',
+            '.wildu-shop-card',
             '.wildu-travelhub-card',
             '.wildu-reward-card',
             '.card[onclick]',
@@ -43038,7 +43234,8 @@ async function loadWilduAudioBuffer(url) {
             '#wildu-related-modal .wildu-soft-bottom-close-btn',
             '#wildu-date-options-modal .wildu-soft-modal-close',
             '#wildu-date-options-modal .wildu-soft-bottom-close-btn',
-            '#amazon-detail-overlay .btn-amazon-back'
+            '#amazon-detail-overlay .btn-amazon-back',
+            '#wildu-shop-preview-close'
         ].join(',');
         const detailsSelector = '.wildu-adventure-details-btn';
         const datesSelector = '.wildu-card-date-action,#od-modal-date-options';
@@ -46665,7 +46862,7 @@ function ensureWilduShopPreviewModal() {
             box-shadow:0 8px 24px rgba(0,0,0,0.75);
         ">×</button>
 
-        <div style="
+        <div data-wildu-shop-preview-card="1" style="
             max-width:460px;
             margin:0 auto;
             padding-top:58px;
@@ -46771,12 +46968,21 @@ function ensureWilduShopPreviewModal() {
 
     const closeBtn = document.getElementById('wildu-shop-preview-close');
     if (closeBtn) {
-        closeBtn.addEventListener('click', closeWilduShopPreview);
+        closeBtn.addEventListener('click', function () {
+            wilduPlayCardInteractionFeedback('close');
+            closeWilduShopPreview();
+        });
     }
 
     modal.addEventListener('click', function (e) {
         if (e.target === modal) closeWilduShopPreview();
     });
+
+    wilduInstallCommerceHorizontalDismiss(
+        modal,
+        modal.querySelector('[data-wildu-shop-preview-card="1"]'),
+        closeWilduShopPreview
+    );
 
     return modal;
 }
@@ -46784,6 +46990,7 @@ function ensureWilduShopPreviewModal() {
 function openWilduShopPreview(index) {
     const product = wilduShopPreviewItems[Number(index)];
     if (!product) return;
+    wilduPlayCardInteractionFeedback('open');
 
     const modal = ensureWilduShopPreviewModal();
 
@@ -47633,6 +47840,7 @@ try {
 function openAmazonDetail(index) {
     const p = currentAmazonProducts[index];
     if (!p) return;
+    wilduPlayCardInteractionFeedback('open');
 
     if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
     if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
