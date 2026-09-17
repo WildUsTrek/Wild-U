@@ -1005,6 +1005,10 @@
             }
 
             if (data.type === "WILDU_GAME_CLOSE_REQUEST") {
+                const isActiveFrame = !!(frameEl && event.source === frameEl.contentWindow);
+                if (!isActiveFrame) {
+                    return;
+                }
                 closeGameFrame();
                 return;
             }

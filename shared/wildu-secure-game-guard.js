@@ -19,17 +19,45 @@
 // questa guardia è client-side perché GitHub Pages serve file statici pubblici.
 // Il requisito qui è anti-bypass launcher/app madre, non segretezza militare del sorgente.
 
-import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-
 // Path reale già usato dal MapViewer:
 // /Wild-U/wildu-map-suite/shared/firebase-config.js
 import { firebaseConfig } from "../wildu-map-suite/shared/firebase-config.js";
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Il normale avvio secure_iframe passa gia' da ticket + bridge locale oppure da
+// una sessione gioco locale. Inizializzare Firebase Auth qui, nel documento
+// figlio same-origin, apre inutilmente un secondo manager della persistenza
+// mentre l'host e' gia' proprietario della sessione. Il runtime Firebase resta
+// disponibile, ma viene creato una sola volta e soltanto nel fallback storico
+// Auth + Firestore che ne ha realmente bisogno.
+let firebaseRuntime = null;
+let firebaseRuntimePromise = null;
+
+async function ensureFirebaseRuntime() {
+  if (firebaseRuntime) return firebaseRuntime;
+
+  if (!firebaseRuntimePromise) {
+    firebaseRuntimePromise = Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js")
+    ]).then(([appSdk, authSdk, firestoreSdk]) => {
+      const app = appSdk.getApps().length ? appSdk.getApp() : appSdk.initializeApp(firebaseConfig);
+      firebaseRuntime = {
+        auth: authSdk.getAuth(app),
+        onAuthStateChanged: authSdk.onAuthStateChanged,
+        db: firestoreSdk.getFirestore(app),
+        doc: firestoreSdk.doc,
+        getDoc: firestoreSdk.getDoc
+      };
+      return firebaseRuntime;
+    }).catch((error) => {
+      firebaseRuntimePromise = null;
+      throw error;
+    });
+  }
+
+  return firebaseRuntimePromise;
+}
 
 const WILDU_SECURE_LAUNCH_COLLECTION = "wildu_runtime_launches";
 const WILDU_SECURE_LAUNCH_BRIDGE_PREFIX = "wildu_secure_launch_bridge:";
@@ -52,7 +80,7 @@ function emitWilduAuthT1ATrace(phase, details = {}) {
       type: WILDU_AUTH_T1A_TRACE_TYPE,
       phase: safeString(phase).slice(0, 48),
       frameClass: "secure-game",
-      authState: auth && auth.currentUser ? "present" : "absent",
+      authState: firebaseRuntime && firebaseRuntime.auth && firebaseRuntime.auth.currentUser ? "present" : "not-initialized",
       persistenceClass: "default-unset",
       sourceClass: safeString(details.sourceClass || "game-frame").slice(0, 32),
       resultClass: safeString(details.resultClass || "none").slice(0, 32)
@@ -276,7 +304,7 @@ function clearLaunchBridge(launchId) {
   } catch (_) {}
 }
 
-function waitForAuthUser(timeoutMs = 7000) {
+function waitForAuthUser(auth, onAuthStateChanged, timeoutMs = 7000) {
   if (auth.currentUser) {
     return Promise.resolve(auth.currentUser);
   }
@@ -482,17 +510,22 @@ export async function guardWilduGame(options = {}) {
     blockAndThrow("OFFLINE", "", options);
   }
 
-  const user = await waitForAuthUser(Number(options.authTimeoutMs || 7000));
-
-  if (!user || !user.uid) {
-    emitWilduAuthT1ATrace("guard-deny", { resultClass: "no-auth" });
-    debugLog(debug, "DENY_NO_AUTH", { targetKey, launchId });
-    blockAndThrow("NO_AUTH", "", options);
-  }
-
   try {
-    const ref = doc(db, WILDU_SECURE_LAUNCH_COLLECTION, launchId);
-    const snap = await getDoc(ref);
+    const runtime = await ensureFirebaseRuntime();
+    const user = await waitForAuthUser(
+      runtime.auth,
+      runtime.onAuthStateChanged,
+      Number(options.authTimeoutMs || 7000)
+    );
+
+    if (!user || !user.uid) {
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "no-auth" });
+      debugLog(debug, "DENY_NO_AUTH", { targetKey, launchId });
+      blockAndThrow("NO_AUTH", "", options);
+    }
+
+    const ref = runtime.doc(runtime.db, WILDU_SECURE_LAUNCH_COLLECTION, launchId);
+    const snap = await runtime.getDoc(ref);
 
     if (!snap.exists()) {
       clearGameSession(targetKey);
