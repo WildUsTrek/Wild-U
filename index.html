@@ -7117,6 +7117,7 @@ html.wildu-detail-transition-busy body {
 
                 <div class="wildu-guest-profile-actions">
                     <div id="login-method-google" class="wildu-guest-profile-google-wrap hidden">
+                        <p id="wildu-auth-bridge-error" role="alert" hidden style="color:#ffe1ae;line-height:1.5;margin:0 0 12px;text-align:center;"></p>
                         <button id="login-method-google-popup" type="button" onclick="loginWithGoogle()" class="wildu-guest-profile-google-btn">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/><path fill="none" d="M1 1h22v22H1z"/></svg>
                             Accedi con Google
@@ -15464,6 +15465,124 @@ let WILDU_GOOGLE_IDENTITY_RENDERED = false;
 let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
 let WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
 let WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
+// One document-local owner. No credentials, new storage, or background RPC loop.
+const WILDU_AUTH_BRIDGE_RETURN_RUNTIME = {
+    popup: null, returnPending: false, away: false,
+    leaving: false, generation: 0, installed: false, wait: null, events: []
+};
+
+function wilduNoteAuthBridgeReturn(phase) {
+    if (!/^(WAIT_(HIDDEN|RETURN_EVENT|POPUP_OPEN|BOOT_NAVIGATION)|PAGEHIDE|PAGESHOW|FOREGROUND_RETURN|REDEEM_ADMITTED|SIGNIN_SETTLED)$/.test(phase)) return;
+    const runtime = WILDU_AUTH_BRIDGE_RETURN_RUNTIME;
+    const event = { phase, at: Date.now(), generation: runtime.generation,
+        visible: document.visibilityState !== 'hidden' };
+    runtime.events.push(event);
+    if (runtime.events.length > 24) runtime.events.shift();
+    try { pageDebug('AUTH_BRIDGE_RETURN_' + phase, event); } catch (e) {}
+}
+
+function wilduAuthBridgeReturnError(code) {
+    const error = new Error(code);
+    error.code = code;
+    if (code === 'AUTH_BRIDGE_EXPIRED') error.status = 410;
+    return error;
+}
+
+function wilduInstallAuthBridgeLifecycle() {
+    const runtime = WILDU_AUTH_BRIDGE_RETURN_RUNTIME;
+    if (runtime.installed) return;
+    runtime.installed = true;
+    const noteAway = () => { if (runtime.returnPending) runtime.away = true; };
+    const noteReturn = () => {
+        if (document.visibilityState === 'hidden') { noteAway(); return; }
+        if (runtime.away && runtime.returnPending) {
+            runtime.returnPending = false;
+            wilduNoteAuthBridgeReturn('FOREGROUND_RETURN');
+        }
+    };
+    window.addEventListener('blur', noteAway, { passive: true });
+    window.addEventListener('focus', noteReturn, { passive: true });
+    document.addEventListener('visibilitychange', noteReturn, { passive: true });
+    window.addEventListener('pagehide', () => {
+        runtime.leaving = true;
+        runtime.generation++;
+        wilduNoteAuthBridgeReturn('PAGEHIDE');
+        if (runtime.wait) runtime.wait.cancel();
+    }, { passive: true });
+    window.addEventListener('pageshow', () => {
+        runtime.leaving = false;
+        wilduNoteAuthBridgeReturn('PAGESHOW');
+        // BFCache can restore the same document after its wait was cancelled.
+        window.setTimeout(() => {
+            if (document.visibilityState !== 'hidden') resumeWilduAuthBridgeAttempt().catch(() => {});
+        }, 0);
+    }, { passive: true });
+}
+
+function wilduAuthBridgeReturnBlocked() {
+    const runtime = WILDU_AUTH_BRIDGE_RETURN_RUNTIME;
+    if (runtime.leaving) return 'LEAVING';
+    if (document.visibilityState === 'hidden') return 'HIDDEN';
+    if (runtime.returnPending) return 'RETURN_EVENT';
+    // A foreground event alone is not proof that the return has completed.
+    // closed=true alone is not proof (COOP may sever the WindowProxy).
+    // Require an actual foreground-return event in the launching document too.
+    try { if (runtime.popup && !runtime.popup.closed) return 'POPUP_OPEN'; }
+    catch (e) { return 'POPUP_OPEN'; }
+    if (WILDU_GLOBAL_CACHE_NAVIGATION_STARTED || WILDU_GLOBAL_CACHE_RELOAD_TIMER !== null) return 'BOOT_NAVIGATION';
+    return '';
+}
+
+function waitForWilduAuthBridgeReturn(state) {
+    wilduInstallAuthBridgeLifecycle();
+    const runtime = WILDU_AUTH_BRIDGE_RETURN_RUNTIME;
+    if (runtime.wait) return runtime.wait.promise;
+    let timer = null, resolveWait, rejectWait, done = false, lastReason = '';
+    const generation = runtime.generation;
+    const promise = new Promise((resolve, reject) => { resolveWait = resolve; rejectWait = reject; });
+    const finish = (error) => {
+        if (done) return;
+        done = true;
+        if (timer !== null) window.clearTimeout(timer);
+        document.removeEventListener('visibilitychange', wake);
+        window.removeEventListener('focus', wake);
+        runtime.wait = null;
+        if (error) rejectWait(error); else resolveWait(generation);
+    };
+    const wake = () => {
+        if (done) return;
+        if (timer !== null) window.clearTimeout(timer);
+        timer = null;
+        try {
+            if (Date.now() >= state.createdAt + WILDU_AUTH_BRIDGE_TTL_MS) throw wilduAuthBridgeReturnError('AUTH_BRIDGE_EXPIRED');
+            wilduAssertCurrentBridgeAttempt(state);
+            if (runtime.leaving || runtime.generation !== generation) throw wilduAuthBridgeReturnError('AUTH_BRIDGE_RETURN_DEFERRED');
+            const reason = wilduAuthBridgeReturnBlocked();
+            if (!reason) { finish(); return; }
+            if (reason !== lastReason) { lastReason = reason; wilduNoteAuthBridgeReturn('WAIT_' + reason); }
+            // Local-only fallback for popup.closed, which has no DOM event.
+            // One timer, bounded by the attempt TTL; no server calls or DOM scans.
+            timer = window.setTimeout(wake, Math.min(500, state.createdAt + WILDU_AUTH_BRIDGE_TTL_MS - Date.now()));
+        } catch (error) { finish(error); }
+    };
+    runtime.wait = { promise, cancel: () => finish(wilduAuthBridgeReturnError('AUTH_BRIDGE_RETURN_DEFERRED')) };
+    document.addEventListener('visibilitychange', wake, { passive: true });
+    window.addEventListener('focus', wake, { passive: true });
+    wake();
+    return promise;
+}
+
+function wilduShowAuthBridgeError(code) {
+    const node = document.getElementById('wildu-auth-bridge-error');
+    if (!node) return;
+    const messages = {
+        AUTH_BRIDGE_REDEEMED_WITHOUT_SESSION: 'Il rientro da Google si è interrotto prima di salvare l’accesso. Riprova con Accedi con Google.',
+        AUTH_BRIDGE_EXPIRED: 'Il tentativo di accesso è scaduto. Riprova con Accedi con Google.',
+        AUTH_BRIDGE_NOT_FOUND: 'Questo tentativo non è più disponibile. Riprova con Accedi con Google.'
+    };
+    node.textContent = code ? (messages[code] || 'Accesso non completato. Riprova con Accedi con Google.') : '';
+    node.hidden = !code;
+}
 
 // Public backpressure only: three numeric deadlines, no identity or credential.
 // Survives navigation; the existing explicit logout still clears localStorage.
@@ -15760,9 +15879,23 @@ async function ensureWilduAuthBridgeAttemptStarted(state) {
 }
 
 async function redeemWilduAuthBridgeAttempt(state) {
+    // Admission covers ALL entrypoints, including the original background poll.
+    // Never consume the one-shot while the bridge/boot can still replace us.
+    await waitForWilduAuthBridgeReturn(state);
+    await ensureWilduClientInteractionBootGate('AUTH_BRIDGE_RETURN');
+    await wilduBoundAuthRead(WILDU_FIREBASE.waitForInitialAuthState());
     // Prepare persistence BEFORE consuming the one-shot token, not afterwards.
     await wilduBoundAuthRead(WILDU_FIREBASE.ensureLocalAuthPersistence());
+    await waitForWilduAuthBridgeReturn(state);
     wilduAssertCurrentBridgeAttempt(state);
+    if (wilduAuthBridgeReturnBlocked()) throw wilduAuthBridgeReturnError('AUTH_BRIDGE_RETURN_DEFERRED');
+    if (auth.currentUser) {
+        clearWilduAuthBridgeAttempt('FIREBASE_USER_AVAILABLE_BEFORE_REDEEM');
+        scheduleClientAuthRecovery('AUTH_BRIDGE_USER_AVAILABLE', { reset: true, immediate: true });
+        return true;
+    }
+    WILDU_AUTH_BRIDGE_RETURN_RUNTIME.popup = null;
+    wilduNoteAuthBridgeReturn('REDEEM_ADMITTED');
     const response = await postWilduAuthBridgeAction('AUTH_BRIDGE_REDEEM', {
         attemptId: state.attemptId,
         verifier: state.verifier
@@ -15796,6 +15929,7 @@ async function redeemWilduAuthBridgeAttempt(state) {
         wilduAssertCurrentBridgeAttempt(state);
 
         signedUser = result?.user || auth.currentUser;
+        wilduNoteAuthBridgeReturn('SIGNIN_SETTLED');
         try { pageDebug('AUTH_BRIDGE_FIREBASE_SIGNIN_SETTLED', { hasFirebaseUser: !!auth.currentUser, hasResultUser: !!result?.user }); } catch (e) {}
         if (!signedUser) {
             const missing = new Error('AUTH_BRIDGE_FIREBASE_USER_MISSING');
@@ -15804,6 +15938,7 @@ async function redeemWilduAuthBridgeAttempt(state) {
         }
 
         clearWilduAuthBridgeAttempt('REDEEMED');
+        wilduShowAuthBridgeError('');
 
         try {
             const finalized = await finalizeWilduAuthenticatedSignIn(
@@ -15868,6 +16003,7 @@ async function pollWilduAuthBridgeAttempt(state) {
         }
 
         try {
+            await waitForWilduAuthBridgeReturn(state);
             const status = await postWilduAuthBridgeAction('AUTH_BRIDGE_STATUS', {
                 attemptId: state.attemptId
             });
@@ -15890,6 +16026,7 @@ async function pollWilduAuthBridgeAttempt(state) {
             }
         } catch (error) {
             const code = String(error?.code || '');
+            if (code === 'AUTH_BRIDGE_RETURN_DEFERRED') throw error;
             if (
                 error?.status === 410 ||
                 code === 'AUTH_BRIDGE_EXPIRED' ||
@@ -15909,7 +16046,10 @@ async function pollWilduAuthBridgeAttempt(state) {
                         hasFirebaseUser: !!auth.currentUser
                     });
                 } catch (e) {}
-                showToast('Il tentativo di accesso è scaduto. Tocca di nuovo Accedi con Google.');
+                wilduShowAuthBridgeError(code || 'AUTH_BRIDGE_EXPIRED');
+                showToast(code === 'AUTH_BRIDGE_REDEEMED_WITHOUT_SESSION'
+                    ? 'Rientro interrotto. Trovi le indicazioni nella schermata di accesso.'
+                    : 'Il tentativo di accesso non è più disponibile. Riprova con Accedi con Google.');
                 return false;
             }
             if (error?.status !== 409) throw error;
@@ -15963,7 +16103,7 @@ async function resumeWilduAuthBridgeAttempt() {
         pageDebug('AUTH_BRIDGE_RESUME_FAILED', {
             code: String(error?.code || 'AUTH_BRIDGE_RESUME_FAILED')
         });
-        if (error?.code === 'AUTH_BRIDGE_STALE_ATTEMPT') return false;
+        if (error?.code === 'AUTH_BRIDGE_STALE_ATTEMPT' || error?.code === 'AUTH_BRIDGE_RETURN_DEFERRED' || isWilduBootstrapNavigationError(error)) return false;
         authProbeInProgress = false;
         authProbeStartedAt = 0;
         if (!auth.currentUser) {
@@ -15996,6 +16136,8 @@ async function loginWithWilduDurableAuthBridge() {
         return;
     }
     WILDU_AUTH_BRIDGE_IN_PROGRESS = true;
+    wilduShowAuthBridgeError('');
+    wilduInstallAuthBridgeLifecycle();
     beginWilduGoogleAuthTransition('DURABLE_BRIDGE');
     let state = readWilduAuthBridgeAttempt();
     let authWindow = null;
@@ -16012,11 +16154,15 @@ async function loginWithWilduDurableAuthBridge() {
 
         // Riserva la finestra durante il gesto, ma non espone ancora WebKit al
         // redirect Google: prima il tentativo deve esistere in modo durevole.
+        WILDU_AUTH_BRIDGE_RETURN_RUNTIME.returnPending = true;
+        WILDU_AUTH_BRIDGE_RETURN_RUNTIME.away = false;
         authWindow = window.open('', '_blank');
+        WILDU_AUTH_BRIDGE_RETURN_RUNTIME.popup = authWindow;
         try { if (authWindow) authWindow.opener = null; } catch (e) {}
 
         state = await ensureWilduAuthBridgeAttemptStarted(state);
         if (!authWindow) {
+            WILDU_AUTH_BRIDGE_RETURN_RUNTIME.leaving = true;
             window.location.assign(buildWilduAuthBridgeUrl(state.attemptId, 'same'));
             return;
         }
@@ -16028,11 +16174,12 @@ async function loginWithWilduDurableAuthBridge() {
     } catch (error) {
         const code = String(error?.code || 'AUTH_BRIDGE_START_FAILED');
         pageDebug('AUTH_BRIDGE_START_FAILED', { code });
-        if (code === 'AUTH_BRIDGE_STALE_ATTEMPT') return;
+        if (code === 'AUTH_BRIDGE_STALE_ATTEMPT' || code === 'AUTH_BRIDGE_RETURN_DEFERRED' || isWilduBootstrapNavigationError(error)) return;
         if (state?.phase === 'STARTING' || error?.status === 400 || error?.status === 403) {
             clearWilduAuthBridgeAttempt(code);
         }
         endWilduGoogleAuthTransition(code);
+        WILDU_AUTH_BRIDGE_RETURN_RUNTIME.returnPending = false;
         if (!auth.currentUser) resetStaleClientAuthPendingToGuest(code, { force: true });
         try { if (authWindow && !authWindow.closed) authWindow.close(); } catch (e) {}
         showToast(error?.status === 429 ? wilduAuthRateMessage(error) : 'Accesso Google non completato. Riprova tra poco.');
@@ -16840,7 +16987,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.89';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.90';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -18334,6 +18481,14 @@ const WilduIOSBlackBox = (() => {
         const dirtyBootTimeline = buildDirtyBootTimelineFromDiary(state, currentSnapshot);
         return {
             reportType: 'WILDU_IOS_BLACKBOX_V1',
+            authBridgeReturn: {
+                scope: 'current-document-only-no-credentials',
+                generation: WILDU_AUTH_BRIDGE_RETURN_RUNTIME.generation,
+                waiting: !!WILDU_AUTH_BRIDGE_RETURN_RUNTIME.wait,
+                events: WILDU_AUTH_BRIDGE_RETURN_RUNTIME.events.slice(-24).map(e => ({
+                    phase: e.phase, at: e.at, generation: e.generation, visible: e.visible
+                }))
+            },
             generatedAt: new Date().toISOString(),
             blackboxPlan: 'ios-causal-trace-v9-bounded-three-document-timeline',
             swResourcePolicy: Object.assign({}, swResourcePolicy),
