@@ -14658,6 +14658,10 @@ function scheduleAuthProfileWatchdog(reason) {
     }
     if (!authProfileWatchdogStartedAt) authProfileWatchdogStartedAt = Date.now();
     if (authProfileWatchdogTimer) return true;
+    if (wilduAuthRateRemainingMs('getInitData') > 0) {
+        scheduleClientAuthRecovery('AUTH_BACKPRESSURE_WATCHDOG');
+        return true;
+    }
     const cleanReason = String(reason || 'AUTH_PROFILE_WATCHDOG');
     authProfileWatchdogTimer = window.setTimeout(function authProfileWatchdog() {
         authProfileWatchdogTimer = null;
@@ -14737,6 +14741,10 @@ function releaseStaleAuthProfileProbeIfNeeded(reason, options = {}) {
 
 function scheduleAuthProfileLivenessRetry(reason) {
     if (authLivenessRetryTimer || isTelegramContext() || !auth.currentUser || clientSession.authState === 'LOGGED') return false;
+    if (wilduAuthRateRemainingMs('getInitData') > 0) {
+        scheduleClientAuthRecovery('AUTH_BACKPRESSURE_LIVENESS', { reset: true });
+        return true;
+    }
     authLivenessRetryTimer = window.setTimeout(function authProfileLivenessRetry() {
         authLivenessRetryTimer = null;
         if (!auth.currentUser || clientSession.authState === 'LOGGED' || isTelegramContext()) return;
@@ -14812,9 +14820,10 @@ function ensureAuthProfileLiveness(reason, options = {}) {
             return;
         }
 
-    const delay = options.immediate === true
+    const baseDelay = options.immediate === true
         ? 0
         : AUTH_RECOVERY_DELAYS_MS[authRecoveryAttempt];
+    const delay = Math.max(baseDelay, wilduAuthRateRemainingMs('getInitData'));
 
     try {
         pageDebug('AUTH_RECOVERY_SCHEDULED', {
@@ -14840,6 +14849,10 @@ function ensureAuthProfileLiveness(reason, options = {}) {
             return;
         }
 
+        if (wilduAuthRateRemainingMs('getInitData') > 0) {
+            scheduleClientAuthRecovery(reason || 'AUTH_BACKPRESSURE');
+            return;
+        }
         if (authRefreshLock || authProbeInProgress) {
             if (releaseStaleAuthProfileProbeIfNeeded(reason || 'AUTH_RECOVERY_BUSY')) {
                 scheduleClientAuthRecovery(reason || 'AUTH_RECOVERY_PROBE_RELEASED', {
@@ -15063,7 +15076,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
 
     // Forza un token appena emesso prima del gate canonico backend. Il client
     // non considera mai sufficiente il solo successo del popup/credential.
-    await user.getIdToken(true);
+    await wilduBoundAuthRead(user.getIdToken(true));
     try {
         pageDebug('AUTH_PROFILE_TOKEN_READY', {
             reason: String(reason || 'GOOGLE_SIGNIN'),
@@ -15194,8 +15207,18 @@ async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
         return;
     }
     const probeSequence = ++authProbeSequence;
+    const isCurrentProbe = () => probeSequence === authProbeSequence &&
+        String(auth.currentUser?.uid || '') === String(user?.uid || '');
 
     if (user) {
+        // The existing recovery owner schedules one wake-up, not another
+        // Firestore/backend probe while the server budget is cooling down.
+        const remaining = wilduAuthRateRemainingMs('getInitData');
+        if (remaining > 0) {
+            holdClientAuthPending(user, wilduAuthRateMessage(wilduAuthRateError(remaining)), 'AUTH_BACKPRESSURE');
+            endWilduGoogleAuthTransition('AUTH_BACKPRESSURE');
+            return;
+        }
         tempGoogleUser = user;
         tempTelegramUser = null;
         profileCompletionRequired = false;
@@ -15231,7 +15254,8 @@ if (!navigator.onLine) {
                 // IMPORTANTE:
                 // l'esistenza del profilo va verificata SOLO dal server.
                 // Se siamo offline/non raggiungiamo Firestore, non dobbiamo mai dedurre "utente nuovo".
-                docSnap = await FS.getUtente(user.uid, { source: 'server' });
+                docSnap = await wilduBoundAuthRead(FS.getUtente(user.uid, { source: 'server' }));
+                if (!isCurrentProbe()) return;
 
                 if (!docSnap.exists) {
                     authRefreshLock = true;
@@ -15241,8 +15265,9 @@ if (!navigator.onLine) {
                             force: true
                         });
                     } finally {
-                        authRefreshLock = false;
+                        if (isCurrentProbe()) authRefreshLock = false;
                     }
+                    if (!isCurrentProbe()) return;
 
                     const canonicalProfile = canonicalInitData?.userOverlay?.profile || null;
                     const canonicalProfileExists =
@@ -15307,8 +15332,15 @@ if (docSnap.exists) {
         try {
             await fetchInitData({ reason: 'AUTH_STATE', force: true });
         } finally {
-            authRefreshLock = false;
+            if (isCurrentProbe()) authRefreshLock = false;
         }
+    }
+
+    if (!isCurrentProbe()) return;
+    if (!isCurrentVerifiedClientIdentity(user.uid)) {
+        const pending = new Error('AUTH_BACKEND_SESSION_NOT_READY');
+        pending.code = 'AUTH_BACKEND_SESSION_NOT_READY';
+        throw pending;
     }
 
     clearClientAuthRecovery();
@@ -15329,8 +15361,13 @@ if (docSnap.exists) {
             }
 
         } catch (e) {
+            if (!isCurrentProbe()) return;
             authRefreshLock = false;
             endWilduGoogleAuthTransition('AUTH_PROCESSING_ERROR');
+            if (e?.status === 429) {
+                holdClientAuthPending(user, wilduAuthRateMessage(e), 'AUTH_PROFILE_RATE_LIMITED');
+                return;
+            }
             console.error("Firestore error:", e);
 
             const errCode = String(e?.code || '').toLowerCase();
@@ -15427,6 +15464,122 @@ let WILDU_GOOGLE_IDENTITY_RENDERED = false;
 let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
 let WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
 let WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
+
+// Public backpressure only: three numeric deadlines, no identity or credential.
+// Survives navigation; the existing explicit logout still clears localStorage.
+const WILDU_AUTH_RATE_KEY = 'wilduAuthBackpressure:v1';
+const WILDU_AUTH_REQUEST_TIMEOUT_MS = 15000;
+let WILDU_AUTH_RATE_MEMORY = {};
+
+function wilduAuthRateRemainingMs(action) {
+    let deadlines = {};
+    try { deadlines = JSON.parse(localStorage.getItem(WILDU_AUTH_RATE_KEY) || '{}') || {}; } catch (e) {}
+    const now = Date.now();
+    const scopes = action === 'AUTH_BRIDGE_STATUS' ? ['ip', 'status'] : ['ip', 'identity'];
+    return Math.max(0, ...scopes.map(scope => {
+        const until = Math.max(Number(deadlines[scope]) || 0, Number(WILDU_AUTH_RATE_MEMORY[scope]) || 0);
+        return Number.isFinite(until) ? Math.min(900000, until - now) : 0;
+    }));
+}
+
+function wilduAuthRateError(remainingMs) {
+    const error = new Error('AUTH_RATE_LIMITED');
+    error.code = 'AUTH_RATE_LIMITED';
+    error.status = 429;
+    error.retryAfterSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+    return error;
+}
+
+function wilduAuthRateMessage(error) {
+    const seconds = Math.max(1, Math.ceil(Number(error?.retryAfterSeconds) || 60));
+    const duration = seconds >= 60 ? Math.ceil(seconds / 60) + ' minuti' : seconds + ' secondi';
+    return 'Richieste di accesso troppo ravvicinate. Attendi circa ' + duration + ' prima di riprovare.';
+}
+
+function wilduCheckAuthBackpressure(action) {
+    const remaining = wilduAuthRateRemainingMs(action);
+    if (remaining > 0) throw wilduAuthRateError(remaining);
+}
+
+function wilduAuthResponseError(response, data) {
+    const error = new Error(String(data?.error || data?.message || data?.code || 'Errore richiesta accesso'));
+    error.code = String(data?.code || ('AUTH_HTTP_' + response.status));
+    error.status = response.status;
+    if (response.status === 429) {
+        const header = response.headers?.get('Retry-After');
+        const raw = header ? Number(header) : Number(data?.retryAfterSeconds);
+        const seconds = Number.isFinite(raw) && raw > 0 ? Math.max(1, Math.min(900, Math.ceil(raw))) : 60;
+        const scope = ['ip', 'identity', 'status'].includes(data?.rateLimitScope) ? data.rateLimitScope : 'ip';
+        let old = {};
+        try { old = JSON.parse(localStorage.getItem(WILDU_AUTH_RATE_KEY) || '{}') || {}; } catch (e) {}
+        const now = Date.now();
+        const deadlines = {};
+        for (const key of ['ip', 'identity', 'status']) {
+            const value = Math.max(Number(old[key]) || 0, Number(WILDU_AUTH_RATE_MEMORY[key]) || 0);
+            deadlines[key] = Number.isFinite(value) ? Math.max(now, Math.min(now + 900000, value)) : now;
+        }
+        deadlines[scope] = Math.max(deadlines[scope], now + seconds * 1000);
+        WILDU_AUTH_RATE_MEMORY = deadlines;
+        try { localStorage.setItem(WILDU_AUTH_RATE_KEY, JSON.stringify(deadlines)); } catch (e) {}
+        error.code = 'AUTH_RATE_LIMITED';
+        error.retryAfterSeconds = Math.ceil((deadlines[scope] - now) / 1000);
+        try { pageDebug('AUTH_BACKPRESSURE_RECORDED', { scope, retryAfterSeconds: error.retryAfterSeconds }); } catch (e) {}
+    }
+    return error;
+}
+
+async function wilduAuthFetchJson(url, options, action) {
+    wilduCheckAuthBackpressure(action);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), WILDU_AUTH_REQUEST_TIMEOUT_MS);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        let data = null;
+        try { data = await response.json(); } catch (error) {
+            if (controller.signal.aborted) throw error;
+        }
+        if (!response.ok || data?.success === false) throw wilduAuthResponseError(response, data);
+        if (!data) {
+            const invalid = new Error('AUTH_RESPONSE_INVALID');
+            invalid.code = 'AUTH_RESPONSE_INVALID';
+            throw invalid;
+        }
+        return { response, data };
+    } catch (error) {
+        if (controller.signal.aborted) {
+            const timeout = new Error('AUTH_REQUEST_TIMEOUT');
+            timeout.code = 'AUTH_REQUEST_TIMEOUT';
+            throw timeout;
+        }
+        throw error;
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
+
+// SDK reads/non-identity prerequisites may settle late; callers still check UID/generation.
+// Never apply to signInWithCustomToken: that SDK operation mutates identity.
+function wilduBoundAuthRead(promise) {
+    let timer;
+    return Promise.race([Promise.resolve(promise), new Promise((resolve, reject) => {
+        timer = window.setTimeout(() => {
+            const error = new Error('AUTH_READ_TIMEOUT');
+            error.code = 'AUTH_READ_TIMEOUT';
+            reject(error);
+        }, WILDU_AUTH_REQUEST_TIMEOUT_MS);
+    })]).finally(() => window.clearTimeout(timer));
+}
+
+function wilduAssertCurrentBridgeAttempt(state) {
+    const current = readWilduAuthBridgeAttempt();
+    if (current?.attemptId !== state?.attemptId || current?.verifier !== state?.verifier) {
+        const expired = Date.now() - Number(state?.createdAt || 0) >= WILDU_AUTH_BRIDGE_TTL_MS;
+        const stale = new Error(expired ? 'AUTH_BRIDGE_EXPIRED' : 'AUTH_BRIDGE_STALE_ATTEMPT');
+        stale.code = expired ? 'AUTH_BRIDGE_EXPIRED' : 'AUTH_BRIDGE_STALE_ATTEMPT';
+        if (expired) stale.status = 410;
+        throw stale;
+    }
+}
 
 function shouldUseWilduDurableAuthBridge() {
     return WILDU_AUTH_BRIDGE_ENABLED === true &&
@@ -15533,6 +15686,7 @@ function buildWilduAuthBridgeUrl(attemptId, launchMode = '') {
 }
 
 async function postWilduAuthBridgeAction(action, payload) {
+    wilduCheckAuthBackpressure(action);
     try {
         pageDebug('AUTH_BRIDGE_API_REQUEST', {
             action: String(action || ''),
@@ -15541,7 +15695,9 @@ async function postWilduAuthBridgeAction(action, payload) {
             hasChallenge: !!payload?.challenge
         });
     } catch (e) {}
-    const response = await fetch(MOTORE_API_URL, {
+    let response, data;
+    try {
+    ({ response, data } = await wilduAuthFetchJson(MOTORE_API_URL, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -15555,9 +15711,11 @@ async function postWilduAuthBridgeAction(action, payload) {
             payload,
             clientContext: { channel: 'WEB' }
         })
-    });
-    let data = null;
-    try { data = await response.json(); } catch (e) {}
+    }, action));
+    } catch (error) {
+        try { pageDebug('AUTH_BRIDGE_API_FAILED', { action, httpStatus: Number(error?.status || 0), code: String(error?.code || 'AUTH_NETWORK_FAILED') }); } catch (e) {}
+        throw error;
+    }
     try {
         pageDebug(response.ok && data?.success !== false ? 'AUTH_BRIDGE_API_RESPONSE' : 'AUTH_BRIDGE_API_FAILED', {
             action: String(action || ''),
@@ -15577,6 +15735,7 @@ async function postWilduAuthBridgeAction(action, payload) {
 }
 
 async function ensureWilduAuthBridgeAttemptStarted(state) {
+    wilduAssertCurrentBridgeAttempt(state);
     if (state.phase !== 'STARTING') return state;
     const challenge = await wilduAuthBridgeChallenge(state.verifier);
     const bridgeUrl = buildWilduAuthBridgeUrl(state.attemptId);
@@ -15584,6 +15743,7 @@ async function ensureWilduAuthBridgeAttemptStarted(state) {
         attemptId: state.attemptId,
         challenge
     });
+    wilduAssertCurrentBridgeAttempt(state);
     const returnedBridge = new URL(String(started?.bridgeUrl || bridgeUrl));
     if (
         returnedBridge.origin !== 'https://wild-u-server.firebaseapp.com' ||
@@ -15600,6 +15760,9 @@ async function ensureWilduAuthBridgeAttemptStarted(state) {
 }
 
 async function redeemWilduAuthBridgeAttempt(state) {
+    // Prepare persistence BEFORE consuming the one-shot token, not afterwards.
+    await wilduBoundAuthRead(WILDU_FIREBASE.ensureLocalAuthPersistence());
+    wilduAssertCurrentBridgeAttempt(state);
     const response = await postWilduAuthBridgeAction('AUTH_BRIDGE_REDEEM', {
         attemptId: state.attemptId,
         verifier: state.verifier
@@ -15611,8 +15774,6 @@ async function redeemWilduAuthBridgeAttempt(state) {
         throw invalid;
     }
 
-    await WILDU_FIREBASE.ensureLocalAuthPersistence();
-
     // Il custom token completa Firebase nell'origin della PWA. Da questo punto
     // il rientro deve essere atomico: l'observer Auth viene accodato mentre la
     // stessa pipeline attende subito anche il gate canonico backend. In questo
@@ -15622,11 +15783,20 @@ async function redeemWilduAuthBridgeAttempt(state) {
     let signedUser = null;
 
     try {
+        wilduAssertCurrentBridgeAttempt(state);
+        if (auth.currentUser) {
+            clearWilduAuthBridgeAttempt('FIREBASE_USER_AVAILABLE_BEFORE_SIGNIN');
+            scheduleClientAuthRecovery('AUTH_BRIDGE_USER_AVAILABLE', { reset: true, immediate: true });
+            return true;
+        }
+        try { pageDebug('AUTH_BRIDGE_FIREBASE_SIGNIN_STARTED', { hasFirebaseUser: !!auth.currentUser }); } catch (e) {}
         const result = await auth.signInWithCustomToken(customToken);
         customToken = '';
         try { response.customToken = ''; } catch (e) {}
+        wilduAssertCurrentBridgeAttempt(state);
 
         signedUser = result?.user || auth.currentUser;
+        try { pageDebug('AUTH_BRIDGE_FIREBASE_SIGNIN_SETTLED', { hasFirebaseUser: !!auth.currentUser, hasResultUser: !!result?.user }); } catch (e) {}
         if (!signedUser) {
             const missing = new Error('AUTH_BRIDGE_FIREBASE_USER_MISSING');
             missing.code = 'AUTH_BRIDGE_FIREBASE_USER_MISSING';
@@ -15650,13 +15820,14 @@ async function redeemWilduAuthBridgeAttempt(state) {
             // Firebase e' gia' autenticato e il tentativo server e' one-shot:
             // non riaprire Google. Manteniamo AUTH_PENDING e riproviamo la sola
             // verifica backend con la recovery storica e limitata.
+            if (String(auth.currentUser?.uid || '') !== String(signedUser?.uid || '')) return false;
             pageDebug('AUTH_BRIDGE_FINALIZE_DEFERRED', {
                 code: String(error?.code || 'AUTH_BRIDGE_FINALIZE_FAILED')
             });
             clearPendingClientAuthStateReplay();
             holdClientAuthPending(
                 signedUser,
-                'Accesso Google riuscito. Completo la sincronizzazione...',
+                error?.status === 429 ? wilduAuthRateMessage(error) : 'Accesso Google riuscito. Completo la sincronizzazione...',
                 'AUTH_BRIDGE_FINALIZE_RETRY',
                 { scheduleRecovery: false }
             );
@@ -15683,6 +15854,7 @@ async function pollWilduAuthBridgeAttempt(state) {
     } catch (e) {}
     for (const delay of WILDU_AUTH_BRIDGE_POLL_DELAYS_MS) {
         if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+        wilduAssertCurrentBridgeAttempt(state);
         if (auth.currentUser) {
             clearWilduAuthBridgeAttempt('FIREBASE_USER_ALREADY_AVAILABLE');
             authProbeInProgress = false;
@@ -15699,6 +15871,7 @@ async function pollWilduAuthBridgeAttempt(state) {
             const status = await postWilduAuthBridgeAction('AUTH_BRIDGE_STATUS', {
                 attemptId: state.attemptId
             });
+            wilduAssertCurrentBridgeAttempt(state);
             try {
                 pageDebug('AUTH_BRIDGE_STATUS_RESULT', {
                     status: String(status?.status || ''),
@@ -15708,6 +15881,12 @@ async function pollWilduAuthBridgeAttempt(state) {
             if (status?.status === 'COMPLETED') {
                 try { pageDebug('AUTH_BRIDGE_COMPLETED', { source: 'POLL' }); } catch (e) {}
                 return await redeemWilduAuthBridgeAttempt(state);
+            }
+            if (status?.status === 'REDEEMED' && !auth.currentUser) {
+                const consumed = new Error('AUTH_BRIDGE_REDEEMED_WITHOUT_SESSION');
+                consumed.code = 'AUTH_BRIDGE_REDEEMED_WITHOUT_SESSION';
+                consumed.status = 410;
+                throw consumed;
             }
         } catch (error) {
             const code = String(error?.code || '');
@@ -15733,7 +15912,7 @@ async function pollWilduAuthBridgeAttempt(state) {
                 showToast('Il tentativo di accesso è scaduto. Tocca di nuovo Accedi con Google.');
                 return false;
             }
-            if (error?.status !== 429 && error?.status !== 409) throw error;
+            if (error?.status !== 409) throw error;
         }
     }
 
@@ -15747,6 +15926,7 @@ async function pollWilduAuthBridgeAttempt(state) {
             hasFirebaseUser: !!auth.currentUser
         });
     } catch (e) {}
+    endWilduGoogleAuthTransition('AUTH_BRIDGE_POLL_TIMEOUT');
     showToast('Completa Google e torna a Wild-U: l’accesso riprenderà automaticamente.');
     return false;
 }
@@ -15762,6 +15942,8 @@ async function resumeWilduAuthBridgeAttempt() {
     }
     let state = readWilduAuthBridgeAttempt();
     if (!state) return false;
+    const remaining = wilduAuthRateRemainingMs(state.phase === 'STARTING' ? 'AUTH_BRIDGE_START' : 'AUTH_BRIDGE_STATUS');
+    if (remaining > 0) return false;
 
     // Blocca subito il falso guest prima del primo await. Il bootstrap pubblico
     // puo' continuare, ma Profilo/Zaino restano in caricamento finche' il bridge
@@ -15781,12 +15963,14 @@ async function resumeWilduAuthBridgeAttempt() {
         pageDebug('AUTH_BRIDGE_RESUME_FAILED', {
             code: String(error?.code || 'AUTH_BRIDGE_RESUME_FAILED')
         });
+        if (error?.code === 'AUTH_BRIDGE_STALE_ATTEMPT') return false;
         authProbeInProgress = false;
         authProbeStartedAt = 0;
         if (!auth.currentUser) {
             resetStaleClientAuthPendingToGuest(error?.code || 'AUTH_BRIDGE_RESUME_FAILED', { force: true });
         }
-        showToast('Accesso Google in attesa. Tocca Accedi con Google per riprenderlo.');
+        endWilduGoogleAuthTransition(error?.code || 'AUTH_BRIDGE_RESUME_FAILED');
+        showToast(error?.status === 429 ? wilduAuthRateMessage(error) : 'Accesso Google in attesa. Tocca Accedi con Google per riprenderlo.');
         return false;
     } finally {
         WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
@@ -15806,6 +15990,11 @@ async function loginWithWilduDurableAuthBridge() {
         return;
     }
 
+    const remaining = Math.max(wilduAuthRateRemainingMs('AUTH_BRIDGE_START'), wilduAuthRateRemainingMs('AUTH_BRIDGE_STATUS'));
+    if (remaining > 0) {
+        showToast(wilduAuthRateMessage(wilduAuthRateError(remaining)));
+        return;
+    }
     WILDU_AUTH_BRIDGE_IN_PROGRESS = true;
     beginWilduGoogleAuthTransition('DURABLE_BRIDGE');
     let state = readWilduAuthBridgeAttempt();
@@ -15839,15 +16028,14 @@ async function loginWithWilduDurableAuthBridge() {
     } catch (error) {
         const code = String(error?.code || 'AUTH_BRIDGE_START_FAILED');
         pageDebug('AUTH_BRIDGE_START_FAILED', { code });
+        if (code === 'AUTH_BRIDGE_STALE_ATTEMPT') return;
         if (state?.phase === 'STARTING' || error?.status === 400 || error?.status === 403) {
             clearWilduAuthBridgeAttempt(code);
-            endWilduGoogleAuthTransition(code);
-            if (!auth.currentUser) {
-                resetStaleClientAuthPendingToGuest(code, { force: true });
-            }
         }
+        endWilduGoogleAuthTransition(code);
+        if (!auth.currentUser) resetStaleClientAuthPendingToGuest(code, { force: true });
         try { if (authWindow && !authWindow.closed) authWindow.close(); } catch (e) {}
-        showToast('Accesso Google non avviato. Riprova tra poco.');
+        showToast(error?.status === 429 ? wilduAuthRateMessage(error) : 'Accesso Google non completato. Riprova tra poco.');
     } finally {
         WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
     }
@@ -16652,7 +16840,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.88';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.89';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21535,9 +21723,11 @@ if (cachedPublicData && !bypassPublicCache) {
                 'X-WILDU-CHANNEL': isTelegramContext() ? 'TELEGRAM' : 'WEB'
             };
 
+            wilduCheckAuthBackpressure('getInitData');
+
             if (auth.currentUser) {
                 try {
-                    const token = await auth.currentUser.getIdToken();
+                    const token = await wilduBoundAuthRead(auth.currentUser.getIdToken());
                     if (token) headers.Authorization = `Bearer ${token}`;
                 } catch (e) {
                     const tokenError = new Error('Token autenticazione non disponibile per getInitData.');
@@ -21556,7 +21746,7 @@ if (cachedPublicData && !bypassPublicCache) {
     hasAuthUser: !!auth.currentUser
 });
             
-            const res = await fetch(MOTORE_API_URL, {
+            const { response: res, data } = await wilduAuthFetchJson(MOTORE_API_URL, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
@@ -21566,9 +21756,7 @@ if (cachedPublicData && !bypassPublicCache) {
                     },
                     nocache: Date.now()
                 })
-            });
-
-            const data = await res.json();
+            }, 'getInitData');
 
             if (isStaleInitRequest()) {
                 pageDebug('INITDATA_STALE_RESPONSE_IGNORED', {
