@@ -17013,7 +17013,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.93';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.94';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -34462,15 +34462,23 @@ function installWilduSoftModalHorizontalDismiss() {
         if (!card) return;
 
         wilduInstallPhysicalSwipe(card, {
-            threshold: 96,
-            ratio: 1.25,
+            // Le card interne occupano quasi tutto il popup. Bloccarle tutte rendeva
+            // la gesture inutilizzabile proprio nella zona dove l'utente la prova.
+            // Un tap resta una selezione card; solo uno swipe orizzontale netto chiude.
+            threshold: 88,
+            ratio: 1.28,
             maxRotate: 4,
             commitCloseOnTouchEnd: true,
             canStart: function () {
                 return modal.classList.contains('is-visible');
             },
             isBlockedTarget: function (target) {
-                return !!(target && target.closest && target.closest('.wildu-soft-card,.wildu-card-date-action,.wildu-soft-modal-close,.wildu-soft-bottom-close-btn,a,input,textarea,select,iframe,[role="button"]'));
+                if (!target || !target.closest) return false;
+                const control = target.closest('.wildu-soft-card,.wildu-card-date-action,.wildu-soft-modal-close,.wildu-soft-bottom-close-btn,a,input,textarea,select,iframe,[role="button"]');
+                // Una card suggerita/date è un pulsante; non la blocchiamo interamente:
+                // tap = apre, trascinamento orizzontale netto = chiude il popup.
+                if (control && control.matches && control.matches('.wildu-soft-card')) return false;
+                return !!control;
             },
             onClose: function (source, evt) {
                 wilduPlayCardInteractionFeedback('close');
@@ -40266,6 +40274,8 @@ if (profKeyEl) {
 
             const targetTab = getWilduTravelTabSwipeTarget(dx);
             if (targetTab) {
+                // Un solo feedback al rilascio valido: nessun suono durante il drag.
+                wilduPlayCardInteractionFeedback('swipe');
                 wilduTravelTabSwipeTransitionInProgress = true;
                 const visualEl = state.visualEl;
                 if (visualEl) {
@@ -42916,8 +42926,19 @@ async function loadWilduAudioBuffer(url) {
 
     // Feedback delle card: nessun asset, rete, timer o cache aggiuntivi.
     // Usa il contesto già condiviso dall'app e nasce solo da una vera azione utente.
-    const WILDU_CARD_FEEDBACK_MIN_INTERVAL_MS = 110;
-    let wilduCardFeedbackLastAt = 0;
+    const WILDU_INTERACTION_FEEDBACK_MIN_INTERVAL_MS = 110;
+    const WILDU_INTERACTION_FEEDBACK_PROFILES = Object.freeze({
+        open: Object.freeze({ from: 520, to: 660, gain: 0.018, duration: 0.070, haptic: 6 }),
+        close: Object.freeze({ from: 420, to: 330, gain: 0.014, duration: 0.060, haptic: 4 }),
+        tab: Object.freeze({ from: 470, to: 545, gain: 0.012, duration: 0.052, haptic: 4 }),
+        swipe: Object.freeze({ from: 450, to: 600, gain: 0.015, duration: 0.058, haptic: 5 }),
+        details: Object.freeze({ from: 500, to: 640, gain: 0.016, duration: 0.064, haptic: 5 }),
+        dates: Object.freeze({ from: 575, to: 700, gain: 0.014, duration: 0.060, haptic: 5 }),
+        services: Object.freeze({ from: 390, to: 485, gain: 0.012, duration: 0.052, haptic: 4 }),
+        module: Object.freeze({ from: 540, to: 720, gain: 0.017, duration: 0.070, haptic: 6 }),
+        book: Object.freeze({ from: 610, to: 820, gain: 0.020, duration: 0.082, haptic: 8 })
+    });
+    let wilduInteractionFeedbackLastAt = 0;
 
     function wilduCanPlayCardInteractionFeedback() {
         try {
@@ -42932,13 +42953,13 @@ async function loadWilduAudioBuffer(url) {
     function wilduPlayCardInteractionFeedback(kind) {
         const nowMs = Date.now();
         if (!wilduCanPlayCardInteractionFeedback() ||
-            nowMs - wilduCardFeedbackLastAt < WILDU_CARD_FEEDBACK_MIN_INTERVAL_MS) {
+            nowMs - wilduInteractionFeedbackLastAt < WILDU_INTERACTION_FEEDBACK_MIN_INTERVAL_MS) {
             return false;
         }
 
         const ctx = getWildAudioContext();
         if (!ctx || ctx.state === 'closed') return false;
-        wilduCardFeedbackLastAt = nowMs;
+        wilduInteractionFeedbackLastAt = nowMs;
 
         try {
             if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
@@ -42946,15 +42967,15 @@ async function loadWilduAudioBuffer(url) {
             }
 
             const startAt = ctx.currentTime;
-            const isOpen = String(kind || '') === 'open';
+            const profile = WILDU_INTERACTION_FEEDBACK_PROFILES[String(kind || '')] || WILDU_INTERACTION_FEEDBACK_PROFILES.open;
             const oscillator = ctx.createOscillator();
             const gain = ctx.createGain();
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(isOpen ? 520 : 420, startAt);
-            oscillator.frequency.exponentialRampToValueAtTime(isOpen ? 660 : 330, startAt + 0.052);
+            oscillator.frequency.setValueAtTime(profile.from, startAt);
+            oscillator.frequency.exponentialRampToValueAtTime(profile.to, startAt + Math.max(0.04, profile.duration - 0.014));
             gain.gain.setValueAtTime(0.0001, startAt);
-            gain.gain.exponentialRampToValueAtTime(0.018, startAt + 0.008);
-            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.064);
+            gain.gain.exponentialRampToValueAtTime(profile.gain, startAt + 0.008);
+            gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.016, profile.duration - 0.006));
             oscillator.connect(gain);
             gain.connect(ctx.destination);
             oscillator.onended = function () {
@@ -42962,7 +42983,7 @@ async function loadWilduAudioBuffer(url) {
                 try { gain.disconnect(); } catch (e) {}
             };
             oscillator.start(startAt);
-            oscillator.stop(startAt + 0.07);
+            oscillator.stop(startAt + profile.duration);
         } catch (e) {
             return false;
         }
@@ -42970,7 +42991,7 @@ async function loadWilduAudioBuffer(url) {
         // iOS PWA non espone un'API aptica web affidabile: Android/browser compatibili
         // ricevono un singolo impulso brevissimo; altrove il comportamento resta audio-only.
         try {
-            if (typeof navigator.vibrate === 'function') navigator.vibrate(kind === 'open' ? 6 : 4);
+            if (typeof navigator.vibrate === 'function') navigator.vibrate(profile.haptic);
         } catch (e) {}
         return true;
     }
@@ -42984,7 +43005,9 @@ async function loadWilduAudioBuffer(url) {
             '.wildu-soft-card',
             '.amazon-card',
             '.wildu-travelhub-card',
-            '.wildu-reward-card'
+            '.wildu-reward-card',
+            '.card[onclick]',
+            '.card[role="button"]'
         ].join(',');
         const closeSelector = [
             '#od-details-card > button[aria-label="Chiudi scheda"]',
@@ -42995,11 +43018,55 @@ async function loadWilduAudioBuffer(url) {
             '#wildu-date-options-modal .wildu-soft-bottom-close-btn',
             '#amazon-detail-overlay .btn-amazon-back'
         ].join(',');
+        const detailsSelector = '.wildu-adventure-details-btn';
+        const datesSelector = '.wildu-card-date-action,#od-modal-date-options';
+        const servicesSelector = '#trip-modal-services-details > summary';
+        const moduleSelector = '.wildu-reward-card[data-wildu-module-launcher="1"]';
+        const tabSelector = [
+            '#btn-events',
+            '#btn-free',
+            '#btn-ondemand',
+            '#btn-rewards',
+            '#btn-profile',
+            '#btn-negozio',
+            '#btn-travel-hub',
+            '.wildu-travel-nav-choice',
+            '.wildu-rewards-travel-link'
+        ].join(',');
 
         document.addEventListener('click', function (evt) {
             if (!evt || evt.isTrusted !== true || !evt.target || typeof evt.target.closest !== 'function') return;
-            if (evt.target.closest(closeSelector)) {
+            const control = evt.target.closest('button,[role="button"],a');
+            const closeLabel = control && typeof control.getAttribute === 'function'
+                ? String(control.getAttribute('aria-label') || '').toLowerCase()
+                : '';
+            const controlText = control ? String(control.textContent || '').trim().toLowerCase() : '';
+            if (evt.target.closest(closeSelector) || closeLabel.indexOf('chiudi') === 0 || /^(chiudi|no grazie)\b/.test(controlText)) {
                 wilduPlayCardInteractionFeedback('close');
+                return;
+            }
+            if (control && control.disabled !== true && /\bprenota\b/i.test(String(control.textContent || ''))) {
+                wilduPlayCardInteractionFeedback('book');
+                return;
+            }
+            if (evt.target.closest(datesSelector)) {
+                wilduPlayCardInteractionFeedback('dates');
+                return;
+            }
+            if (evt.target.closest(detailsSelector)) {
+                wilduPlayCardInteractionFeedback('details');
+                return;
+            }
+            if (evt.target.closest(servicesSelector)) {
+                wilduPlayCardInteractionFeedback('services');
+                return;
+            }
+            if (evt.target.closest(moduleSelector)) {
+                wilduPlayCardInteractionFeedback('module');
+                return;
+            }
+            if (evt.target.closest(tabSelector)) {
+                wilduPlayCardInteractionFeedback('tab');
                 return;
             }
             if (evt.target.closest(openSelector)) wilduPlayCardInteractionFeedback('open');

@@ -20,7 +20,7 @@
   function ChildWorldAdapter(options) {
     const settings = options || {};
     this.assetRoot = settings.assetRoot || 'story-world/';
-    this.assetRevision = settings.assetRevision || '20260821.18';
+    this.assetRevision = settings.assetRevision || '20260917.1';
     this.networkCache = settings.networkCache || null;
     this.state = 'idle';
     this.frame = null;
