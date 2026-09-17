@@ -7754,6 +7754,14 @@ const WILDU_FIREBASE = (() => {
             })
             .then(() => {
                 localAuthPersistenceReady = true;
+                try {
+                    if (typeof window.wilduAuthT1ARecordHostState === 'function') {
+                        window.wilduAuthT1ARecordHostState('host-persistence-ready', {
+                            persistenceClass: 'browser-local-explicit',
+                            authState: auth.currentUser ? 'present' : 'absent'
+                        });
+                    }
+                } catch (e) {}
                 return true;
             })
             .catch((error) => {
@@ -15442,6 +15450,14 @@ auth.onAuthStateChanged((user) => {
         source: 'AUTH_LISTENER',
         hasUser: !!user
     });
+    try {
+        if (typeof window.wilduAuthT1ARecordHostState === 'function') {
+            window.wilduAuthT1ARecordHostState('host-auth-state', {
+                authState: user ? 'present' : 'absent',
+                persistenceClass: 'browser-local-explicit'
+            });
+        }
+    } catch (e) {}
     handleClientAuthStateChanged(user, 'AUTH_LISTENER');
 });
 
@@ -16857,6 +16873,16 @@ function logout() {
     profileCompletionRequired = false;
     lastBackendVerifiedUid = '';
 
+    // T1A: registra prima della pulizia, senza attendere ne' modificare logout.
+    try {
+        if (typeof window.wilduAuthT1ARecordHostState === 'function') {
+            window.wilduAuthT1ARecordHostState('logout-entry', {
+                authState: auth.currentUser ? 'present' : 'absent',
+                persistenceClass: 'browser-local-explicit'
+            });
+        }
+    } catch (e) {}
+
     // 1. PULIZIA NUCLEARE DELLO STORAGE (Nessun residuo tra profili)
     localStorage.clear();
     sessionStorage.clear();
@@ -16987,7 +17013,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.90';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.91';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -18491,6 +18517,9 @@ const WilduIOSBlackBox = (() => {
             },
             generatedAt: new Date().toISOString(),
             blackboxPlan: 'ios-causal-trace-v9-bounded-three-document-timeline',
+            authGameExitTrace: typeof window.wilduAuthT1AGetSnapshot === 'function'
+                ? window.wilduAuthT1AGetSnapshot()
+                : { status: 'not-installed' },
             swResourcePolicy: Object.assign({}, swResourcePolicy),
             causalTimeline: Array.isArray(state.causalTimeline) ? state.causalTimeline : [],
             causalTimelinePolicy: { documents: 3, bucketsPerDocument: 64, priorDocumentBuckets: 32, totalBuckets: 128, bucketMs: 2000,
@@ -18588,6 +18617,7 @@ const WilduIOSBlackBox = (() => {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(text);
                 notify('Log tecnico copiato.');
+                try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
                 return true;
             }
         } catch (e) {}
@@ -18748,13 +18778,17 @@ const WilduIOSBlackBox = (() => {
     async function shareReport() {
         const text = getReportText();
         const fileName = buildReportFileName('wildu-ios-blackbox');
-        if (await shareReportFiles(text, fileName, false)) return true;
+        if (await shareReportFiles(text, fileName, false)) {
+            try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
+            return true;
+        }
         try {
             if (navigator.share && text.length <= 120000) {
                 await navigator.share({
                     title: 'Wild-U log tecnico iOS',
                     text
                 });
+                try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
                 return true;
             }
         } catch (e) {}
@@ -18816,12 +18850,19 @@ const WilduIOSBlackBox = (() => {
         const downloadUrl = await publishReportDownloadText(text, fileName);
         if (downloadUrl && openReportDownloadUrl(downloadUrl, fileName, reservedWindow)) {
             notify('File .txt pronto. Se iOS non lo salva in Download, usa Condividi > Salva su File.');
+            try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
             return true;
         }
         closeReservedReportWindow(reservedWindow);
         if (isLikelyIOS()) {
-            if (await shareReportFiles(text, fileName, false)) return true;
-            if (await shareReportFiles(text, fileName, true)) return true;
+            if (await shareReportFiles(text, fileName, false)) {
+                try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
+                return true;
+            }
+            if (await shareReportFiles(text, fileName, true)) {
+                try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
+                return true;
+            }
             openPanel();
             notify('Condivisione file non disponibile: report mostrato nel pannello.');
             return false;
@@ -18829,6 +18870,7 @@ const WilduIOSBlackBox = (() => {
         const useChunks = text.length > WILDU_IOS_BLACKBOX_DOWNLOAD_CHUNK_CHARS;
         if (!useChunks && triggerReportTextDownload(text, fileName)) {
             notify('Download report avviato.');
+            try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
             return true;
         }
         const parts = buildReportDownloadParts(text, fileName);
@@ -18838,6 +18880,7 @@ const WilduIOSBlackBox = (() => {
         });
         if (started > 0) {
             notify(parts.length > 1 ? 'Download report avviato in ' + parts.length + ' parti.' : 'Download report avviato.');
+            try { window.wilduAuthT1AConsumeAfterExport(); } catch (e) {}
             return true;
         }
         if (await shareReportFiles(text, fileName, false)) return true;
@@ -19030,6 +19073,177 @@ const WilduIOSBlackBox = (() => {
 })();
 
 window.WilduIOSBlackBox = WilduIOSBlackBox;
+
+// =========================================================
+// WILDU T1A — auth/game boundary trace (diagnostica temporanea)
+// =========================================================
+// Questo anello e' intenzionalmente separato dalla logica auth: raccoglie un
+// massimo di 24 fasi enum gia' armate dalla Blackbox e le conserva per 30
+// minuti nel suo Cache Storage. Non usa timer, retry, polling, token, UID,
+// cookie, URL, payload o scritture di sessione/auth.
+const WILDU_AUTH_T1A_CACHE_PATH = '__wildu-ios-blackbox-report/auth-game-trace-t1a-v1';
+const WILDU_AUTH_T1A_TTL_MS = 30 * 60 * 1000;
+const WILDU_AUTH_T1A_MAX_EVENTS = 24;
+const WILDU_AUTH_T1A_MAX_CHARS = 16 * 1024;
+
+const WilduAuthGameTraceT1A = (() => {
+    const state = { status: 'pending', createdAt: '', events: [], total: 0, dropped: 0 };
+    let hydrated = false;
+    const allowedPhases = new Set([
+        'host-persistence-ready', 'host-auth-state', 'logout-entry', 'frame-open',
+        'frame-close-requested', 'frame-replaced', 'guard-init', 'guard-allow',
+        'guard-deny', 'guard-error', 'frame-pagehide', 'frame-message', 'storage-change'
+    ]);
+    const allowedValues = new Set([
+        'present', 'absent', 'browser-local-explicit', 'default-unset', 'games',
+        'host-frame', 'launcher', 'host-close', 'secure-game', 'game-frame',
+        'active-frame', 'stale-or-other-frame', 'local-session', 'local-bridge',
+        'firestore-ticket', 'no-launch', 'offline', 'no-auth', 'ticket-missing',
+        'wrong-user', 'bad-source', 'wrong-kind', 'wrong-target', 'expired',
+        'firestore-denied', 'invalid-ticket', 'pagehide', 'none', 'firebase-auth',
+        'game-bridge', 'game-session', 'storage-clear', 'other'
+    ]);
+
+    function traceUrl() {
+        return new URL(WILDU_AUTH_T1A_CACHE_PATH, window.location.href).toString();
+    }
+
+    function safeEnum(value, fallback) {
+        const normalized = String(value || '').trim().toLowerCase().slice(0, 48);
+        return allowedValues.has(normalized) ? normalized : fallback;
+    }
+
+    function canRecord() {
+        try { return !!(window.WilduIOSBlackBox && window.WilduIOSBlackBox.isEnabled()); } catch (e) { return false; }
+    }
+
+    function compactSnapshot() {
+        return {
+            schema: 'WILDU_AUTH_GAME_TRACE_T1A',
+            status: hydrated ? 'ready' : state.status,
+            createdAt: state.createdAt || '',
+            total: state.total,
+            dropped: state.dropped,
+            events: state.events.slice(-WILDU_AUTH_T1A_MAX_EVENTS)
+        };
+    }
+
+    function persist() {
+        if (!canRecord() || !('caches' in window)) return;
+        const body = JSON.stringify(compactSnapshot());
+        if (body.length > WILDU_AUTH_T1A_MAX_CHARS) return;
+        caches.open(WILDU_IOS_BLACKBOX_REPORT_CACHE)
+            .then((cache) => cache.put(traceUrl(), new Response(body, {
+                headers: { 'Content-Type': 'application/json;charset=utf-8', 'Cache-Control': 'no-store' }
+            })))
+            .catch(() => {});
+    }
+
+    function hydrate() {
+        if (!('caches' in window)) { hydrated = true; state.status = 'unavailable'; return; }
+        caches.open(WILDU_IOS_BLACKBOX_REPORT_CACHE)
+            .then((cache) => cache.match(traceUrl()))
+            .then(async (response) => {
+                if (!response) return null;
+                const raw = await response.text();
+                if (raw.length > WILDU_AUTH_T1A_MAX_CHARS) return null;
+                return JSON.parse(raw);
+            })
+            .then((saved) => {
+                const age = saved && Date.parse(saved.createdAt || '');
+                if (saved && Number.isFinite(age) && Date.now() - age >= 0 && Date.now() - age <= WILDU_AUTH_T1A_TTL_MS && Array.isArray(saved.events)) {
+                    state.createdAt = String(saved.createdAt || '');
+                    state.total = Math.max(0, Number(saved.total) || saved.events.length);
+                    state.dropped = Math.max(0, Number(saved.dropped) || 0);
+                    state.events = saved.events.slice(-WILDU_AUTH_T1A_MAX_EVENTS);
+                    state.status = 'ready';
+                } else {
+                    state.status = 'empty';
+                }
+            })
+            .catch(() => { state.status = 'unavailable'; })
+            .finally(() => { hydrated = true; });
+    }
+
+    function record(phase, details) {
+        if (!canRecord() || !allowedPhases.has(String(phase || ''))) return false;
+        const event = {
+            phase: String(phase),
+            at: new Date().toISOString(),
+            authState: safeEnum(details && details.authState, 'other'),
+            persistenceClass: safeEnum(details && details.persistenceClass, 'other'),
+            surface: safeEnum(details && details.surface, 'other'),
+            frameClass: safeEnum(details && details.frameClass, 'other'),
+            sourceClass: safeEnum(details && details.sourceClass, 'other'),
+            resultClass: safeEnum(details && details.resultClass, 'none'),
+            storageClass: safeEnum(details && details.storageClass, 'other'),
+            activeFrame: details && details.activeFrame === true ? true : false
+        };
+        const nextSize = JSON.stringify(event).length;
+        if (nextSize > 640) { state.dropped += 1; return false; }
+        if (!state.createdAt) state.createdAt = event.at;
+        state.status = 'ready';
+        state.total += 1;
+        state.events.push(event);
+        if (state.events.length > WILDU_AUTH_T1A_MAX_EVENTS) state.events.splice(0, state.events.length - WILDU_AUTH_T1A_MAX_EVENTS);
+        persist();
+        return true;
+    }
+
+    function classifyStorageKey(key) {
+        const value = String(key || '').toLowerCase();
+        if (!value) return 'storage-clear';
+        if (value.indexOf('firebase:authuser') !== -1 || value.indexOf('firebase:host:') !== -1) return 'firebase-auth';
+        if (value.indexOf('wildu_secure_launch_bridge:') !== -1) return 'game-bridge';
+        if (value.indexOf('wildu_secure_session_game:') !== -1) return 'game-session';
+        return 'other';
+    }
+
+    window.addEventListener('storage', function (event) {
+        const storageClass = classifyStorageKey(event && event.key);
+        if (storageClass === 'other') return;
+        record('storage-change', { storageClass: storageClass, sourceClass: 'storage-event' });
+    });
+
+    function consumeAfterExport() {
+        if (!('caches' in window)) return;
+        state.events = [];
+        state.total = 0;
+        state.dropped = 0;
+        state.createdAt = '';
+        state.status = 'consumed';
+        caches.open(WILDU_IOS_BLACKBOX_REPORT_CACHE)
+            .then((cache) => cache.delete(traceUrl()))
+            .catch(() => {});
+    }
+
+    hydrate();
+    return { record, snapshot: compactSnapshot, consumeAfterExport };
+})();
+
+window.wilduAuthT1ARecordHostState = function (phase, details) {
+    try { return WilduAuthGameTraceT1A.record(phase, details || {}); } catch (e) { return false; }
+};
+window.wilduAuthT1ARecordFrameEvent = function (data, context) {
+    try {
+        const raw = data && typeof data === 'object' ? data : {};
+        const meta = context && typeof context === 'object' ? context : {};
+        return WilduAuthGameTraceT1A.record(String(raw.phase || meta.phase || 'frame-message'), {
+            authState: raw.authState,
+            persistenceClass: raw.persistenceClass,
+            frameClass: raw.frameClass,
+            sourceClass: meta.sourceClass || raw.sourceClass,
+            resultClass: raw.resultClass,
+            activeFrame: meta.activeFrame === true
+        });
+    } catch (e) { return false; }
+};
+window.wilduAuthT1AGetSnapshot = function () {
+    try { return WilduAuthGameTraceT1A.snapshot(); } catch (e) { return { status: 'unavailable' }; }
+};
+window.wilduAuthT1AConsumeAfterExport = function () {
+    try { WilduAuthGameTraceT1A.consumeAfterExport(); } catch (e) {}
+};
 
 function wilduIOSBlackBoxRecord(event, details) {
     try { return WilduIOSBlackBox.record(event, details || {}); } catch (e) { return false; }

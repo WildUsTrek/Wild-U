@@ -37,6 +37,39 @@ const WILDU_SECURE_GAME_SESSION_PREFIX = "wildu_secure_session_game:";
 const WILDU_DEFAULT_SESSION_MS = 11 * 60 * 60 * 1000; // 11 ore
 const WILDU_DEFAULT_ALLOWED_KIND = "secure_iframe";
 const WILDU_SOURCE = "wild-u-client";
+// T1A e' solo osservazione diagnostica a durata limitata. Non legge o invia
+// credenziali, ticket, UID, URL o contenuti di storage: il parent conserva
+// esclusivamente fasi enum e le include nel report Blackbox se gia armata.
+const WILDU_AUTH_T1A_TRACE_TYPE = "WILDU_AUTH_T1A_TRACE";
+let wilduAuthT1APagehideBound = false;
+
+function emitWilduAuthT1ATrace(phase, details = {}) {
+  try {
+    if (!window.parent || window.parent === window) return false;
+    const parentBlackbox = window.parent.WilduIOSBlackBox;
+    if (!parentBlackbox || typeof parentBlackbox.isEnabled !== "function" || !parentBlackbox.isEnabled()) return false;
+    window.parent.postMessage({
+      type: WILDU_AUTH_T1A_TRACE_TYPE,
+      phase: safeString(phase).slice(0, 48),
+      frameClass: "secure-game",
+      authState: auth && auth.currentUser ? "present" : "absent",
+      persistenceClass: "default-unset",
+      sourceClass: safeString(details.sourceClass || "game-frame").slice(0, 32),
+      resultClass: safeString(details.resultClass || "none").slice(0, 32)
+    }, window.location.origin);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function bindWilduAuthT1APagehideTrace() {
+  if (wilduAuthT1APagehideBound) return;
+  wilduAuthT1APagehideBound = true;
+  window.addEventListener("pagehide", function () {
+    emitWilduAuthT1ATrace("frame-pagehide", { resultClass: "pagehide" });
+  }, { once: true });
+}
 
 function now() {
   return Date.now();
@@ -378,6 +411,9 @@ export async function guardWilduGame(options = {}) {
   const sessionMs = Number(options.sessionMs || WILDU_DEFAULT_SESSION_MS);
   const debug = options.debug === true || new URLSearchParams(window.location.search || "").get("guardDebug") === "1";
 
+  bindWilduAuthT1APagehideTrace();
+  emitWilduAuthT1ATrace("guard-init");
+
   if (!targetKey) {
     blockAndThrow("WRONG_TARGET", "Target gioco mancante.", options);
   }
@@ -392,6 +428,7 @@ export async function guardWilduGame(options = {}) {
   const savedSession = readGameSession(targetKey);
   if (savedSession) {
     removeLaunchParamFromUrl();
+    emitWilduAuthT1ATrace("guard-allow", { resultClass: "local-session" });
     debugLog(debug, "ALLOW_SESSION", savedSession);
     return {
       ok: true,
@@ -405,6 +442,7 @@ export async function guardWilduGame(options = {}) {
   const launchId = getLaunchIdFromUrl();
 
   if (!launchId) {
+    emitWilduAuthT1ATrace("guard-deny", { resultClass: "no-launch" });
     debugLog(debug, "DENY_NO_LAUNCH", { targetKey });
     blockAndThrow("NO_LAUNCH", "", options);
   }
@@ -421,6 +459,7 @@ export async function guardWilduGame(options = {}) {
 
     clearLaunchBridge(launchId);
     removeLaunchParamFromUrl();
+    emitWilduAuthT1ATrace("guard-allow", { resultClass: "local-bridge" });
 
     debugLog(debug, "ALLOW_BRIDGE", {
       launchId,
@@ -438,6 +477,7 @@ export async function guardWilduGame(options = {}) {
 
   // 4) Fallback forte: Auth + Firestore.
   if (!navigator.onLine) {
+    emitWilduAuthT1ATrace("guard-deny", { resultClass: "offline" });
     debugLog(debug, "DENY_OFFLINE_NO_BRIDGE", { targetKey, launchId });
     blockAndThrow("OFFLINE", "", options);
   }
@@ -445,6 +485,7 @@ export async function guardWilduGame(options = {}) {
   const user = await waitForAuthUser(Number(options.authTimeoutMs || 7000));
 
   if (!user || !user.uid) {
+    emitWilduAuthT1ATrace("guard-deny", { resultClass: "no-auth" });
     debugLog(debug, "DENY_NO_AUTH", { targetKey, launchId });
     blockAndThrow("NO_AUTH", "", options);
   }
@@ -455,6 +496,7 @@ export async function guardWilduGame(options = {}) {
 
     if (!snap.exists()) {
       clearGameSession(targetKey);
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "ticket-missing" });
       debugLog(debug, "DENY_TICKET_MISSING", { targetKey, launchId });
       blockAndThrow("INVALID_TICKET", "", options);
     }
@@ -466,6 +508,7 @@ export async function guardWilduGame(options = {}) {
 
     if (safeString(data.uid) !== user.uid) {
       clearGameSession(targetKey);
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "wrong-user" });
       debugLog(debug, "DENY_WRONG_USER", {
         ticketUid: data.uid || "",
         authUid: user.uid
@@ -475,12 +518,14 @@ export async function guardWilduGame(options = {}) {
 
     if (safeString(data.source) !== WILDU_SOURCE) {
       clearGameSession(targetKey);
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "bad-source" });
       debugLog(debug, "DENY_BAD_SOURCE", { source: data.source || "" });
       blockAndThrow("INVALID_TICKET", "", options);
     }
 
     if (!allowedKinds.includes(ticketKind)) {
       clearGameSession(targetKey);
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "wrong-kind" });
       debugLog(debug, "DENY_WRONG_KIND", {
         ticketKind,
         allowedKinds
@@ -490,6 +535,7 @@ export async function guardWilduGame(options = {}) {
 
     if (ticketTargetKey !== targetKey) {
       clearGameSession(targetKey);
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "wrong-target" });
       console.warn("[Wildu Game Guard] WRONG_TARGET", {
         rawTargetKey: data.targetKey || "",
         rawTargetUrl: data.targetUrl || "",
@@ -501,6 +547,7 @@ export async function guardWilduGame(options = {}) {
 
     if (!expiresAt || expiresAt <= now()) {
       clearGameSession(targetKey);
+      emitWilduAuthT1ATrace("guard-deny", { resultClass: "expired" });
       debugLog(debug, "DENY_EXPIRED", { expiresAt });
       blockAndThrow("INVALID_TICKET", "Ticket scaduto.", options);
     }
@@ -513,6 +560,7 @@ export async function guardWilduGame(options = {}) {
 
     clearLaunchBridge(launchId);
     removeLaunchParamFromUrl();
+    emitWilduAuthT1ATrace("guard-allow", { resultClass: "firestore-ticket" });
 
     debugLog(debug, "ALLOW_FIRESTORE", {
       targetKey,
@@ -531,9 +579,9 @@ export async function guardWilduGame(options = {}) {
       throw e;
     }
 
-    clearGameSession(targetKey);
-
     const code = safeString(e && e.code).toLowerCase();
+    clearGameSession(targetKey);
+    emitWilduAuthT1ATrace("guard-error", { resultClass: code.includes("permission-denied") ? "firestore-denied" : "invalid-ticket" });
 
     console.error("[Wildu Game Guard] denied:", e);
 

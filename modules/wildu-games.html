@@ -856,6 +856,13 @@
         scheduleFrameChromeHide();
         frameEl.setAttribute("title", game.title || "Gioco Wildu");
         frameEl.setAttribute("src", url);
+        try {
+            if (typeof window.wilduAuthT1ARecordHostState === "function") {
+                window.wilduAuthT1ARecordHostState("frame-open", {
+                    surface: "games", frameClass: "host-frame", sourceClass: "launcher"
+                });
+            }
+        } catch (_) {}
 
         try {
             frameEl.focus();
@@ -930,6 +937,14 @@
     function closeGameFrame() {
         if (!overlayEl || !frameEl) return;
 
+        try {
+            if (typeof window.wilduAuthT1ARecordHostState === "function") {
+                window.wilduAuthT1ARecordHostState("frame-close-requested", {
+                    surface: "games", frameClass: "host-frame", sourceClass: "host-close"
+                });
+            }
+        } catch (_) {}
+
         overlayEl.style.display = "none";
         overlayEl.setAttribute("aria-hidden", "true");
 
@@ -943,6 +958,14 @@
         cleanFrameEl.setAttribute("src", "about:blank");
         previousFrameEl.replaceWith(cleanFrameEl);
         frameEl = cleanFrameEl;
+
+        try {
+            if (typeof window.wilduAuthT1ARecordHostState === "function") {
+                window.wilduAuthT1ARecordHostState("frame-replaced", {
+                    surface: "games", frameClass: "host-frame", sourceClass: "host-close"
+                });
+            }
+        } catch (_) {}
 
         document.body.style.overflow = previousBodyOverflow;
         document.documentElement.style.overflow = previousHtmlOverflow;
@@ -966,6 +989,20 @@
 
             const data = event && event.data;
             if (!data || typeof data !== "object") return;
+
+            if (data.type === "WILDU_AUTH_T1A_TRACE") {
+                const activeFrame = !!(frameEl && event.source === frameEl.contentWindow);
+                try {
+                    if (typeof window.wilduAuthT1ARecordFrameEvent === "function") {
+                        window.wilduAuthT1ARecordFrameEvent(data, {
+                            phase: "frame-message",
+                            sourceClass: activeFrame ? "active-frame" : "stale-or-other-frame",
+                            activeFrame: activeFrame
+                        });
+                    }
+                } catch (_) {}
+                return;
+            }
 
             if (data.type === "WILDU_GAME_CLOSE_REQUEST") {
                 closeGameFrame();
