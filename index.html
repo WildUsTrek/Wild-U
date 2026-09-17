@@ -17013,7 +17013,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.94';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.95';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -26173,6 +26173,10 @@ const WILDU_IOS_OWNER_GUARD_MIN_RETRY_MS = 420;
 const WILDU_IOS_OWNER_GUARD_MAX_RETRY_MS = 6500;
 
 function wilduGetSoftModalInputGuardRemainingMs() {
+    // La quarantena e' una protezione della PWA iOS standalone: lasciarla
+    // attiva su desktop/Android rendeva ogni handoff popup -> dettaglio
+    // artificialmente lento pur senza portare alcun beneficio di sicurezza.
+    if (!wilduShouldUseIOSSurfaceTransitionGuard()) return 0;
     return Math.max(0, Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.inputGuardUntil || 0) - Date.now());
 }
 
@@ -26181,6 +26185,7 @@ function wilduIsSoftModalInputGuardActive() {
 }
 
 function wilduStartSoftModalInputGuard(reason, durationMs) {
+    if (!wilduShouldUseIOSSurfaceTransitionGuard()) return false;
     const duration = Math.max(180, Math.min(1200, Number(durationMs || 0) || WILDU_SOFT_MODAL_INPUT_GUARD_MS));
     WILDU_SOFT_MODAL_FLOW_RUNTIME.inputGuardUntil = Math.max(
         Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.inputGuardUntil || 0),
@@ -27562,9 +27567,14 @@ function wilduScheduleSoftModalResourceCleanup(modal, list, surface, source, pre
         } catch (e) {}
     }
 
-    if (!isIOS) {
+    // Quando l'utente ha scelto una card del popup, i suoi src possono essere
+    // rilasciati subito: il DOM iOS resta invece quarantinato/prunable come
+    // prima. Evitiamo quindi che un'intenzione esplicita resti bloccata per
+    // l'intero ciclo di batch, senza riaprire immagini o bypassare token.
+    const immediateDetailHandoff = isIOS && cleanSource === 'soft_card_detail';
+    if (!isIOS || immediateDetailHandoff) {
         const released = wilduReleaseSoftModalImagesImmediate(list, cleanupReason);
-        finishCleanup(released, 'non_ios_immediate');
+        finishCleanup(released, immediateDetailHandoff ? 'ios_detail_handoff_immediate_release' : 'non_ios_immediate');
         return released;
     }
 
@@ -27747,7 +27757,16 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
     const intendedTab = currentTab;
     const detailGeneration = WILDU_DETAIL_RUNTIME.generation;
     const travelGeneration = WILDU_IOS_IMAGE_MEMORY_RUNTIME.travelTabTransitionGeneration;
-    const baseDelay = WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_DELAY_MS + Math.min(520, wilduGetSoftModalInputGuardRemainingMs());
+    const iosHandoff = wilduShouldUseIOSSurfaceTransitionGuard();
+    const selectedSoftCard = String(source || '') === 'soft_card_detail';
+    // Fuori dalla PWA iOS basta il frame successivo al close visivo. Su iOS
+    // conserviamo la barriera, ma la card selezionata non paga un secondo
+    // ritardo fisso dopo che le sue immagini sono gia' state rilasciate.
+    const baseDelay = !iosHandoff
+        ? 0
+        : (selectedSoftCard
+            ? Math.max(120, Math.min(600, wilduGetSoftModalInputGuardRemainingMs() + 40))
+            : WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_DELAY_MS + Math.min(520, wilduGetSoftModalInputGuardRemainingMs()));
 
     function getOpenGuard(attempt) {
         if (token !== WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseToken) {
@@ -27763,8 +27782,10 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
         if (wilduAnySoftModalVisible()) {
             return { blocked: true, guard: 'soft_modal_still_visible', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
         }
-        const admissionGuard = wilduGetDetailOpenResourceAdmissionGuard('post_close:' + key);
-        if (admissionGuard.blocked) return admissionGuard;
+        if (iosHandoff) {
+            const admissionGuard = wilduGetDetailOpenResourceAdmissionGuard('post_close:' + key);
+            if (admissionGuard.blocked) return admissionGuard;
+        }
         const inputGuard = wilduGetSoftModalInputGuardRemainingMs();
         if (inputGuard > 0) {
             return { blocked: true, guard: 'soft_modal_input_guard', retryMs: Math.max(WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS, inputGuard + 80) };
@@ -27885,6 +27906,7 @@ function wilduCancelScheduledDetailOpen() {
 }
 
 function wilduGetDetailOpenResourceAdmissionGuard(reason) {
+    if (!wilduShouldUseIOSSurfaceTransitionGuard()) return { blocked: false };
     if (Number(WILDU_SOFT_MODAL_FLOW_RUNTIME.cleanupPending || 0) > 0) {
         return { blocked: true, guard: 'soft_modal_cleanup_pending', retryMs: WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS };
     }
@@ -43034,6 +43056,9 @@ async function loadWilduAudioBuffer(url) {
             '.wildu-rewards-travel-link'
         ].join(',');
 
+        // Gli handler storici dei controlli modal chiamano stopPropagation.
+        // In capture intercettiamo il solo intent utente prima di quel cleanup,
+        // senza alterare handler, close, navigazione o semantica del click.
         document.addEventListener('click', function (evt) {
             if (!evt || evt.isTrusted !== true || !evt.target || typeof evt.target.closest !== 'function') return;
             const control = evt.target.closest('button,[role="button"],a');
@@ -43070,7 +43095,7 @@ async function loadWilduAudioBuffer(url) {
                 return;
             }
             if (evt.target.closest(openSelector)) wilduPlayCardInteractionFeedback('open');
-        });
+        }, true);
     }
 
 
