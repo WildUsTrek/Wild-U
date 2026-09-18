@@ -17080,7 +17080,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.101';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.102';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -33567,23 +33567,33 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
             detail: ownerGuard.detail || null
         };
     }
+    // The visible-card override already exists below for a hard decoded-memory
+    // preflight.  Keep that exact cap here too: a failed reduced variant must
+    // not be parked forever merely because its original fallback is checked
+    // before the visible admission.  This remains a single canonical request
+    // and still releases far images before admitting anything.
+    let visiblePriority = false;
+    let hydratedInWindow = 0;
+    try {
+        visiblePriority = wilduGetSoftModalHydrationWindow(list).indexOf(img) >= 0;
+        hydratedInWindow = wilduCountSoftModalHydratedImages(list);
+    } catch (e) {}
+    const visibleFallbackAdmission = visiblePriority &&
+        hydratedInWindow < Math.min(3, wilduGetSoftModalImageHydrationLimit());
     if (img.dataset.wilduSoftImageUseOriginal === '1' &&
         wilduGetSoftModalApproxDecodedMiB() > WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB) {
         if (typeof wilduReleaseIOSImagesOutsideActiveWindow === 'function') wilduReleaseIOSImagesOutsideActiveWindow('soft_modal_original_preflight');
-        if (wilduGetSoftModalApproxDecodedMiB() > WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB)
+        if (wilduGetSoftModalApproxDecodedMiB() > WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB && !visibleFallbackAdmission)
             return { allowed: false, guard: 'original_fallback_budget', retryMs: WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS };
     }
-    try {
-        const visiblePriority = wilduGetSoftModalHydrationWindow(list).indexOf(img) >= 0;
-        const hydratedNow = wilduCountSoftModalHydratedImages(list);
-        if (visiblePriority && hydratedNow < Math.min(3, wilduGetSoftModalImageHydrationLimit())) {
-            return {
-                allowed: true,
-                approxDecodedMiB: wilduGetSoftModalApproxDecodedMiB(),
-                visiblePriority: true
-            };
-        }
-    } catch (e) {}
+    if (visibleFallbackAdmission) {
+        return {
+            allowed: true,
+            approxDecodedMiB: wilduGetSoftModalApproxDecodedMiB(),
+            visiblePriority: true,
+            visibleOriginalFallback: img.dataset.wilduSoftImageUseOriginal === '1'
+        };
+    }
     try {
         const restartRisk = typeof wilduGetRecentIOSDocumentRestartForSmartImages === 'function'
             ? wilduGetRecentIOSDocumentRestartForSmartImages()
@@ -33615,8 +33625,7 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
         } catch (e) {}
     }
     if (approxDecodedMiB > WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB) {
-        const inWindow = wilduGetSoftModalHydrationWindow(list).indexOf(img) >= 0;
-        if (inWindow && wilduCountSoftModalHydratedImages(list) < Math.min(3, wilduGetSoftModalImageHydrationLimit())) {
+        if (visiblePriority && hydratedInWindow < Math.min(3, wilduGetSoftModalImageHydrationLimit())) {
             return {
                 allowed: true,
                 approxDecodedMiB,
