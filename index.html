@@ -17080,7 +17080,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.98';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.100';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21201,16 +21201,23 @@ async function ensureFreshShellVersion() {
     }
 
     if (hasRecentShellReloadLock(remoteVersion, embeddedVersion)) {
-        pageDebug('SHELL_RELOAD_LOCK_ACTIVE', {
+        // A reload has already been requested for this exact document/version
+        // pair.  If WebKit serves the old executable again, blocking bootstrap
+        // here makes a transient cache mismatch an unusable five-minute screen.
+        // Keep the anti-loop lock, but let the current document run and retry
+        // only from a later, fresh navigation.
+        pageDebug('SHELL_RELOAD_LOCK_FAIL_OPEN', {
             oldVersion: meta.version,
             embeddedVersion: embeddedVersion || null,
             newVersion: remoteVersion
         });
-        showWilduGlobalCacheOverlay(
-            'Aggiornamento app in corso',
-            'La nuova versione e\' in caricamento. Non chiudere questa schermata.'
-        );
-        throw new Error('SHELL_REFRESH_PENDING');
+        try {
+            wilduIOSBlackBoxRecord('shell_reload_lock_fail_open', {
+                embeddedVersion: embeddedVersion || null,
+                remoteVersion: remoteVersion || null
+            });
+        } catch (e) {}
+        return true;
     }
 
     pageDebug('SHELL_VERSION_CHANGED', {
