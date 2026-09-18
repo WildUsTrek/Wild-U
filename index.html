@@ -34016,6 +34016,21 @@ function wilduGetSoftModalVisibleHydrationDebt(list) {
     }) || null;
 }
 
+function wilduGetSoftModalVisibleDebtProgress(list, debt, generation, now) {
+    if (!list || !debt || !wilduIsSoftModalGenerationCurrent(list, generation)) return null;
+    const request = debt.__wilduImageRequest;
+    if (request && Number(request.generation || 0) === Number(generation || 0)) {
+        return 'debt_request';
+    }
+    const scheduledAt = Number(list.__wilduSoftImageScheduledAt || 0);
+    const scheduledForDebt = list.__wilduSoftImageScheduledImage === debt &&
+        String(list.__wilduSoftImageScheduledGeneration || '') === String(generation || '');
+    if (scheduledForDebt && scheduledAt > 0 && now - scheduledAt <= 2000) {
+        return 'debt_timer';
+    }
+    return null;
+}
+
 function wilduEnsureSoftModalVisibleHydrationLiveness(list, reason) {
     if (!wilduShouldUseSoftModalImageGuard() || !list || !list.isConnected) return false;
     const generation = wilduGetSoftModalGenerationForList(list);
@@ -34032,12 +34047,6 @@ function wilduEnsureSoftModalVisibleHydrationLiveness(list, reason) {
             !modal.classList.contains('is-visible')) return;
         const debt = wilduGetSoftModalVisibleHydrationDebt(list);
         const now = Date.now();
-        const hydratingAge = now - Number(list.__wilduSoftImageHydratingSince || 0);
-        const activeScheduler = !!list.__wilduSoftImageHydrationRaf ||
-            !!list.__wilduSoftImageHydrationTimer ||
-            Number(list.__wilduSoftImageRetryUntil || 0) > now ||
-            (!!list.__wilduSoftImageHydrating && hydratingAge <= 2000) ||
-            !!(debt && debt.__wilduImageRequest);
         if (!debt) {
             try {
                 wilduIOSBlackBoxRecord('soft_modal_visible_rearm_terminal', {
@@ -34048,16 +34057,44 @@ function wilduEnsureSoftModalVisibleHydrationLiveness(list, reason) {
             } catch (e) {}
             return;
         }
-        if (activeScheduler) {
+        const progress = wilduGetSoftModalVisibleDebtProgress(list, debt, generation, now);
+        const debtGuard = wilduGetSoftModalImageHydrationGuard(list, debt, 'liveness_preflight');
+        if (progress || !debtGuard.allowed) {
             try {
                 wilduIOSBlackBoxRecord('soft_modal_visible_rearm_parked', {
                     generation,
                     reason: String(reason || '').slice(0, 80),
-                    activeScheduler: true
+                    progress: progress || 'guarded',
+                    guard: debtGuard.allowed ? '' : (debtGuard.guard || 'guarded'),
+                    retryMs: debtGuard.allowed ? 0 : (debtGuard.retryMs || 0)
                 });
             } catch (e) {}
             return;
         }
+        // A timer/RAF for another card is not progress for this visible debt.
+        // Retire only this list's stale scheduling state, then re-enter the
+        // canonical scheduler once for the same generation.
+        const preempted = {
+            raf: !!list.__wilduSoftImageHydrationRaf,
+            timer: !!list.__wilduSoftImageHydrationTimer,
+            hydrating: !!list.__wilduSoftImageHydrating,
+            retryUntil: Number(list.__wilduSoftImageRetryUntil || 0) > now,
+            scheduledForDebt: list.__wilduSoftImageScheduledImage === debt
+        };
+        if (list.__wilduSoftImageHydrationRaf) {
+            try { cancelAnimationFrame(list.__wilduSoftImageHydrationRaf); } catch (e) {}
+        }
+        if (list.__wilduSoftImageHydrationTimer) {
+            try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
+        }
+        list.__wilduSoftImageHydrationRaf = 0;
+        list.__wilduSoftImageHydrationTimer = 0;
+        list.__wilduSoftImageHydrating = false;
+        list.__wilduSoftImageHydratingSince = 0;
+        list.__wilduSoftImageRetryUntil = 0;
+        list.__wilduSoftImageScheduledImage = null;
+        list.__wilduSoftImageScheduledGeneration = '';
+        list.__wilduSoftImageScheduledAt = 0;
         try {
             wilduIOSBlackBoxRecord('soft_modal_visible_debt_detected', {
                 generation,
@@ -34067,7 +34104,8 @@ function wilduEnsureSoftModalVisibleHydrationLiveness(list, reason) {
             });
             wilduIOSBlackBoxRecord('soft_modal_visible_rearm_admitted', {
                 generation,
-                reason: String(reason || '').slice(0, 80)
+                reason: String(reason || '').slice(0, 80),
+                preempted
             });
         } catch (e) {}
         wilduScheduleSoftModalImageHydration(list, 'soft_modal_visible_liveness_rearm');
@@ -34107,6 +34145,9 @@ function wilduCancelSoftModalImageHydration(list) {
     list.__wilduSoftImageHydrating = false;
     list.__wilduSoftImageHydratingSince = 0;
     list.__wilduSoftImageRetryUntil = 0;
+    list.__wilduSoftImageScheduledImage = null;
+    list.__wilduSoftImageScheduledGeneration = '';
+    list.__wilduSoftImageScheduledAt = 0;
     try {
         if (hadTimer || hadRaf || hadLivenessTimer) {
             wilduIOSBlackBoxRecord('soft_modal_image_hydration_cancelled', {
@@ -34328,10 +34369,16 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
         const hydrationDelay = initialVisible ? 32 : wilduGetSoftModalHydrationStepMs();
         list.__wilduSoftImageHydrating = true;
         list.__wilduSoftImageHydratingSince = Date.now();
+        list.__wilduSoftImageScheduledImage = img;
+        list.__wilduSoftImageScheduledGeneration = String(generation || '');
+        list.__wilduSoftImageScheduledAt = list.__wilduSoftImageHydratingSince;
         if (list.__wilduSoftImageHydrationTimer) {
             try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
         }
         list.__wilduSoftImageHydrationTimer = window.setTimeout(function () {
+            list.__wilduSoftImageScheduledImage = null;
+            list.__wilduSoftImageScheduledGeneration = '';
+            list.__wilduSoftImageScheduledAt = 0;
             const timerGuard = wilduGetSoftModalImageHydrationGuard(list, img, 'timer_preflight:' + hydrationReason);
             if (!timerGuard.allowed) {
                 list.__wilduSoftImageHydrationTimer = 0;
