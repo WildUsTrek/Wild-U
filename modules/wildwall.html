@@ -454,6 +454,17 @@
             </div>
         </div>
 
+        <div class="wildwall-shorts-actions">
+            <a
+                id="wildwall-shorts-external"
+                class="wildwall-mini-link"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="display:none"
+            >Apri su YouTube ↗</a>
+        </div>
+
     </section>
 
     <section id="wildwall-preview-section" class="wildwall-gallery-card" aria-label="Carosello foto WildWall">
@@ -514,6 +525,7 @@
     const shortsSection = document.getElementById("wildwall-shorts-section");
     const shortsPlayerHost = document.getElementById("wildwall-shorts-player-host");
     const shortsPlayerEl = document.getElementById("wildwall-shorts-player");
+    const shortsExternalLink = document.getElementById("wildwall-shorts-external");
 
     if (!root || !gridEl || !emptyEl || !countEl) return;
 
@@ -1119,6 +1131,25 @@
         return url.toString();
     }
 
+    function buildShortsExternalUrl(meta) {
+        const videoId = String(meta && meta.videoId || "").trim();
+        if (videoId) return "https://www.youtube.com/watch?v=" + encodeURIComponent(videoId);
+        return "https://www.youtube.com/playlist?list=" + encodeURIComponent(SHORTS_FALLBACK_PLAYLIST_ID);
+    }
+
+    function syncShortsExternalLink(meta) {
+        if (!shortsExternalLink) return;
+        const href = buildShortsExternalUrl(meta);
+        shortsExternalLink.href = href || "#";
+        shortsExternalLink.style.display = href ? "inline-flex" : "none";
+    }
+
+    function resetShortsExternalLink() {
+        if (!shortsExternalLink) return;
+        shortsExternalLink.href = "#";
+        shortsExternalLink.style.display = "none";
+    }
+
     function writeShortsIframe(src, meta) {
         if (!shortsPlayerHost) return;
 
@@ -1129,6 +1160,7 @@
         shortsPlayerHost.dataset.videoId = String(meta && meta.videoId || "");
         shortsPlayerHost.dataset.playlistKey = SHORTS_PLAYLIST_KEY;
         shortsPlayerHost.innerHTML = "";
+        syncShortsExternalLink(meta);
 
         if (shortsEmbedTimer) window.clearTimeout(shortsEmbedTimer);
         shortsEmbedTimer = window.setTimeout(function () {
@@ -1139,6 +1171,7 @@
                     title="${escapeHtml(safeTitle)}"
                     src="${escapeHtml(src)}"
                     loading="eager"
+                    sandbox="allow-scripts allow-presentation"
                     referrerpolicy="strict-origin-when-cross-origin"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowfullscreen
@@ -1383,6 +1416,7 @@
             });
             shortsPlayerHost.innerHTML = "";
         }
+        resetShortsExternalLink();
         wildwallRenderedImages = [];
     }
 
