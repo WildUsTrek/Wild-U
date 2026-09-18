@@ -539,6 +539,12 @@
     let shortsLastRenderAt = 0;
     let shortsVisibilityArmed = true;
     let shortsManifestFetchStarted = false;
+    let shortsEmbedTimer = 0;
+    let shortsIntersectionObserver = null;
+    let shortsMutationObserver = null;
+    let wildwallEscHandler = null;
+    let wildwallVisibilityHandler = null;
+    let wildwallPageShowHandler = null;
 
     function escapeHtml(value) {
         return String(value || "")
@@ -905,17 +911,16 @@
             els.closeBtn.addEventListener("click", closeWildwallPhoto);
         }
 
-        if (!window.__wildwallEscBound) {
-            window.__wildwallEscBound = true;
-
-            document.addEventListener("keydown", function (e) {
+        if (!wildwallEscHandler) {
+            wildwallEscHandler = function (e) {
                 if (e.key === "Escape") {
                     const nowEls = getWildwallPopupEls();
                     if (nowEls.overlay && nowEls.overlay.style.display !== "none") {
                         closeWildwallPhoto();
                     }
                 }
-            });
+            };
+            document.addEventListener("keydown", wildwallEscHandler);
         }
     }
 
@@ -1125,7 +1130,9 @@
         shortsPlayerHost.dataset.playlistKey = SHORTS_PLAYLIST_KEY;
         shortsPlayerHost.innerHTML = "";
 
-        window.setTimeout(function () {
+        if (shortsEmbedTimer) window.clearTimeout(shortsEmbedTimer);
+        shortsEmbedTimer = window.setTimeout(function () {
+            shortsEmbedTimer = 0;
             if (!shortsPlayerHost) return;
             shortsPlayerHost.innerHTML = `
                 <iframe
@@ -1254,7 +1261,7 @@
         }, { passive: true });
 
         try {
-            const observer = new IntersectionObserver(function (entries) {
+            shortsIntersectionObserver = new IntersectionObserver(function (entries) {
                 const visible = entries && entries.some(function (entry) {
                     return entry.isIntersecting && entry.intersectionRatio > 0.25;
                 });
@@ -1266,11 +1273,11 @@
                     shortsVisibilityArmed = true;
                 }
             }, { threshold: [0, 0.25, 0.6] });
-            observer.observe(root);
+            shortsIntersectionObserver.observe(root);
         } catch (e) {}
 
         try {
-            const mutationObserver = new MutationObserver(function () {
+            shortsMutationObserver = new MutationObserver(function () {
                 if (!isWildwallRootVisible()) {
                     shortsVisibilityArmed = true;
                     return;
@@ -1280,22 +1287,24 @@
                     refreshRandomShortsIfAllowed("mutation-visible");
                 }
             });
-            mutationObserver.observe(root, { attributes: true, attributeFilter: ["class", "style", "hidden"] });
+            shortsMutationObserver.observe(root, { attributes: true, attributeFilter: ["class", "style", "hidden"] });
         } catch (e) {}
 
-        document.addEventListener("visibilitychange", function () {
+        wildwallVisibilityHandler = function () {
             if (!document.hidden && isWildwallRootVisible()) {
                 shortsVisibilityArmed = true;
                 refreshRandomShortsIfAllowed("document-visible");
             }
-        });
+        };
+        document.addEventListener("visibilitychange", wildwallVisibilityHandler);
 
-        window.addEventListener("pageshow", function () {
+        wildwallPageShowHandler = function () {
             if (isWildwallRootVisible()) {
                 shortsVisibilityArmed = true;
                 refreshRandomShortsIfAllowed("pageshow");
             }
-        });
+        };
+        window.addEventListener("pageshow", wildwallPageShowHandler);
     }
 
     function renderShortsBlock() {
@@ -1336,6 +1345,49 @@
             shortsManifest: YOUTUBE_MANIFEST_URL,
             shortsPlaylistKey: SHORTS_PLAYLIST_KEY
         });
+    }
+
+    function disposeWildwallModule() {
+        if (shortsEmbedTimer) {
+            window.clearTimeout(shortsEmbedTimer);
+            shortsEmbedTimer = 0;
+        }
+        if (shortsIntersectionObserver) {
+            shortsIntersectionObserver.disconnect();
+            shortsIntersectionObserver = null;
+        }
+        if (shortsMutationObserver) {
+            shortsMutationObserver.disconnect();
+            shortsMutationObserver = null;
+        }
+        if (wildwallEscHandler) {
+            document.removeEventListener("keydown", wildwallEscHandler);
+            wildwallEscHandler = null;
+        }
+        if (wildwallVisibilityHandler) {
+            document.removeEventListener("visibilitychange", wildwallVisibilityHandler);
+            wildwallVisibilityHandler = null;
+        }
+        if (wildwallPageShowHandler) {
+            window.removeEventListener("pageshow", wildwallPageShowHandler);
+            wildwallPageShowHandler = null;
+        }
+        const photoEls = getWildwallPopupEls();
+        if (photoEls.overlay && photoEls.overlay.style.display !== "none") {
+            closeWildwallPhoto();
+        }
+        if (shortsPlayerHost) {
+            shortsPlayerHost.querySelectorAll("iframe").forEach(function (frame) {
+                try { frame.src = "about:blank"; } catch (e) {}
+                try { frame.removeAttribute("src"); } catch (e) {}
+            });
+            shortsPlayerHost.innerHTML = "";
+        }
+        wildwallRenderedImages = [];
+    }
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.registerDispose === "function") {
+        window.WILDU_MODULE.registerDispose("wildwall", disposeWildwallModule);
     }
 
     renderWildWall();

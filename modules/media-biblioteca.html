@@ -682,6 +682,38 @@
     wilduInstallHorizontalVideoObserver();
     wilduScheduleInitialHorizontalVideoRender();
 
+    function disposeWilduBibliotecaModule() {
+        if (WILDU_HORIZONTAL_VIDEO_STATE.renderTimer) {
+            clearTimeout(WILDU_HORIZONTAL_VIDEO_STATE.renderTimer);
+            WILDU_HORIZONTAL_VIDEO_STATE.renderTimer = null;
+        }
+        if (WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer) {
+            clearTimeout(WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer);
+            WILDU_HORIZONTAL_VIDEO_STATE.initialFollowupTimer = null;
+        }
+        if (WILDU_HORIZONTAL_VIDEO_STATE.observer) {
+            WILDU_HORIZONTAL_VIDEO_STATE.observer.disconnect();
+            WILDU_HORIZONTAL_VIDEO_STATE.observer = null;
+        }
+        var moduleRoot = document.getElementById("wildu-biblioteca-module");
+        if (moduleRoot) {
+            moduleRoot.querySelectorAll("iframe").forEach(function (frame) {
+                try { frame.src = "about:blank"; } catch (e) {}
+                try { frame.removeAttribute("src"); } catch (e) {}
+            });
+        }
+        WILDU_HORIZONTAL_VIDEO_STATE.selectedVideo = null;
+        WILDU_HORIZONTAL_VIDEO_STATE.selectedPlaylist = null;
+        WILDU_HORIZONTAL_VIDEO_STATE.manifestPromise = null;
+        WILDU_HORIZONTAL_VIDEO_STATE.rendering = false;
+        WILDU_HORIZONTAL_VIDEO_STATE.lastRenderAt = 0;
+        WILDU_HORIZONTAL_VIDEO_STATE.mounted = false;
+    }
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.registerDispose === "function") {
+        window.WILDU_MODULE.registerDispose("biblioteca", disposeWilduBibliotecaModule);
+    }
+
     if (window.WILDU_MODULE && typeof window.WILDU_MODULE.rewriteRoot === "function") {
         window.WILDU_MODULE.rewriteRoot(document.getElementById("wildu-biblioteca-module"));
     }

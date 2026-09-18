@@ -10902,13 +10902,35 @@ const WilduMediaClient = (() => {
         return "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(videoId) + "?rel=0&modestbranding=1";
     }
 
+    let wilduRewardsVideoFrameGeneration = 0;
+
+    function wilduReplaceRewardsVideoFrame(frame) {
+        if (!frame || !frame.parentNode) return null;
+        const fresh = frame.cloneNode(false);
+        fresh.removeAttribute("src");
+        frame.replaceWith(fresh);
+        return fresh;
+    }
+
+    function wilduRecordRewardsFrameLifecycle(event, generation) {
+        try {
+            const recorder = window.WilduIOSBlackBox;
+            if (!recorder || typeof recorder.record !== "function") return false;
+            return recorder.record(event, { generation: Number(generation || 0) });
+        } catch (e) {
+            return false;
+        }
+    }
+
     function closeWilduRewardsVideoModal() {
         const modal = document.getElementById("wildu-rewards-video-modal");
         const frame = document.getElementById("wildu-rewards-video-frame");
         const title = document.getElementById("wildu-rewards-video-title");
         const external = document.getElementById("wildu-rewards-video-external");
 
-        if (frame) frame.src = "";
+        wilduRewardsVideoFrameGeneration += 1;
+        wilduReplaceRewardsVideoFrame(frame);
+        wilduRecordRewardsFrameLifecycle("rewards_video_frame_replaced", wilduRewardsVideoFrameGeneration);
         if (title) title.textContent = "Video Wild-U";
         if (external) external.href = "#";
         if (modal) modal.style.display = "none";
@@ -10995,18 +11017,21 @@ const WilduMediaClient = (() => {
         const embedUrl = safeString(video.embedUrl) || getWilduRewardsVideoEmbedUrl({ videoId: videoId });
         const watchUrl = safeString(video.watchUrl) || (videoId ? "https://www.youtube.com/watch?v=" + encodeURIComponent(videoId) : "");
 
-        if (!modal || !frame || !embedUrl) {
+        if (!modal || !frame || !frame.isConnected || !embedUrl) {
             if (watchUrl) window.open(watchUrl, "_blank", "noopener");
             return;
         }
 
+        const generation = ++wilduRewardsVideoFrameGeneration;
         if (title) title.textContent = videoTitle;
         if (external) {
             external.href = watchUrl || embedUrl;
             external.style.display = watchUrl ? "inline-flex" : "none";
         }
+        if (generation !== wilduRewardsVideoFrameGeneration) return;
         frame.src = embedUrl;
         modal.style.display = "flex";
+        wilduRecordRewardsFrameLifecycle("rewards_video_frame_opened", generation);
     }
 
     function buildWilduRewardsHorizontalVideoCard(video) {
@@ -17055,7 +17080,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.97';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.98';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -18138,7 +18163,7 @@ const WilduIOSBlackBox = (() => {
 
     function shouldRecordEvent(event) {
         const cleanEvent = String(event || '');
-        if (/^(AUTH_|GOOGLE_AUTH_|GOOGLE_IDENTITY_|FIREBASE_AUTH_|CLIENT_AUTH_|ios_resource_coordinator_job_|amazon_visible_liveness_|amazon_image_hydration_band_budget$|ios_post_surface_visible_liveness_|amazon_visible_lane_guard_bypass$|detail_open_admission_)/.test(cleanEvent)) {
+        if (/^(AUTH_|GOOGLE_AUTH_|GOOGLE_IDENTITY_|FIREBASE_AUTH_|CLIENT_AUTH_|ios_resource_coordinator_job_|amazon_visible_liveness_|amazon_image_hydration_band_budget$|ios_post_surface_visible_liveness_|amazon_visible_lane_guard_bypass$|detail_open_admission_|module_lifecycle_|rewards_video_frame_)/.test(cleanEvent)) {
             return true;
         }
         return [
@@ -18241,6 +18266,7 @@ const WilduIOSBlackBox = (() => {
             'ios_soft_modal_resource_guard_violation',
             'soft_modal_image_hydration_deferred',
             'soft_modal_image_hydration_window',
+            'soft_modal_image_liveness_checkpoint',
             'soft_modal_image_hydration_limit_reached',
             'soft_modal_image_hydration_timer_scheduled',
             'soft_modal_image_hydration_timer_fired',
@@ -18323,7 +18349,7 @@ const WilduIOSBlackBox = (() => {
     }
 
     function shouldKeepCriticalRingEvent(event) {
-        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_resource_coordinator_|ios_post_surface_|ios_surface_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource/i.test(String(event || ''));
+        return /AUTH_|auth_|app_boot_start|pagehide|pageshow|visibilitychange|reload|restart|detail_|related_|dates_|soft_modal_|travel_tab_|ios_resource_coordinator_|ios_post_surface_|ios_surface_|ios_owner_|ios_auth_|ios_post_auth_|ios_active_|ios_critical_|ios_deferred_|catalog_image_|map_iframe_|amazon_|visible_resource|module_lifecycle_|rewards_video_frame_/i.test(String(event || ''));
     }
 
     function shouldSampleFramesForEvent(event) {
@@ -33417,6 +33443,9 @@ const WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 650;
 const WILDU_SOFT_MODAL_IOS_RESTART_HYDRATION_GRACE_MS = 7000;
+// One generation-bound liveness check only. It never assigns a source or starts
+// a second hydrator; at most it re-enters the canonical scheduler below.
+const WILDU_SOFT_MODAL_VISIBLE_LIVENESS_CHECK_MS = 2200;
 const WILDU_IOS_LONG_LIST_INITIAL_VISIBLE_IMAGE_LIMIT = 4;
 
 function wilduShouldDeferInitialTravelListImage(index, targetId) {
@@ -33906,6 +33935,146 @@ function wilduCountSoftModalHydratedImages(list) {
     return list.querySelectorAll('img[data-wildu-soft-image-src][data-wildu-soft-image-hydrated="1"]').length;
 }
 
+function wilduRecordSoftModalImageLivenessCheckpoint(list, reason, windowImages, phase) {
+    if (!list || !list.isConnected) return false;
+    const generation = wilduGetSoftModalGenerationForList(list);
+    if (!generation || !wilduIsSoftModalGenerationCurrent(list, generation)) return false;
+    const now = Date.now();
+    const next = list.__wilduSoftImageLivenessCheckpoint || {};
+    const checkpointPhase = String(phase || 'scheduler_window').slice(0, 40);
+    // Diagnostic only: one compact checkpoint per generation/phase per short window.
+    if (Number(next.generation || 0) === generation && next.phase === checkpointPhase &&
+        now - Number(next.at || 0) < 900) return false;
+    list.__wilduSoftImageLivenessCheckpoint = { generation, phase: checkpointPhase, at: now };
+    const modal = list.closest('.wildu-soft-modal,#wildu-related-modal,#wildu-date-options-modal');
+    const selected = Array.isArray(windowImages) ? windowImages : [];
+    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])'));
+    const cards = Array.from(list.querySelectorAll('.wildu-soft-card'));
+    const describe = function (img) {
+        const card = img && img.closest ? img.closest('.wildu-soft-card') : null;
+        let visible = false;
+        try {
+            const scroller = list.closest('.wildu-soft-modal-card') || list;
+            const viewport = scroller.getBoundingClientRect();
+            const rect = card && card.getBoundingClientRect();
+            visible = !!(rect && rect.bottom >= viewport.top - 4 && rect.top <= viewport.bottom + 4);
+        } catch (e) {}
+        const current = String(img && img.getAttribute && img.getAttribute('src') || '');
+        const deferred = String(img && img.getAttribute && img.getAttribute('data-wildu-soft-image-src') || '');
+        const sourceKind = !current ? 'none' : (current === WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC ? 'placeholder' : (/^https?:/i.test(current) ? 'http' : 'other'));
+        return {
+            slot: Math.max(0, cards.indexOf(card)),
+            visible,
+            sourceKind,
+            deferredKind: /^https?:/i.test(deferred) ? 'http' : (deferred ? 'other' : 'none'),
+            hydrated: String(img && img.getAttribute && img.getAttribute('data-wildu-soft-image-hydrated') || '0'),
+            inFlight: !!(img && img.__wilduImageRequest),
+            retryPending: Number(img && img.dataset && img.dataset.wilduSoftImageRetryAt || 0) > now
+        };
+    };
+    try {
+        wilduIOSBlackBoxRecord('soft_modal_image_liveness_checkpoint', {
+            phase: checkpointPhase,
+            reason: String(reason || '').slice(0, 80),
+            surface: wilduGetSoftModalSurfaceFromModal(modal),
+            generation,
+            pending: pending.length,
+            selected: selected.length,
+            hydrated: wilduCountSoftModalHydratedImages(list),
+            scheduler: {
+                raf: !!list.__wilduSoftImageHydrationRaf,
+                timer: !!list.__wilduSoftImageHydrationTimer,
+                retryUntil: Number(list.__wilduSoftImageRetryUntil || 0) > now,
+                hydrating: !!list.__wilduSoftImageHydrating
+            },
+            cards: selected.slice(0, 6).map(describe)
+        });
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduGetSoftModalVisibleHydrationDebt(list) {
+    if (!list || !list.isConnected) return null;
+    const modal = list.closest ? list.closest('.wildu-soft-modal,#wildu-related-modal,#wildu-date-options-modal') : null;
+    if (!modal || !modal.classList || !modal.classList.contains('is-visible')) return null;
+    const scroller = list.closest('.wildu-soft-modal-card') || list;
+    let viewport = null;
+    try { viewport = scroller.getBoundingClientRect(); } catch (e) {}
+    if (!viewport) return null;
+    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])'));
+    return pending.find(function (img) {
+        const card = img.closest ? img.closest('.wildu-soft-card') : null;
+        if (!card) return false;
+        try {
+            const rect = card.getBoundingClientRect();
+            return rect.bottom >= viewport.top - 4 && rect.top <= viewport.bottom + 4;
+        } catch (e) {
+            return false;
+        }
+    }) || null;
+}
+
+function wilduEnsureSoftModalVisibleHydrationLiveness(list, reason) {
+    if (!wilduShouldUseSoftModalImageGuard() || !list || !list.isConnected) return false;
+    const generation = wilduGetSoftModalGenerationForList(list);
+    const modal = list.closest ? list.closest('.wildu-soft-modal,#wildu-related-modal,#wildu-date-options-modal') : null;
+    if (!generation || !modal || !modal.classList || !modal.classList.contains('is-visible')) return false;
+    if (String(list.__wilduSoftImageLivenessCheckGeneration || '') === String(generation)) return false;
+    list.__wilduSoftImageLivenessCheckGeneration = String(generation);
+    if (list.__wilduSoftImageLivenessTimer) {
+        try { window.clearTimeout(list.__wilduSoftImageLivenessTimer); } catch (e) {}
+    }
+    list.__wilduSoftImageLivenessTimer = window.setTimeout(function () {
+        list.__wilduSoftImageLivenessTimer = 0;
+        if (!list.isConnected || !wilduIsSoftModalGenerationCurrent(list, generation) ||
+            !modal.classList.contains('is-visible')) return;
+        const debt = wilduGetSoftModalVisibleHydrationDebt(list);
+        const now = Date.now();
+        const hydratingAge = now - Number(list.__wilduSoftImageHydratingSince || 0);
+        const activeScheduler = !!list.__wilduSoftImageHydrationRaf ||
+            !!list.__wilduSoftImageHydrationTimer ||
+            Number(list.__wilduSoftImageRetryUntil || 0) > now ||
+            (!!list.__wilduSoftImageHydrating && hydratingAge <= 2000) ||
+            !!(debt && debt.__wilduImageRequest);
+        if (!debt) {
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_visible_rearm_terminal', {
+                    generation,
+                    reason: String(reason || '').slice(0, 80),
+                    outcome: 'no_visible_debt'
+                });
+            } catch (e) {}
+            return;
+        }
+        if (activeScheduler) {
+            try {
+                wilduIOSBlackBoxRecord('soft_modal_visible_rearm_parked', {
+                    generation,
+                    reason: String(reason || '').slice(0, 80),
+                    activeScheduler: true
+                });
+            } catch (e) {}
+            return;
+        }
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_visible_debt_detected', {
+                generation,
+                reason: String(reason || '').slice(0, 80),
+                surface: list.id === 'wildu-date-options-list' ? 'dates' : 'related',
+                sourceKind: /^https?:/i.test(String(debt.getAttribute('data-wildu-soft-image-src') || '')) ? 'http' : 'other'
+            });
+            wilduIOSBlackBoxRecord('soft_modal_visible_rearm_admitted', {
+                generation,
+                reason: String(reason || '').slice(0, 80)
+            });
+        } catch (e) {}
+        wilduScheduleSoftModalImageHydration(list, 'soft_modal_visible_liveness_rearm');
+    }, WILDU_SOFT_MODAL_VISIBLE_LIVENESS_CHECK_MS);
+    return true;
+}
+
 function wilduCancelSoftModalImageHydration(list) {
     if (!list) return;
     if (typeof list === 'string') {
@@ -33922,22 +34091,28 @@ function wilduCancelSoftModalImageHydration(list) {
     }
     const hadTimer = !!list.__wilduSoftImageHydrationTimer;
     const hadRaf = !!list.__wilduSoftImageHydrationRaf;
+    const hadLivenessTimer = !!list.__wilduSoftImageLivenessTimer;
     if (list.__wilduSoftImageHydrationRaf) {
         try { cancelAnimationFrame(list.__wilduSoftImageHydrationRaf); } catch (e) {}
     }
     if (list.__wilduSoftImageHydrationTimer) {
         try { window.clearTimeout(list.__wilduSoftImageHydrationTimer); } catch (e) {}
     }
+    if (list.__wilduSoftImageLivenessTimer) {
+        try { window.clearTimeout(list.__wilduSoftImageLivenessTimer); } catch (e) {}
+    }
     list.__wilduSoftImageHydrationRaf = 0;
     list.__wilduSoftImageHydrationTimer = 0;
+    list.__wilduSoftImageLivenessTimer = 0;
     list.__wilduSoftImageHydrating = false;
     list.__wilduSoftImageHydratingSince = 0;
     list.__wilduSoftImageRetryUntil = 0;
     try {
-        if (hadTimer || hadRaf) {
+        if (hadTimer || hadRaf || hadLivenessTimer) {
             wilduIOSBlackBoxRecord('soft_modal_image_hydration_cancelled', {
                 hadTimer,
                 hadRaf,
+                hadLivenessTimer,
                 remainingPending: list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"])').length
             });
         }
@@ -34026,6 +34201,8 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
         list.__wilduSoftImageScrollHydrationNextAt = now + 180;
     }
 
+    wilduEnsureSoftModalVisibleHydrationLiveness(list, reason);
+
     if (list.__wilduSoftImageHydrationRaf) {
         try { cancelAnimationFrame(list.__wilduSoftImageHydrationRaf); } catch (e) {}
     }
@@ -34052,6 +34229,7 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 generation
             });
         } catch (e) {}
+        wilduRecordSoftModalImageLivenessCheckpoint(list, reason, images, images.length ? 'scheduler_window' : 'scheduler_empty');
         if (!images.length) {
             const due = Array.from(list.querySelectorAll('img[data-wildu-soft-image-hydrated="failed"]'))
                 .reduce(function (next, img) { return Math.min(next, Number(img.dataset.wilduSoftImageRetryAt || Infinity)); }, Infinity);
@@ -34082,6 +34260,7 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                 list.__wilduSoftImageHydrating = false;
                 list.__wilduSoftImageHydratingSince = 0;
             } else {
+                wilduRecordSoftModalImageLivenessCheckpoint(list, reason, images, 'scheduler_busy');
                 return;
             }
         }
@@ -34181,6 +34360,7 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
                     generation
                 });
             } catch (e) {}
+            wilduRecordSoftModalImageLivenessCheckpoint(list, hydrationReason, [img], 'timer_fired');
             list.__wilduSoftImageHydrationTimer = 0;
             if (!wilduIsSoftModalGenerationCurrent(list, generation)) {
                 list.__wilduSoftImageHydrating = false;
@@ -40785,6 +40965,7 @@ if (profKeyEl) {
         
         const m = document.getElementById('module-container'); 
         if (m && !m.classList.contains('hidden')) { 
+            wilduDisposeActiveModule('show_tab:' + String(id || 'unknown'));
             m.innerHTML = ''; 
             m.classList.add('hidden'); 
 
@@ -41789,7 +41970,89 @@ async function getWilduCachedImageCandidates(options = {}) {
     return shuffled.slice(0, max);
 }
 
-function exposeModuleRuntime(moduleRev) {
+window.WILDU_MODULE_LIFECYCLE = window.WILDU_MODULE_LIFECYCLE || {
+    nextGeneration: 0,
+    active: null
+};
+
+function wilduDisposeActiveModule(reason) {
+    const state = window.WILDU_MODULE_LIFECYCLE;
+    const active = state && state.active;
+    if (!active || active.disposed) return false;
+
+    wilduRecordModuleLifecycle("module_lifecycle_dispose_started", active, reason);
+
+    active.disposed = true;
+    if (state.active === active) state.active = null;
+
+    try {
+        if (typeof active.dispose === "function") {
+            active.dispose({
+                reason: String(reason || "module_close"),
+                generation: active.generation,
+                owner: active.owner || ""
+            });
+        }
+    } catch (e) {
+        console.warn("[WILDU MODULE LIFECYCLE] dispose fallita:", active.owner || "unknown", e);
+    }
+    wilduRecordModuleLifecycle("module_lifecycle_dispose_finished", active, reason);
+    return true;
+}
+
+function wilduRecordModuleLifecycle(event, active, reason) {
+    try {
+        const recorder = window.WilduIOSBlackBox;
+        if (!recorder || typeof recorder.record !== "function") return false;
+        const rawUrl = String(active && active.moduleUrl || "");
+        const moduleName = rawUrl.split("?")[0].split("/").pop().slice(0, 80);
+        return recorder.record(event, {
+            generation: Number(active && active.generation || 0),
+            owner: String(active && active.owner || "").slice(0, 48),
+            module: moduleName,
+            reason: String(reason || "").slice(0, 48)
+        });
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduBeginModuleLifecycle(moduleUrl) {
+    wilduDisposeActiveModule("module_replaced");
+    const state = window.WILDU_MODULE_LIFECYCLE;
+    const active = {
+        generation: ++state.nextGeneration,
+        moduleUrl: String(moduleUrl || ""),
+        owner: "",
+        dispose: null,
+        disposed: false
+    };
+    state.active = active;
+    wilduRecordModuleLifecycle("module_lifecycle_started", active, "open_module");
+    return active.generation;
+}
+
+function wilduIsActiveModuleGeneration(generation) {
+    const state = window.WILDU_MODULE_LIFECYCLE;
+    const active = state && state.active;
+    return !!(active && !active.disposed && active.generation === generation);
+}
+
+function wilduRegisterModuleDispose(generation, owner, dispose) {
+    const state = window.WILDU_MODULE_LIFECYCLE;
+    const active = state && state.active;
+    if (!active || active.disposed || active.generation !== generation || typeof dispose !== "function") return false;
+    if (active.dispose) {
+        console.warn("[WILDU MODULE LIFECYCLE] dispose duplicata rifiutata:", owner || "unknown");
+        return false;
+    }
+    active.owner = String(owner || "module");
+    active.dispose = dispose;
+    wilduRecordModuleLifecycle("module_lifecycle_dispose_registered", active, "register_dispose");
+    return true;
+}
+
+function exposeModuleRuntime(moduleRev, moduleGeneration) {
     window.currentModuleRev = Math.max(1, parseInt(moduleRev, 10) || 1);
 
     function getEffectiveUrlRev(rawUrl) {
@@ -41805,6 +42068,7 @@ function exposeModuleRuntime(moduleRev) {
 
     window.WILDU_MODULE = {
         rev: window.currentModuleRev,
+        generation: moduleGeneration,
         links: Array.isArray(window.currentInternalLinks) ? window.currentInternalLinks : [],
         resourceBuckets: window.WILDU_RESOURCE_BUCKETS || {},
         getCachedImages: getWilduCachedImageCandidates,
@@ -41819,6 +42083,10 @@ function exposeModuleRuntime(moduleRev) {
 
         rewriteRoot: function (root) {
             rewriteModuleResourceUrls(root || document, window.currentModuleRev || 1);
+        },
+
+        registerDispose: function (owner, dispose) {
+            return wilduRegisterModuleDispose(moduleGeneration, owner, dispose);
         }
     };
 
@@ -42523,6 +42791,8 @@ function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode)
 async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     if (!wilduRequireResourceEntitlement(r)) return;
 
+    const moduleGeneration = wilduBeginModuleLifecycle(f);
+
     // Pre-lock audio immediato: su iOS il primo tap non deve accendere
     // musica/ambienza default mentre il modulo sta ancora caricando runtime/rev.
     const earlyModuleAudio = resolveWilduModuleAudioInstruction(a);
@@ -42585,6 +42855,10 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
             throw new Error("Modulo non disponibile HTTP " + res.status);
         }
         const html = await res.text();
+        if (!wilduIsActiveModuleGeneration(moduleGeneration)) {
+            wilduRecordModuleLifecycle("module_lifecycle_mount_skipped_stale", { generation: moduleGeneration, moduleUrl: f }, "fetch_completed_stale");
+            return;
+        }
 
         m.innerHTML = `
             ${html}
@@ -42593,7 +42867,7 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
             </div>
         `;
 
-        exposeModuleRuntime(resolvedModuleRev);
+        exposeModuleRuntime(resolvedModuleRev, moduleGeneration);
         rewriteModuleResourceUrls(m, resolvedModuleRev);
 
         m.querySelectorAll('script').forEach(s => {
@@ -42602,6 +42876,8 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
             document.body.appendChild(n).parentNode.removeChild(n);
         });
     } catch (e) {
+        if (!wilduIsActiveModuleGeneration(moduleGeneration)) return;
+        wilduDisposeActiveModule("module_load_failed");
         m.innerHTML = '<div style="color:#ff4444; padding:50px; text-align:center;">Modulo non trovato.</div>';
     }
 }
@@ -42610,6 +42886,7 @@ async function openModule(f, a, i, r, encodedLinks, moduleRev) {
     if (document.querySelector('.nav')) document.querySelector('.nav').style.display = 'flex';
 
     const m = document.getElementById('module-container');
+    wilduDisposeActiveModule("close_module");
     if (m) {
         m.innerHTML = '';
         m.classList.add('hidden');
@@ -46837,11 +47114,13 @@ function ensureWilduShopPreviewModal() {
         z-index:27000;
         background:
             radial-gradient(circle at top, rgba(255,153,0,0.13), transparent 36%),
-            rgba(0,0,0,0.96);
+            #000;
         padding:calc(18px + env(safe-area-inset-top, 0px)) 14px calc(28px + env(safe-area-inset-bottom, 0px)) 14px;
         box-sizing:border-box;
         overflow-y:auto;
         color:#fff;
+        isolation:isolate;
+        transform:translateZ(0);
     `;
 
     modal.innerHTML = `
@@ -46866,6 +47145,8 @@ function ensureWilduShopPreviewModal() {
             max-width:460px;
             margin:0 auto;
             padding-top:58px;
+            backface-visibility:hidden;
+            -webkit-backface-visibility:hidden;
         ">
             <div style="
                 background:
@@ -46993,6 +47274,13 @@ function openWilduShopPreview(index) {
     wilduPlayCardInteractionFeedback('open');
 
     const modal = ensureWilduShopPreviewModal();
+    const previewCard = modal.querySelector('[data-wildu-shop-preview-card="1"]');
+
+    // La preview Negozio viene chiusa trascinando la sua card, a differenza
+    // dell'overlay Amazon. Ripristiniamo prima lo stato compositing della
+    // card: su WebKit evita che un layer traslato/restante riaffiori alla
+    // successiva apertura o sotto la superficie fissa.
+    if (previewCard) wilduResetSwipeTarget(previewCard);
 
     const imgWrap = document.getElementById('wildu-shop-preview-img-wrap');
     const imgEl = document.getElementById('wildu-shop-preview-img');
@@ -47032,7 +47320,11 @@ function openWilduShopPreview(index) {
 
 function closeWilduShopPreview() {
     const modal = document.getElementById('wildu-shop-preview-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+        const previewCard = modal.querySelector('[data-wildu-shop-preview-card="1"]');
+        if (previewCard) wilduResetSwipeTarget(previewCard);
+        modal.style.display = 'none';
+    }
 
     try {
         document.body.style.overflow = '';

@@ -189,6 +189,8 @@
     let activeFrameLayout = DEFAULT_FRAME_LAYOUT;
     let frameChromeHideTimer = 0;
     let frameTouchStartY = 0;
+    let gamesStatusTimer = 0;
+    let loadedGamesRuntime = null;
 
     function setStatus(message, isError) {
         if (!statusEl) return;
@@ -977,6 +979,40 @@
         console.log("[WILDU GIOCHI] gioco chiuso");
     }
 
+    function handleWilduGameWindowMessage(event) {
+        if (event && event.origin && event.origin !== window.location.origin) return;
+
+        const data = event && event.data;
+        if (!data || typeof data !== "object") return;
+
+        if (data.type === "WILDU_AUTH_T1A_TRACE") {
+            const activeFrame = !!(frameEl && event.source === frameEl.contentWindow);
+            try {
+                if (typeof window.wilduAuthT1ARecordFrameEvent === "function") {
+                    window.wilduAuthT1ARecordFrameEvent(data, {
+                        phase: "frame-message",
+                        sourceClass: activeFrame ? "active-frame" : "stale-or-other-frame",
+                        activeFrame: activeFrame
+                    });
+                }
+            } catch (_) {}
+            return;
+        }
+
+        if (data.type === "WILDU_GAME_CLOSE_REQUEST") {
+            if (frameEl && event.source === frameEl.contentWindow) closeGameFrame();
+            return;
+        }
+
+        if (data.type === "WILDU_GAME_FRAME_CHROME_REVEAL_REQUEST") revealFrameChrome();
+    }
+
+    function handleWilduGameEscape(e) {
+        if (e.key === "Escape" && overlayEl && overlayEl.style.display !== "none") {
+            closeGameFrame();
+        }
+    }
+
     function bindCloseEvents() {
         if (closeBtn) {
             closeBtn.addEventListener("click", closeGameFrame);
@@ -984,53 +1020,13 @@
 
         window.closeWilduGameFrame = closeGameFrame;
 
-        window.addEventListener("message", function (event) {
-            if (event && event.origin && event.origin !== window.location.origin) return;
-
-            const data = event && event.data;
-            if (!data || typeof data !== "object") return;
-
-            if (data.type === "WILDU_AUTH_T1A_TRACE") {
-                const activeFrame = !!(frameEl && event.source === frameEl.contentWindow);
-                try {
-                    if (typeof window.wilduAuthT1ARecordFrameEvent === "function") {
-                        window.wilduAuthT1ARecordFrameEvent(data, {
-                            phase: "frame-message",
-                            sourceClass: activeFrame ? "active-frame" : "stale-or-other-frame",
-                            activeFrame: activeFrame
-                        });
-                    }
-                } catch (_) {}
-                return;
-            }
-
-            if (data.type === "WILDU_GAME_CLOSE_REQUEST") {
-                const isActiveFrame = !!(frameEl && event.source === frameEl.contentWindow);
-                if (!isActiveFrame) {
-                    return;
-                }
-                closeGameFrame();
-                return;
-            }
-
-            if (data.type === "WILDU_GAME_FRAME_CHROME_REVEAL_REQUEST") {
-                revealFrameChrome();
-            }
-        });
+        window.addEventListener("message", handleWilduGameWindowMessage);
 
         if (overlayEl) {
             bindFrameChromeRevealEvents(overlayEl);
         }
 
-        document.addEventListener("keydown", function (e) {
-            if (
-                e.key === "Escape" &&
-                overlayEl &&
-                overlayEl.style.display !== "none"
-            ) {
-                closeGameFrame();
-            }
-        });
+        document.addEventListener("keydown", handleWilduGameEscape);
     }
 
     async function bootGamesLauncher() {
@@ -1038,15 +1034,18 @@
             setStatus("Caricamento giochi dalla Media Suite Admin...");
             const runtime = await loadGameRuntime();
             games = extractGames(runtime);
+            loadedGamesRuntime = runtime || null;
 
-            window.WILDU_LAST_GAMES_RUNTIME = runtime || null;
+            window.WILDU_LAST_GAMES_RUNTIME = loadedGamesRuntime;
             window.WILDU_LAST_GAMES_LIST = games;
 
             if (!games.length) {
                 setStatus("", false);
             } else {
                 setStatus(`${games.length} giochi caricati da <code>wildu_media_runtime/game_versions</code>.`);
-                setTimeout(function () {
+                if (gamesStatusTimer) clearTimeout(gamesStatusTimer);
+                gamesStatusTimer = setTimeout(function () {
+                    gamesStatusTimer = 0;
                     setStatus("");
                 }, 3200);
             }
@@ -1086,6 +1085,32 @@
                 `;
             }
         }
+    }
+
+    function disposeWilduGamesModule() {
+        window.removeEventListener("message", handleWilduGameWindowMessage);
+        document.removeEventListener("keydown", handleWilduGameEscape);
+        if (gamesStatusTimer) {
+            clearTimeout(gamesStatusTimer);
+            gamesStatusTimer = 0;
+        }
+        clearFrameChromeHideTimer();
+        if (overlayEl && overlayEl.style.display !== "none") closeGameFrame();
+        if (window.closeWilduGameFrame === closeGameFrame) {
+            try { delete window.closeWilduGameFrame; } catch (e) { window.closeWilduGameFrame = undefined; }
+        }
+        if (window.WILDU_LAST_GAMES_RUNTIME === loadedGamesRuntime) {
+            window.WILDU_LAST_GAMES_RUNTIME = null;
+        }
+        if (window.WILDU_LAST_GAMES_LIST === games) {
+            window.WILDU_LAST_GAMES_LIST = null;
+        }
+        loadedGamesRuntime = null;
+        games = [];
+    }
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.registerDispose === "function") {
+        window.WILDU_MODULE.registerDispose("games", disposeWilduGamesModule);
     }
 
     bindCloseEvents();
