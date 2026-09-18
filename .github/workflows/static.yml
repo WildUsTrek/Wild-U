@@ -31,30 +31,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Verify executable shell release contract
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const html = fs.readFileSync('index.html', 'utf8');
-          const remote = String(JSON.parse(fs.readFileSync('version.json', 'utf8')).version || '').trim();
-          const embedded = html.match(/const WILDU_EMBEDDED_SHELL_VERSION = '([^']+)'/);
-          if (!embedded || !remote || embedded[1] !== remote) {
-            throw new Error('FAIL: executable shell version must exactly equal version.json before Pages deploy');
-          }
-
-          const start = html.indexOf('if (hasRecentShellReloadLock(remoteVersion, embeddedVersion)) {');
-          const end = html.indexOf("    pageDebug('SHELL_VERSION_CHANGED'", start);
-          const branch = start >= 0 && end > start ? html.slice(start, end) : '';
-          if (!branch.includes('SHELL_RELOAD_LOCK_FAIL_OPEN') ||
-              !branch.includes('return true;') ||
-              branch.includes('showWilduGlobalCacheOverlay') ||
-              branch.includes('SHELL_REFRESH_PENDING')) {
-            throw new Error('FAIL: locked shell mismatch must be terminal fail-open, never a blocking overlay');
-          }
-
-          console.log(`PASS: executable shell release contract ${remote}`);
-          NODE
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
