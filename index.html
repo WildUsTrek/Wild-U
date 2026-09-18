@@ -17080,7 +17080,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.103';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.104';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -25566,6 +25566,15 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
             .trim();
     }
 
+    function wilduTripSearchHasWholeToken(haystack, token) {
+        const cleanHaystack = String(haystack || '').trim();
+        const cleanToken = String(token || '').trim();
+        if (!cleanHaystack || !cleanToken) return false;
+        // Il catalogo resta ricercabile su tutti i campi, ma "via" non deve
+        // essere un prefisso libero che promuove "viaggio" o altre parole.
+        return (' ' + cleanHaystack + ' ').indexOf(' ' + cleanToken + ' ') >= 0;
+    }
+
     function getTripTitleSearchHaystack(item) {
         item = item || {};
         return normalizeTripFilterText([
@@ -26109,7 +26118,8 @@ function filterTrips() {
             let passTitle = true;
             if (queryTokens.length) {
                 const haystack = getTripTitleSearchHaystack(t);
-                passTitle = queryTokens.every(token => haystack.indexOf(token) >= 0) || haystack.indexOf(query) >= 0;
+                passTitle = queryTokens.every(token => wilduTripSearchHasWholeToken(haystack, token)) ||
+                    wilduTripSearchHasWholeToken(haystack, query);
             }
 
             let passNearDate = true;
@@ -43590,6 +43600,10 @@ async function loadWilduAudioBuffer(url) {
     // Feedback delle card: nessun asset, rete, timer o cache aggiuntivi.
     // Usa il contesto già condiviso dall'app e nasce solo da una vera azione utente.
     const WILDU_INTERACTION_FEEDBACK_MIN_INTERVAL_MS = 110;
+    // I profili restano volutamente brevi; il moltiplicatore agisce soltanto
+    // sui feedback UI, non sui giochi, radio, musica o audio di sistema.
+    const WILDU_INTERACTION_FEEDBACK_GAIN_MULTIPLIER = 2.5;
+    const WILDU_INTERACTION_FEEDBACK_MAX_GAIN = 0.06;
     const WILDU_INTERACTION_FEEDBACK_PROFILES = Object.freeze({
         open: Object.freeze({ from: 520, to: 660, gain: 0.018, duration: 0.070, haptic: 6 }),
         close: Object.freeze({ from: 420, to: 330, gain: 0.014, duration: 0.060, haptic: 4 }),
@@ -43633,11 +43647,13 @@ async function loadWilduAudioBuffer(url) {
             const profile = WILDU_INTERACTION_FEEDBACK_PROFILES[String(kind || '')] || WILDU_INTERACTION_FEEDBACK_PROFILES.open;
             const oscillator = ctx.createOscillator();
             const gain = ctx.createGain();
+            const targetGain = Math.min(WILDU_INTERACTION_FEEDBACK_MAX_GAIN,
+                Math.max(0.0001, Number(profile.gain || 0) * WILDU_INTERACTION_FEEDBACK_GAIN_MULTIPLIER));
             oscillator.type = 'sine';
             oscillator.frequency.setValueAtTime(profile.from, startAt);
             oscillator.frequency.exponentialRampToValueAtTime(profile.to, startAt + Math.max(0.04, profile.duration - 0.014));
             gain.gain.setValueAtTime(0.0001, startAt);
-            gain.gain.exponentialRampToValueAtTime(profile.gain, startAt + 0.008);
+            gain.gain.exponentialRampToValueAtTime(targetGain, startAt + 0.008);
             gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.016, profile.duration - 0.006));
             oscillator.connect(gain);
             gain.connect(ctx.destination);
