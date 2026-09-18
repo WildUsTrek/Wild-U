@@ -17080,7 +17080,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.102';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.103';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -18275,6 +18275,7 @@ const WilduIOSBlackBox = (() => {
             'soft_modal_image_hydrated',
             'soft_modal_image_fallback_deferred',
             'soft_modal_image_final_fallback',
+            'soft_modal_image_terminal_unavailable',
             'soft_modal_image_released',
             'soft_modal_open_committed',
             'soft_modal_atomic_close_start',
@@ -28877,6 +28878,8 @@ const WILDU_IOS_SOFT_MODAL_DOM_PRUNE_RETRY_MS = 1800;
 const WILDU_IOS_SOFT_MODAL_DOM_PRUNE_MAX_ATTEMPTS = 8;
 const WILDU_AFTERBIT_OPTIMIZED_CARD_WIDTH = 423;
 const WILDU_AFTERBIT_OPTIMIZED_CARD_HEIGHT = 300;
+const WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_WIDTH = 135;
+const WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_HEIGHT = 120;
 const WILDU_IOS_IMAGE_MEMORY_RUNTIME = {
     installed: false,
     images: new Set(),
@@ -31113,7 +31116,7 @@ function wilduShouldTrySmartImageOptimization(img) {
     return false;
 }
 
-function wilduBuildAfterbitSmartImageCandidate(originalUrl) {
+function wilduBuildAfterbitImageCandidate(originalUrl, width, height, provider) {
     const clean = wilduNormalizeSmartImageUrl(originalUrl);
     if (!clean) return null;
     try {
@@ -31122,17 +31125,38 @@ function wilduBuildAfterbitSmartImageCandidate(originalUrl) {
         if (host !== 'wildu.it' && host !== 'www.wildu.it') return null;
         if (!/^\/public\/prodotti_immagini\//i.test(url.pathname)) return null;
         if (!/_thumb_1362_900(?=_)/i.test(url.pathname)) return null;
-        url.pathname = url.pathname.replace(/_thumb_1362_900(?=_)/i, '_thumb_' + WILDU_AFTERBIT_OPTIMIZED_CARD_WIDTH + '_' + WILDU_AFTERBIT_OPTIMIZED_CARD_HEIGHT);
+        const exactWidth = Math.max(1, Number(width || 0));
+        const exactHeight = Math.max(1, Number(height || 0));
+        if (!exactWidth || !exactHeight) return null;
+        url.pathname = url.pathname.replace(/_thumb_1362_900(?=_)/i, '_thumb_' + exactWidth + '_' + exactHeight);
         return {
-            provider: 'afterbit',
+            provider: String(provider || 'afterbit'),
             original: clean,
             candidate: url.toString(),
-            exactWidth: WILDU_AFTERBIT_OPTIMIZED_CARD_WIDTH,
-            exactHeight: WILDU_AFTERBIT_OPTIMIZED_CARD_HEIGHT
+            exactWidth,
+            exactHeight
         };
     } catch (e) {
         return null;
     }
+}
+
+function wilduBuildAfterbitSmartImageCandidate(originalUrl) {
+    return wilduBuildAfterbitImageCandidate(
+        originalUrl,
+        WILDU_AFTERBIT_OPTIMIZED_CARD_WIDTH,
+        WILDU_AFTERBIT_OPTIMIZED_CARD_HEIGHT,
+        'afterbit'
+    );
+}
+
+function wilduBuildAfterbitIOSSoftModalThumbnailCandidate(originalUrl) {
+    return wilduBuildAfterbitImageCandidate(
+        originalUrl,
+        WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_WIDTH,
+        WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_HEIGHT,
+        'afterbit-ios-soft-modal-135'
+    );
 }
 
 function wilduCloudinaryPartLooksLikeTransform(part) {
@@ -31214,6 +31238,9 @@ const WILDU_IMAGE_VARIANT_LIMIT = 128;
 const WILDU_IMAGE_VARIANT_BACKOFF = [60000, 300000, 900000];
 const WILDU_IMAGE_ORIGINAL_RETRY_BASE_MS = 30000;
 const WILDU_IMAGE_ORIGINAL_RETRY_MAX_MS = 300000;
+// The original is the final fidelity fallback, but an unavailable upstream
+// asset must not keep a visible modal in an endless retry loop.
+const WILDU_IMAGE_ORIGINAL_RETRY_MAX_EPISODES = 3;
 let wilduImageRequestSequence = 0;
 
 function wilduImageVariantEntry(original, variant, create) {
@@ -33525,6 +33552,15 @@ function wilduShouldUseSoftModalImageGuard() {
     }
 }
 
+function wilduShouldUseCompactSoftModalThumbnail() {
+    try {
+        if (typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice()) return true;
+        return /\bAndroid\b/i.test(String(navigator.userAgent || ''));
+    } catch (e) {
+        return false;
+    }
+}
+
 function wilduGetSoftModalApproxDecodedMiB() {
     return typeof wilduGetCurrentIOSDecodedImageMiB === 'function'
         ? wilduGetCurrentIOSDecodedImageMiB()
@@ -33669,7 +33705,8 @@ function wilduReleaseSoftModalImage(img, reason) {
 function wilduBuildSoftModalHydrationSource(img, originalSrc) {
     const original = String(originalSrc || '').trim();
     if (!original) return null;
-    if (!wilduShouldUseSoftModalImageGuard() || img.dataset.wilduSoftImageUseOriginal === '1') {
+    const useCompactThumbnail = wilduShouldUseCompactSoftModalThumbnail();
+    if (!useCompactThumbnail || img.dataset.wilduSoftImageUseOriginal === '1') {
         return {
             src: original,
             original,
@@ -33677,9 +33714,17 @@ function wilduBuildSoftModalHydrationSource(img, originalSrc) {
             reduced: false
         };
     }
-    const candidate = typeof wilduBuildSmartImageCandidate === 'function'
-        ? wilduBuildSmartImageCandidate(img, original)
-        : null;
+    // The 423x300 Afterbit derivative has a proven multi-second timeout class
+    // on mobile soft modals. Use the existing compact CMS thumbnail there;
+    // desktop keeps its historical original-source path above.
+    const candidate = typeof wilduBuildAfterbitIOSSoftModalThumbnailCandidate === 'function'
+        ? (wilduBuildAfterbitIOSSoftModalThumbnailCandidate(original) ||
+            (typeof wilduBuildSmartImageCandidate === 'function'
+                ? wilduBuildSmartImageCandidate(img, original)
+                : null))
+        : (typeof wilduBuildSmartImageCandidate === 'function'
+            ? wilduBuildSmartImageCandidate(img, original)
+            : null);
     if (candidate && candidate.candidate && candidate.candidate !== original &&
         !wilduImageVariantBlocked(original, candidate.candidate)) {
         return {
@@ -33736,6 +33781,7 @@ function wilduAssignSoftModalImageSource(img, sourceInfo, reason) {
         img.dataset.wilduSoftImageFailures = '0';
         delete img.dataset.wilduSoftImageRetryAt;
         delete img.dataset.wilduSoftImageRetryEpisode;
+        delete img.dataset.wilduSoftImageTerminal;
         wilduRecordImageRequestPhase(img, request, 'loaded');
         img.onload = null;
         img.onerror = null;
@@ -33751,19 +33797,30 @@ function wilduAssignSoftModalImageSource(img, sourceInfo, reason) {
         if (sourceInfo.reduced) img.dataset.wilduSoftImageUseOriginal = '1';
         const failures = sourceInfo.reduced ? 0 : Math.min(2, Number(img.dataset.wilduSoftImageFailures || 0) + 1);
         img.dataset.wilduSoftImageFailures = String(failures);
+        let terminal = false;
         if (failures >= 2) {
-            const episode = Math.min(5, Number(img.dataset.wilduSoftImageRetryEpisode || 0) + 1);
+            const episode = Math.min(WILDU_IMAGE_ORIGINAL_RETRY_MAX_EPISODES,
+                Number(img.dataset.wilduSoftImageRetryEpisode || 0) + 1);
             img.dataset.wilduSoftImageRetryEpisode = String(episode);
-            img.dataset.wilduSoftImageRetryAt = String(Date.now() + wilduImageOriginalRetryDelay(episode));
+            terminal = episode >= WILDU_IMAGE_ORIGINAL_RETRY_MAX_EPISODES;
+            if (terminal) {
+                delete img.dataset.wilduSoftImageRetryAt;
+                img.dataset.wilduSoftImageTerminal = 'original_retry_exhausted';
+            } else {
+                img.dataset.wilduSoftImageRetryAt = String(Date.now() + wilduImageOriginalRetryDelay(episode));
+            }
         }
         img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
         img.classList.add('wildu-soft-card-img-pending');
-        img.dataset.wilduSoftImageHydrated = failures >= 2 ? 'failed' : '0';
-        wilduIOSBlackBoxRecord(failures >= 2 ? 'soft_modal_image_final_fallback' : 'soft_modal_image_fallback_deferred', {
-            provider: sourceInfo.provider || '', approxDecodedMiB, failures, reason: String(reason || ''),
+        img.dataset.wilduSoftImageHydrated = terminal ? 'terminal' : (failures >= 2 ? 'failed' : '0');
+        wilduIOSBlackBoxRecord(terminal ? 'soft_modal_image_terminal_unavailable' :
+            (failures >= 2 ? 'soft_modal_image_final_fallback' : 'soft_modal_image_fallback_deferred'), {
+            provider: sourceInfo.provider || '', approxDecodedMiB, failures,
+            retryEpisode: Number(img.dataset.wilduSoftImageRetryEpisode || 0),
+            reason: String(reason || ''),
             card: wilduGetSoftModalImageTrace(list, img)
         });
-        wilduScheduleSoftModalImageHydration(list, 'soft_modal_image_error');
+        if (!terminal) wilduScheduleSoftModalImageHydration(list, 'soft_modal_image_error');
     };
     img.src = sourceInfo.src;
     request.timer = window.setTimeout(function () {
@@ -33866,7 +33923,7 @@ function wilduGetSoftModalHydrationWindow(list) {
         }
     });
     const cards = Array.from(list.querySelectorAll('.wildu-soft-card'));
-    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])'));
+    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"]):not([data-wildu-soft-image-hydrated="terminal"])'));
     if (!pending.length) return [];
     if (!cards.length) return pending.slice(0, wilduGetSoftModalImageHydrationLimit());
 
@@ -33907,7 +33964,7 @@ function wilduGetSoftModalHydrationWindow(list) {
     if (lastVisible < cards.length - 1) preferredIndexes.push(lastVisible + 1);
     const wanted = [];
     preferredIndexes.forEach(function (i) {
-        const img = cards[i] ? cards[i].querySelector('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])') : null;
+        const img = cards[i] ? cards[i].querySelector('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"]):not([data-wildu-soft-image-hydrated="terminal"])') : null;
         if (img) wanted.push(img);
     });
 
@@ -34000,7 +34057,7 @@ function wilduRecordSoftModalImageLivenessCheckpoint(list, reason, windowImages,
     list.__wilduSoftImageLivenessCheckpoint = { generation, phase: checkpointPhase, at: now };
     const modal = list.closest('.wildu-soft-modal,#wildu-related-modal,#wildu-date-options-modal');
     const selected = Array.isArray(windowImages) ? windowImages : [];
-    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])'));
+    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"]):not([data-wildu-soft-image-hydrated="terminal"])'));
     const cards = Array.from(list.querySelectorAll('.wildu-soft-card'));
     const describe = function (img) {
         const card = img && img.closest ? img.closest('.wildu-soft-card') : null;
@@ -34060,7 +34117,7 @@ function wilduGetSoftModalVisibleHydrationDebt(list) {
     let viewport = null;
     try { viewport = scroller.getBoundingClientRect(); } catch (e) {}
     if (!viewport) return null;
-    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"])'));
+    const pending = Array.from(list.querySelectorAll('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"]):not([data-wildu-soft-image-hydrated="failed"]):not([data-wildu-soft-image-hydrated="terminal"])'));
     return pending.find(function (img) {
         const card = img.closest ? img.closest('.wildu-soft-card') : null;
         if (!card) return false;
@@ -34272,8 +34329,12 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
         list.dataset.wilduSoftOnlineBound = '1';
         window.addEventListener('online', function () {
             if (!list.isConnected || !modal || !modal.classList.contains('is-visible')) return;
-            list.querySelectorAll('img[data-wildu-soft-image-hydrated="failed"]').forEach(function (img) {
-                img.dataset.wilduSoftImageFailures = '0'; img.dataset.wilduSoftImageHydrated = '0';
+            list.querySelectorAll('img[data-wildu-soft-image-hydrated="failed"],img[data-wildu-soft-image-hydrated="terminal"]').forEach(function (img) {
+                img.dataset.wilduSoftImageFailures = '0';
+                img.dataset.wilduSoftImageHydrated = '0';
+                delete img.dataset.wilduSoftImageRetryAt;
+                delete img.dataset.wilduSoftImageRetryEpisode;
+                delete img.dataset.wilduSoftImageTerminal;
             });
             wilduScheduleSoftModalImageHydration(list, 'soft_modal_network_online');
         });
