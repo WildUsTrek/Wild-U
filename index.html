@@ -17080,7 +17080,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.104';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.105';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -25575,6 +25575,24 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
         return (' ' + cleanHaystack + ' ').indexOf(' ' + cleanToken + ' ') >= 0;
     }
 
+    function wilduCatalogSearchMatches(query, broadHaystack, primaryHaystack) {
+        const normalizedQuery = normalizeTripFilterText(query || '');
+        const queryTokens = normalizedQuery ? normalizedQuery.split(/\s+/).filter(Boolean) : [];
+        if (!queryTokens.length) return true;
+
+        // Titolo/luogo/regione sono i campi identificativi: una parola basta.
+        // Più parole rendono il match più preciso (almeno due token, o frase).
+        // Descrizione e altri metadati restano consultabili solo con frase esatta
+        // composta: non possono promuovere una card con parole sparse o vaghe.
+        const primaryHits = queryTokens.reduce(function (count, token) {
+            return count + (wilduTripSearchHasWholeToken(primaryHaystack, token) ? 1 : 0);
+        }, 0);
+        const requiredPrimaryHits = queryTokens.length === 1 ? 1 : Math.min(2, queryTokens.length);
+
+        return primaryHits >= requiredPrimaryHits ||
+            (queryTokens.length >= 2 && wilduTripSearchHasWholeToken(broadHaystack, normalizedQuery));
+    }
+
     function getTripTitleSearchHaystack(item) {
         item = item || {};
         return normalizeTripFilterText([
@@ -25610,6 +25628,34 @@ function calculateDisplayOccupancy(idEvento, dataInizio, iscrittiRealiCount, pos
             item.Tipo,
             item.categoria,
             item.Categoria
+        ].filter(Boolean).join(' '));
+    }
+
+    function getTripPrimarySearchHaystack(item) {
+        item = item || {};
+        return normalizeTripFilterText([
+            item.Titolo,
+            item.titolo,
+            item.title,
+            item.Nome,
+            item.nome,
+            item.name,
+            item.Regione,
+            item.regione,
+            item.area,
+            item.Area,
+            item.Luogo,
+            item.luogo,
+            item.location,
+            item.luogoNome,
+            item["Luogo Nome"],
+            item["Luogo Ritrovo"],
+            item.START,
+            item.start,
+            item.ritrovo && item.ritrovo.luogo,
+            item.ritrovo && item.ritrovo.luogoNome,
+            item.ritrovo && item.ritrovo.regione,
+            item.ritrovo && item.ritrovo.area
         ].filter(Boolean).join(' '));
     }
 
@@ -26117,9 +26163,11 @@ function filterTrips() {
 
             let passTitle = true;
             if (queryTokens.length) {
-                const haystack = getTripTitleSearchHaystack(t);
-                passTitle = queryTokens.every(token => wilduTripSearchHasWholeToken(haystack, token)) ||
-                    wilduTripSearchHasWholeToken(haystack, query);
+                passTitle = wilduCatalogSearchMatches(
+                    query,
+                    getTripTitleSearchHaystack(t),
+                    getTripPrimarySearchHaystack(t)
+                );
             }
 
             let passNearDate = true;
@@ -36933,6 +36981,27 @@ configureWilduDetailDateOptions('trip', ev, id);
         ].filter(Boolean).join(' '));
     }
 
+    function getOpenDayPrimarySearchHaystack(od) {
+        od = od || {};
+        return normalizeTripFilterText([
+            od["Titolo"],
+            od.titolo,
+            od.title,
+            od["Regione"],
+            od.regione,
+            od.area,
+            od["Luogo Nome"],
+            od["Luogo Ritrovo"],
+            od.Luogo,
+            od.luogo,
+            od.location,
+            od.START,
+            od.start,
+            od.ritrovo && od.ritrovo.luogo,
+            od.ritrovo && od.ritrovo.regione
+        ].filter(Boolean).join(' '));
+    }
+
     function getOpenDayDateForFilter(od) {
         return od && od["Data Inizio"] ? parseItalianDate(od["Data Inizio"]) : new Date(8640000000000000);
     }
@@ -37091,8 +37160,11 @@ configureWilduDetailDateOptions('trip', ev, id);
 
             let passTitle = true;
             if (queryTokens.length) {
-                const haystack = getOpenDaySearchHaystack(od);
-                passTitle = queryTokens.every(token => haystack.indexOf(token) >= 0) || haystack.indexOf(query) >= 0;
+                passTitle = wilduCatalogSearchMatches(
+                    query,
+                    getOpenDaySearchHaystack(od),
+                    getOpenDayPrimarySearchHaystack(od)
+                );
             }
 
             let passNearDate = true;
@@ -43602,8 +43674,8 @@ async function loadWilduAudioBuffer(url) {
     const WILDU_INTERACTION_FEEDBACK_MIN_INTERVAL_MS = 110;
     // I profili restano volutamente brevi; il moltiplicatore agisce soltanto
     // sui feedback UI, non sui giochi, radio, musica o audio di sistema.
-    const WILDU_INTERACTION_FEEDBACK_GAIN_MULTIPLIER = 2.5;
-    const WILDU_INTERACTION_FEEDBACK_MAX_GAIN = 0.06;
+    const WILDU_INTERACTION_FEEDBACK_GAIN_MULTIPLIER = 4;
+    const WILDU_INTERACTION_FEEDBACK_MAX_GAIN = 0.085;
     const WILDU_INTERACTION_FEEDBACK_PROFILES = Object.freeze({
         open: Object.freeze({ from: 520, to: 660, gain: 0.018, duration: 0.070, haptic: 6 }),
         close: Object.freeze({ from: 420, to: 330, gain: 0.014, duration: 0.060, haptic: 4 }),
