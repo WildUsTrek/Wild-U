@@ -17167,7 +17167,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.110';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.111';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -28859,7 +28859,11 @@ function wilduInstallPhysicalSwipe(card, options) {
                 return;
             }
             wilduAnimateSwipeClose(card, finalDx, function () {
-                if (typeof options.onClose === 'function') options.onClose('horizontal-swipe', evt);
+                // Propaga l'eventuale contratto di reset del modal chiamante.
+                // Senza return il dettaglio Amazon perdeva il suo reset differito.
+                return typeof options.onClose === 'function'
+                    ? options.onClose('horizontal-swipe', evt)
+                    : null;
             });
         } else {
             resetWithAnimation();
