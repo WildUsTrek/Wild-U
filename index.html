@@ -9144,7 +9144,7 @@ const WilduMediaClient = (() => {
     // Android/Desktop possono liberare subito il contenuto editoriale quando il
     // reader viene chiuso. iOS conserva il comportamento storico: il suo
     // perimetro di memoria/lifecycle resta volutamente isolato.
-    function shouldWilduReleasePdfReaderDynamicContentOnClose() {
+    function shouldWilduReleasePdfReaderDynamicContent() {
         try {
             return !(typeof isWilduIOSClientDevice === "function" && isWilduIOSClientDevice());
         } catch (e) {
@@ -11341,7 +11341,7 @@ const WilduMediaClient = (() => {
     function closeWilduPdfReader() {
         try {
             const overlay = document.getElementById("wildu-pdf-reader-modal");
-            if (shouldWilduReleasePdfReaderDynamicContentOnClose()) {
+            if (shouldWilduReleasePdfReaderDynamicContent()) {
                 // Invalida anche un fetch/estrazione ancora in corso: non deve
                 // ricreare DOM nascosto dopo una chiusura rapida del reader.
                 wilduPdfReaderGeneration += 1;
@@ -11378,7 +11378,7 @@ const WilduMediaClient = (() => {
         ui.title.textContent = cleanTitle;
         ui.status.style.display = "block";
         ui.status.textContent = "Preparazione lettura...";
-        if (shouldWilduReleasePdfReaderDynamicContentOnClose()) ui.canvasWrap.replaceChildren();
+        if (shouldWilduReleasePdfReaderDynamicContent()) ui.canvasWrap.replaceChildren();
         else ui.canvasWrap.innerHTML = "";
         ui.pageLabel.textContent = "Reader";
         ui.btnExternal.href = cleanUrl;
@@ -17167,7 +17167,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.109';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.110';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -28726,8 +28726,16 @@ function wilduAnimateSwipeClose(el, dx, done) {
     hideWilduSwipeHint();
 
     window.setTimeout(function () {
-        if (typeof done === 'function') done();
-        wilduResetSwipeTarget(el);
+        // Alcuni overlay (Amazon) sfumano ancora per 300ms dopo la chiusura.
+        // Il callback puo' rinviare il reset del target: cosi la card uscente
+        // non riappare al centro mentre l'overlay e' ancora visibile.
+        const closeResult = typeof done === 'function' ? done() : null;
+        const resetAfterMs = Math.max(0, Number(closeResult && closeResult.resetAfterMs) || 0);
+        if (resetAfterMs > 0) {
+            window.setTimeout(function () { wilduResetSwipeTarget(el); }, resetAfterMs);
+        } else {
+            wilduResetSwipeTarget(el);
+        }
     }, 185);
 }
 
@@ -35218,6 +35226,9 @@ function wilduInstallCommerceHorizontalDismiss(modal, card, close) {
         onClose: function () {
             wilduPlayCardInteractionFeedback('close');
             if (typeof close === 'function') close();
+            // #amazon-detail-overlay impiega 300ms a rendere invisibile il
+            // contenuto. Rilasciamo gli stili della swipe-card solo dopo.
+            return { resetAfterMs: 320 };
         }
     });
 }
