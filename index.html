@@ -3891,6 +3891,20 @@ html.wildu-ios-card-compositing-v1 #ondemand-list > .wildu-adventure-card [style
         content-visibility: auto;
         contain-intrinsic-size: auto 420px;
     }
+
+    /* Android Chrome compone il fondo della card prima di riattivare il suo
+       sottoalbero content-visibility: durante un fling questo appare come un
+       flash verde/arancione e introduce jank. Manteniamo containment leggero,
+       ma la card Android viene dipinta come un'unita' completa. iOS e Desktop
+       non ricevono questa classe e conservano il proprio rendering storico. */
+    html.wildu-android-native-list-render-v1 #event-list > .wildu-adventure-card:not(:focus-within),
+    html.wildu-android-native-list-render-v1 #openday-list > .wildu-adventure-card:not(:focus-within),
+    html.wildu-android-native-list-render-v1 #payday-list > .wildu-adventure-card:not(:focus-within),
+    html.wildu-android-native-list-render-v1 #ondemand-list > .wildu-adventure-card:not(:focus-within) {
+        content-visibility: visible;
+        contain: layout style;
+        contain-intrinsic-size: auto;
+    }
 }
 
 /* Durante il solo drag evitiamo di ridipingere effetti costosi su decine di card. */
@@ -17167,7 +17181,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.112';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.113';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -30570,6 +30584,16 @@ const WILDU_TRAVEL_IMAGE_OBSERVATION = { roots: new Map(), observer: null, pendi
 function wilduIsAndroidClientDevice() {
     try {
         return /\bAndroid\b/i.test(String(navigator.userAgent || ''));
+    } catch (e) {
+        return false;
+    }
+}
+
+function installWilduAndroidNativeListRenderGuard() {
+    try {
+        if (!document.documentElement || !wilduIsAndroidClientDevice()) return false;
+        document.documentElement.classList.add('wildu-android-native-list-render-v1');
+        return true;
     } catch (e) {
         return false;
     }
@@ -49322,6 +49346,7 @@ document.addEventListener('DOMContentLoaded', () => {
     installWilduSoftModalInputGuardCapture();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
+    installWilduAndroidNativeListRenderGuard();
     installWilduIOSImageMemoryWindow();
 
     // Anti-stato marcio dopo reload da modulo STOP:
