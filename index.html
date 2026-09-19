@@ -9139,6 +9139,39 @@ const WilduMediaClient = (() => {
     let wilduPdfJsLoadPromise = null;
     let wilduPdfResizeHandler = null;
     let wilduPdfResizeTimer = null;
+    let wilduPdfReaderGeneration = 0;
+
+    // Android/Desktop possono liberare subito il contenuto editoriale quando il
+    // reader viene chiuso. iOS conserva il comportamento storico: il suo
+    // perimetro di memoria/lifecycle resta volutamente isolato.
+    function shouldWilduReleasePdfReaderDynamicContentOnClose() {
+        try {
+            return !(typeof isWilduIOSClientDevice === "function" && isWilduIOSClientDevice());
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isWilduPdfReaderGenerationCurrent(generation) {
+        if (!generation) return true;
+        const overlay = document.getElementById("wildu-pdf-reader-modal");
+        return generation === wilduPdfReaderGeneration && !!overlay && overlay.style.display !== "none";
+    }
+
+    function releaseWilduPdfReaderDynamicContent() {
+        const canvasWrap = document.getElementById("wildu-pdf-reader-canvas-wrap");
+        if (!canvasWrap) return 0;
+        const images = Array.from(canvasWrap.querySelectorAll("img"));
+        images.forEach(function (img) {
+            try {
+                img.removeAttribute("srcset");
+                img.removeAttribute("sizes");
+                img.removeAttribute("src");
+            } catch (e) {}
+        });
+        canvasWrap.replaceChildren();
+        return images.length;
+    }
 
         // =========================================================
     // WILDU READER MODE — client pronto per pre-processing Admin
@@ -11308,6 +11341,12 @@ const WilduMediaClient = (() => {
     function closeWilduPdfReader() {
         try {
             const overlay = document.getElementById("wildu-pdf-reader-modal");
+            if (shouldWilduReleasePdfReaderDynamicContentOnClose()) {
+                // Invalida anche un fetch/estrazione ancora in corso: non deve
+                // ricreare DOM nascosto dopo una chiusura rapida del reader.
+                wilduPdfReaderGeneration += 1;
+                releaseWilduPdfReaderDynamicContent();
+            }
             if (overlay) overlay.style.display = "none";
 
             if (wilduPdfResizeHandler) {
@@ -11329,13 +11368,18 @@ const WilduMediaClient = (() => {
 
         if (!cleanUrl) return;
 
+        const readerGeneration = shouldWilduReleasePdfReaderDynamicContent()
+            ? ++wilduPdfReaderGeneration
+            : 0;
+
         const ui = ensureWilduPdfReaderShell();
 
         ui.overlay.style.display = "block";
         ui.title.textContent = cleanTitle;
         ui.status.style.display = "block";
         ui.status.textContent = "Preparazione lettura...";
-        ui.canvasWrap.innerHTML = "";
+        if (shouldWilduReleasePdfReaderDynamicContentOnClose()) ui.canvasWrap.replaceChildren();
+        else ui.canvasWrap.innerHTML = "";
         ui.pageLabel.textContent = "Reader";
         ui.btnExternal.href = cleanUrl;
 
@@ -11351,6 +11395,7 @@ const WilduMediaClient = (() => {
             const inlineBlocks = getWilduReaderBlocksFromItem(item);
 
             if (inlineBlocks.length) {
+                if (!isWilduPdfReaderGenerationCurrent(readerGeneration)) return;
                 renderWilduReaderArticle(ui, {
                     title: cleanTitle,
                     sourceLabel: "Reader editoriale",
@@ -11368,9 +11413,12 @@ const WilduMediaClient = (() => {
                 console.warn("[WILDU READER] Reader ottimizzato non disponibile, provo fallback PDF.js:", readerErr);
             }
 
+            if (!isWilduPdfReaderGenerationCurrent(readerGeneration)) return;
+
             const preprocessedBlocks = readerDoc ? getWilduReaderBlocksFromItem(readerDoc) : [];
 
             if (preprocessedBlocks.length) {
+                if (!isWilduPdfReaderGenerationCurrent(readerGeneration)) return;
                 renderWilduReaderArticle(ui, {
                     title: cleanTitle,
                     sourceLabel: "Reader editoriale",
@@ -11382,8 +11430,10 @@ const WilduMediaClient = (() => {
 
             ui.status.textContent = "Estraggo testo dal PDF...";
             const fallbackArticle = await extractWilduPdfTextFallback(cleanUrl, cleanTitle, item);
+            if (!isWilduPdfReaderGenerationCurrent(readerGeneration)) return;
             renderWilduReaderArticle(ui, fallbackArticle);
         } catch (e) {
+            if (!isWilduPdfReaderGenerationCurrent(readerGeneration)) return;
             const isStaticMediaError = isWilduStaticMediaError(e);
             ui.status.style.display = "block";
             ui.status.innerHTML = isStaticMediaError
@@ -16920,6 +16970,37 @@ function consumeWilduLegacyLogoutUrlOnce() {
     }
 }
 
+function clearWilduLogoutStorageScoped() {
+    // Conserva soltanto il sentinella pubblico della cache globale. L'epoch
+    // non identifica l'utente, ma evita che il boot successivo scambi un
+    // logout per una cache invalidata e inneschi una pulizia/reload completa.
+    const preservedLocalKey = WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY;
+
+    function clearStorage(storage, preservedKey) {
+        try {
+            const keys = [];
+            for (let i = 0; i < storage.length; i += 1) {
+                const key = storage.key(i);
+                if (key && key !== preservedKey) keys.push(key);
+            }
+            keys.forEach(function (key) { storage.removeItem(key); });
+        } catch (e) {}
+    }
+
+    clearStorage(localStorage, preservedLocalKey);
+    clearStorage(sessionStorage, '');
+}
+
+function shouldWilduUseScopedLogoutStorageCleanup() {
+    // Step 2 e' Android/Desktop: iOS conserva il logout storico finche' non
+    // esisteranno piano ed evidenza fisica dedicati.
+    try {
+        return !(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice());
+    } catch (e) {
+        return false;
+    }
+}
+
 function logout() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = !!(tgUser && tgUser.id);
@@ -16950,9 +17031,15 @@ function logout() {
         }
     } catch (e) {}
 
-    // 1. PULIZIA NUCLEARE DELLO STORAGE (Nessun residuo tra profili)
-    localStorage.clear();
-    sessionStorage.clear();
+    // 1. Android/Desktop: pulizia completa dello stato utente, con il solo
+    // sentinella pubblico necessario a non trasformare logout in cache-nuke.
+    // iOS: percorso storico invariato e protetto.
+    if (shouldWilduUseScopedLogoutStorageCleanup()) {
+        clearWilduLogoutStorageScoped();
+    } else {
+        localStorage.clear();
+        sessionStorage.clear();
+    }
 
     // 2. RESET VARIABILI GLOBALI
     tempGoogleUser = null;
@@ -17080,7 +17167,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.106';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.109';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -28715,7 +28802,10 @@ function wilduInstallPhysicalSwipe(card, options) {
         }
 
         if (!horizontal) return;
-        if (typeof evt.preventDefault === 'function') evt.preventDefault();
+        // Chrome Android segnala l'uso su eventi non cancellabili. Su iOS
+        // manteniamo il ramo storico; su Android cancelliamo solo quando il
+        // browser dichiara che l'operazione puo' effettivamente avere effetto.
+        if (typeof evt.preventDefault === 'function' && (!wilduIsAndroidClientDevice() || evt.cancelable)) evt.preventDefault();
 
         hasMoved = true;
         lastDx = dx;
@@ -30451,6 +30541,26 @@ function wilduGetTravelListCardForImage(img) {
 // to an IMG observer with an unrelated, much larger rootMargin.
 const WILDU_TRAVEL_IMAGE_OBSERVATION = { roots: new Map(), observer: null, pending: new Set(), timer: 0 };
 
+function wilduIsAndroidClientDevice() {
+    try {
+        return /\bAndroid\b/i.test(String(navigator.userAgent || ''));
+    } catch (e) {
+        return false;
+    }
+}
+
+function wilduGetTravelImageObservationDelayMs() {
+    // Android ha mostrato un flash di card appena entrate nel viewport: non
+    // aggiungere i 120 ms storici al ripristino della banda gia' osservata.
+    return wilduIsAndroidClientDevice() ? 0 : 120;
+}
+
+function wilduGetTravelImageBandRestoreLimit() {
+    // Card visibili + una vicina per lato: resta un batch finito anche durante
+    // un fling, senza allargare la finestra o la policy iOS.
+    return wilduIsAndroidClientDevice() ? 4 : 2;
+}
+
 function wilduScheduleObservedTravelBand(root) {
     const observation = WILDU_TRAVEL_IMAGE_OBSERVATION;
     if (!root || !root.isConnected || document.hidden) return;
@@ -30481,13 +30591,13 @@ function wilduScheduleObservedTravelBand(root) {
                 (state.images.get(card) || []).forEach(function (img) {
                     const tracked = WILDU_IOS_IMAGE_MEMORY_RUNTIME.states.get(img);
                     if (!img.isConnected || !tracked || !tracked.released) return;
-                    if (restored >= 2) { remaining = true; return; }
+                    if (restored >= wilduGetTravelImageBandRestoreLimit()) { remaining = true; return; }
                     if (wilduShouldRestoreManagedImageNow(img, 'observed_card_band') && wilduRestoreIOSManagedImage(img)) restored += 1;
                 });
             });
             if (remaining) wilduScheduleObservedTravelBand(list);
         });
-    }, 120);
+    }, wilduGetTravelImageObservationDelayMs());
 }
 
 function wilduObserveTravelCardImage(img, imageState) {
