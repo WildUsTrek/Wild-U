@@ -3898,28 +3898,44 @@ html.wildu-ios-card-compositing-v1 #ondemand-list > .wildu-adventure-card [style
 html.wildu-travel-swipe-active #event-list > .wildu-adventure-card,
 html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card,
 html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card,
-html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card {
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card,
+html.wildu-android-travel-scroll-active #event-list > .wildu-adventure-card,
+html.wildu-android-travel-scroll-active #openday-list > .wildu-adventure-card,
+html.wildu-android-travel-scroll-active #payday-list > .wildu-adventure-card,
+html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card {
     box-shadow: 0 3px 10px rgba(0,0,0,.28) !important;
 }
 
 html.wildu-travel-swipe-active #event-list > .wildu-adventure-card::before,
 html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card::before,
 html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card::before,
-html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card::before {
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card::before,
+html.wildu-android-travel-scroll-active #event-list > .wildu-adventure-card::before,
+html.wildu-android-travel-scroll-active #openday-list > .wildu-adventure-card::before,
+html.wildu-android-travel-scroll-active #payday-list > .wildu-adventure-card::before,
+html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card::before {
     opacity: 0 !important;
 }
 
 html.wildu-travel-swipe-active #event-list > .wildu-adventure-card img,
 html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card img,
 html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card img,
-html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card img {
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card img,
+html.wildu-android-travel-scroll-active #event-list > .wildu-adventure-card img,
+html.wildu-android-travel-scroll-active #openday-list > .wildu-adventure-card img,
+html.wildu-android-travel-scroll-active #payday-list > .wildu-adventure-card img,
+html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card img {
     box-shadow: none !important;
 }
 
 html.wildu-travel-swipe-active #event-list > .wildu-adventure-card [style*="backdrop-filter"],
 html.wildu-travel-swipe-active #openday-list > .wildu-adventure-card [style*="backdrop-filter"],
 html.wildu-travel-swipe-active #payday-list > .wildu-adventure-card [style*="backdrop-filter"],
-html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card [style*="backdrop-filter"] {
+html.wildu-travel-swipe-active #ondemand-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-android-travel-scroll-active #event-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-android-travel-scroll-active #openday-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-android-travel-scroll-active #payday-list > .wildu-adventure-card [style*="backdrop-filter"],
+html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card [style*="backdrop-filter"] {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
 }
@@ -17168,7 +17184,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.114';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.115';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -30574,6 +30590,87 @@ function wilduIsAndroidClientDevice() {
     } catch (e) {
         return false;
     }
+}
+
+// Android Chrome keeps native vertical inertia. This profile only removes the
+// most expensive card effects while a visible travel list is actively moving;
+// it never changes card ownership, image sources, touch handling or layout
+// containment. The bounded debounce makes the visual state terminal.
+const WILDU_ANDROID_TRAVEL_SCROLL_PERF = {
+    installed: false,
+    active: false,
+    releaseTimer: null
+};
+const WILDU_ANDROID_TRAVEL_SCROLL_RELEASE_MS = 140;
+const WILDU_ANDROID_TRAVEL_SCROLL_LIST_SELECTOR = '#event-list,#openday-list,#payday-list,#ondemand-list';
+
+function wilduHasVisibleAndroidTravelList() {
+    if (!document.documentElement || document.hidden) return false;
+    const lists = document.querySelectorAll(WILDU_ANDROID_TRAVEL_SCROLL_LIST_SELECTOR);
+    for (const list of lists) {
+        if (!list || !list.isConnected) continue;
+        const section = list.closest('[id^="sec-"]');
+        if (section && (section.hidden || section.classList.contains('hidden'))) continue;
+        const rect = list.getBoundingClientRect();
+        if (rect.bottom > 0 && rect.top < window.innerHeight) return true;
+    }
+    return false;
+}
+
+function setWilduAndroidTravelScrollPerformanceMode(active) {
+    const state = WILDU_ANDROID_TRAVEL_SCROLL_PERF;
+    const root = document.documentElement;
+    if (!root) return false;
+
+    if (active !== true) {
+        if (state.releaseTimer !== null) {
+            window.clearTimeout(state.releaseTimer);
+            state.releaseTimer = null;
+        }
+        if (!state.active) return false;
+        state.active = false;
+        root.classList.remove('wildu-android-travel-scroll-active');
+        return true;
+    }
+
+    if (state.active) return true;
+    if (!wilduHasVisibleAndroidTravelList()) return false;
+    state.active = true;
+    root.classList.add('wildu-android-travel-scroll-active');
+    return true;
+}
+
+function scheduleWilduAndroidTravelScrollPerformanceRelease() {
+    const state = WILDU_ANDROID_TRAVEL_SCROLL_PERF;
+    if (!state.active) return;
+    if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer);
+    state.releaseTimer = window.setTimeout(function () {
+        state.releaseTimer = null;
+        setWilduAndroidTravelScrollPerformanceMode(false);
+    }, WILDU_ANDROID_TRAVEL_SCROLL_RELEASE_MS);
+}
+
+function installWilduAndroidTravelScrollPerformance() {
+    const state = WILDU_ANDROID_TRAVEL_SCROLL_PERF;
+    if (state.installed || !wilduIsAndroidClientDevice()) return false;
+    state.installed = true;
+
+    window.addEventListener('scroll', function () {
+        if (document.hidden) {
+            setWilduAndroidTravelScrollPerformanceMode(false);
+            return;
+        }
+        if (!state.active && !setWilduAndroidTravelScrollPerformanceMode(true)) return;
+        scheduleWilduAndroidTravelScrollPerformanceRelease();
+    }, { passive: true });
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) setWilduAndroidTravelScrollPerformanceMode(false);
+    }, { passive: true });
+    window.addEventListener('pagehide', function () {
+        setWilduAndroidTravelScrollPerformanceMode(false);
+    }, { passive: true });
+    return true;
 }
 
 function wilduGetTravelImageObservationDelayMs() {
@@ -49323,6 +49420,7 @@ document.addEventListener('DOMContentLoaded', () => {
     installWilduSoftModalInputGuardCapture();
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
+    installWilduAndroidTravelScrollPerformance();
     installWilduIOSImageMemoryWindow();
 
     // Anti-stato marcio dopo reload da modulo STOP:
