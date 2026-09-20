@@ -9158,9 +9158,9 @@ const WilduMediaClient = (() => {
     let wilduPdfResizeTimer = null;
     let wilduPdfReaderGeneration = 0;
 
-    // Android/Desktop possono liberare subito il contenuto editoriale quando il
-    // reader viene chiuso. iOS conserva il comportamento storico: il suo
-    // perimetro di memoria/lifecycle resta volutamente isolato.
+    // La chiusura interna conserva il comportamento storico iOS; l'uscita dal
+    // solo owner Biblioteca invalida invece il rendering e libera il Reader
+    // nascosto, evitando che sopravviva fuori dal modulo.
     function shouldWilduReleasePdfReaderDynamicContent() {
         try {
             return !(typeof isWilduIOSClientDevice === "function" && isWilduIOSClientDevice());
@@ -9170,7 +9170,6 @@ const WilduMediaClient = (() => {
     }
 
     function isWilduPdfReaderGenerationCurrent(generation) {
-        if (!generation) return true;
         const overlay = document.getElementById("wildu-pdf-reader-modal");
         return generation === wilduPdfReaderGeneration && !!overlay && overlay.style.display !== "none";
     }
@@ -9188,6 +9187,16 @@ const WilduMediaClient = (() => {
         });
         canvasWrap.replaceChildren();
         return images.length;
+    }
+
+    function releaseWilduPdfReaderForBibliotecaDispose() {
+        const overlay = document.getElementById("wildu-pdf-reader-modal");
+        // Il disposer Biblioteca rilascia solo una superficie gia' nascosta:
+        // non puo' sottrarre un Reader ancora visibile a un owner attivo.
+        if (overlay && overlay.style.display !== "none") return false;
+        wilduPdfReaderGeneration += 1;
+        releaseWilduPdfReaderDynamicContent();
+        return true;
     }
 
         // =========================================================
@@ -11385,9 +11394,7 @@ const WilduMediaClient = (() => {
 
         if (!cleanUrl) return;
 
-        const readerGeneration = shouldWilduReleasePdfReaderDynamicContent()
-            ? ++wilduPdfReaderGeneration
-            : 0;
+        const readerGeneration = ++wilduPdfReaderGeneration;
 
         const ui = ensureWilduPdfReaderShell();
 
@@ -11395,8 +11402,7 @@ const WilduMediaClient = (() => {
         ui.title.textContent = cleanTitle;
         ui.status.style.display = "block";
         ui.status.textContent = "Preparazione lettura...";
-        if (shouldWilduReleasePdfReaderDynamicContent()) ui.canvasWrap.replaceChildren();
-        else ui.canvasWrap.innerHTML = "";
+        ui.canvasWrap.replaceChildren();
         ui.pageLabel.textContent = "Reader";
         ui.btnExternal.href = cleanUrl;
 
@@ -12568,6 +12574,7 @@ const WilduMediaClient = (() => {
         window.renderWilduRewardsBottom = renderWilduRewardsBottom;
         window.openWilduRewardsVideoModal = openWilduRewardsVideoModal;
         window.closeWilduRewardsVideoModal = closeWilduRewardsVideoModal;
+        window.releaseWilduPdfReaderForBibliotecaDispose = releaseWilduPdfReaderForBibliotecaDispose;
     } catch (e) {}
 
     return {
@@ -16992,6 +16999,17 @@ function clearWilduLogoutStorageScoped() {
     // non identifica l'utente, ma evita che il boot successivo scambi un
     // logout per una cache invalidata e inneschi una pulizia/reload completa.
     const preservedLocalKey = WILDU_GLOBAL_CACHE_EPOCH_SEEN_KEY;
+    let preservedEpoch = '';
+
+    try {
+        const rawEpoch = String(localStorage.getItem(preservedLocalKey) || '').trim();
+        const numericEpoch = Number(rawEpoch);
+        // Durante il logout non trattenere dati arbitrari: l'unica eccezione
+        // e' il valore numerico pubblico che il boot sa gia' interpretare.
+        if (rawEpoch && Number.isFinite(numericEpoch) && numericEpoch >= 0) {
+            preservedEpoch = String(numericEpoch);
+        }
+    } catch (e) {}
 
     function clearStorage(storage, preservedKey) {
         try {
@@ -17004,18 +17022,18 @@ function clearWilduLogoutStorageScoped() {
         } catch (e) {}
     }
 
-    clearStorage(localStorage, preservedLocalKey);
+    clearStorage(localStorage, preservedEpoch ? preservedLocalKey : '');
     clearStorage(sessionStorage, '');
+
+    try {
+        if (preservedEpoch) localStorage.setItem(preservedLocalKey, preservedEpoch);
+    } catch (e) {}
 }
 
 function shouldWilduUseScopedLogoutStorageCleanup() {
-    // Step 2 e' Android/Desktop: iOS conserva il logout storico finche' non
-    // esisteranno piano ed evidenza fisica dedicati.
-    try {
-        return !(typeof isWilduIOSClientDevice === 'function' && isWilduIOSClientDevice());
-    } catch (e) {
-        return false;
-    }
+    // P0: su ogni device resta solo la sentinella cache pubblica necessaria a
+    // distinguere logout da una invalidazione remota reale.
+    return true;
 }
 
 function logout() {
@@ -17048,9 +17066,8 @@ function logout() {
         }
     } catch (e) {}
 
-    // 1. Android/Desktop: pulizia completa dello stato utente, con il solo
+    // 1. Pulizia completa dello stato utente su ogni device, con il solo
     // sentinella pubblico necessario a non trasformare logout in cache-nuke.
-    // iOS: percorso storico invariato e protetto.
     if (shouldWilduUseScopedLogoutStorageCleanup()) {
         clearWilduLogoutStorageScoped();
     } else {
@@ -17184,7 +17201,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.116';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.117';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -26346,6 +26363,7 @@ function formatWilduExternalCardTimeRange(start, end) {
 let WILDU_ACTIVE_DETAIL_CONTEXT = null;
 let WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = false;
 let WILDU_DATE_RETURN_DETAIL_REF = null;
+let WILDU_DATE_RETURN_FOCUS_TARGET = null;
 const WILDU_DETAIL_RUNTIME = {
     phase: 'closed',
     key: '',
@@ -33658,6 +33676,12 @@ function wilduScheduleDetailOpen(ref, options) {
         }
         try {
             wilduOpenDetailByRef(ref, options);
+            if (options.dateReturnFocus === true) {
+                const dateReturnTarget = document.querySelector('#od-details-card > button[aria-label="Chiudi scheda"]');
+                if (dateReturnTarget && dateReturnTarget.isConnected) {
+                    try { dateReturnTarget.focus({ preventScroll: true }); } catch (e) { try { dateReturnTarget.focus(); } catch (ignored) {} }
+                }
+            }
         } finally {
             if (WILDU_DETAIL_RUNTIME.softModalGuardBypassKey === key) {
                 WILDU_DETAIL_RUNTIME.softModalGuardBypassKey = '';
@@ -35425,6 +35449,11 @@ function openWilduDateOptions(type, id, evt) {
     const title = document.getElementById('wildu-date-options-title');
     if (!modal || !list || !title) return;
 
+    const activeElement = document.activeElement;
+    WILDU_DATE_RETURN_FOCUS_TARGET = activeElement && activeElement !== document.body && typeof activeElement.focus === 'function'
+        ? activeElement
+        : null;
+
     WILDU_DATE_RETURN_DETAIL_REF = wilduIsDetailModalVisible() && WILDU_ACTIVE_DETAIL_CONTEXT
         ? Object.assign({}, WILDU_ACTIVE_DETAIL_CONTEXT)
         : null;
@@ -35446,6 +35475,10 @@ function openWilduDateOptions(type, id, evt) {
             const extra = ref.id === currentId ? 'questa data' : '';
             return wilduBuildSoftCardHtml(ref, extra);
         }).join('');
+        try {
+            modal.inert = false;
+            modal.removeAttribute('inert');
+        } catch (e) {}
         openWilduSoftModalAtTop(modal);
         wilduScheduleSoftModalHydrationFromShell(list, 'dates_open', hydrationDelayMs || 0);
     };
@@ -35494,6 +35527,8 @@ function closeWilduDateOptionsModal(evt, restoreDetail, source) {
     const list = document.getElementById('wildu-date-options-list');
     const returnRef = WILDU_DATE_RETURN_DETAIL_REF;
     WILDU_DATE_RETURN_DETAIL_REF = null;
+    const returnFocusTarget = WILDU_DATE_RETURN_FOCUS_TARGET;
+    WILDU_DATE_RETURN_FOCUS_TARGET = null;
     const modalVisible = !!(modal && modal.classList && modal.classList.contains('is-visible'));
     const retainedClosedList = !!(list && list.dataset && list.dataset.wilduSoftDomRetained === '1');
     const hasListContent = !!(list && list.children && list.children.length && !retainedClosedList);
@@ -35521,6 +35556,12 @@ function closeWilduDateOptionsModal(evt, restoreDetail, source) {
         return false;
     }
     wilduCloseSoftModalAtomic(modal, list, 'dates', evt, cleanSource);
+    try {
+        if (modal) {
+            modal.inert = true;
+            modal.setAttribute('inert', '');
+        }
+    } catch (e) {}
     wilduRecordSoftModalClosePhase('caller_done', {
         surface: 'dates',
         source: cleanSource,
@@ -35528,7 +35569,9 @@ function closeWilduDateOptionsModal(evt, restoreDetail, source) {
     });
     wilduUnlockOverlayScrollAfterSoftModalClose('dates', cleanSource);
     if (restoreDetail !== false && returnRef) {
-        wilduSchedulePostSoftModalDetailOpen(returnRef, { skipSuggestions: false }, 'dates_restore:' + cleanSource);
+        wilduSchedulePostSoftModalDetailOpen(returnRef, { skipSuggestions: false, dateReturnFocus: true }, 'dates_restore:' + cleanSource);
+    } else if (returnFocusTarget && returnFocusTarget.isConnected) {
+        try { returnFocusTarget.focus({ preventScroll: true }); } catch (e) { try { returnFocusTarget.focus(); } catch (ignored) {} }
     }
     return true;
 }
@@ -49580,7 +49623,7 @@ window.addEventListener('pageshow', (event) => {
     </div>
 </div>
 
-<div id="wildu-date-options-modal" class="wildu-soft-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Date disponibili">
+<div id="wildu-date-options-modal" class="wildu-soft-modal" aria-hidden="true" inert role="dialog" aria-modal="true" aria-label="Date disponibili">
     <div class="wildu-soft-modal-card">
         <button type="button" class="wildu-soft-modal-close" onclick="closeWilduDateOptionsModal(event)" aria-label="Chiudi date disponibili">×</button>
         <div class="wildu-soft-modal-kicker">📅 Date disponibili</div>

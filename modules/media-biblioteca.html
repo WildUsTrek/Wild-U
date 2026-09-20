@@ -683,6 +683,11 @@
     wilduScheduleInitialHorizontalVideoRender();
 
     function disposeWilduBibliotecaModule() {
+        try {
+            if (typeof window.releaseWilduPdfReaderForBibliotecaDispose === "function") {
+                window.releaseWilduPdfReaderForBibliotecaDispose();
+            }
+        } catch (e) {}
         if (WILDU_HORIZONTAL_VIDEO_STATE.renderTimer) {
             clearTimeout(WILDU_HORIZONTAL_VIDEO_STATE.renderTimer);
             WILDU_HORIZONTAL_VIDEO_STATE.renderTimer = null;

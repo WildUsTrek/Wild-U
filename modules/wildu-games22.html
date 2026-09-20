@@ -475,7 +475,7 @@
         });
     }
 
-    document.addEventListener("keydown", function (e) {
+    function handleSassiFullscreenEscape(e) {
         if (
             e.key === "Escape" &&
             sassiOverlay &&
@@ -483,7 +483,9 @@
         ) {
             closeSassiFullscreen();
         }
-    });
+    }
+
+    document.addEventListener("keydown", handleSassiFullscreenEscape);
 
     document.querySelectorAll(".wildu-games-menu-btn").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -525,6 +527,15 @@
                 <div style="color:#ddd; font-size:14px; line-height:1.5;">${pick.text}</div>
             `;
         });
+    }
+
+    function disposeSassiLegacyModule() {
+        document.removeEventListener("keydown", handleSassiFullscreenEscape);
+        closeSassiFullscreen();
+    }
+
+    if (window.WILDU_MODULE && typeof window.WILDU_MODULE.registerDispose === "function") {
+        window.WILDU_MODULE.registerDispose("sassi-legacy", disposeSassiLegacyModule);
     }
 })();
 </script>
