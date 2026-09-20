@@ -2966,6 +2966,52 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     overflow: visible;
 }
 
+/* Session-only shop visibility: keep the carousel DOM and fixed anchor alive,
+   while collapsing only its painted shell. */
+#amazon-footer-wrapper.is-wildu-amazon-hidden {
+    min-height: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+    border-top-color: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+}
+
+#amazon-footer-wrapper.is-wildu-amazon-hidden .amazon-slider {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+}
+
+#wildu-amazon-motion-control,
+#wildu-amazon-visibility-control {
+    position: absolute;
+    bottom: 100%;
+    border: 1px solid #666;
+    border-radius: 8px 8px 0 0;
+    background: #181818;
+    color: #fff;
+    padding: 7px 10px;
+    font: 600 12px system-ui;
+    cursor: pointer;
+    z-index: 2;
+}
+
+#wildu-amazon-motion-control { right: 8px; }
+#wildu-amazon-visibility-control { left: 8px; }
+
+#amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-motion-control { display: none; }
+#amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-visibility-control {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    border-radius: 999px;
+    border-color: rgba(212,175,55,0.65);
+    color: var(--w-gold);
+}
+
 .wildu-company-footer {
     max-width: 760px;
     margin: 16px auto 0;
@@ -46650,6 +46696,13 @@ const WILDU_AMAZON_IOS_HARD_GUARD_RETRY_MS = 5200;
 // riusare il target 700x360 delle liste. Vale soltanto per miniature viaggio.
 const WILDU_AMAZON_TRAVEL_CARD_THUMB_WIDTH = 160;
 const WILDU_AMAZON_TRAVEL_CARD_THUMB_HEIGHT = 160;
+const WILDU_AMAZON_TRAVEL_CARD_COMPACT_WIDTH = 135;
+const WILDU_AMAZON_TRAVEL_CARD_COMPACT_HEIGHT = 120;
+// The carousel owns only a tiny moving window: one visible card is never
+// enough when auto-scroll advances independently from an image response.
+const WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS = 2;
+const WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS = 5200;
+const WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS = 1800;
 const WILDU_AMAZON_COMPOSITION_SEED = String(Date.now()) + ':' + String(Math.random());
 let amazonRenderGeneration = 0;
 
@@ -46707,33 +46760,70 @@ function wilduOrderAmazonProductsForCarousel(products, signature) {
     });
 }
 
-function wilduBuildAmazonTravelThumbnailCandidate(originalUrl) {
-    const afterbit = wilduBuildAfterbitImageCandidate(
+function wilduBuildAmazonTravelThumbnailCandidates(originalUrl) {
+    const candidates = [];
+    const add = function (candidate) {
+        if (!candidate || !candidate.candidate || candidates.some(function (entry) { return entry.candidate === candidate.candidate; })) return;
+        candidates.push(candidate);
+    };
+    const afterbitSquare = wilduBuildAfterbitImageCandidate(
         originalUrl,
         WILDU_AMAZON_TRAVEL_CARD_THUMB_WIDTH,
         WILDU_AMAZON_TRAVEL_CARD_THUMB_HEIGHT,
-        'afterbit'
+        'afterbit-amazon-160'
     );
-    if (afterbit) return afterbit;
-    return wilduBuildCloudinarySmartImageCandidate(originalUrl, null, {
+    add(afterbitSquare);
+    // This known compact derivative is safe to crop inside the 58px CSS slot;
+    // it is a real provider asset, never an invented URL or hidden original.
+    add(wilduBuildAfterbitImageCandidate(
+        originalUrl,
+        WILDU_AMAZON_TRAVEL_CARD_COMPACT_WIDTH,
+        WILDU_AMAZON_TRAVEL_CARD_COMPACT_HEIGHT,
+        'afterbit-amazon-135'
+    ));
+    add(wilduBuildCloudinarySmartImageCandidate(originalUrl, null, {
         width: WILDU_AMAZON_TRAVEL_CARD_THUMB_WIDTH,
         height: WILDU_AMAZON_TRAVEL_CARD_THUMB_HEIGHT
-    });
+    }));
+    return candidates;
+}
+
+function wilduBuildAmazonCarouselImageCandidates(item) {
+    const source = item || {};
+    const original = String(source.img_url || '').trim();
+    const candidates = [];
+    const add = function (candidate) {
+        if (!candidate || !candidate.src || candidates.some(function (entry) { return entry.src === candidate.src; })) return;
+        candidates.push(candidate);
+    };
+    if (source.isTravel) {
+        wilduBuildAmazonTravelThumbnailCandidates(original).forEach(function (candidate) {
+            add({
+                src: candidate.candidate,
+                provider: candidate.provider || 'variant',
+                expectedWidth: Number(candidate.exactWidth || 0),
+                expectedHeight: Number(candidate.exactHeight || 0)
+            });
+        });
+    } else {
+        add({ src: wilduGetAmazonCardImageUrl(original), provider: 'amazon-card', expectedWidth: 0, expectedHeight: 0 });
+    }
+    add({ src: original, provider: 'original', expectedWidth: 0, expectedHeight: 0 });
+    return candidates;
 }
 
 function wilduGetAmazonCarouselCardImageSource(product) {
     const item = product || {};
     const original = String(item.img_url || '').trim();
-    if (!item.isTravel) {
-        return { src: wilduGetAmazonCardImageUrl(original), original, provider: 'amazon-card', expectedWidth: 0, expectedHeight: 0 };
-    }
-    const candidate = wilduBuildAmazonTravelThumbnailCandidate(original);
+    const candidates = wilduBuildAmazonCarouselImageCandidates(item);
+    const candidate = candidates[0] || { src: original, provider: 'original', expectedWidth: 0, expectedHeight: 0 };
     return {
-        src: candidate && candidate.candidate ? candidate.candidate : original,
+        src: candidate.src,
         original,
-        provider: candidate && candidate.provider ? candidate.provider : 'original',
-        expectedWidth: candidate && candidate.provider === 'afterbit' ? Number(candidate.exactWidth || 0) : 0,
-        expectedHeight: candidate && candidate.provider === 'afterbit' ? Number(candidate.exactHeight || 0) : 0
+        provider: candidate.provider,
+        expectedWidth: Number(candidate.expectedWidth || 0),
+        expectedHeight: Number(candidate.expectedHeight || 0),
+        candidates
     };
 }
 
@@ -46789,7 +46879,7 @@ function wilduDisposeAmazonRenderOwner(slider, reason) {
 }
 
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
-const WILDU_AMAZON_MOTION = { manualPause: false, keyboardPause: false, pointers: new Set(),
+const WILDU_AMAZON_MOTION = { manualPause: false, keyboardPause: false, hiddenByUser: false, pointers: new Set(),
     hover: false, blurred: false, keyboardModality: true, lastPointerAt: 0, slider: null, dispose: null };
 let amazonInitInFlight = false;
 let amazonQuietUntil = 0;
@@ -46861,6 +46951,15 @@ function wilduAnchorAmazonFooter(reason) {
     try {
         const wrapper = document.getElementById('amazon-footer-wrapper');
         if (!wrapper) return false;
+        if (WILDU_AMAZON_MOTION.hiddenByUser) {
+            wrapper.classList.add('is-wildu-amazon-hidden');
+            wrapper.style.setProperty('display', 'flex', 'important');
+            wrapper.style.setProperty('min-height', '0', 'important');
+            wrapper.style.setProperty('height', '0', 'important');
+            wrapper.style.setProperty('padding', '0', 'important');
+            syncAmazonFooterViewportOffset();
+            return true;
+        }
         wrapper.style.setProperty('position', 'fixed', 'important');
         wrapper.style.setProperty('inset', 'auto 0 var(--amazon-footer-offset, 0px) 0', 'important');
         wrapper.style.setProperty('left', '0', 'important');
@@ -46953,6 +47052,7 @@ function wilduGetAmazonImageBand(slider) {
     const viewport = slider.getBoundingClientRect();
     if (!viewport.width || !viewport.height || document.hidden || viewport.bottom <= 0 || viewport.top >= window.innerHeight) return [];
     const placeholder = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
+    const lookaheadActive = Number(slider.dataset.wilduAmazonLookaheadUntil || 0) > Date.now();
     const entries = Array.from(slider.querySelectorAll('img[data-wildu-shop-image-src],.amazon-card-img-placeholder[data-wildu-shop-image-src]')).map(function (node) {
         const card = node.closest('.amazon-card') || node;
         const rect = card.getBoundingClientRect();
@@ -46966,7 +47066,8 @@ function wilduGetAmazonImageBand(slider) {
         const retryReady = retryable && retryAt > 0 && Date.now() >= retryAt;
         if (retryReady && Number(node.dataset.wilduAmazonImageAttempts || 0) >= 2) node.dataset.wilduAmazonImageAttempts = '0';
         const failed = !retryReady && (node.dataset.wilduAmazonImageFailed === '1' || (assigned && node.complete && node.naturalWidth === 0));
-        return { node, visible, inBand: visible, assigned, failed, retryAt: retryable ? retryAt : 0, loaded: assigned && node.complete && node.naturalWidth > 0 };
+        const lookahead = lookaheadActive && card.dataset.wilduAmazonLookahead === '1';
+        return { node, card, visible, lookahead, inBand: visible || lookahead, assigned, failed, retryAt: retryable ? retryAt : 0, loaded: assigned && node.complete && node.naturalWidth > 0 };
     });
     const first = entries.findIndex(function (entry) { return entry.visible; });
     if (first >= 0) {
@@ -46976,6 +47077,37 @@ function wilduGetAmazonImageBand(slider) {
         if (last + 1 < entries.length) entries[last + 1].inBand = true;
     }
     return entries;
+}
+
+function wilduMarkAmazonAutoscrollLookahead(slider, reason) {
+    if (!slider || !slider.isConnected || document.hidden) return 0;
+    const cards = Array.from(slider.querySelectorAll('.amazon-card'));
+    if (cards.length < 2) return 0;
+    cards.forEach(function (card) { delete card.dataset.wilduAmazonLookahead; });
+    const viewport = slider.getBoundingClientRect();
+    const center = viewport.left + (viewport.width / 2);
+    let currentIndex = 0;
+    let distance = Infinity;
+    cards.forEach(function (card, index) {
+        const rect = card.getBoundingClientRect();
+        const nextDistance = Math.abs((rect.left + (rect.width / 2)) - center);
+        if (nextDistance < distance) { distance = nextDistance; currentIndex = index; }
+    });
+    let marked = 0;
+    for (let step = 1; step <= WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS; step += 1) {
+        const card = cards[(currentIndex + step) % cards.length];
+        if (!card || card.dataset.wilduAmazonLookahead === '1') continue;
+        card.dataset.wilduAmazonLookahead = '1';
+        marked += 1;
+    }
+    slider.dataset.wilduAmazonLookaheadUntil = String(Date.now() + WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS);
+    wilduRecordAmazonCarouselEvent('amazon_image_lookahead_planned', {
+        reason: String(reason || ''),
+        currentIndex,
+        marked,
+        ttlMs: WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS
+    });
+    return marked;
 }
 
 function wilduGetAmazonVisibleHydrationDebt(slider) {
@@ -46997,6 +47129,7 @@ function wilduGetAmazonVisibleHydrationDebt(slider) {
 
 function wilduEnsureAmazonVisibleHydrationLiveness(reason, delayMs, forceDelayedCheck) {
     try {
+        if (WILDU_AMAZON_MOTION.hiddenByUser) return false;
         const slider = document.getElementById('amazon-slider-engine');
         if (!slider || !slider.querySelector('.amazon-card')) return false;
         const debt = wilduGetAmazonVisibleHydrationDebt(slider);
@@ -47157,7 +47290,7 @@ function wilduScheduleAmazonResume(reason, delayMs) {
 function wilduIsAmazonAutoMotionAllowed() {
     if (document.hidden) return false;
     const motion = WILDU_AMAZON_MOTION;
-    return !(motion.manualPause || motion.keyboardPause || motion.pointers.size || motion.hover || motion.blurred);
+    return !(motion.hiddenByUser || motion.manualPause || motion.keyboardPause || motion.pointers.size || motion.hover || motion.blurred);
 }
 
 function wilduGetAmazonCarouselGuard(reason, motionOnly) {
@@ -47239,7 +47372,9 @@ function wilduBindAmazonImageRequest(img, slider, src) {
     const original = img.dataset.wilduShopImageOriginal || src;
     const lease = original !== src ? wilduImageVariantClaim(original, src) : null;
     if (original !== src && !lease && img.getAttribute('src') !== src) {
-        img.dataset.wilduShopImageSrc = original;
+        const next = wilduGetNextAmazonImageCandidate(img, src);
+        if (next) wilduApplyAmazonImageCandidate(img, next.candidate, next.index);
+        else wilduApplyAmazonImageCandidate(img, { src: original, provider: 'original', expectedWidth: 0, expectedHeight: 0 }, Number(img.dataset.wilduAmazonCandidateIndex || 0) + 1);
         wilduScheduleAmazonImageHydration('variant_busy', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
         return null;
     }
@@ -47302,10 +47437,22 @@ function wilduHandleAmazonImageError(img, request) {
     if (request) request.lease = null;
     wilduCancelImageRequest(img);
     img.onerror = null;
-    if (reducedFailed) {
-        img.dataset.wilduShopImageSrc = original;
-        delete img.dataset.wilduShopImageExpectedWidth;
-        delete img.dataset.wilduShopImageExpectedHeight;
+    const failedProvider = String(img.dataset.wilduAmazonImageProvider || 'variant');
+    const next = reducedFailed ? wilduGetNextAmazonImageCandidate(img, failedSrc) : null;
+    if (next && wilduApplyAmazonImageCandidate(img, next.candidate, next.index)) {
+        img.dataset.wilduAmazonImageFailed = '1';
+        img.dataset.wilduAmazonImageAttempts = '0';
+        img.dataset.wilduAmazonImageRetryAt = String(Date.now() + WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
+        img.src = WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC;
+        wilduRecordAmazonCarouselEvent('amazon_image_variant_fallback', {
+            fromProvider: failedProvider,
+            toProvider: String(next.candidate.provider || 'original'),
+            toExpectedWidth: Number(next.candidate.expectedWidth || 0),
+            toExpectedHeight: Number(next.candidate.expectedHeight || 0),
+            nextIndex: next.index
+        });
+        wilduScheduleAmazonImageHydration('variant_fallback', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
+        return;
     }
     const attempts = reducedFailed ? 0 : Math.min(2, Number(img.dataset.wilduAmazonImageAttempts || 0) + 1);
     img.dataset.wilduAmazonImageFailed = '1';
@@ -47321,6 +47468,79 @@ function wilduHandleAmazonImageError(img, request) {
     delete img.dataset.wilduAmazonVisibleHydrating;
     // Preserve source; the existing visible-band hydrator owns retries.
     wilduScheduleAmazonImageHydration('image_error', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
+}
+
+function wilduSerializeAmazonImageCandidates(candidates) {
+    try {
+        return encodeURIComponent(JSON.stringify((Array.isArray(candidates) ? candidates : []).map(function (candidate) {
+            return {
+                src: String(candidate && candidate.src || ''),
+                provider: String(candidate && candidate.provider || 'original'),
+                expectedWidth: Math.max(0, Number(candidate && candidate.expectedWidth || 0)),
+                expectedHeight: Math.max(0, Number(candidate && candidate.expectedHeight || 0))
+            };
+        }).filter(function (candidate) { return !!candidate.src; })));
+    } catch (e) {
+        return '';
+    }
+}
+
+function wilduReadAmazonImageCandidates(img) {
+    try {
+        const raw = String(img && img.dataset && img.dataset.wilduShopImageCandidates || '');
+        const parsed = raw ? JSON.parse(decodeURIComponent(raw)) : [];
+        return Array.isArray(parsed) ? parsed.filter(function (candidate) {
+            return candidate && typeof candidate.src === 'string' && candidate.src.length > 0;
+        }) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function wilduApplyAmazonImageCandidate(img, candidate, index) {
+    if (!img || !candidate || !candidate.src) return false;
+    img.dataset.wilduShopImageSrc = String(candidate.src);
+    img.dataset.wilduAmazonCandidateIndex = String(Math.max(0, Number(index || 0)));
+    img.dataset.wilduAmazonImageProvider = String(candidate.provider || 'original');
+    const expectedWidth = Math.max(0, Number(candidate.expectedWidth || 0));
+    const expectedHeight = Math.max(0, Number(candidate.expectedHeight || 0));
+    if (expectedWidth && expectedHeight) {
+        img.dataset.wilduShopImageExpectedWidth = String(expectedWidth);
+        img.dataset.wilduShopImageExpectedHeight = String(expectedHeight);
+    } else {
+        delete img.dataset.wilduShopImageExpectedWidth;
+        delete img.dataset.wilduShopImageExpectedHeight;
+    }
+    return true;
+}
+
+function wilduGetNextAmazonImageCandidate(img, failedSrc) {
+    const candidates = wilduReadAmazonImageCandidates(img);
+    const currentIndex = Math.max(0, Number(img && img.dataset && img.dataset.wilduAmazonCandidateIndex || 0));
+    const start = candidates.findIndex(function (candidate, index) {
+        return index >= currentIndex && candidate.src === failedSrc;
+    });
+    for (let index = Math.max(currentIndex + 1, start + 1); index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        const original = String(img && img.dataset && img.dataset.wilduShopImageOriginal || '');
+        if (candidate.src !== original && typeof wilduImageVariantBlocked === 'function' && wilduImageVariantBlocked(original, candidate.src)) continue;
+        return { candidate, index };
+    }
+    return null;
+}
+
+function wilduGetAdmissibleAmazonImageCandidate(img, preferredSrc) {
+    const candidates = wilduReadAmazonImageCandidates(img);
+    const original = String(img && img.dataset && img.dataset.wilduShopImageOriginal || '');
+    const currentIndex = Math.max(0, Number(img && img.dataset && img.dataset.wilduAmazonCandidateIndex || 0));
+    const preferredIndex = candidates.findIndex(function (candidate) { return candidate.src === preferredSrc; });
+    const start = preferredIndex >= 0 ? preferredIndex : currentIndex;
+    for (let index = Math.max(0, start); index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        if (candidate.src !== original && typeof wilduImageVariantBlocked === 'function' && wilduImageVariantBlocked(original, candidate.src)) continue;
+        return { candidate, index };
+    }
+    return null;
 }
 
 function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
@@ -47340,7 +47560,9 @@ function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
     const expectationAttr = expectedWidth && expectedHeight
         ? ` data-wildu-shop-image-expected-width="${expectedWidth}" data-wildu-shop-image-expected-height="${expectedHeight}"`
         : '';
-    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}" data-wildu-shop-image-original="${escapeWilduShopHtml(options.originalSrc || cardImageUrl)}"${expectationAttr}` : '';
+    const candidatePayload = wilduSerializeAmazonImageCandidates(options.candidates);
+    const candidateAttr = candidatePayload ? ` data-wildu-shop-image-candidates="${escapeWilduShopHtml(candidatePayload)}" data-wildu-amazon-candidate-index="0" data-wildu-amazon-image-provider="${escapeWilduShopHtml(options.provider || 'original')}"` : '';
+    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}" data-wildu-shop-image-original="${escapeWilduShopHtml(options.originalSrc || cardImageUrl)}"${expectationAttr}${candidateAttr}` : '';
     if (!options.placeholderOnly && (!shouldProgressive || index < 2)) {
         return `<img src="${safeUrl || placeholder}"${dataAttr} alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
     }
@@ -47351,6 +47573,7 @@ function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
 }
 
 function wilduScheduleAmazonImageHydration(reason, delayMs) {
+    if (WILDU_AMAZON_MOTION.hiddenByUser) return false;
     if (
         typeof wilduShouldUseIOSPWASmartImageGuard === 'function' &&
         wilduShouldUseIOSPWASmartImageGuard() &&
@@ -47443,7 +47666,7 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
         }
         const guardName = String(guard && guard.guard || '');
         const reasonText = String(reason || '');
-        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|visible_liveness|resume_timer|deferred|auto_scroll_tick|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
+        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|visible_liveness|resume_timer|deferred|auto_scroll_(?:tick|prepare)|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
         if (!visibleReason) return false;
         if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|travel_tab_transition/i.test(guardName)) return false;
         const debt = wilduGetAmazonVisibleHydrationDebt(slider);
@@ -47488,7 +47711,8 @@ function wilduGetAmazonVisibleHydrationLimit(slider, guarded, entries) {
     try {
         const band = entries || wilduGetAmazonImageBand(slider);
         const visibleCards = band.filter(function (entry) { return entry.visible; }).length;
-        const target = Math.max(4, visibleCards + 2);
+        const lookaheadCards = band.filter(function (entry) { return entry.lookahead; }).length;
+        const target = Math.max(4, visibleCards + 2 + Math.min(WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS, lookaheadCards));
         const cap = guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
         // A wide viewport may legitimately exceed the mobile default cap. Its
         // visible band (including the two neighbours) must remain satisfiable.
@@ -47570,10 +47794,12 @@ function wilduHydrateVisibleAmazonImages(reason) {
         return 0;
     }
     const candidates = band.filter(function (entry) { return entry.inBand && !entry.assigned && !entry.failed; });
-    const selected = candidates.find(function (entry) { return entry.visible; }) || candidates[0];
-    // Retire a pending neighbour before admitting a truly visible source.
+    const visiblePending = candidates.find(function (entry) { return entry.visible; });
+    const selected = visiblePending || candidates.find(function (entry) { return entry.lookahead; }) || candidates[0];
+    // Retire a pending card left behind before admitting a visible or imminent
+    // destination. The owner remains single and the request is cancellable.
     let inflight = band.find(function (entry) { return entry.inBand && entry.assigned && !entry.loaded && !entry.failed; });
-    if (inflight && !inflight.visible && selected && selected.visible) {
+    if (inflight && !inflight.visible && selected && (selected.visible || selected.lookahead) && inflight.node !== selected.node) {
         if (wilduParkAmazonImage(inflight.node, 'amazon_visible_preemption')) {
             inflight.assigned = false;
             inflight = null;
@@ -47583,8 +47809,22 @@ function wilduHydrateVisibleAmazonImages(reason) {
         wilduBindAmazonImageRequest(inflight.node, slider, inflight.node.getAttribute('src'));
         const since = Number(inflight.node.dataset.wilduAmazonLoadStartedAt || 0);
         if (!since) inflight.node.dataset.wilduAmazonLoadStartedAt = String(Date.now());
-        else if (Date.now() - since >= 30000) {
-            wilduHandleAmazonImageError(inflight.node);
+        else {
+            const elapsed = Date.now() - since;
+            const inflightSrc = String(inflight.node.getAttribute('src') || '');
+            const inflightOriginal = String(inflight.node.dataset.wilduShopImageOriginal || inflightSrc);
+            const inflightProvider = String(inflight.node.dataset.wilduAmazonImageProvider || '');
+            const compactTravelVariant = /^(?:afterbit-amazon-|cloudinary$)/.test(inflightProvider);
+            if (compactTravelVariant && inflightSrc && inflightOriginal && inflightSrc !== inflightOriginal && elapsed >= WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS) {
+                wilduRecordAmazonCarouselEvent('amazon_image_variant_probe_timeout', {
+                    provider: inflightProvider || 'variant',
+                    elapsedMs: elapsed,
+                    timeoutMs: WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS
+                });
+                wilduHandleAmazonImageError(inflight.node, inflight.node.__wilduImageRequest);
+            } else if (elapsed >= 30000) {
+                wilduHandleAmazonImageError(inflight.node);
+            }
         }
         wilduScheduleAmazonImageHydration('progressive_next', 500);
         return 0;
@@ -47623,10 +47863,9 @@ function wilduHydrateVisibleAmazonImages(reason) {
     if (!src) return 0;
     const original = img.dataset.wilduShopImageOriginal || src;
     if (wilduImageVariantBlocked(original, src)) {
-        src = original;
-        img.dataset.wilduShopImageSrc = original;
-        delete img.dataset.wilduShopImageExpectedWidth;
-        delete img.dataset.wilduShopImageExpectedHeight;
+        const admissible = wilduGetAdmissibleAmazonImageCandidate(img, src);
+        if (!admissible || !wilduApplyAmazonImageCandidate(img, admissible.candidate, admissible.index)) return 0;
+        src = admissible.candidate.src;
     }
     let registeredTarget = img;
     let hydrationCommitted = true;
@@ -47655,6 +47894,9 @@ function wilduHydrateVisibleAmazonImages(reason) {
         hydrated.height = 58;
         hydrated.setAttribute('data-wildu-shop-image-src', src);
         hydrated.dataset.wilduShopImageOriginal = img.dataset.wilduShopImageOriginal || src;
+        if (img.dataset.wilduShopImageCandidates) hydrated.dataset.wilduShopImageCandidates = img.dataset.wilduShopImageCandidates;
+        if (img.dataset.wilduAmazonCandidateIndex) hydrated.dataset.wilduAmazonCandidateIndex = img.dataset.wilduAmazonCandidateIndex;
+        if (img.dataset.wilduAmazonImageProvider) hydrated.dataset.wilduAmazonImageProvider = img.dataset.wilduAmazonImageProvider;
         if (img.dataset.wilduShopImageExpectedWidth && img.dataset.wilduShopImageExpectedHeight) {
             hydrated.dataset.wilduShopImageExpectedWidth = img.dataset.wilduShopImageExpectedWidth;
             hydrated.dataset.wilduShopImageExpectedHeight = img.dataset.wilduShopImageExpectedHeight;
@@ -48607,6 +48849,8 @@ function renderAmazonSponsors(products, options = {}) {
             originalSrc: imageSource.original,
             expectedWidth: imageSource.expectedWidth,
             expectedHeight: imageSource.expectedHeight,
+            provider: imageSource.provider,
+            candidates: imageSource.candidates,
             placeholderOnly: amazonPlaceholderOnly
         });
 
@@ -48663,6 +48907,9 @@ function renderAmazonSponsors(products, options = {}) {
     // a usare l'URL originale conservato in currentAmazonProducts.
 
     bindAmazonSliderEventsOnce(slider);
+    // Start the bounded preparation window while the carousel is settling,
+    // rather than waiting for the first 4.5s auto-scroll tick.
+    wilduMarkAmazonAutoscrollLookahead(slider, 'rendered_pre_autoscroll');
     wilduScheduleAmazonImageHydration(amazonPlaceholderOnly ? 'rendered_shell_only' : 'rendered', amazonPlaceholderOnly ? 1600 : 460);
     wilduEnsureAmazonVisibleHydrationLiveness(amazonPlaceholderOnly ? 'rendered_shell_only' : 'rendered', amazonPlaceholderOnly ? 2200 : 900, true);
     wilduRecordAmazonCarouselEvent('amazon_carousel_rendered', {
@@ -49285,6 +49532,9 @@ function startAmazonAutoScroll() {
     wilduRecordAmazonCarouselEvent('amazon_carousel_started', {
         cardCount: slider.querySelectorAll('.amazon-card').length
     });
+    if (wilduMarkAmazonAutoscrollLookahead(slider, 'auto_scroll_start') > 0) {
+        wilduScheduleAmazonImageHydration('auto_scroll_prepare', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
+    }
     amazonAutoScrollTimer = setInterval(() => {
         if (!wilduIsAmazonAutoMotionAllowed()) {
             clearInterval(amazonAutoScrollTimer);
@@ -49354,6 +49604,12 @@ function startAmazonAutoScroll() {
 
         const isLoopReset = nextTargetLeft < currentScrollLeft - 24;
 
+    if (wilduMarkAmazonAutoscrollLookahead(slider, 'auto_scroll_prepare') > 0) {
+        // Admit the next movement window before scrolling; this does not add a
+        // second worker and does not wait indefinitely for the network.
+        wilduHydrateVisibleAmazonImages('auto_scroll_prepare');
+    }
+
     slider.scrollTo({
     left: nextTargetLeft,
     behavior: isLoopReset || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'instant' : 'smooth'
@@ -49382,6 +49638,53 @@ function wilduRearmAmazonFailedImages(reason) {
     return rearmed;
 }
 
+function wilduSetAmazonCarouselVisibility(hidden, reason) {
+    const wrapper = document.getElementById('amazon-footer-wrapper');
+    const slider = document.getElementById('amazon-slider-engine');
+    if (!wrapper || !slider) return false;
+    const motion = WILDU_AMAZON_MOTION;
+    const nextHidden = hidden === true;
+    if (motion.hiddenByUser === nextHidden && wrapper.classList.contains('is-wildu-amazon-hidden') === nextHidden) return false;
+    motion.hiddenByUser = nextHidden;
+    wrapper.classList.toggle('is-wildu-amazon-hidden', nextHidden);
+    slider.setAttribute('aria-hidden', nextHidden ? 'true' : 'false');
+    if (nextHidden) {
+        wrapper.style.setProperty('display', 'flex', 'important');
+        wrapper.style.setProperty('min-height', '0', 'important');
+        wrapper.style.setProperty('height', '0', 'important');
+        wrapper.style.setProperty('padding', '0', 'important');
+        if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
+        if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
+        amazonAutoScrollTimer = null;
+        amazonResumeTimer = null;
+        if (amazonImageHydrationTimer) {
+            clearTimeout(amazonImageHydrationTimer);
+            amazonImageHydrationTimer = 0;
+            amazonImageHydrationDue = 0;
+        }
+        if (amazonVisibleLivenessTimer) {
+            clearTimeout(amazonVisibleLivenessTimer);
+            amazonVisibleLivenessTimer = 0;
+            amazonVisibleLivenessDue = 0;
+        }
+    } else {
+        motion.manualPause = false;
+        motion.keyboardPause = false;
+        wrapper.style.removeProperty('height');
+        wrapper.style.removeProperty('padding');
+        wrapper.style.removeProperty('min-height');
+        wilduAnchorAmazonFooter('visibility_restore:' + String(reason || ''));
+        wilduMarkAmazonAutoscrollLookahead(slider, 'visibility_restore');
+        wilduScheduleAmazonImageHydration('carousel_shown', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
+        wilduScheduleAmazonResume('carousel_shown', 250);
+    }
+    wilduRecordAmazonCarouselEvent('amazon_carousel_visibility_changed', {
+        hidden: nextHidden,
+        reason: String(reason || '')
+    });
+    return true;
+}
+
 function bindAmazonSliderEventsOnce(slider) {
     const state = WILDU_AMAZON_MOTION;
     if (!slider || state.slider === slider) return;
@@ -49406,18 +49709,31 @@ function bindAmazonSliderEventsOnce(slider) {
     };
     const wrapper = document.getElementById('amazon-footer-wrapper');
     let control = document.getElementById('wildu-amazon-motion-control');
+    let visibilityControl = document.getElementById('wildu-amazon-visibility-control');
     if (wrapper && !control) {
         control = document.createElement('button');
         control.id = 'wildu-amazon-motion-control';
         control.type = 'button';
-        control.style.cssText = 'position:absolute;right:8px;bottom:100%;border:1px solid #666;border-radius:8px 8px 0 0;background:#181818;color:#fff;padding:7px 10px;font:600 12px system-ui;cursor:pointer;';
         wrapper.appendChild(control);
     }
+    if (wrapper && !visibilityControl) {
+        visibilityControl = document.createElement('button');
+        visibilityControl.id = 'wildu-amazon-visibility-control';
+        visibilityControl.type = 'button';
+        wrapper.appendChild(visibilityControl);
+    }
     const updateControl = function () {
-        if (!control) return;
-        const paused = state.manualPause || state.keyboardPause;
-        control.textContent = paused ? 'Avvia' : 'Pausa';
-        control.setAttribute('aria-label', paused ? 'Avvia scorrimento carosello Amazon' : 'Metti in pausa lo scorrimento del carosello Amazon');
+        if (control) {
+            const paused = state.manualPause || state.keyboardPause;
+            control.textContent = paused ? 'Avvia' : 'Pausa';
+            control.setAttribute('aria-label', paused ? 'Avvia scorrimento carosello Amazon' : 'Metti in pausa lo scorrimento del carosello Amazon');
+        }
+        if (visibilityControl) {
+            const hidden = state.hiddenByUser === true;
+            visibilityControl.textContent = hidden ? 'Mostra negozio' : 'Nascondi';
+            visibilityControl.setAttribute('aria-label', hidden ? 'Mostra il carosello prodotti Amazon' : 'Nascondi il carosello prodotti Amazon per questa sessione');
+            visibilityControl.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+        }
     };
     const resume = function (reason) {
         if (state.slider === slider && slider.isConnected && wilduIsAmazonAutoMotionAllowed()) wilduScheduleAmazonResume(reason, 250);
@@ -49477,6 +49793,10 @@ function bindAmazonSliderEventsOnce(slider) {
         updateControl();
         if (state.manualPause) pauseAmazonAutoScroll('manual_pause');
         else resume('control_resume');
+    });
+    if (visibilityControl) on(visibilityControl, 'click', function () {
+        const changed = wilduSetAmazonCarouselVisibility(!state.hiddenByUser, 'visibility_control');
+        if (changed) updateControl();
     });
     on(window, 'blur', function () {
         state.blurred = true;
