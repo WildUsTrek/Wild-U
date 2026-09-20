@@ -3008,7 +3008,9 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 #amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-visibility-control {
     left: 50%;
     right: auto;
-    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    /* The fixed carousel already owns the bottom edge of this PWA. Keeping
+       an extra safe-area gap here made "Mostra negozio" float above it. */
+    bottom: 0;
     transform: translateX(-50%);
     border-radius: 999px;
     border-color: rgba(212,175,55,0.65);
@@ -46717,6 +46719,8 @@ const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS = 4;
 const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS = 1600;
 const WILDU_AMAZON_FAST_SCROLL_THRESHOLD_PX_MS = 0.45;
 const WILDU_AMAZON_FAST_SCROLL_REPLAN_MS = 160;
+const WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS = 2;
+const WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS = 40;
 const WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS = 1800;
 const WILDU_AMAZON_COMPOSITION_SEED = String(Date.now()) + ':' + String(Math.random());
 let amazonRenderGeneration = 0;
@@ -47115,6 +47119,8 @@ function wilduMarkAmazonAutoscrollLookahead(slider, reason, direction, requested
     // symmetric reservation instead of guessing from the previous gesture.
     const bidirectional = Number(direction) === 0;
     const stepDirection = Number(direction) < 0 ? -1 : 1;
+    const manualMeasuredDirection = !bidirectional && /^shop_fast_scroll_measured$/i.test(String(reason || ''));
+    const strategy = bidirectional ? 'symmetric_intent' : (manualMeasuredDirection ? 'manual_measured_direction' : 'autoscroll_direction');
     const count = Math.max(1, Math.min(WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS,
         Number(requestedCount || WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS)));
     const ttlMs = Math.max(320, Math.min(WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS,
@@ -47131,12 +47137,13 @@ function wilduMarkAmazonAutoscrollLookahead(slider, reason, direction, requested
         if (bidirectional) markAtOffset(-step);
     }
     slider.dataset.wilduAmazonLookaheadUntil = String(Date.now() + ttlMs);
+    slider.dataset.wilduAmazonLookaheadStrategy = strategy;
     wilduRecordAmazonCarouselEvent('amazon_image_lookahead_planned', {
         reason: String(reason || ''),
         currentIndex,
         marked,
         direction: bidirectional ? 0 : stepDirection,
-        strategy: bidirectional ? 'symmetric_intent' : 'measured_direction',
+        strategy,
         requestedCount: count,
         ttlMs
     });
@@ -47152,6 +47159,7 @@ function wilduClearAmazonTransientLookahead(slider, reason) {
         delete card.dataset.wilduAmazonLookahead;
     });
     delete slider.dataset.wilduAmazonLookaheadUntil;
+    delete slider.dataset.wilduAmazonLookaheadStrategy;
     let released = 0;
     wilduGetAmazonImageBand(slider).forEach(function (entry) {
         if (entry.inBand || entry.visible || !entry.assigned || entry.loaded) return;
@@ -47162,6 +47170,17 @@ function wilduClearAmazonTransientLookahead(slider, reason) {
         released
     });
     return released;
+}
+
+function wilduGetAmazonHydrationRequestLimit(slider, guarded) {
+    // Parallelism is deliberately a short-lived manual-fling affordance. It
+    // never expands the recovery budget, background work or automatic motion.
+    if (guarded || !slider || !slider.isConnected || document.hidden || WILDU_AMAZON_MOTION.hiddenByUser) return 1;
+    const strategy = String(slider.dataset.wilduAmazonLookaheadStrategy || '');
+    const until = Number(slider.dataset.wilduAmazonLookaheadUntil || 0);
+    const age = Date.now() - Number(WILDU_AMAZON_MOTION.lastFastLookaheadAt || 0);
+    if (strategy !== 'manual_measured_direction' || until <= Date.now() || age < 0 || age > WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS) return 1;
+    return WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS;
 }
 
 function wilduGetAmazonVisibleHydrationDebt(slider) {
@@ -47459,7 +47478,11 @@ function wilduBindAmazonImageRequest(img, slider, src) {
         wilduRecordImageRequestPhase(img, request, 'loaded');
         img.onload = null;
         img.onerror = null;
-        wilduScheduleAmazonImageHydration('image_loaded', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
+        const fastParallel = wilduGetAmazonHydrationRequestLimit(slider, false) > 1;
+        wilduScheduleAmazonImageHydration(
+            fastParallel ? 'shop_fast_scroll_parallel_next' : 'image_loaded',
+            fastParallel ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : WILDU_SECONDARY_TIMINGS.amazonCompletionMs
+        );
     };
     img.onerror = function () { if (current()) wilduHandleAmazonImageError(img, request); };
     // Missing-event safety only; cannot clear ownership of a newer request.
@@ -47628,6 +47651,13 @@ function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
 
 function wilduScheduleAmazonImageHydration(reason, delayMs) {
     if (WILDU_AMAZON_MOTION.hiddenByUser) return false;
+    const slider = document.getElementById('amazon-slider-engine');
+    const fastParallelCandidate = /^shop_fast_scroll_(?:measured|parallel_next)$/i.test(String(reason || ''));
+    const fastParallelGuard = fastParallelCandidate ? wilduGetAmazonCarouselGuard('fast_scroll_parallel_probe') : null;
+    const fastParallelWindow = fastParallelCandidate && !(fastParallelGuard && fastParallelGuard.blocked) &&
+        wilduGetAmazonHydrationRequestLimit(slider, false) > 1;
+    const minimumDelay = fastParallelWindow ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : 120;
+    const fallbackDelay = fastParallelWindow ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : WILDU_AMAZON_IOS_IMAGE_STEP_MS;
     if (
         typeof wilduShouldUseIOSPWASmartImageGuard === 'function' &&
         wilduShouldUseIOSPWASmartImageGuard() &&
@@ -47635,7 +47665,7 @@ function wilduScheduleAmazonImageHydration(reason, delayMs) {
         !wilduIsIOSResourceCoordinatorInternalReason(reason)
     ) {
         const coordinated = wilduScheduleIOSResourceCoordinatorJob('amazon-visible', reason || 'amazon_image_hydration', {
-            delayMs: Math.max(120, Number(delayMs || 0) || WILDU_AMAZON_IOS_IMAGE_STEP_MS)
+            delayMs: Math.max(minimumDelay, Number(delayMs || 0) || fallbackDelay)
         });
         if (coordinated) return true;
     }
@@ -47664,7 +47694,7 @@ function wilduScheduleAmazonImageHydration(reason, delayMs) {
     const requestedDelay = Number(delayMs || 0);
     const delay = visibleBypassScheduled
         ? Math.max(120, Math.min(320, requestedDelay || 180))
-        : Math.max(120, requestedDelay);
+        : Math.max(minimumDelay, requestedDelay || fallbackDelay);
     const due = Date.now() + delay;
     if (amazonImageHydrationTimer) {
         if (amazonImageHydrationDue && amazonImageHydrationDue <= due + 50) {
@@ -47850,37 +47880,55 @@ function wilduHydrateVisibleAmazonImages(reason) {
     const candidates = band.filter(function (entry) { return entry.inBand && !entry.assigned && !entry.failed; });
     const visiblePending = candidates.find(function (entry) { return entry.visible; });
     const selected = visiblePending || candidates.find(function (entry) { return entry.lookahead; }) || candidates[0];
-    // Retire a pending card left behind before admitting a visible or imminent
-    // destination. The owner remains single and the request is cancellable.
-    let inflight = band.find(function (entry) { return entry.inBand && entry.assigned && !entry.loaded && !entry.failed; });
-    if (inflight && !inflight.visible && selected && (selected.visible || selected.lookahead) && inflight.node !== selected.node) {
-        if (wilduParkAmazonImage(inflight.node, 'amazon_visible_preemption')) {
-            inflight.assigned = false;
-            inflight = null;
+    // Normal/recovery operation has one request. A measured manual fling may
+    // temporarily use two small-image requests; stale old-direction requests
+    // are cancelled before they can occupy either slot.
+    const requestLimit = wilduGetAmazonHydrationRequestLimit(slider, guarded);
+    let inflightEntries = band.filter(function (entry) { return entry.assigned && !entry.loaded && !entry.failed; });
+    inflightEntries.filter(function (entry) { return !entry.inBand; }).forEach(function (entry) {
+        if (wilduParkAmazonImage(entry.node, 'amazon_fast_scroll_stale_preemption')) entry.assigned = false;
+    });
+    inflightEntries = inflightEntries.filter(function (entry) { return entry.inBand && entry.assigned; });
+    if (selected && !inflightEntries.some(function (entry) { return entry.node === selected.node; }) &&
+        inflightEntries.length >= requestLimit && selected.visible) {
+        const victim = inflightEntries.find(function (entry) { return !entry.visible && entry.node !== selected.node; });
+        if (victim && wilduParkAmazonImage(victim.node, 'amazon_visible_preemption')) {
+            victim.assigned = false;
+            inflightEntries = inflightEntries.filter(function (entry) { return entry.assigned; });
         }
     }
-    if (inflight) {
+    let timeoutHandled = false;
+    inflightEntries.forEach(function (inflight) {
         wilduBindAmazonImageRequest(inflight.node, slider, inflight.node.getAttribute('src'));
         const since = Number(inflight.node.dataset.wilduAmazonLoadStartedAt || 0);
-        if (!since) inflight.node.dataset.wilduAmazonLoadStartedAt = String(Date.now());
-        else {
-            const elapsed = Date.now() - since;
-            const inflightSrc = String(inflight.node.getAttribute('src') || '');
-            const inflightOriginal = String(inflight.node.dataset.wilduShopImageOriginal || inflightSrc);
-            const inflightProvider = String(inflight.node.dataset.wilduAmazonImageProvider || '');
-            const compactTravelVariant = /^(?:afterbit-amazon-|cloudinary$)/.test(inflightProvider);
-            if (compactTravelVariant && inflightSrc && inflightOriginal && inflightSrc !== inflightOriginal && elapsed >= WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS) {
-                wilduRecordAmazonCarouselEvent('amazon_image_variant_probe_timeout', {
-                    provider: inflightProvider || 'variant',
-                    elapsedMs: elapsed,
-                    timeoutMs: WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS
-                });
-                wilduHandleAmazonImageError(inflight.node, inflight.node.__wilduImageRequest);
-            } else if (elapsed >= 30000) {
-                wilduHandleAmazonImageError(inflight.node);
-            }
+        if (!since) {
+            inflight.node.dataset.wilduAmazonLoadStartedAt = String(Date.now());
+            return;
         }
-        wilduScheduleAmazonImageHydration('progressive_next', 500);
+        const elapsed = Date.now() - since;
+        const inflightSrc = String(inflight.node.getAttribute('src') || '');
+        const inflightOriginal = String(inflight.node.dataset.wilduShopImageOriginal || inflightSrc);
+        const inflightProvider = String(inflight.node.dataset.wilduAmazonImageProvider || '');
+        const compactTravelVariant = /^(?:afterbit-amazon-|cloudinary$)/.test(inflightProvider);
+        if (compactTravelVariant && inflightSrc && inflightOriginal && inflightSrc !== inflightOriginal && elapsed >= WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS) {
+            wilduRecordAmazonCarouselEvent('amazon_image_variant_probe_timeout', {
+                provider: inflightProvider || 'variant',
+                elapsedMs: elapsed,
+                timeoutMs: WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS
+            });
+            wilduHandleAmazonImageError(inflight.node, inflight.node.__wilduImageRequest);
+            timeoutHandled = true;
+        } else if (elapsed >= 30000) {
+            wilduHandleAmazonImageError(inflight.node);
+            timeoutHandled = true;
+        }
+    });
+    if (timeoutHandled || inflightEntries.length >= requestLimit) {
+        const fastFollowup = requestLimit > 1;
+        wilduScheduleAmazonImageHydration(
+            fastFollowup ? 'shop_fast_scroll_parallel_next' : 'progressive_next',
+            fastFollowup ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : 500
+        );
         return 0;
     }
     if (!selected) {
@@ -47913,6 +47961,8 @@ function wilduHydrateVisibleAmazonImages(reason) {
     }
     const img = selected.node;
     if (!img) return 0;
+    const fastRequest = requestLimit > 1 && selected.lookahead;
+    const fetchPriority = (selected.visible || fastRequest) ? 'high' : 'low';
     let src = String(img.getAttribute('data-wildu-shop-image-src') || '');
     if (!src) return 0;
     const original = img.dataset.wilduShopImageOriginal || src;
@@ -47926,6 +47976,8 @@ function wilduHydrateVisibleAmazonImages(reason) {
     if (String(img.tagName || '').toUpperCase() === 'IMG') {
         img.setAttribute('data-wildu-amazon-visible-hydrating', '1');
         img.loading = 'eager';
+        img.fetchPriority = fetchPriority;
+        img.setAttribute('fetchpriority', fetchPriority);
         delete img.dataset.wilduAmazonBandEvicted;
         // Do not briefly restore a previous failed variant before the admitted source.
         const managed = WILDU_IOS_IMAGE_MEMORY_RUNTIME.states.get(img);
@@ -47943,7 +47995,8 @@ function wilduHydrateVisibleAmazonImages(reason) {
         hydrated.alt = img.getAttribute('aria-label') || '';
         hydrated.loading = 'eager';
         hydrated.decoding = 'async';
-        hydrated.fetchPriority = 'low';
+        hydrated.fetchPriority = fetchPriority;
+        hydrated.setAttribute('fetchpriority', fetchPriority);
         hydrated.width = 58;
         hydrated.height = 58;
         hydrated.setAttribute('data-wildu-shop-image-src', src);
@@ -48014,10 +48067,16 @@ function wilduHydrateVisibleAmazonImages(reason) {
         committed: hydrationCommitted,
         remaining: Math.max(0, candidates.length - (hydrationCommitted ? 1 : 0)),
         limit: hydrationLimit,
-        guarded
+        guarded,
+        concurrentRequestLimit: requestLimit,
+        inflightBeforeAdmission: inflightEntries.length
     });
     if (candidates.length > (hydrationCommitted ? 1 : 0) || !registeredTarget.complete) {
-        wilduScheduleAmazonImageHydration('progressive_next', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
+        const parallelSlotAvailable = requestLimit > (inflightEntries.length + (hydrationCommitted ? 1 : 0));
+        wilduScheduleAmazonImageHydration(
+            parallelSlotAvailable ? 'shop_fast_scroll_parallel_next' : 'progressive_next',
+            parallelSlotAvailable ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : WILDU_AMAZON_IOS_IMAGE_STEP_MS
+        );
     }
     return hydrationCommitted ? 1 : 0;
 }
@@ -49931,12 +49990,12 @@ function bindAmazonSliderEventsOnce(slider) {
                 state.lastFastLookaheadDirection = direction;
                 if (wilduMarkAmazonAutoscrollLookahead(
                     slider,
-                    'shop_fast_scroll_prepare',
+                    'shop_fast_scroll_measured',
                     direction,
                     WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS,
                     WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS
                 ) > 0) {
-                    wilduScheduleAmazonImageHydration('shop_fast_scroll_prepare', 0);
+                    wilduScheduleAmazonImageHydration('shop_fast_scroll_measured', 0);
                     return;
                 }
             }
