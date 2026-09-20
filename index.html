@@ -7205,7 +7205,8 @@ html.wildu-detail-transition-busy body {
         <p style="font-size:14px; color:#aaa; margin-bottom:18px;" id="profile-loading-desc">
             Sincronizzazione in corso... 🌲
         </p>
-        <div style="width:36px; height:36px; margin:0 auto; border:4px solid #333; border-top-color: var(--w-gold); border-radius:50%; animation:wildSpin 0.8s linear infinite;"></div>
+        <div id="profile-loading-spinner" style="width:36px; height:36px; margin:0 auto; border:4px solid #333; border-top-color: var(--w-gold); border-radius:50%; animation:wildSpin 0.8s linear infinite;"></div>
+        <button id="profile-terminal-retry-btn" type="button" class="btn-book hidden" style="width:100%; margin-top:16px;" onclick="wilduRetryTerminalAuthProfile()">RIPROVA VERIFICA</button>
     </div>
 </div>
 
@@ -12628,6 +12629,18 @@ window.WilduMediaClient = WilduMediaClient;
     let authProbeStartedAt = 0;
     let lastBackendVerifiedUid = '';
     let isRegistrationCompletionInProgress = false;
+    const WILDU_AUTH_NAV_TAB_IDS = new Set(['travelhub', 'events', 'free', 'ondemand', 'paid', 'rewards', 'profile', 'groups', 'install', 'negozio']);
+    let wilduAuthNavigationGeneration = 0;
+    let wilduAuthNavigationIntent = null;
+    let wilduAuthFailureCandidate = null;
+    let wilduAuthTerminalizationPromise = null;
+    let wilduAuthTerminalFailureActive = false;
+    const WILDU_AUTH_TERMINAL_GUEST_CODES = new Set([
+        'AUTH_BRIDGE_EXPIRED',
+        'AUTH_BRIDGE_NOT_FOUND',
+        'AUTH_BRIDGE_REDEEMED_WITHOUT_SESSION',
+        'AUTH_BACKEND_SESSION_NOT_READY'
+    ]);
     const AUTH_RECOVERY_DELAYS_MS = [250, 1000, 3000, 8000];
     const AUTH_PROFILE_PROBE_STALE_MS = 15000;
     const AUTH_PROFILE_LIVENESS_RETRY_MS = 15000;
@@ -12711,6 +12724,7 @@ window.WilduMediaClient = WilduMediaClient;
     }
 
     function beginWilduGoogleAuthTransition(mode) {
+        wilduBeginAuthNavigationGeneration('GOOGLE_AUTH_START:' + String(mode || 'POPUP'));
         const state = {
             startedAt: Date.now(),
             mode: String(mode || 'POPUP').toUpperCase()
@@ -12845,10 +12859,31 @@ window.WilduMediaClient = WilduMediaClient;
 function reconcileProfileShellWithClientSession() {
     const loginScreen = document.getElementById('login-screen');
     const loadingScreen = document.getElementById('profile-loading-screen');
+    const loadingDesc = document.getElementById('profile-loading-desc');
+    const loadingSpinner = document.getElementById('profile-loading-spinner');
+    const terminalRetryBtn = document.getElementById('profile-terminal-retry-btn');
     const completeScreen = document.getElementById('complete-profile-screen');
     const profileData = document.getElementById('profile-data');
 
     if (!loginScreen || !completeScreen || !profileData) return;
+
+    // Non fingiamo mai un guest se Firebase non ha confermato signOut. In quel
+    // caso la superficie resta pubblicamente navigabile, mentre Profilo espone
+    // un solo retry intenzionale e senza un nuovo loop automatico.
+    if (wilduAuthTerminalFailureActive) {
+        loginScreen.classList.add('hidden');
+        completeScreen.classList.add('hidden');
+        profileData.classList.add('hidden');
+        if (loadingScreen) loadingScreen.classList.remove('hidden');
+        if (loadingDesc) loadingDesc.innerText = 'La verifica non si e conclusa. Puoi riprovare quando vuoi.';
+        if (loadingSpinner) loadingSpinner.classList.add('hidden');
+        if (terminalRetryBtn) terminalRetryBtn.classList.remove('hidden');
+        updateWilduGuestProfileCarouselLifecycle();
+        return;
+    }
+
+    if (loadingSpinner) loadingSpinner.classList.remove('hidden');
+    if (terminalRetryBtn) terminalRetryBtn.classList.add('hidden');
 
     if (
         authProbeInProgress ||
@@ -13262,6 +13297,233 @@ function reconcileProfileShellWithClientSession() {
         const firebaseUid = String(auth.currentUser?.uid || '').trim();
         return isBackendVerifiedClientUid(expectedUid) &&
             firebaseUid === String(wildUserKey || '').trim();
+    }
+
+    // Navigazione utente e auth condividono la stessa shell, ma non lo stesso
+    // owner: questo runtime e' document-local, senza retry/timer/storage.
+    function wilduClearAuthNavigationIntent(reason) {
+        if (!wilduAuthNavigationIntent) return false;
+        const previous = wilduAuthNavigationIntent;
+        wilduAuthNavigationIntent = null;
+        try {
+            pageDebug('AUTH_NAV_INTENT_CLEARED', {
+                reason: String(reason || 'UNKNOWN'),
+                tabId: String(previous.tabId || ''),
+                generation: Number(previous.generation || 0)
+            });
+        } catch (e) {}
+        return true;
+    }
+
+    function wilduBeginAuthNavigationGeneration(reason) {
+        wilduAuthNavigationGeneration += 1;
+        wilduClearAuthNavigationIntent('AUTH_GENERATION:' + String(reason || 'UNKNOWN'));
+        wilduAuthFailureCandidate = null;
+        wilduAuthTerminalFailureActive = false;
+        try {
+            pageDebug('AUTH_NAV_GENERATION_STARTED', {
+                reason: String(reason || 'UNKNOWN'),
+                generation: wilduAuthNavigationGeneration
+            });
+        } catch (e) {}
+        return wilduAuthNavigationGeneration;
+    }
+
+    function wilduDeferUserNavigationForAuth(tabId) {
+        const cleanTabId = String(tabId || '').trim();
+        if (!WILDU_AUTH_NAV_TAB_IDS.has(cleanTabId)) return false;
+        if (wilduAuthTerminalFailureActive) return false;
+        const snapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+            ? wilduGetAuthProfileCriticalSnapshot()
+            : null;
+        if (!snapshot || snapshot.active !== true) return false;
+
+        wilduAuthNavigationIntent = {
+            tabId: cleanTabId,
+            generation: wilduAuthNavigationGeneration,
+            requestedAt: Date.now()
+        };
+        try {
+            pageDebug('AUTH_NAV_INTENT_DEFERRED', {
+                tabId: cleanTabId,
+                generation: wilduAuthNavigationGeneration,
+                sessionState: String(snapshot.sessionState || ''),
+                hasFirebaseUser: !!snapshot.hasFirebaseUser
+            });
+        } catch (e) {}
+        try { showToast('Completo prima la verifica del profilo…'); } catch (e) {}
+        return true;
+    }
+
+    function wilduFlushVerifiedAuthNavigationIntent(reason) {
+        const intent = wilduAuthNavigationIntent;
+        if (!intent) return false;
+        const snapshot = typeof wilduGetAuthProfileCriticalSnapshot === 'function'
+            ? wilduGetAuthProfileCriticalSnapshot()
+            : null;
+        if (snapshot && snapshot.active === true) return false;
+        if (
+            intent.generation !== wilduAuthNavigationGeneration ||
+            profileCompletionRequired ||
+            !isCurrentVerifiedClientIdentity()
+        ) {
+            return wilduClearAuthNavigationIntent('AUTH_NAV_TERMINAL_DISCARD:' + String(reason || 'UNKNOWN'));
+        }
+
+        wilduAuthNavigationIntent = null;
+        try {
+            pageDebug('AUTH_NAV_INTENT_FLUSHED', {
+                tabId: String(intent.tabId || ''),
+                generation: Number(intent.generation || 0),
+                reason: String(reason || 'UNKNOWN')
+            });
+        } catch (e) {}
+        show(intent.tabId, {
+            scrollPolicy: 'top',
+            scrollBehavior: 'smooth',
+            source: 'auth-nav-terminal'
+        });
+        return true;
+    }
+
+    function wilduRememberAuthTerminalFailure(error, reason, user, generation) {
+        const code = String(error?.code || error?.status || '').trim().toUpperCase();
+        const uid = String(user?.uid || auth.currentUser?.uid || '').trim();
+        const cleanReason = String(reason || '').trim().toUpperCase();
+        const recoverable =
+            !navigator.onLine ||
+            Number(error?.status || 0) === 429 ||
+            /RATE|BACKPRESSURE|OFFLINE|NETWORK|UNAVAILABLE|DEADLINE|TIMEOUT|FAILED-PRECONDITION/.test(code + ':' + cleanReason);
+        if (!uid || recoverable) {
+            wilduAuthFailureCandidate = null;
+            return false;
+        }
+        if (!WILDU_AUTH_TERMINAL_GUEST_CODES.has(code)) {
+            wilduAuthFailureCandidate = null;
+            try {
+                pageDebug('AUTH_TERMINAL_CANDIDATE_IGNORED_UNCLASSIFIED', {
+                    code: code || 'AUTH_UNCLASSIFIED_FAILURE',
+                    reason: cleanReason || 'AUTH_FAILURE'
+                });
+            } catch (e) {}
+            return false;
+        }
+        wilduAuthFailureCandidate = {
+            uid,
+            code: code || 'AUTH_UNCLASSIFIED_FAILURE',
+            reason: cleanReason || 'AUTH_FAILURE',
+            probeSequence: Number(generation || authProbeSequence || 0),
+            navGeneration: wilduAuthNavigationGeneration,
+            at: Date.now()
+        };
+        try {
+            pageDebug('AUTH_TERMINAL_CANDIDATE_RECORDED', {
+                code: wilduAuthFailureCandidate.code,
+                reason: wilduAuthFailureCandidate.reason,
+                probeSequence: wilduAuthFailureCandidate.probeSequence
+            });
+        } catch (e) {}
+        return true;
+    }
+
+    function wilduCanPresentAuthTerminalBlock() {
+        if (!navigator.onLine || clientSession.authState !== 'AUTH_PENDING' || !auth.currentUser) return false;
+        if (authRefreshLock || authProbeInProgress || isRegistrationCompletionInProgress) return false;
+        try {
+            if (isWilduGoogleAuthTransitionActive() || wilduIsAuthBridgeRuntimeActive()) return false;
+            if (WILDU_AUTH_BRIDGE_RETURN_RUNTIME?.returnPending || WILDU_AUTH_BRIDGE_RETURN_RUNTIME?.wait) return false;
+        } catch (e) { return false; }
+        return true;
+    }
+
+    function wilduPresentAuthTerminalBlock(reason) {
+        if (wilduAuthTerminalFailureActive || !wilduCanPresentAuthTerminalBlock()) return false;
+        clearClientAuthRecovery();
+        clearPendingClientAuthStateReplay();
+        clearAuthProfileWatchdog();
+        wilduClearAuthNavigationIntent('AUTH_TERMINAL_BLOCK:' + String(reason || 'UNKNOWN'));
+        wilduAuthTerminalFailureActive = true;
+        try {
+            pageDebug('AUTH_TERMINAL_BLOCK_PRESENTED', { reason: String(reason || 'UNKNOWN') });
+        } catch (e) {}
+        reconcileProfileShellWithClientSession();
+        return true;
+    }
+
+    function wilduCanTerminalizeAuthPendingToGuest() {
+        const candidate = wilduAuthFailureCandidate;
+        if (!candidate || wilduAuthTerminalizationPromise) return false;
+        if (!navigator.onLine || clientSession.authState !== 'AUTH_PENDING') return false;
+        if (String(auth.currentUser?.uid || '') !== String(candidate.uid || '')) return false;
+        if (Number(candidate.probeSequence || 0) !== Number(authProbeSequence || 0)) return false;
+        if (authRefreshLock || authProbeInProgress || isRegistrationCompletionInProgress) return false;
+        try {
+            if (isWilduGoogleAuthTransitionActive() || wilduIsAuthBridgeRuntimeActive()) return false;
+            if (WILDU_AUTH_BRIDGE_RETURN_RUNTIME?.returnPending || WILDU_AUTH_BRIDGE_RETURN_RUNTIME?.wait) return false;
+        } catch (e) { return false; }
+        return true;
+    }
+
+    function wilduStartAuthTerminalGuest(reason) {
+        if (!wilduCanTerminalizeAuthPendingToGuest()) return false;
+        const candidate = { ...wilduAuthFailureCandidate };
+        const cleanReason = String(reason || candidate.reason || 'AUTH_TERMINAL_FAILURE');
+        wilduAuthTerminalizationPromise = (async function () {
+            try {
+                if (!wilduCanTerminalizeAuthPendingToGuest()) return false;
+                authProbeSequence += 1;
+                initDataRequestSequence += 1;
+                clearClientAuthRecovery();
+                clearPendingClientAuthStateReplay();
+                clearAuthProfileWatchdog();
+                wilduClearAuthNavigationIntent('AUTH_TERMINAL_GUEST:' + cleanReason);
+                try { clearWilduAuthBridgeAttempt('AUTH_TERMINAL_GUEST:' + cleanReason); } catch (e) {}
+
+                await auth.signOut();
+                if (auth.currentUser) {
+                    throw new Error('AUTH_TERMINAL_SIGNOUT_NOT_SETTLED');
+                }
+
+                clearWilduLogoutStorageScoped();
+                wilduAuthFailureCandidate = null;
+                wilduAuthTerminalFailureActive = false;
+                resetStaleClientAuthPendingToGuest('AUTH_TERMINAL_GUEST:' + cleanReason, { force: true });
+                try {
+                    pageDebug('AUTH_TERMINAL_GUEST_CONFIRMED', {
+                        code: String(candidate.code || ''),
+                        reason: cleanReason
+                    });
+                } catch (e) {}
+                try { showToast('Accesso non completato. Puoi riprovare quando vuoi.'); } catch (e) {}
+                return true;
+            } catch (error) {
+                try {
+                    pageDebug('AUTH_TERMINAL_GUEST_SIGNOUT_FAILED', {
+                        code: String(candidate.code || ''),
+                        reason: cleanReason,
+                        error: String(error?.code || error?.message || 'SIGNOUT_FAILED')
+                    });
+                } catch (e) {}
+                wilduAuthTerminalFailureActive = true;
+                wilduClearAuthNavigationIntent('AUTH_TERMINAL_SIGNOUT_FAILED');
+                reconcileProfileShellWithClientSession();
+                return false;
+            } finally {
+                wilduAuthTerminalizationPromise = null;
+            }
+        })();
+        return true;
+    }
+
+    function wilduRetryTerminalAuthProfile() {
+        if (!wilduAuthTerminalFailureActive || !auth.currentUser || authRefreshLock || authProbeInProgress) return false;
+        wilduAuthTerminalFailureActive = false;
+        wilduAuthFailureCandidate = null;
+        try {
+            pageDebug('AUTH_TERMINAL_USER_RETRY', { hasFirebaseUser: true });
+        } catch (e) {}
+        handleClientAuthStateChanged(auth.currentUser, 'AUTH_TERMINAL_USER_RETRY');
+        return true;
     }
 
     function isRetainedVerifiedAuthPending() {
@@ -14851,7 +15113,10 @@ function scheduleAuthProfileWatchdog(reason) {
                     clientAuthState: String(clientSession?.authState || '')
                 });
             } catch (e) {}
-            scheduleAuthProfileLivenessRetry('AUTH_PROFILE_WATCHDOG_TERMINAL:' + cleanReason);
+            if (!wilduStartAuthTerminalGuest('AUTH_PROFILE_WATCHDOG_TERMINAL:' + cleanReason) &&
+                !wilduPresentAuthTerminalBlock('AUTH_PROFILE_WATCHDOG_TERMINAL:' + cleanReason)) {
+                scheduleAuthProfileLivenessRetry('AUTH_PROFILE_WATCHDOG_TERMINAL:' + cleanReason);
+            }
         }
     }, AUTH_PROFILE_WATCHDOG_MS);
     try {
@@ -15136,6 +15401,10 @@ function resetStaleClientAuthPendingToGuest(reason, options = {}) {
         capabilities: getDefaultClientCapabilities('WEB')
     };
 
+    wilduClearAuthNavigationIntent('AUTH_PENDING_STALE_GUEST');
+    wilduAuthFailureCandidate = null;
+    wilduAuthTerminalFailureActive = false;
+
     try {
         const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
         if (runtime) {
@@ -15294,7 +15563,9 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
         profileCompletionRequired = true;
         authProbeInProgress = false;
         authProbeStartedAt = 0;
+        wilduAuthFailureCandidate = null;
         endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
+        wilduClearAuthNavigationIntent('PROFILE_COMPLETION_REQUIRED');
         reconcileProfileShellWithClientSession();
         try { pageDebug('AUTH_PROFILE_FINALIZE_PROFILE_REQUIRED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
         return { status: 'PROFILE_COMPLETION_REQUIRED', data };
@@ -15322,9 +15593,11 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
     profileCompletionRequired = false;
     authProbeInProgress = false;
     authProbeStartedAt = 0;
+    wilduAuthFailureCandidate = null;
     endWilduGoogleAuthTransition('BACKEND_SESSION_FINALIZED');
     reconcileProfileShellWithClientSession();
     updateProfileUI();
+    wilduFlushVerifiedAuthNavigationIntent('BACKEND_SESSION_FINALIZED');
     try { pageDebug('AUTH_PROFILE_FINALIZE_LOGGED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
     return { status: 'LOGGED', data };
 }
@@ -15496,8 +15769,10 @@ if (docSnap.exists) {
     clearClientAuthRecovery();
     authProbeInProgress = false;
     authProbeStartedAt = 0;
+    wilduAuthFailureCandidate = null;
     endWilduGoogleAuthTransition('PROFILE_CONFIRMED');
     updateProfileUI();
+    wilduFlushVerifiedAuthNavigationIntent('PROFILE_CONFIRMED');
 } else {
                 // Il backend canonico ha confermato che il profilo non esiste.
                 clearClientAuthRecovery();
@@ -15506,7 +15781,9 @@ if (docSnap.exists) {
                 profileCompletionRequired = true;
                 authProbeInProgress = false;
                 authProbeStartedAt = 0;
+                wilduAuthFailureCandidate = null;
                 endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
+                wilduClearAuthNavigationIntent('PROFILE_COMPLETION_REQUIRED');
                 reconcileProfileShellWithClientSession();
             }
 
@@ -15558,6 +15835,7 @@ if (docSnap.exists) {
                 "Accesso Google riuscito, ma il profilo non e' ancora sincronizzato. Riprovo automaticamente.",
                 'AUTH_BOOTSTRAP_RETRY'
             );
+            wilduRememberAuthTerminalFailure(e, 'AUTH_BOOTSTRAP_RETRY', user, probeSequence);
             showToast("Errore: " + e.message);
         }
 } else {
@@ -15575,6 +15853,10 @@ if (docSnap.exists) {
         tokenStatus: 'NONE',
         capabilities: getDefaultClientCapabilities('WEB')
     };
+
+    wilduClearAuthNavigationIntent('AUTH_LISTENER_GUEST');
+    wilduAuthFailureCandidate = null;
+    wilduAuthTerminalFailureActive = false;
 
     wildUserKey = null;
     clearClientPrivateRuntimeState();
@@ -16123,6 +16405,7 @@ async function redeemWilduAuthBridgeAttempt(state) {
                 'AUTH_BRIDGE_FINALIZE_RETRY',
                 { scheduleRecovery: false }
             );
+            wilduRememberAuthTerminalFailure(error, 'AUTH_BRIDGE_FINALIZE_RETRY', signedUser, authProbeSequence);
             scheduleClientAuthRecovery('AUTH_BRIDGE_FINALIZE_RETRY', {
                 reset: true,
                 immediate: true
@@ -16195,6 +16478,8 @@ async function pollWilduAuthBridgeAttempt(state) {
                 authProbeStartedAt = 0;
                 if (!auth.currentUser) {
                     resetStaleClientAuthPendingToGuest(code || 'AUTH_BRIDGE_EXPIRED', { force: true });
+                } else {
+                    wilduRememberAuthTerminalFailure(error, 'AUTH_BRIDGE_POLL_TERMINAL_FAILURE', auth.currentUser, authProbeSequence);
                 }
                 try {
                     pageDebug('AUTH_BRIDGE_POLL_TERMINAL_FAILURE', {
@@ -17044,6 +17329,7 @@ function logout() {
     // precedente, poi pulisce lo stato visibile.
     authProbeSequence += 1;
     initDataRequestSequence += 1;
+    wilduBeginAuthNavigationGeneration('LOGOUT');
     clearClientAuthRecovery();
     if (authStateReplayTimer) {
         window.clearTimeout(authStateReplayTimer);
@@ -17183,6 +17469,7 @@ function updateProfileUI() {
 
     // Se l'utente è davvero loggato secondo il backend, possiamo caricare il profilo
     if (isClientLogged() && wildUserKey) {
+        wilduFlushVerifiedAuthNavigationIntent('PROFILE_UI_LOGGED');
         fetchXP({ showBackpackSync: true, reason: 'PROFILE_UI' });
         return;
     }
@@ -17201,7 +17488,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.117';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.118';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -41349,6 +41636,7 @@ if (profKeyEl) {
     }
 
     function showWilduNavTab(id) {
+        if (wilduDeferUserNavigationForAuth(id)) return false;
         show(id, {
             scrollPolicy: 'top',
             scrollBehavior: 'smooth',
