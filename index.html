@@ -3006,10 +3006,16 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 #amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-motion-control { display: none; }
 #amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-visibility-control {
+    left: 50%;
+    right: auto;
     bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
     border-radius: 999px;
     border-color: rgba(212,175,55,0.65);
     color: var(--w-gold);
+    padding: 10px 18px;
+    font-size: 14px;
+    min-width: 154px;
 }
 
 .wildu-company-footer {
@@ -18824,6 +18830,7 @@ const WilduIOSBlackBox = (() => {
             'amazon_image_hydration_parked_by_owner',
             'amazon_image_hydration_visible_bypass_scheduled',
             'amazon_image_lookahead_planned',
+            'amazon_image_lookahead_cancelled',
             'amazon_image_variant_probe_timeout',
             'amazon_image_variant_fallback',
             'amazon_image_hydrated',
@@ -46706,6 +46713,10 @@ const WILDU_AMAZON_TRAVEL_CARD_COMPACT_HEIGHT = 120;
 // enough when auto-scroll advances independently from an image response.
 const WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS = 2;
 const WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS = 5200;
+const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS = 4;
+const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS = 1600;
+const WILDU_AMAZON_FAST_SCROLL_THRESHOLD_PX_MS = 0.45;
+const WILDU_AMAZON_FAST_SCROLL_REPLAN_MS = 160;
 const WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS = 1800;
 const WILDU_AMAZON_COMPOSITION_SEED = String(Date.now()) + ':' + String(Math.random());
 let amazonRenderGeneration = 0;
@@ -46884,7 +46895,9 @@ function wilduDisposeAmazonRenderOwner(slider, reason) {
 
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 const WILDU_AMAZON_MOTION = { manualPause: false, keyboardPause: false, hiddenByUser: false, pointers: new Set(),
-    hover: false, blurred: false, keyboardModality: true, lastPointerAt: 0, slider: null, dispose: null };
+    hover: false, blurred: false, keyboardModality: true, lastPointerAt: 0, lastScrollLeft: 0, lastScrollAt: 0,
+    lastFastLookaheadAt: 0, lastFastLookaheadDirection: 0, pointerIntentMoved: false,
+    autoScrollMotionUntil: 0, slider: null, dispose: null };
 let amazonInitInFlight = false;
 let amazonQuietUntil = 0;
 let amazonQuietReason = '';
@@ -47083,7 +47096,7 @@ function wilduGetAmazonImageBand(slider) {
     return entries;
 }
 
-function wilduMarkAmazonAutoscrollLookahead(slider, reason) {
+function wilduMarkAmazonAutoscrollLookahead(slider, reason, direction, requestedCount, requestedTtlMs) {
     if (!slider || !slider.isConnected || document.hidden) return 0;
     const cards = Array.from(slider.querySelectorAll('.amazon-card'));
     if (cards.length < 2) return 0;
@@ -47097,21 +47110,58 @@ function wilduMarkAmazonAutoscrollLookahead(slider, reason) {
         const nextDistance = Math.abs((rect.left + (rect.width / 2)) - center);
         if (nextDistance < distance) { distance = nextDistance; currentIndex = index; }
     });
+    // Direction must be derived from an actual scroll delta. Before that,
+    // a touch means only "the user may move either way", so use a small
+    // symmetric reservation instead of guessing from the previous gesture.
+    const bidirectional = Number(direction) === 0;
+    const stepDirection = Number(direction) < 0 ? -1 : 1;
+    const count = Math.max(1, Math.min(WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS,
+        Number(requestedCount || WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS)));
+    const ttlMs = Math.max(320, Math.min(WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS,
+        Number(requestedTtlMs || WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS)));
     let marked = 0;
-    for (let step = 1; step <= WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS; step += 1) {
-        const card = cards[(currentIndex + step) % cards.length];
-        if (!card || card.dataset.wilduAmazonLookahead === '1') continue;
+    const markAtOffset = function (offset) {
+        const card = cards[(currentIndex + offset + cards.length) % cards.length];
+        if (!card || card.dataset.wilduAmazonLookahead === '1') return;
         card.dataset.wilduAmazonLookahead = '1';
         marked += 1;
+    };
+    for (let step = 1; step <= count; step += 1) {
+        markAtOffset(stepDirection * step);
+        if (bidirectional) markAtOffset(-step);
     }
-    slider.dataset.wilduAmazonLookaheadUntil = String(Date.now() + WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS);
+    slider.dataset.wilduAmazonLookaheadUntil = String(Date.now() + ttlMs);
     wilduRecordAmazonCarouselEvent('amazon_image_lookahead_planned', {
         reason: String(reason || ''),
         currentIndex,
         marked,
-        ttlMs: WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS
+        direction: bidirectional ? 0 : stepDirection,
+        strategy: bidirectional ? 'symmetric_intent' : 'measured_direction',
+        requestedCount: count,
+        ttlMs
     });
     return marked;
+}
+
+function wilduClearAmazonTransientLookahead(slider, reason) {
+    if (!slider || !slider.isConnected) return 0;
+    const hadLookahead = Number(slider.dataset.wilduAmazonLookaheadUntil || 0) > Date.now() ||
+        !!slider.querySelector('.amazon-card[data-wildu-amazon-lookahead="1"]');
+    if (!hadLookahead) return 0;
+    Array.from(slider.querySelectorAll('.amazon-card')).forEach(function (card) {
+        delete card.dataset.wilduAmazonLookahead;
+    });
+    delete slider.dataset.wilduAmazonLookaheadUntil;
+    let released = 0;
+    wilduGetAmazonImageBand(slider).forEach(function (entry) {
+        if (entry.inBand || entry.visible || !entry.assigned || entry.loaded) return;
+        if (wilduParkAmazonImage(entry.node, 'amazon_lookahead_cancelled:' + String(reason || ''))) released += 1;
+    });
+    wilduRecordAmazonCarouselEvent('amazon_image_lookahead_cancelled', {
+        reason: String(reason || ''),
+        released
+    });
+    return released;
 }
 
 function wilduGetAmazonVisibleHydrationDebt(slider) {
@@ -47670,7 +47720,7 @@ function wilduCanHydrateAmazonVisibleImageWhileGuarded(slider, guard, reason) {
         }
         const guardName = String(guard && guard.guard || '');
         const reasonText = String(reason || '');
-        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_scroll|visible_recovery|visible_liveness|resume_timer|deferred|auto_scroll_(?:tick|prepare)|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
+        const visibleReason = /rendered|render_reused|guard_retry|progressive_next|shop_(?:fast_)?scroll|visible_recovery|visible_liveness|resume_timer|deferred|auto_scroll_(?:tick|prepare)|owner_stable_resume|image_hydration|retry_after_release/i.test(reasonText);
         if (!visibleReason) return false;
         if (/top_layer_open|page_hidden|document_hidden|google_auth|ios_page_lifecycle|travel_tab_transition/i.test(guardName)) return false;
         const debt = wilduGetAmazonVisibleHydrationDebt(slider);
@@ -47716,7 +47766,7 @@ function wilduGetAmazonVisibleHydrationLimit(slider, guarded, entries) {
         const band = entries || wilduGetAmazonImageBand(slider);
         const visibleCards = band.filter(function (entry) { return entry.visible; }).length;
         const lookaheadCards = band.filter(function (entry) { return entry.lookahead; }).length;
-        const target = Math.max(4, visibleCards + 2 + Math.min(WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS, lookaheadCards));
+        const target = Math.max(4, visibleCards + 2 + Math.min(WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS, lookaheadCards));
         const cap = guarded ? WILDU_AMAZON_IOS_VISIBLE_RECOVERY_IMAGE_LIMIT : WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT;
         // A wide viewport may legitimately exceed the mobile default cap. Its
         // visible band (including the two neighbours) must remain satisfiable.
@@ -49614,6 +49664,9 @@ function startAmazonAutoScroll() {
         wilduHydrateVisibleAmazonImages('auto_scroll_prepare');
     }
 
+    // Ignore the browser's ensuing smooth-scroll events as manual intent:
+    // manual lookahead is only meaningful after a real user gesture.
+    WILDU_AMAZON_MOTION.autoScrollMotionUntil = Date.now() + 1200;
     slider.scrollTo({
     left: nextTargetLeft,
     behavior: isLoopReset || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'instant' : 'smooth'
@@ -49653,6 +49706,8 @@ function wilduSetAmazonCarouselVisibility(hidden, reason) {
     wrapper.classList.toggle('is-wildu-amazon-hidden', nextHidden);
     slider.setAttribute('aria-hidden', nextHidden ? 'true' : 'false');
     if (nextHidden) {
+        // The hidden carousel must not retain a short-lived manual intent.
+        wilduClearAmazonTransientLookahead(slider, 'carousel_hidden');
         wrapper.style.setProperty('display', 'flex', 'important');
         wrapper.style.setProperty('min-height', '0', 'important');
         wrapper.style.setProperty('height', '0', 'important');
@@ -49745,13 +49800,38 @@ function bindAmazonSliderEventsOnce(slider) {
     const down = function (id) {
         state.keyboardModality = false;
         state.lastPointerAt = Date.now();
+        if (!state.pointers.size) {
+            state.pointerIntentMoved = false;
+            state.lastScrollLeft = Number(slider.scrollLeft || 0);
+            state.lastScrollAt = Date.now();
+            // A new contact supersedes any smooth motion that was scheduled
+            // just before it; its following delta belongs to the user.
+            state.autoScrollMotionUntil = 0;
+        }
         state.pointers.add(id);
         pauseAmazonAutoScroll('pointer_hold');
         wilduRearmAmazonFailedImages('user_interaction');
+        // A finger contact is a cheap intent signal, not proof of direction:
+        // reserve two cards on each side until a real scroll delta tells us
+        // which way the user is actually moving.
+        if (!state.hiddenByUser && wilduMarkAmazonAutoscrollLookahead(
+            slider,
+            'shop_fast_scroll_prepare',
+            0,
+            WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS,
+            WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS
+        ) > 0) {
+            wilduScheduleAmazonImageHydration('shop_fast_scroll_prepare', 0);
+        }
     };
     const up = function (id) {
         if (!state.pointers.delete(id)) return;
-        if (!state.pointers.size) resume('interaction_release');
+        if (!state.pointers.size) {
+            // A tap/hold that never moved is not a scroll intent. Release its
+            // temporary bilateral reservation before the user interacts elsewhere.
+            if (!state.pointerIntentMoved) wilduClearAmazonTransientLookahead(slider, 'pointer_without_scroll');
+            resume('interaction_release');
+        }
     };
     if (typeof window.PointerEvent === 'function') {
         on(slider, 'pointerdown', function (e) { down(e.pointerId); }, { passive: true });
@@ -49810,6 +49890,18 @@ function bindAmazonSliderEventsOnce(slider) {
     });
     on(window, 'focus', function () { state.blurred = false; resume('window_focus'); });
     on(window, 'online', function () { wilduRearmAmazonFailedImages('network_online'); });
+    const clearTransientIntentOutsideSlider = function (event) {
+        const target = event && event.target;
+        if (!target || slider.contains(target) || (control && control.contains(target)) ||
+            (visibilityControl && visibilityControl.contains(target))) return;
+        if (!state.pointers.size) wilduClearAmazonTransientLookahead(slider, 'outside_interaction');
+    };
+    if (typeof window.PointerEvent === 'function') {
+        on(document, 'pointerdown', clearTransientIntentOutsideSlider, true);
+    } else {
+        on(document, 'touchstart', clearTransientIntentOutsideSlider, true);
+        on(document, 'mousedown', clearTransientIntentOutsideSlider, true);
+    }
     on(document, 'visibilitychange', function () {
         if (document.hidden) {
             state.pointers.clear();
@@ -49821,7 +49913,36 @@ function bindAmazonSliderEventsOnce(slider) {
         }
     });
     on(slider, 'wheel', function () { pauseAmazonAutoScroll('wheel'); resume('interaction_release'); }, { passive: true });
-    on(slider, 'scroll', function () { wilduScheduleAmazonImageHydration('shop_scroll', 180); }, { passive: true });
+    on(slider, 'scroll', function () {
+        const now = Date.now();
+        const left = Number(slider.scrollLeft || 0);
+        const elapsed = Math.max(1, now - Number(state.lastScrollAt || 0));
+        const delta = left - Number(state.lastScrollLeft || 0);
+        const velocity = Math.abs(delta) / elapsed;
+        const direction = delta < 0 ? -1 : 1;
+        const autoMotion = now < Number(state.autoScrollMotionUntil || 0);
+        state.lastScrollLeft = left;
+        state.lastScrollAt = now;
+        if (!autoMotion && Math.abs(delta) >= 8 && state.pointers.size) state.pointerIntentMoved = true;
+        if (!autoMotion && Math.abs(delta) >= 8 && velocity >= WILDU_AMAZON_FAST_SCROLL_THRESHOLD_PX_MS) {
+            const directionChanged = direction !== Number(state.lastFastLookaheadDirection || 0);
+            if (directionChanged || now - Number(state.lastFastLookaheadAt || 0) >= WILDU_AMAZON_FAST_SCROLL_REPLAN_MS) {
+                state.lastFastLookaheadAt = now;
+                state.lastFastLookaheadDirection = direction;
+                if (wilduMarkAmazonAutoscrollLookahead(
+                    slider,
+                    'shop_fast_scroll_prepare',
+                    direction,
+                    WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS,
+                    WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS
+                ) > 0) {
+                    wilduScheduleAmazonImageHydration('shop_fast_scroll_prepare', 0);
+                    return;
+                }
+            }
+        }
+        wilduScheduleAmazonImageHydration('shop_scroll', 180);
+    }, { passive: true });
     updateControl();
 }
 
