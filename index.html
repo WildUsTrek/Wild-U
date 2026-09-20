@@ -17537,7 +17537,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.119';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.120';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -34142,6 +34142,11 @@ const WILDU_SOFT_MODAL_IOS_IMAGE_HYDRATION_STRESS_STEP_MS = 320;
 const WILDU_SOFT_MODAL_IOS_IMAGE_BUDGET_MIB = 17;
 const WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB = 24;
 const WILDU_SOFT_MODAL_IOS_ORIGINAL_FALLBACK_BUDGET_MIB = 24;
+// This is not a general memory-budget increase.  It covers at most the five
+// exact Afterbit 135x120 thumbnails that are simultaneously visible in a
+// soft modal (5 * 135 * 120 * 4 / MiB = about 0.31 MiB).
+const WILDU_SOFT_MODAL_IOS_COMPACT_VISIBLE_LIMIT = 5;
+const WILDU_SOFT_MODAL_IOS_COMPACT_VISIBLE_OVERSHOOT_MIB = 0.5;
 const WILDU_SOFT_MODAL_IOS_IMAGE_RETRY_MS = 650;
 const WILDU_SOFT_MODAL_IOS_RESTART_HYDRATION_GRACE_MS = 7000;
 // One generation-bound liveness check only. It never assigns a source or starts
@@ -34229,7 +34234,29 @@ function wilduGetSoftModalApproxDecodedMiB() {
         : 0;
 }
 
-function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
+// Pure preflight only: it does not assign src, start a request, claim a
+// variant lease or mutate the image registry.  A broad source or an original
+// deliberately receives no compact admission.
+function wilduGetSoftModalKnownCompactProjection(originalSrc) {
+    try {
+        const candidate = typeof wilduBuildAfterbitIOSSoftModalThumbnailCandidate === 'function'
+            ? wilduBuildAfterbitIOSSoftModalThumbnailCandidate(originalSrc)
+            : null;
+        if (!candidate || candidate.provider !== 'afterbit-ios-soft-modal-135' ||
+            Number(candidate.exactWidth || 0) !== WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_WIDTH ||
+            Number(candidate.exactHeight || 0) !== WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_HEIGHT) return null;
+        return {
+            provider: candidate.provider,
+            exactWidth: Number(candidate.exactWidth),
+            exactHeight: Number(candidate.exactHeight),
+            decodedMiB: (Number(candidate.exactWidth) * Number(candidate.exactHeight) * 4) / 1048576
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function wilduGetSoftModalImageHydrationGuard(list, img, reason, options) {
     if (!wilduShouldUseSoftModalImageGuard()) return { allowed: true };
     if (!list || !list.isConnected || !img || !img.isConnected) return { allowed: false, guard: 'detached', retryMs: 0 };
     if (document.hidden || (document.visibilityState && document.visibilityState !== 'visible')) {
@@ -34270,6 +34297,7 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
     // not be parked forever merely because its original fallback is checked
     // before the visible admission.  This remains a single canonical request
     // and still releases far images before admitting anything.
+    const compactProjection = options && options.compactProjection || null;
     let visiblePriority = false;
     let hydratedInWindow = 0;
     try {
@@ -34330,6 +34358,32 @@ function wilduGetSoftModalImageHydrationGuard(list, img, reason) {
                 guardedVisibleOverride: true
             };
         }
+        const compactVisibleLimit = Math.min(
+            WILDU_SOFT_MODAL_IOS_COMPACT_VISIBLE_LIMIT,
+            wilduGetSoftModalImageHydrationLimit()
+        );
+        const compactVisibleAdmission = visiblePriority &&
+            compactProjection &&
+            img.dataset.wilduSoftImageUseOriginal !== '1' &&
+            compactProjection.provider === 'afterbit-ios-soft-modal-135' &&
+            Number(compactProjection.exactWidth || 0) === WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_WIDTH &&
+            Number(compactProjection.exactHeight || 0) === WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_HEIGHT &&
+            Number(compactProjection.decodedMiB || Infinity) > 0 &&
+            hydratedInWindow < compactVisibleLimit &&
+            approxDecodedMiB <= WILDU_SOFT_MODAL_IOS_IMAGE_HARD_BLOCK_MIB + WILDU_SOFT_MODAL_IOS_COMPACT_VISIBLE_OVERSHOOT_MIB;
+        if (compactVisibleAdmission) {
+            return {
+                allowed: true,
+                approxDecodedMiB,
+                compactVisibleOverride: true,
+                compactProjection: {
+                    provider: compactProjection.provider,
+                    exactWidth: compactProjection.exactWidth,
+                    exactHeight: compactProjection.exactHeight,
+                    decodedMiB: Math.round(compactProjection.decodedMiB * 1000) / 1000
+                }
+            };
+        }
         return {
             allowed: false,
             guard: 'soft_modal_image_budget_high',
@@ -34373,7 +34427,9 @@ function wilduBuildSoftModalHydrationSource(img, originalSrc) {
             src: original,
             original,
             provider: 'original',
-            reduced: false
+            reduced: false,
+            exactWidth: 0,
+            exactHeight: 0
         };
     }
     // The 423x300 Afterbit derivative has a proven multi-second timeout class
@@ -34393,14 +34449,18 @@ function wilduBuildSoftModalHydrationSource(img, originalSrc) {
             src: candidate.candidate,
             original,
             provider: candidate.provider || '',
-            reduced: true
+            reduced: true,
+            exactWidth: Number(candidate.exactWidth || 0),
+            exactHeight: Number(candidate.exactHeight || 0)
         };
     }
     return {
         src: original,
         original,
         provider: 'original',
-        reduced: false
+        reduced: false,
+        exactWidth: 0,
+        exactHeight: 0
     };
 }
 
@@ -34514,7 +34574,8 @@ function wilduHydrateSoftModalImage(img, reason, list) {
         return false;
     }
 
-    const guard = wilduGetSoftModalImageHydrationGuard(modalList, img, reason);
+    const compactProjection = wilduGetSoftModalKnownCompactProjection(src);
+    const guard = wilduGetSoftModalImageHydrationGuard(modalList, img, reason, { compactProjection });
     if (!guard.allowed) {
         if (modalList) {
             modalList.__wilduSoftImageHydrating = false;
@@ -34556,6 +34617,23 @@ function wilduHydrateSoftModalImage(img, reason, list) {
 
     const sourceInfo = wilduBuildSoftModalHydrationSource(img, src);
     if (!sourceInfo) return false;
+    if (guard.compactVisibleOverride && !(sourceInfo.provider === 'afterbit-ios-soft-modal-135' &&
+        Number(sourceInfo.exactWidth || 0) === WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_WIDTH &&
+        Number(sourceInfo.exactHeight || 0) === WILDU_AFTERBIT_IOS_SOFT_MODAL_THUMB_HEIGHT)) {
+        // A source whose compact variant is already unavailable/busy must
+        // re-enter the ordinary fallback policy on the next scheduler turn;
+        // otherwise the compact preflight could keep admitting and rejecting
+        // the same card without a state transition.
+        img.dataset.wilduSoftImageUseOriginal = '1';
+        try {
+            wilduIOSBlackBoxRecord('soft_modal_compact_visible_admission_rejected', {
+                reason: String(reason || ''),
+                provider: sourceInfo.provider || '',
+                projected: guard.compactProjection || null
+            });
+        } catch (e) {}
+        return false;
+    }
     if (!wilduAssignSoftModalImageSource(img, sourceInfo, reason)) return false;
 
     try {
@@ -35161,7 +35239,15 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
             list.__wilduSoftImageScheduledImage = null;
             list.__wilduSoftImageScheduledGeneration = '';
             list.__wilduSoftImageScheduledAt = 0;
-            const timerGuard = wilduGetSoftModalImageHydrationGuard(list, img, 'timer_preflight:' + hydrationReason);
+            const timerCompactProjection = wilduGetSoftModalKnownCompactProjection(
+                String(img && img.getAttribute && img.getAttribute('data-wildu-soft-image-src') || '')
+            );
+            const timerGuard = wilduGetSoftModalImageHydrationGuard(
+                list,
+                img,
+                'timer_preflight:' + hydrationReason,
+                { compactProjection: timerCompactProjection }
+            );
             if (!timerGuard.allowed) {
                 list.__wilduSoftImageHydrationTimer = 0;
                 list.__wilduSoftImageHydrating = false;
