@@ -22563,6 +22563,7 @@ if (cachedPublicData && !bypassPublicCache) {
         allOpenDays = data.opendays || [];
         allPayDays = data.paydays || [];
         allOnDemandTrips = data.onDemandTrips || [];
+        initAmazonSponsors({ allowRemote: false, reason: 'public_cache_lists_ready' });
 
         // La cache pubblica non deve sporcare lo stato utente.
         // Se siamo guest, puliamo lo zaino runtime.
@@ -22679,7 +22680,6 @@ if (cachedPublicData && !bypassPublicCache) {
             }
 
             markConfirmedRemoteSuccess();
-            initAmazonSponsors({ allowRemote: true });
             syncClientSessionFromInitData(data);
 
 const publicCachePayload = {
@@ -22714,6 +22714,7 @@ const publicCachePayload = {
             allOpenDays = data.opendays || [];
             allPayDays = data.paydays || [];
             allOnDemandTrips = data.onDemandTrips || [];
+            initAmazonSponsors({ allowRemote: true, reason: 'remote_lists_ready' });
             // Lo zaino autenticato arriva dal backend Cloud, che lo ha appena letto
             // da Firestore per l'UID canonico. Lo applichiamo subito e manteniamo
             // fetchXP come successiva verifica diretta, senza usare dati Sheet.
@@ -31823,7 +31824,7 @@ function wilduCloudinaryPartLooksLikeTransform(part) {
     );
 }
 
-function wilduBuildCloudinarySmartImageCandidate(originalUrl, img) {
+function wilduBuildCloudinarySmartImageCandidate(originalUrl, img, targetSize) {
     const clean = wilduNormalizeSmartImageUrl(originalUrl);
     if (!clean) return null;
     try {
@@ -31837,7 +31838,7 @@ function wilduBuildCloudinarySmartImageCandidate(originalUrl, img) {
         });
         if (versionIndex < 0 || versionIndex + 1 >= parts.length) return null;
 
-        const size = wilduGetSmartImageTargetSize(img);
+        const size = targetSize || wilduGetSmartImageTargetSize(img);
         const transform = [
             'c_fill',
             'g_auto',
@@ -46645,6 +46646,12 @@ const WILDU_AMAZON_IOS_VISIBLE_STABLE_IMAGE_LIMIT = 14;
 const WILDU_AMAZON_IOS_SHELL_IMAGE_NODE_LIMIT = 6;
 const WILDU_AMAZON_IOS_AUTOSCROLL_DELAY_MS = WILDU_SECONDARY_TIMINGS.amazonResumeMs;
 const WILDU_AMAZON_IOS_HARD_GUARD_RETRY_MS = 5200;
+// Slot CSS 58px: 160px lascia margine per display ad alta densita' senza
+// riusare il target 700x360 delle liste. Vale soltanto per miniature viaggio.
+const WILDU_AMAZON_TRAVEL_CARD_THUMB_WIDTH = 160;
+const WILDU_AMAZON_TRAVEL_CARD_THUMB_HEIGHT = 160;
+const WILDU_AMAZON_COMPOSITION_SEED = String(Date.now()) + ':' + String(Math.random());
+let amazonRenderGeneration = 0;
 
 function wilduGetAmazonCardImageUrl(rawUrl) {
     const original = String(rawUrl || '').trim();
@@ -46667,6 +46674,118 @@ function wilduGetAmazonCardImageUrl(rawUrl) {
     } catch (e) {
         return original;
     }
+}
+
+function wilduHashAmazonCompositionText(value) {
+    const text = String(value || '');
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+        hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+    }
+    return hash >>> 0;
+}
+
+function wilduGetAmazonProductLogicalKey(product) {
+    const item = product || {};
+    return [item.id || item.asin || item.affiliate_url || item.href || item.title || '',
+        item.title || '', item.img_url || item.image || '', item.price || '', item.active === true ? '1' : '0'].join('|');
+}
+
+function wilduGetAmazonTravelLogicalKey(travel) {
+    const item = travel || {};
+    return [item.safeId || '', item.title || '', item.img_url || '', item.dateText || '',
+        item.price || '', item.tag || '', item.isHike === true ? '1' : '0'].join('|');
+}
+
+function wilduOrderAmazonProductsForCarousel(products, signature) {
+    return (Array.isArray(products) ? products : []).slice().sort(function (left, right) {
+        const leftKey = wilduGetAmazonProductLogicalKey(left);
+        const rightKey = wilduGetAmazonProductLogicalKey(right);
+        const leftRank = wilduHashAmazonCompositionText(WILDU_AMAZON_COMPOSITION_SEED + '|' + signature + '|' + leftKey);
+        const rightRank = wilduHashAmazonCompositionText(WILDU_AMAZON_COMPOSITION_SEED + '|' + signature + '|' + rightKey);
+        return leftRank - rightRank || leftKey.localeCompare(rightKey);
+    });
+}
+
+function wilduBuildAmazonTravelThumbnailCandidate(originalUrl) {
+    const afterbit = wilduBuildAfterbitImageCandidate(
+        originalUrl,
+        WILDU_AMAZON_TRAVEL_CARD_THUMB_WIDTH,
+        WILDU_AMAZON_TRAVEL_CARD_THUMB_HEIGHT,
+        'afterbit'
+    );
+    if (afterbit) return afterbit;
+    return wilduBuildCloudinarySmartImageCandidate(originalUrl, null, {
+        width: WILDU_AMAZON_TRAVEL_CARD_THUMB_WIDTH,
+        height: WILDU_AMAZON_TRAVEL_CARD_THUMB_HEIGHT
+    });
+}
+
+function wilduGetAmazonCarouselCardImageSource(product) {
+    const item = product || {};
+    const original = String(item.img_url || '').trim();
+    if (!item.isTravel) {
+        return { src: wilduGetAmazonCardImageUrl(original), original, provider: 'amazon-card', expectedWidth: 0, expectedHeight: 0 };
+    }
+    const candidate = wilduBuildAmazonTravelThumbnailCandidate(original);
+    return {
+        src: candidate && candidate.candidate ? candidate.candidate : original,
+        original,
+        provider: candidate && candidate.provider ? candidate.provider : 'original',
+        expectedWidth: candidate && candidate.provider === 'afterbit' ? Number(candidate.exactWidth || 0) : 0,
+        expectedHeight: candidate && candidate.provider === 'afterbit' ? Number(candidate.exactHeight || 0) : 0
+    };
+}
+
+function wilduBuildAmazonCarouselSnapshot(products) {
+    const activeProducts = (Array.isArray(products) ? products : []).filter(function (product) {
+        return !!(product && product.active === true);
+    });
+    const upcomingTravels = getUpcomingTravelCards().slice().sort(function (left, right) {
+        return wilduGetAmazonTravelLogicalKey(left).localeCompare(wilduGetAmazonTravelLogicalKey(right));
+    });
+    const productKeys = activeProducts.map(wilduGetAmazonProductLogicalKey).sort();
+    const travelKeys = upcomingTravels.map(wilduGetAmazonTravelLogicalKey).sort();
+    const signature = JSON.stringify({ products: productKeys, travels: travelKeys });
+    const mixedList = wilduOrderAmazonProductsForCarousel(activeProducts, signature).map(function (product) {
+        return Object.assign({}, product, { isTravel: false });
+    });
+    let inserted = 0;
+    let position = 0;
+    while (position < mixedList.length && inserted < upcomingTravels.length && mixedList.length > 5) {
+        const gap = 5 + (wilduHashAmazonCompositionText(signature + '|' + inserted) % 3);
+        position += gap;
+        if (position < mixedList.length) {
+            mixedList.splice(position, 0, Object.assign({}, upcomingTravels[inserted], { isTravel: true }));
+            inserted += 1;
+            position += 1;
+        }
+    }
+    return {
+        items: mixedList,
+        signature,
+        productCount: activeProducts.length,
+        travelAvailable: upcomingTravels.length,
+        travelInserted: inserted
+    };
+}
+
+function wilduDisposeAmazonRenderOwner(slider, reason) {
+    if (!slider) return;
+    Array.from(slider.querySelectorAll('img')).forEach(function (img) {
+        wilduCancelImageRequest(img);
+    });
+    if (amazonImageHydrationTimer) clearTimeout(amazonImageHydrationTimer);
+    if (amazonVisibleLivenessTimer) clearTimeout(amazonVisibleLivenessTimer);
+    amazonImageHydrationTimer = 0;
+    amazonImageHydrationDue = 0;
+    amazonVisibleLivenessTimer = 0;
+    amazonVisibleLivenessDue = 0;
+    wilduRecordAmazonCarouselEvent('amazon_render_owner_disposed', {
+        reason: String(reason || ''),
+        previousGeneration: Number(slider.dataset.wilduAmazonGeneration || 0),
+        cardCount: slider.querySelectorAll('.amazon-card').length
+    });
 }
 
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
@@ -47035,20 +47154,6 @@ function wilduScheduleAmazonResume(reason, delayMs) {
     return true;
 }
 
-function wilduGetAmazonInputSignature(products) {
-    try {
-        return JSON.stringify((Array.isArray(products) ? products : []).slice(0, 80).map(function (p) {
-            return [
-                p && (p.id || p.asin || p.title || ''),
-                p && (p.img_url || p.image || ''),
-                p && p.active
-            ].join('|');
-        }));
-    } catch (e) {
-        return String((Array.isArray(products) ? products : []).length);
-    }
-}
-
 function wilduIsAmazonAutoMotionAllowed() {
     if (document.hidden) return false;
     const motion = WILDU_AMAZON_MOTION;
@@ -47138,7 +47243,7 @@ function wilduBindAmazonImageRequest(img, slider, src) {
         wilduScheduleAmazonImageHydration('variant_busy', WILDU_SECONDARY_TIMINGS.amazonCompletionMs);
         return null;
     }
-    const request = wilduBeginImageRequest(img, 'amazon', src, 0);
+    const request = wilduBeginImageRequest(img, 'amazon', src, Number(slider.dataset.wilduAmazonGeneration || 0));
     request.root = slider;
     request.original = original;
     request.lease = lease;
@@ -47148,6 +47253,12 @@ function wilduBindAmazonImageRequest(img, slider, src) {
     };
     img.onload = function () {
         if (!current()) return;
+        const expectedWidth = Number(img.dataset.wilduShopImageExpectedWidth || 0);
+        const expectedHeight = Number(img.dataset.wilduShopImageExpectedHeight || 0);
+        if (expectedWidth && expectedHeight && (img.naturalWidth !== expectedWidth || img.naturalHeight !== expectedHeight)) {
+            wilduHandleAmazonImageError(img, request);
+            return;
+        }
         if (lease) wilduImageVariantSettle(original, src, lease, 'loaded');
         request.lease = null;
         if (request.timer) window.clearTimeout(request.timer);
@@ -47191,7 +47302,11 @@ function wilduHandleAmazonImageError(img, request) {
     if (request) request.lease = null;
     wilduCancelImageRequest(img);
     img.onerror = null;
-    if (reducedFailed) img.dataset.wilduShopImageSrc = original;
+    if (reducedFailed) {
+        img.dataset.wilduShopImageSrc = original;
+        delete img.dataset.wilduShopImageExpectedWidth;
+        delete img.dataset.wilduShopImageExpectedHeight;
+    }
     const attempts = reducedFailed ? 0 : Math.min(2, Number(img.dataset.wilduAmazonImageAttempts || 0) + 1);
     img.dataset.wilduAmazonImageFailed = '1';
     img.dataset.wilduAmazonImageAttempts = String(attempts);
@@ -47210,13 +47325,22 @@ function wilduHandleAmazonImageError(img, request) {
 
 function wilduBuildAmazonCardImageHtml(cardImageUrl, title, index, options) {
     options = options || {};
-    if (options.originalSrc && wilduImageVariantBlocked(options.originalSrc, cardImageUrl)) cardImageUrl = options.originalSrc;
+    if (options.originalSrc && wilduImageVariantBlocked(options.originalSrc, cardImageUrl)) {
+        cardImageUrl = options.originalSrc;
+        options.expectedWidth = 0;
+        options.expectedHeight = 0;
+    }
     const safeUrl = escapeWilduShopHtml(cardImageUrl);
     const safeTitle = escapeWilduShopHtml(title);
     const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
     const fallback = ` onerror="wilduHandleAmazonImageError(this)"`;
     const shouldProgressive = typeof wilduShouldUseIOSPWASmartImageGuard === 'function' && wilduShouldUseIOSPWASmartImageGuard();
-    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}" data-wildu-shop-image-original="${escapeWilduShopHtml(options.originalSrc || cardImageUrl)}"` : '';
+    const expectedWidth = Math.max(0, Number(options.expectedWidth || 0));
+    const expectedHeight = Math.max(0, Number(options.expectedHeight || 0));
+    const expectationAttr = expectedWidth && expectedHeight
+        ? ` data-wildu-shop-image-expected-width="${expectedWidth}" data-wildu-shop-image-expected-height="${expectedHeight}"`
+        : '';
+    const dataAttr = safeUrl ? ` data-wildu-shop-image-src="${safeUrl}" data-wildu-shop-image-original="${escapeWilduShopHtml(options.originalSrc || cardImageUrl)}"${expectationAttr}` : '';
     if (!options.placeholderOnly && (!shouldProgressive || index < 2)) {
         return `<img src="${safeUrl || placeholder}"${dataAttr} alt="${safeTitle}" loading="lazy" decoding="async" fetchpriority="low" width="58" height="58"${fallback} style="object-fit: cover !important; background: #111 !important;">`;
     }
@@ -47501,6 +47625,8 @@ function wilduHydrateVisibleAmazonImages(reason) {
     if (wilduImageVariantBlocked(original, src)) {
         src = original;
         img.dataset.wilduShopImageSrc = original;
+        delete img.dataset.wilduShopImageExpectedWidth;
+        delete img.dataset.wilduShopImageExpectedHeight;
     }
     let registeredTarget = img;
     let hydrationCommitted = true;
@@ -47529,6 +47655,10 @@ function wilduHydrateVisibleAmazonImages(reason) {
         hydrated.height = 58;
         hydrated.setAttribute('data-wildu-shop-image-src', src);
         hydrated.dataset.wilduShopImageOriginal = img.dataset.wilduShopImageOriginal || src;
+        if (img.dataset.wilduShopImageExpectedWidth && img.dataset.wilduShopImageExpectedHeight) {
+            hydrated.dataset.wilduShopImageExpectedWidth = img.dataset.wilduShopImageExpectedWidth;
+            hydrated.dataset.wilduShopImageExpectedHeight = img.dataset.wilduShopImageExpectedHeight;
+        }
         hydrated.setAttribute('data-wildu-amazon-visible-hydrating', '1');
         hydrated.setAttribute('data-wildu-amazon-hydrated', '1');
         img.replaceWith(hydrated);
@@ -48390,11 +48520,14 @@ function renderAmazonSponsors(products, options = {}) {
     const renderReason = wilduNormalizeAmazonRenderReason(options.reason || 'render');
     wilduAnchorAmazonFooter('render_preflight:' + renderReason);
     const guard = wilduGetAmazonCarouselGuard('render:' + renderReason);
-    const inputSignature = wilduGetAmazonInputSignature(products);
+    const composition = options.composition || wilduBuildAmazonCarouselSnapshot(products);
+    const inputSignature = composition.signature;
     let amazonPlaceholderOnly = false;
     wilduRecordAmazonCarouselEvent('amazon_carousel_render_requested', {
         reason: renderReason,
-        productCount: Array.isArray(products) ? products.length : 0,
+        productCount: composition.productCount,
+        travelAvailable: composition.travelAvailable,
+        travelInserted: composition.travelInserted,
         existingCards: slider.querySelectorAll('.amazon-card').length
     });
     if (guard && guard.blocked) {
@@ -48454,30 +48587,8 @@ function renderAmazonSponsors(products, options = {}) {
     amazonAutoScrollTimer = null;
     amazonResumeTimer = null;
 
-    // 1. Prepariamo i prodotti Amazon base (aggiungiamo flag isTravel: false)
-    let mixedList = shuffleAmazonProducts(
-        (Array.isArray(products) ? products : []).filter(p => p && p.active === true)
-    ).map(p => ({ ...p, isTravel: false }));
-
-    // 2. Recuperiamo i Viaggi/Hike entro 60 giorni (la funzione di supporto deve esserci!)
-    const upcomingTravels = getUpcomingTravelCards();
-
-    // 3. LOGICA DI INCASTRO (Ogni 5-7 card Amazon inseriamo un viaggio)
-    if (upcomingTravels.length > 0 && mixedList.length > 5) {
-        let insertIndex = 0;
-        let position = 0;
-        
-        while (position < mixedList.length && insertIndex < upcomingTravels.length) {
-            const gap = Math.floor(Math.random() * (7 - 5 + 1)) + 5;
-            position += gap;
-
-            if (position < mixedList.length) {
-                mixedList.splice(position, 0, { ...upcomingTravels[insertIndex], isTravel: true });
-                insertIndex++;
-                position++; // Salta la card appena inserita per non sballare i conti
-            }
-        }
-    }
+    // Snapshot gia' coerente: prodotti e viaggi derivano dallo stesso stato dati.
+    const mixedList = composition.items;
 
     // Salviamo la lista globale (Fondamentale per far funzionare openAmazonDetail senza sfasamenti di indice!)
     currentAmazonProducts = mixedList;
@@ -48491,9 +48602,11 @@ function renderAmazonSponsors(products, options = {}) {
     // 4. Rendering Unificato
     let html = '';
     mixedList.forEach((p, index) => {
-        const cardImageUrl = p.isTravel ? String(p.img_url || '') : wilduGetAmazonCardImageUrl(p.img_url);
-        const cardImageHtml = wilduBuildAmazonCardImageHtml(cardImageUrl, p.title, index, {
-            originalSrc: p.img_url,
+        const imageSource = wilduGetAmazonCarouselCardImageSource(p);
+        const cardImageHtml = wilduBuildAmazonCardImageHtml(imageSource.src, p.title, index, {
+            originalSrc: imageSource.original,
+            expectedWidth: imageSource.expectedWidth,
+            expectedHeight: imageSource.expectedHeight,
             placeholderOnly: amazonPlaceholderOnly
         });
 
@@ -48527,8 +48640,10 @@ function renderAmazonSponsors(products, options = {}) {
     });
 
     wilduAnchorAmazonFooter('pre_render:' + renderReason);
+    wilduDisposeAmazonRenderOwner(slider, renderReason);
     slider.innerHTML = html;
     slider.dataset.wilduAmazonInputSignature = inputSignature;
+    slider.dataset.wilduAmazonGeneration = String(++amazonRenderGeneration);
     wilduAnchorAmazonFooter('rendered:' + renderReason);
     try {
         requestAnimationFrame(function () {
@@ -48553,6 +48668,10 @@ function renderAmazonSponsors(products, options = {}) {
     wilduRecordAmazonCarouselEvent('amazon_carousel_rendered', {
         reason: renderReason,
         cardCount: mixedList.length,
+        productCount: composition.productCount,
+        travelAvailable: composition.travelAvailable,
+        travelInserted: composition.travelInserted,
+        generation: amazonRenderGeneration,
         deferredImages: slider.querySelectorAll('img[data-wildu-shop-image-src]').length,
         placeholderOnly: amazonPlaceholderOnly
     });
@@ -48582,7 +48701,13 @@ function getUpcomingTravelCards() {
         const dEv = parseItalianDate(`${parts[0]}/${parts[1]}/${y}`);
         return dEv >= today && dEv <= limitDate;
     })
-    .sort(() => Math.random() - 0.5) // Randomizza l'ordine
+    .sort(function (left, right) {
+        const leftDate = String(left["Data inizio"] || left["Data Inizio"] || '');
+        const rightDate = String(right["Data inizio"] || right["Data Inizio"] || '');
+        const leftId = String(left.eventDocId || left.id || left["ID Evento (Super-Key)"] || left["ID Evento"] || '');
+        const rightId = String(right.eventDocId || right.id || right["ID Evento (Super-Key)"] || right["ID Evento"] || '');
+        return leftDate.localeCompare(rightDate) || leftId.localeCompare(rightId);
+    })
     .map(ev => {
         const prezzo = ev["Prezzo Prime"] || ev.prezzo_std || ev.Prezzo || "0";
 
@@ -49063,13 +49188,14 @@ async function initAmazonSponsors(options = {}) {
     amazonInitInFlight = true;
 
     const allowRemote = options.allowRemote === true;
+    const baseReason = String(options.reason || (allowRemote ? 'cache_before_remote' : 'cache_local'));
     const cachedProducts = readAmazonProductsCache();
 
     // 1) render estetico immediato da cache locale
     if (cachedProducts.length) {
-        renderAmazonSponsors(cachedProducts, { reason: allowRemote ? 'cache_before_remote' : 'cache_local' });
+        renderAmazonSponsors(cachedProducts, { reason: baseReason });
     } else {
-        renderAmazonSponsors([], { reason: allowRemote ? 'empty_cache_before_remote' : 'empty_cache_local' });
+        renderAmazonSponsors([], { reason: 'empty_' + baseReason });
     }
 
     // 2) il footer NON decide da solo se la rete c'è
@@ -49090,7 +49216,7 @@ try {
     if (Array.isArray(fetchedProducts)) {
         lastAmazonRemoteFetchAt = Date.now();
         writeAmazonProductsCache(fetchedProducts);
-        renderAmazonSponsors(fetchedProducts, { reason: 'remote_fetch', force: true });
+        renderAmazonSponsors(fetchedProducts, { reason: 'remote_fetch' });
     }
 } catch (e) {
     // silenzio operativo: il footer resta sulla cache locale
