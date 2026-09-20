@@ -2939,6 +2939,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     --amazon-card-w: clamp(250px, 72vw, 292px);
     --amazon-bleed: clamp(72px, 22vw, 110px);
     --amazon-track-shift: 6px;
+    --wildu-amazon-edge-shield: 26px;
 
     position: fixed;
     top: auto;
@@ -2965,6 +2966,27 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     /* Il footer non deve essere il coltello che taglia le card */
     overflow: visible;
 }
+
+/* The visual rail deliberately bleeds beyond the viewport to reveal the next
+   card. Its interactive rail must not also own the iOS browser-edge strips:
+   transparent CSS-only shields route only the outer 26px through the existing
+   root edge guard. Controls sit above them; no listener, timer or DOM node is
+   created. */
+#amazon-footer-wrapper:not(.is-wildu-amazon-hidden)::before,
+#amazon-footer-wrapper:not(.is-wildu-amazon-hidden)::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: var(--wildu-amazon-edge-shield);
+    pointer-events: auto;
+    touch-action: none;
+    overscroll-behavior: none;
+    z-index: 1;
+}
+
+#amazon-footer-wrapper:not(.is-wildu-amazon-hidden)::before { left: 0; }
+#amazon-footer-wrapper:not(.is-wildu-amazon-hidden)::after { right: 0; }
 
 /* Session-only shop visibility: keep the carousel DOM and fixed anchor alive,
    while collapsing only its painted shell. */
@@ -2998,7 +3020,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     padding: 7px 10px;
     font: 600 12px system-ui;
     cursor: pointer;
-    z-index: 2;
+    z-index: 3;
 }
 
 #wildu-amazon-motion-control { right: 8px; }
@@ -3006,18 +3028,28 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 
 #amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-motion-control { display: none; }
 #amazon-footer-wrapper.is-wildu-amazon-hidden #wildu-amazon-visibility-control {
-    left: 50%;
-    right: auto;
-    /* The fixed carousel already owns the bottom edge of this PWA. Keeping
-       an extra safe-area gap here made "Mostra negozio" float above it. */
+    /* The existing semantic button becomes the entire restore band. This
+       keeps one handler and one state transition: every point in the band
+       shows the shop, while the label itself sits 10px above the real edge. */
+    left: 0;
+    right: 0;
     bottom: 0;
-    transform: translateX(-50%);
-    border-radius: 999px;
-    border-color: rgba(212,175,55,0.65);
+    width: 100%;
+    min-width: 0;
+    height: 62px;
+    box-sizing: border-box;
+    transform: none;
+    border: 0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    border-radius: 0;
+    background: rgba(18, 18, 18, 0.95);
+    box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+    touch-action: none;
+    overscroll-behavior: none;
     color: var(--w-gold);
-    padding: 10px 18px;
+    padding: 8px 18px 10px;
     font-size: 14px;
-    min-width: 154px;
+    text-align: center;
 }
 
 .wildu-company-footer {
@@ -3170,6 +3202,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     scroll-padding-right: var(--amazon-bleed);
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
 
     scrollbar-width: none;
     overscroll-behavior-x: contain;
@@ -7260,7 +7293,7 @@ html.wildu-detail-transition-busy body {
             Sincronizzazione in corso... 🌲
         </p>
         <div id="profile-loading-spinner" style="width:36px; height:36px; margin:0 auto; border:4px solid #333; border-top-color: var(--w-gold); border-radius:50%; animation:wildSpin 0.8s linear infinite;"></div>
-        <button id="profile-terminal-retry-btn" type="button" class="btn-book hidden" style="width:100%; margin-top:16px;" onclick="wilduRetryTerminalAuthProfile()">RIPROVA VERIFICA</button>
+        <button id="profile-terminal-retry-btn" type="button" class="btn-book hidden" style="width:100%; margin-top:16px;" onclick="wilduExitTerminalAuthToGuest()">TORNA AL LOGIN</button>
     </div>
 </div>
 
@@ -12682,6 +12715,11 @@ window.WilduMediaClient = WilduMediaClient;
     let authRecoveryAttempt = 0;
     let authProbeStartedAt = 0;
     let lastBackendVerifiedUid = '';
+    // Firestore compat reads do not expose AbortSignal. Keep the sole server
+    // read for the Profile bootstrap document-local, so a Promise.race timeout
+    // cannot make the recovery loop fan out identical live reads.
+    let wilduAuthProfileServerReadOwner = null;
+    let wilduAuthProfileServerReadSequence = 0;
     let isRegistrationCompletionInProgress = false;
     const WILDU_AUTH_NAV_TAB_IDS = new Set(['travelhub', 'events', 'free', 'ondemand', 'paid', 'rewards', 'profile', 'groups', 'install', 'negozio']);
     let wilduAuthNavigationGeneration = 0;
@@ -12929,15 +12967,22 @@ function reconcileProfileShellWithClientSession() {
         completeScreen.classList.add('hidden');
         profileData.classList.add('hidden');
         if (loadingScreen) loadingScreen.classList.remove('hidden');
-        if (loadingDesc) loadingDesc.innerText = 'La verifica non si e conclusa. Puoi riprovare quando vuoi.';
+        if (loadingDesc) loadingDesc.innerText = 'La verifica non si e conclusa. Torna al login e potrai riprovare in modo sicuro.';
         if (loadingSpinner) loadingSpinner.classList.add('hidden');
-        if (terminalRetryBtn) terminalRetryBtn.classList.remove('hidden');
+        if (terminalRetryBtn) {
+            terminalRetryBtn.innerText = 'TORNA AL LOGIN';
+            terminalRetryBtn.disabled = false;
+            terminalRetryBtn.classList.remove('hidden');
+        }
         updateWilduGuestProfileCarouselLifecycle();
         return;
     }
 
     if (loadingSpinner) loadingSpinner.classList.remove('hidden');
-    if (terminalRetryBtn) terminalRetryBtn.classList.add('hidden');
+    if (terminalRetryBtn) {
+        terminalRetryBtn.disabled = false;
+        terminalRetryBtn.classList.add('hidden');
+    }
 
     if (
         authProbeInProgress ||
@@ -13501,16 +13546,29 @@ function reconcileProfileShellWithClientSession() {
         try {
             pageDebug('AUTH_TERMINAL_BLOCK_PRESENTED', { reason: String(reason || 'UNKNOWN') });
         } catch (e) {}
+        // Il terminale deve essere mostrato dalla sua superficie autentica,
+        // non lasciato sotto una tab precedente. Il guard liveness riconosce
+        // terminalFailureActive e non riapre una nuova pipeline.
+        if (currentTab !== 'profile' && typeof show === 'function') {
+            show('profile', {
+                scrollPolicy: 'top',
+                scrollBehavior: 'auto',
+                source: 'auth-terminal'
+            });
+        }
         reconcileProfileShellWithClientSession();
         return true;
     }
 
-    function wilduCanTerminalizeAuthPendingToGuest() {
-        const candidate = wilduAuthFailureCandidate;
-        if (!candidate || wilduAuthTerminalizationPromise) return false;
+    function wilduCanTerminalizeAuthPendingToGuest(options = {}) {
+        const userRequested = options.userRequested === true;
+        const candidate = userRequested ? null : wilduAuthFailureCandidate;
+        if ((!candidate && !userRequested) || wilduAuthTerminalizationPromise) return false;
         if (!navigator.onLine || clientSession.authState !== 'AUTH_PENDING') return false;
-        if (String(auth.currentUser?.uid || '') !== String(candidate.uid || '')) return false;
-        if (Number(candidate.probeSequence || 0) !== Number(authProbeSequence || 0)) return false;
+        const currentUid = String(auth.currentUser?.uid || '');
+        if (!currentUid) return false;
+        if (candidate && currentUid !== String(candidate.uid || '')) return false;
+        if (candidate && Number(candidate.probeSequence || 0) !== Number(authProbeSequence || 0)) return false;
         if (authRefreshLock || authProbeInProgress || isRegistrationCompletionInProgress) return false;
         try {
             if (isWilduGoogleAuthTransitionActive() || wilduIsAuthBridgeRuntimeActive()) return false;
@@ -13519,13 +13577,23 @@ function reconcileProfileShellWithClientSession() {
         return true;
     }
 
-    function wilduStartAuthTerminalGuest(reason) {
-        if (!wilduCanTerminalizeAuthPendingToGuest()) return false;
-        const candidate = { ...wilduAuthFailureCandidate };
+    function wilduStartAuthTerminalGuest(reason, options = {}) {
+        const userRequested = options.userRequested === true;
+        if (!wilduCanTerminalizeAuthPendingToGuest({ userRequested })) return false;
+        const candidate = !userRequested && wilduAuthFailureCandidate
+            ? { ...wilduAuthFailureCandidate }
+            : {
+                uid: String(auth.currentUser?.uid || ''),
+                code: 'AUTH_USER_REQUESTED_GUEST_EXIT',
+                reason: String(reason || 'AUTH_USER_REQUESTED_GUEST_EXIT'),
+                probeSequence: Number(authProbeSequence || 0),
+                navGeneration: wilduAuthNavigationGeneration,
+                at: Date.now()
+            };
         const cleanReason = String(reason || candidate.reason || 'AUTH_TERMINAL_FAILURE');
         wilduAuthTerminalizationPromise = (async function () {
             try {
-                if (!wilduCanTerminalizeAuthPendingToGuest()) return false;
+                if (!wilduCanTerminalizeAuthPendingToGuest({ userRequested })) return false;
                 authProbeSequence += 1;
                 initDataRequestSequence += 1;
                 clearClientAuthRecovery();
@@ -13533,6 +13601,7 @@ function reconcileProfileShellWithClientSession() {
                 clearAuthProfileWatchdog();
                 wilduClearAuthNavigationIntent('AUTH_TERMINAL_GUEST:' + cleanReason);
                 try { clearWilduAuthBridgeAttempt('AUTH_TERMINAL_GUEST:' + cleanReason); } catch (e) {}
+                clearWilduAuthProfileServerReadOwner('AUTH_TERMINAL_GUEST:' + cleanReason);
 
                 await auth.signOut();
                 if (auth.currentUser) {
@@ -13570,15 +13639,36 @@ function reconcileProfileShellWithClientSession() {
         return true;
     }
 
-    function wilduRetryTerminalAuthProfile() {
+    function wilduExitTerminalAuthToGuest() {
         if (!wilduAuthTerminalFailureActive || !auth.currentUser || authRefreshLock || authProbeInProgress) return false;
-        wilduAuthTerminalFailureActive = false;
-        wilduAuthFailureCandidate = null;
+        // L'uscita terminale e' un'azione esplicita: non disabilitare il solo
+        // percorso di recupero se la rete non puo' ancora confermare signOut.
+        if (!navigator.onLine) {
+            const terminalDesc = document.getElementById('profile-loading-desc');
+            if (terminalDesc) terminalDesc.innerText = 'Sei offline. Torna online per chiudere l’accesso in modo sicuro.';
+            try { pageDebug('AUTH_TERMINAL_USER_GUEST_EXIT_DEFERRED', { online: false }); } catch (e) {}
+            return false;
+        }
         try {
-            pageDebug('AUTH_TERMINAL_USER_RETRY', { hasFirebaseUser: true });
+            pageDebug('AUTH_TERMINAL_USER_GUEST_EXIT', { hasFirebaseUser: true });
         } catch (e) {}
-        handleClientAuthStateChanged(auth.currentUser, 'AUTH_TERMINAL_USER_RETRY');
-        return true;
+        const terminalRetryBtn = document.getElementById('profile-terminal-retry-btn');
+        if (terminalRetryBtn) {
+            terminalRetryBtn.disabled = true;
+            terminalRetryBtn.innerText = 'USCITA IN CORSO…';
+        }
+        const started = wilduStartAuthTerminalGuest('AUTH_TERMINAL_USER_GUEST_EXIT', { userRequested: true });
+        if (!started && terminalRetryBtn) {
+            terminalRetryBtn.disabled = false;
+            terminalRetryBtn.innerText = 'TORNA AL LOGIN';
+        }
+        return started;
+    }
+
+    // Compatibilita' con eventuali vecchi riferimenti inline: non rilancia la
+    // lettura auth, ma conserva il nuovo unico percorso user-driven verso guest.
+    function wilduRetryTerminalAuthProfile() {
+        return wilduExitTerminalAuthToGuest();
     }
 
     function isRetainedVerifiedAuthPending() {
@@ -15235,6 +15325,9 @@ function scheduleAuthProfileLivenessRetry(reason) {
 }
 
 function ensureAuthProfileLiveness(reason, options = {}) {
+    // Un terminale gia' presentato e' un esito UI: l'apertura di Profilo non
+    // deve ricreare la pipeline che ha appena raggiunto il suo limite.
+    if (wilduAuthTerminalFailureActive) return false;
     if (isTelegramContext() || !auth.currentUser || clientSession.authState === 'LOGGED') return false;
     const cleanReason = String(reason || 'AUTH_PROFILE_LIVENESS');
     const released = releaseStaleAuthProfileProbeIfNeeded(cleanReason, { force: options.forceReleaseProbe === true });
@@ -15404,6 +15497,71 @@ function holdClientAuthPending(user, message, reason, options = {}) {
     }
 }
 
+function clearWilduAuthProfileServerReadOwner(reason) {
+    const owner = wilduAuthProfileServerReadOwner;
+    if (!owner) return false;
+    wilduAuthProfileServerReadOwner = null;
+    try {
+        pageDebug('AUTH_PROFILE_SERVER_READ_OWNER_CLEARED', {
+            reason: String(reason || 'UNKNOWN'),
+            ageMs: Math.max(0, Date.now() - Number(owner.startedAt || Date.now()))
+        });
+    } catch (e) {}
+    return true;
+}
+
+function getWilduAuthProfileServerRead(user, reason) {
+    const uid = String(user?.uid || '').trim();
+    if (!uid) {
+        const error = new Error('AUTH_PROFILE_READ_UID_MISSING');
+        error.code = 'AUTH_PROFILE_READ_UID_MISSING';
+        return Promise.reject(error);
+    }
+
+    const current = wilduAuthProfileServerReadOwner;
+    if (current && current.uid === uid && current.promise) {
+        try {
+            pageDebug('AUTH_PROFILE_SERVER_READ_REUSED', {
+                reason: String(reason || 'AUTH_PROFILE'),
+                ageMs: Math.max(0, Date.now() - Number(current.startedAt || Date.now()))
+            });
+        } catch (e) {}
+        return current.promise;
+    }
+    if (current) clearWilduAuthProfileServerReadOwner('UID_CHANGED');
+
+    const sequence = ++wilduAuthProfileServerReadSequence;
+    const owner = {
+        uid,
+        sequence,
+        startedAt: Date.now(),
+        promise: null
+    };
+    const settle = (outcome) => {
+        if (wilduAuthProfileServerReadOwner?.sequence !== sequence) return;
+        wilduAuthProfileServerReadOwner = null;
+        try {
+            pageDebug('AUTH_PROFILE_SERVER_READ_SETTLED', {
+                outcome,
+                ageMs: Math.max(0, Date.now() - owner.startedAt)
+            });
+        } catch (e) {}
+    };
+    owner.promise = Promise.resolve()
+        .then(() => FS.getUtente(uid, { source: 'server' }));
+    wilduAuthProfileServerReadOwner = owner;
+    owner.promise.then(
+        () => settle('resolved'),
+        () => settle('rejected')
+    );
+    try {
+        pageDebug('AUTH_PROFILE_SERVER_READ_STARTED', {
+            reason: String(reason || 'AUTH_PROFILE')
+        });
+    } catch (e) {}
+    return owner.promise;
+}
+
 function wilduIsAuthBridgeRuntimeActive() {
     try { return WILDU_AUTH_BRIDGE_IN_PROGRESS === true; } catch (e) { return false; }
 }
@@ -15551,7 +15709,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
 
     // Forza un token appena emesso prima del gate canonico backend. Il client
     // non considera mai sufficiente il solo successo del popup/credential.
-    await wilduBoundAuthRead(user.getIdToken(true));
+    await wilduBoundAuthRead(user.getIdToken(true), 'AUTH_FINALIZE_FORCE_TOKEN');
     try {
         pageDebug('AUTH_PROFILE_TOKEN_READY', {
             reason: String(reason || 'GOOGLE_SIGNIN'),
@@ -15735,7 +15893,10 @@ if (!navigator.onLine) {
                 // IMPORTANTE:
                 // l'esistenza del profilo va verificata SOLO dal server.
                 // Se siamo offline/non raggiungiamo Firestore, non dobbiamo mai dedurre "utente nuovo".
-                docSnap = await wilduBoundAuthRead(FS.getUtente(user.uid, { source: 'server' }));
+                docSnap = await wilduBoundAuthRead(
+                    getWilduAuthProfileServerRead(user, 'AUTH_LISTENER_PROFILE_READ'),
+                    'AUTH_PROFILE_SERVER_READ'
+                );
                 if (!isCurrentProbe()) return;
 
                 if (!docSnap.exists) {
@@ -15897,6 +16058,7 @@ if (docSnap.exists) {
             showToast("Errore: " + e.message);
         }
 } else {
+    clearWilduAuthProfileServerReadOwner('AUTH_LISTENER_GUEST');
     clearClientAuthRecovery();
     lastBackendVerifiedUid = '';
     tempGoogleUser = null;
@@ -16218,12 +16380,19 @@ async function wilduAuthFetchJson(url, options, action) {
 
 // SDK reads/non-identity prerequisites may settle late; callers still check UID/generation.
 // Never apply to signInWithCustomToken: that SDK operation mutates identity.
-function wilduBoundAuthRead(promise) {
+function wilduBoundAuthRead(promise, phase = 'AUTH_READ_UNSPECIFIED') {
+    // Il marker descrive soltanto il ramo locale, mai UID, token, cookie o testo
+    // della risposta: serve a distinguere timeout SDK, Firestore e bridge.
+    const cleanPhase = String(phase || 'AUTH_READ_UNSPECIFIED')
+        .replace(/[^A-Z0-9_:-]/gi, '_')
+        .slice(0, 64);
     let timer;
     return Promise.race([Promise.resolve(promise), new Promise((resolve, reject) => {
         timer = window.setTimeout(() => {
             const error = new Error('AUTH_READ_TIMEOUT');
             error.code = 'AUTH_READ_TIMEOUT';
+            error.authReadPhase = cleanPhase;
+            try { pageDebug('AUTH_READ_TIMEOUT', { phase: cleanPhase }); } catch (e) {}
             reject(error);
         }, WILDU_AUTH_REQUEST_TIMEOUT_MS);
     })]).finally(() => window.clearTimeout(timer));
@@ -16423,9 +16592,15 @@ async function redeemWilduAuthBridgeAttempt(state) {
     // Never consume the one-shot while the bridge/boot can still replace us.
     await waitForWilduAuthBridgeReturn(state);
     await ensureWilduClientInteractionBootGate('AUTH_BRIDGE_RETURN');
-    await wilduBoundAuthRead(WILDU_FIREBASE.waitForInitialAuthState());
+    await wilduBoundAuthRead(
+        WILDU_FIREBASE.waitForInitialAuthState(),
+        'AUTH_BRIDGE_INITIAL_AUTH_STATE'
+    );
     // Prepare persistence BEFORE consuming the one-shot token, not afterwards.
-    await wilduBoundAuthRead(WILDU_FIREBASE.ensureLocalAuthPersistence());
+    await wilduBoundAuthRead(
+        WILDU_FIREBASE.ensureLocalAuthPersistence(),
+        'AUTH_BRIDGE_LOCAL_PERSISTENCE'
+    );
     await waitForWilduAuthBridgeReturn(state);
     wilduAssertCurrentBridgeAttempt(state);
     if (wilduAuthBridgeReturnBlocked()) throw wilduAuthBridgeReturnError('AUTH_BRIDGE_RETURN_DEFERRED');
@@ -17433,6 +17608,7 @@ function logout() {
     authProbeSequence += 1;
     initDataRequestSequence += 1;
     wilduBeginAuthNavigationGeneration('LOGOUT');
+    clearWilduAuthProfileServerReadOwner('LOGOUT');
     clearClientAuthRecovery();
     if (authStateReplayTimer) {
         window.clearTimeout(authStateReplayTimer);
@@ -17591,7 +17767,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.120';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.126';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -22689,7 +22865,10 @@ if (cachedPublicData && !bypassPublicCache) {
 
             if (auth.currentUser) {
                 try {
-                    const token = await wilduBoundAuthRead(auth.currentUser.getIdToken());
+                    const token = await wilduBoundAuthRead(
+                        auth.currentUser.getIdToken(),
+                        'INIT_AUTH_TOKEN'
+                    );
                     if (token) headers.Authorization = `Bearer ${token}`;
                 } catch (e) {
                     const tokenError = new Error('Token autenticazione non disponibile per getInitData.');
@@ -29601,7 +29780,30 @@ function wilduShouldUseImageMemoryWindow() {
     return getWilduImageMemoryPolicy().enabled === true;
 }
 
+// The horizontal Amazon carousel has its own bounded image owner: it admits
+// only its visible/lookahead band and evicts that band itself. Do not also
+// register those same nodes in the generic iOS list-memory runtime: when the
+// travel list becomes the active surface, that broader runtime sees the
+// carousel as off-window and empties it. On return this used to produce the
+// visible "all placeholders, then all at once" rehydration burst.
+function wilduIsAmazonCarouselImageOwnedLocally(img) {
+    try {
+        return !!(
+            img &&
+            typeof img.closest === 'function' &&
+            img.closest('#amazon-slider-engine') &&
+            typeof wilduShouldUseIOSPWASmartImageGuard === 'function' &&
+            wilduShouldUseIOSPWASmartImageGuard()
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
 function wilduIsIOSImageMemoryCandidate(img) {
+    if (wilduIsAmazonCarouselImageOwnedLocally(img)) {
+        return false;
+    }
     if (img && typeof img.closest === 'function' && img.closest('#sec-travelhub,.wildu-travel-nav-card,.wildu-travelhub-carousel')) {
         return false;
     }
@@ -32653,6 +32855,9 @@ function wilduReleaseIOSImagesOutsideActiveWindow(reason) {
             return;
         }
         const surface = wilduGetSmartImageSurface(img);
+        // The carousel owns its own bounded visible/lookahead window. A list
+        // cleanup must never park it merely because another tab is active.
+        if (wilduIsAmazonCarouselImageOwnedLocally(img)) return;
         const keep = wilduIsSmartImageLongListSurface(surface)
             ? wilduIsTravelListImageInsideActiveBand(img) === true
             : wilduIsImageInsideIOSMemoryWindow(img);
@@ -46881,6 +47086,10 @@ function wilduBuildAmazonCarouselSnapshot(products) {
 
 function wilduDisposeAmazonRenderOwner(slider, reason) {
     if (!slider) return;
+    if (typeof WILDU_AMAZON_MOTION !== 'undefined' && WILDU_AMAZON_MOTION.lookaheadExpiryTimer) {
+        clearTimeout(WILDU_AMAZON_MOTION.lookaheadExpiryTimer);
+        WILDU_AMAZON_MOTION.lookaheadExpiryTimer = 0;
+    }
     Array.from(slider.querySelectorAll('img')).forEach(function (img) {
         wilduCancelImageRequest(img);
     });
@@ -46901,7 +47110,7 @@ const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 const WILDU_AMAZON_MOTION = { manualPause: false, keyboardPause: false, hiddenByUser: false, pointers: new Set(),
     hover: false, blurred: false, keyboardModality: true, lastPointerAt: 0, lastScrollLeft: 0, lastScrollAt: 0,
     lastFastLookaheadAt: 0, lastFastLookaheadDirection: 0, pointerIntentMoved: false,
-    autoScrollMotionUntil: 0, slider: null, dispose: null };
+    autoScrollMotionUntil: 0, lookaheadExpiryTimer: 0, slider: null, dispose: null };
 let amazonInitInFlight = false;
 let amazonQuietUntil = 0;
 let amazonQuietReason = '';
@@ -47088,7 +47297,11 @@ function wilduGetAmazonImageBand(slider) {
         if (retryReady && Number(node.dataset.wilduAmazonImageAttempts || 0) >= 2) node.dataset.wilduAmazonImageAttempts = '0';
         const failed = !retryReady && (node.dataset.wilduAmazonImageFailed === '1' || (assigned && node.complete && node.naturalWidth === 0));
         const lookahead = lookaheadActive && card.dataset.wilduAmazonLookahead === '1';
-        return { node, card, visible, lookahead, inBand: visible || lookahead, assigned, failed, retryAt: retryable ? retryAt : 0, loaded: assigned && node.complete && node.naturalWidth > 0 };
+        // The DOM order is not the motion order when the user scrolls back.
+        // Keep the distance rank written by the sole lookahead owner so the
+        // next card at the entering edge wins over a farther sibling.
+        const lookaheadRank = lookahead ? Math.max(1, Number(card.dataset.wilduAmazonLookaheadRank || 0) || 0) : 0;
+        return { node, card, visible, lookahead, lookaheadRank, inBand: visible || lookahead, assigned, failed, retryAt: retryable ? retryAt : 0, loaded: assigned && node.complete && node.naturalWidth > 0 };
     });
     const first = entries.findIndex(function (entry) { return entry.visible; });
     if (first >= 0) {
@@ -47104,7 +47317,10 @@ function wilduMarkAmazonAutoscrollLookahead(slider, reason, direction, requested
     if (!slider || !slider.isConnected || document.hidden) return 0;
     const cards = Array.from(slider.querySelectorAll('.amazon-card'));
     if (cards.length < 2) return 0;
-    cards.forEach(function (card) { delete card.dataset.wilduAmazonLookahead; });
+    cards.forEach(function (card) {
+        delete card.dataset.wilduAmazonLookahead;
+        delete card.dataset.wilduAmazonLookaheadRank;
+    });
     const viewport = slider.getBoundingClientRect();
     const center = viewport.left + (viewport.width / 2);
     let currentIndex = 0;
@@ -47126,18 +47342,20 @@ function wilduMarkAmazonAutoscrollLookahead(slider, reason, direction, requested
     const ttlMs = Math.max(320, Math.min(WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS,
         Number(requestedTtlMs || WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS)));
     let marked = 0;
-    const markAtOffset = function (offset) {
+    const markAtOffset = function (offset, rank) {
         const card = cards[(currentIndex + offset + cards.length) % cards.length];
         if (!card || card.dataset.wilduAmazonLookahead === '1') return;
         card.dataset.wilduAmazonLookahead = '1';
+        card.dataset.wilduAmazonLookaheadRank = String(Math.max(1, Number(rank || 1)));
         marked += 1;
     };
     for (let step = 1; step <= count; step += 1) {
-        markAtOffset(stepDirection * step);
-        if (bidirectional) markAtOffset(-step);
+        markAtOffset(stepDirection * step, step);
+        if (bidirectional) markAtOffset(-step, step);
     }
     slider.dataset.wilduAmazonLookaheadUntil = String(Date.now() + ttlMs);
     slider.dataset.wilduAmazonLookaheadStrategy = strategy;
+    wilduScheduleAmazonTransientLookaheadExpiry(slider, ttlMs);
     wilduRecordAmazonCarouselEvent('amazon_image_lookahead_planned', {
         reason: String(reason || ''),
         currentIndex,
@@ -47152,11 +47370,16 @@ function wilduMarkAmazonAutoscrollLookahead(slider, reason, direction, requested
 
 function wilduClearAmazonTransientLookahead(slider, reason) {
     if (!slider || !slider.isConnected) return 0;
+    if (WILDU_AMAZON_MOTION.lookaheadExpiryTimer) {
+        clearTimeout(WILDU_AMAZON_MOTION.lookaheadExpiryTimer);
+        WILDU_AMAZON_MOTION.lookaheadExpiryTimer = 0;
+    }
     const hadLookahead = Number(slider.dataset.wilduAmazonLookaheadUntil || 0) > Date.now() ||
         !!slider.querySelector('.amazon-card[data-wildu-amazon-lookahead="1"]');
     if (!hadLookahead) return 0;
     Array.from(slider.querySelectorAll('.amazon-card')).forEach(function (card) {
         delete card.dataset.wilduAmazonLookahead;
+        delete card.dataset.wilduAmazonLookaheadRank;
     });
     delete slider.dataset.wilduAmazonLookaheadUntil;
     delete slider.dataset.wilduAmazonLookaheadStrategy;
@@ -47170,6 +47393,25 @@ function wilduClearAmazonTransientLookahead(slider, reason) {
         released
     });
     return released;
+}
+
+function wilduScheduleAmazonTransientLookaheadExpiry(slider, ttlMs) {
+    if (!slider || !slider.isConnected) return false;
+    const state = WILDU_AMAZON_MOTION;
+    if (state.lookaheadExpiryTimer) clearTimeout(state.lookaheadExpiryTimer);
+    const expectedUntil = Number(slider.dataset.wilduAmazonLookaheadUntil || 0);
+    if (!expectedUntil) return false;
+    state.lookaheadExpiryTimer = window.setTimeout(function () {
+        state.lookaheadExpiryTimer = 0;
+        if (!slider.isConnected || document.getElementById('amazon-slider-engine') !== slider) return;
+        if (Number(slider.dataset.wilduAmazonLookaheadUntil || 0) !== expectedUntil) return;
+        if (Date.now() < expectedUntil) {
+            wilduScheduleAmazonTransientLookaheadExpiry(slider, Math.max(1, expectedUntil - Date.now()));
+            return;
+        }
+        wilduClearAmazonTransientLookahead(slider, 'ttl_expired');
+    }, Math.max(1, Number(ttlMs || 0), expectedUntil - Date.now()) + 16);
+    return true;
 }
 
 function wilduGetAmazonHydrationRequestLimit(slider, guarded) {
@@ -47806,6 +48048,22 @@ function wilduGetAmazonVisibleHydrationLimit(slider, guarded, entries) {
     }
 }
 
+// Pure priority decision for the carousel's only image owner. It deliberately
+// knows nothing about network, timers or DOM mutation so forward and backward
+// repeated swipes cannot accidentally fall back to document order.
+function wilduSelectAmazonHydrationCandidate(candidates) {
+    const list = Array.isArray(candidates) ? candidates : [];
+    const visiblePending = list.find(function (entry) { return entry && entry.visible; });
+    if (visiblePending) return visiblePending;
+    const rankedLookahead = list.map(function (entry, index) { return { entry, index }; }).filter(function (item) {
+        return item.entry && item.entry.lookahead;
+    }).sort(function (a, b) {
+        const rankDelta = Number(a.entry.lookaheadRank || Number.MAX_SAFE_INTEGER) - Number(b.entry.lookaheadRank || Number.MAX_SAFE_INTEGER);
+        return rankDelta || (a.index - b.index);
+    });
+    return rankedLookahead.length ? rankedLookahead[0].entry : (list[0] || null);
+}
+
 function wilduCountAmazonLiveHydratedImages(slider) {
     try {
         if (!slider) return 0;
@@ -47878,8 +48136,10 @@ function wilduHydrateVisibleAmazonImages(reason) {
         return 0;
     }
     const candidates = band.filter(function (entry) { return entry.inBand && !entry.assigned && !entry.failed; });
-    const visiblePending = candidates.find(function (entry) { return entry.visible; });
-    const selected = visiblePending || candidates.find(function (entry) { return entry.lookahead; }) || candidates[0];
+    // A backwards repeated swipe used to select the lowest DOM index first,
+    // which can be the farthest reserved card. Visible debt always wins; then
+    // choose the nearest measured-direction lookahead, preserving one owner.
+    const selected = wilduSelectAmazonHydrationCandidate(candidates);
     // Normal/recovery operation has one request. A measured manual fling may
     // temporarily use two small-image requests; stale old-direction requests
     // are cancelled before they can occupy either slot.
@@ -48069,7 +48329,9 @@ function wilduHydrateVisibleAmazonImages(reason) {
         limit: hydrationLimit,
         guarded,
         concurrentRequestLimit: requestLimit,
-        inflightBeforeAdmission: inflightEntries.length
+        inflightBeforeAdmission: inflightEntries.length,
+        selection: selected.visible ? 'visible' : (selected.lookahead ? 'lookahead' : 'band'),
+        lookaheadRank: Number(selected.lookaheadRank || 0)
     });
     if (candidates.length > (hydrationCommitted ? 1 : 0) || !registeredTarget.complete) {
         const parallelSlotAvailable = requestLimit > (inflightEntries.length + (hydrationCommitted ? 1 : 0));
@@ -49818,6 +50080,8 @@ function bindAmazonSliderEventsOnce(slider) {
     state.dispose = function () {
         removers.forEach(function (remove) { remove(); });
         state.pointers.clear();
+        if (state.lookaheadExpiryTimer) clearTimeout(state.lookaheadExpiryTimer);
+        state.lookaheadExpiryTimer = 0;
         if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
         if (amazonResumeTimer) clearTimeout(amazonResumeTimer);
         amazonAutoScrollTimer = null;
