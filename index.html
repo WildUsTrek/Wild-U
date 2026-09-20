@@ -13443,6 +13443,7 @@ function reconcileProfileShellWithClientSession() {
         clearAuthProfileWatchdog();
         wilduClearAuthNavigationIntent('AUTH_TERMINAL_BLOCK:' + String(reason || 'UNKNOWN'));
         wilduAuthTerminalFailureActive = true;
+        wilduSetAuthBridgeHandoffVisible(false, 'AUTH_TERMINAL_BLOCK:' + String(reason || 'UNKNOWN'));
         try {
             pageDebug('AUTH_TERMINAL_BLOCK_PRESENTED', { reason: String(reason || 'UNKNOWN') });
         } catch (e) {}
@@ -15404,6 +15405,7 @@ function resetStaleClientAuthPendingToGuest(reason, options = {}) {
     wilduClearAuthNavigationIntent('AUTH_PENDING_STALE_GUEST');
     wilduAuthFailureCandidate = null;
     wilduAuthTerminalFailureActive = false;
+    wilduSetAuthBridgeHandoffVisible(false, 'AUTH_PENDING_STALE_GUEST:' + cleanReason);
 
     try {
         const runtime = WILDU_IOS_IMAGE_MEMORY_RUNTIME;
@@ -15567,6 +15569,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
         endWilduGoogleAuthTransition('PROFILE_COMPLETION_REQUIRED');
         wilduClearAuthNavigationIntent('PROFILE_COMPLETION_REQUIRED');
         reconcileProfileShellWithClientSession();
+        wilduSetAuthBridgeHandoffVisible(false, 'PROFILE_COMPLETION_REQUIRED');
         try { pageDebug('AUTH_PROFILE_FINALIZE_PROFILE_REQUIRED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
         return { status: 'PROFILE_COMPLETION_REQUIRED', data };
     }
@@ -15596,6 +15599,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
     wilduAuthFailureCandidate = null;
     endWilduGoogleAuthTransition('BACKEND_SESSION_FINALIZED');
     reconcileProfileShellWithClientSession();
+    wilduSetAuthBridgeHandoffVisible(false, 'BACKEND_SESSION_FINALIZED');
     updateProfileUI();
     wilduFlushVerifiedAuthNavigationIntent('BACKEND_SESSION_FINALIZED');
     try { pageDebug('AUTH_PROFILE_FINALIZE_LOGGED', { reason: String(reason || 'GOOGLE_SIGNIN') }); } catch (e) {}
@@ -15904,11 +15908,54 @@ let WILDU_GOOGLE_IDENTITY_RENDERED = false;
 let WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
 let WILDU_GOOGLE_IDENTITY_FALLBACK_ARMED = false;
 let WILDU_AUTH_BRIDGE_IN_PROGRESS = false;
+let WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE = false;
 // One document-local owner. No credentials, new storage, or background RPC loop.
 const WILDU_AUTH_BRIDGE_RETURN_RUNTIME = {
     popup: null, returnPending: false, away: false,
     leaving: false, generation: 0, installed: false, wait: null, events: []
 };
+
+function wilduSetAuthBridgeHandoffVisible(visible, reason) {
+    const id = 'wildu-auth-bridge-handoff';
+    const cleanReason = String(reason || 'UNKNOWN').replace(/[^A-Z0-9_:-]/gi, '_').slice(0, 80);
+    let overlay = document.getElementById(id);
+
+    if (!visible) {
+        const wasVisible = WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE || !!overlay;
+        WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE = false;
+        if (overlay) overlay.remove();
+        if (wasVisible) {
+            try { pageDebug('AUTH_HANDOFF_SURFACE_HIDDEN', { reason: cleanReason }); } catch (e) {}
+        }
+        return;
+    }
+
+    const wasVisible = WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE || !!overlay;
+    WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE = true;
+    if (!overlay && document.body) {
+        const nav = document.querySelector('.nav');
+        const navBottom = nav
+            ? Math.max(0, Math.min(Number(window.innerHeight || 0), Math.round(nav.getBoundingClientRect().bottom || 0)))
+            : 0;
+        overlay = document.createElement('div');
+        overlay.id = id;
+        overlay.setAttribute('role', 'status');
+        overlay.setAttribute('aria-live', 'polite');
+        // La nav sticky resta l'unica area ammessa: la sua ammissione auth
+        // conserva l'ultimo intento, senza introdurre un secondo guard.
+        overlay.style.cssText = [
+            'position:fixed', 'left:0', 'right:0', 'bottom:0', 'top:' + navBottom + 'px',
+            'z-index:999998', 'display:flex',
+            'align-items:center', 'justify-content:center', 'padding:24px',
+            'background:rgba(0,0,0,.72)', 'pointer-events:auto'
+        ].join(';');
+        overlay.innerHTML = '<section style="max-width:330px;border:1px solid rgba(212,175,55,.72);border-radius:20px;background:#142017;color:#f7efd2;box-shadow:0 24px 72px rgba(0,0,0,.52);padding:24px;text-align:center"><div aria-hidden="true" style="font-size:30px;margin-bottom:10px">✦</div><strong style="display:block;font-size:21px;margin-bottom:8px">Completo il tuo accesso</strong><span style="display:block;color:#d9e5d8;line-height:1.45">Ritorno sicuro a Wild-U e verifica del profilo in corso…</span><span aria-hidden="true" style="display:block;width:48px;height:4px;margin:18px auto 0;border-radius:999px;background:linear-gradient(90deg,#477e41,#d4af37)"></span></section>';
+        document.body.appendChild(overlay);
+    }
+    if (!wasVisible) {
+        try { pageDebug('AUTH_HANDOFF_SURFACE_SHOWN', { reason: cleanReason }); } catch (e) {}
+    }
+}
 
 function wilduNoteAuthBridgeReturn(phase) {
     if (!/^(WAIT_(HIDDEN|RETURN_EVENT|POPUP_OPEN|BOOT_NAVIGATION)|PAGEHIDE|PAGESHOW|FOREGROUND_RETURN|REDEEM_ADMITTED|SIGNIN_SETTLED)$/.test(phase)) return;
@@ -16530,6 +16577,7 @@ async function resumeWilduAuthBridgeAttempt() {
     // Blocca subito il falso guest prima del primo await. Il bootstrap pubblico
     // puo' continuare, ma Profilo/Zaino restano in caricamento finche' il bridge
     // non e' riscattato oppure fallisce realmente.
+    wilduSetAuthBridgeHandoffVisible(true, 'DURABLE_RESUME');
     holdClientAuthPending(
         null,
         'Accesso Google completato. Recupero della sessione...',
@@ -16581,6 +16629,7 @@ async function loginWithWilduDurableAuthBridge() {
     wilduShowAuthBridgeError('');
     wilduInstallAuthBridgeLifecycle();
     beginWilduGoogleAuthTransition('DURABLE_BRIDGE');
+    wilduSetAuthBridgeHandoffVisible(true, 'DURABLE_BRIDGE_START');
     let state = readWilduAuthBridgeAttempt();
     let authWindow = null;
 
@@ -17488,7 +17537,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.118';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.119';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
