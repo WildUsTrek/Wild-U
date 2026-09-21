@@ -2939,7 +2939,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     --amazon-card-w: clamp(250px, 72vw, 292px);
     --amazon-bleed: clamp(72px, 22vw, 110px);
     --amazon-track-shift: 6px;
-    --wildu-amazon-edge-shield: 26px;
+    --wildu-amazon-edge-shield: 42px;
 
     position: fixed;
     top: auto;
@@ -17239,14 +17239,21 @@ function installWilduBrowserEdgeHistoryGuard() {
 
         const width = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
         const edgePx = Math.max(14, Number(WILDU_BROWSER_EDGE_HISTORY_GUARD_PX || 26));
-        const fromLeft = touch.clientX <= edgePx;
-        const fromRight = touch.clientX >= width - edgePx;
+        const target = event.target && event.target.nodeType === 1 ? event.target : null;
+        const insideAmazonFooter = !!(target && target.closest && target.closest('#amazon-footer-wrapper:not(.is-wildu-amazon-hidden)'));
+        // iOS browser navigation was physically reproduced from both footer
+        // edges after repeated carousel swipes. Reserve only these invisible
+        // strips; all other zones keep the historical 26px guard.
+        const amazonEdgePx = insideAmazonFooter ? Math.max(edgePx, WILDU_AMAZON_EDGE_HISTORY_GUARD_PX) : edgePx;
+        const fromLeft = touch.clientX <= amazonEdgePx;
+        const fromRight = touch.clientX >= width - amazonEdgePx;
 
         WILDU_BROWSER_EDGE_HISTORY_TOUCH = (fromLeft || fromRight) ? {
             x: touch.clientX,
             y: touch.clientY,
             fromLeft,
-            fromRight
+            fromRight,
+            amazonEdgeShield: insideAmazonFooter && (fromLeft || fromRight)
         } : null;
     }, { passive: true, capture: true });
 
@@ -17262,6 +17269,14 @@ function installWilduBrowserEdgeHistoryGuard() {
         const absY = Math.abs(dy);
 
         if (absX < 10 || absX < absY * 1.15) return;
+
+        // Preserve the carousel's existing pan-x semantics away from the two
+        // reserved edge strips. Vertical movement leaves this branch before
+        // preventDefault, exactly as before.
+        if (WILDU_BROWSER_EDGE_HISTORY_TOUCH.amazonEdgeShield) {
+            event.preventDefault();
+            return;
+        }
 
         const horizontalZone = getWilduHorizontalGestureZone(event.target);
         if (horizontalZone && canWilduScrollElementHorizontally(horizontalZone, dx)) {
@@ -17767,7 +17782,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.126';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.127';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -46922,6 +46937,7 @@ const WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS = 2;
 const WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS = 5200;
 const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_CARDS = 4;
 const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS = 1600;
+const WILDU_AMAZON_FAST_SCROLL_VISIBLE_DEBT_GRACE_MS = 4200;
 const WILDU_AMAZON_FAST_SCROLL_THRESHOLD_PX_MS = 0.45;
 const WILDU_AMAZON_FAST_SCROLL_REPLAN_MS = 160;
 const WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS = 2;
@@ -47109,7 +47125,7 @@ function wilduDisposeAmazonRenderOwner(slider, reason) {
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 const WILDU_AMAZON_MOTION = { manualPause: false, keyboardPause: false, hiddenByUser: false, pointers: new Set(),
     hover: false, blurred: false, keyboardModality: true, lastPointerAt: 0, lastScrollLeft: 0, lastScrollAt: 0,
-    lastFastLookaheadAt: 0, lastFastLookaheadDirection: 0, pointerIntentMoved: false,
+    lastFastLookaheadAt: 0, lastFastLookaheadDirection: 0, lastFastLookaheadGeneration: 0, pointerIntentMoved: false,
     autoScrollMotionUntil: 0, lookaheadExpiryTimer: 0, slider: null, dispose: null };
 let amazonInitInFlight = false;
 let amazonQuietUntil = 0;
@@ -47419,9 +47435,18 @@ function wilduGetAmazonHydrationRequestLimit(slider, guarded) {
     // never expands the recovery budget, background work or automatic motion.
     if (guarded || !slider || !slider.isConnected || document.hidden || WILDU_AMAZON_MOTION.hiddenByUser) return 1;
     const strategy = String(slider.dataset.wilduAmazonLookaheadStrategy || '');
-    const until = Number(slider.dataset.wilduAmazonLookaheadUntil || 0);
     const age = Date.now() - Number(WILDU_AMAZON_MOTION.lastFastLookaheadAt || 0);
-    if (strategy !== 'manual_measured_direction' || until <= Date.now() || age < 0 || age > WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS) return 1;
+    const generation = Number(slider.dataset.wilduAmazonGeneration || 0);
+    const sameGeneration = generation > 0 && generation === Number(WILDU_AMAZON_MOTION.lastFastLookaheadGeneration || 0);
+    const freshManualBurst = sameGeneration && age >= 0 && age <= WILDU_AMAZON_FAST_SCROLL_VISIBLE_DEBT_GRACE_MS;
+    if (strategy !== 'manual_measured_direction' || !freshManualBurst) return 1;
+    // The short lookahead label may expire before an already-visible small
+    // image decodes. Keep only the existing second slot while that concrete
+    // visible debt remains; never extend background, hidden or old generations.
+    const visibleUndecoded = freshManualBurst && wilduGetAmazonImageBand(slider).some(function (entry) {
+        return entry.visible && !entry.loaded && !entry.failed;
+    });
+    if (!visibleUndecoded) return 1;
     return WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS;
 }
 
@@ -50252,6 +50277,7 @@ function bindAmazonSliderEventsOnce(slider) {
             if (directionChanged || now - Number(state.lastFastLookaheadAt || 0) >= WILDU_AMAZON_FAST_SCROLL_REPLAN_MS) {
                 state.lastFastLookaheadAt = now;
                 state.lastFastLookaheadDirection = direction;
+                state.lastFastLookaheadGeneration = Number(slider.dataset.wilduAmazonGeneration || 0);
                 if (wilduMarkAmazonAutoscrollLookahead(
                     slider,
                     'shop_fast_scroll_measured',
@@ -50399,6 +50425,7 @@ if (window.visualViewport) {
 
 const WILDU_BROWSER_EDGE_HISTORY_GUARD_ENABLED = true;
 const WILDU_BROWSER_EDGE_HISTORY_GUARD_PX = 26;
+const WILDU_AMAZON_EDGE_HISTORY_GUARD_PX = 42;
 const WILDU_ROOT_OVERSCROLL_GESTURE_THRESHOLD_PX = 10;
 let WILDU_ROOT_OVERSCROLL_TOUCH = null;
 let WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS = typeof WeakSet === 'function' ? new WeakSet() : null;
