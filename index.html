@@ -2939,7 +2939,7 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     --amazon-card-w: clamp(250px, 72vw, 292px);
     --amazon-bleed: clamp(72px, 22vw, 110px);
     --amazon-track-shift: 6px;
-    --wildu-amazon-edge-shield: 42px;
+    --wildu-amazon-edge-shield: 26px;
 
     position: fixed;
     top: auto;
@@ -17239,21 +17239,14 @@ function installWilduBrowserEdgeHistoryGuard() {
 
         const width = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
         const edgePx = Math.max(14, Number(WILDU_BROWSER_EDGE_HISTORY_GUARD_PX || 26));
-        const target = event.target && event.target.nodeType === 1 ? event.target : null;
-        const insideAmazonFooter = !!(target && target.closest && target.closest('#amazon-footer-wrapper:not(.is-wildu-amazon-hidden)'));
-        // iOS browser navigation was physically reproduced from both footer
-        // edges after repeated carousel swipes. Reserve only these invisible
-        // strips; all other zones keep the historical 26px guard.
-        const amazonEdgePx = insideAmazonFooter ? Math.max(edgePx, WILDU_AMAZON_EDGE_HISTORY_GUARD_PX) : edgePx;
-        const fromLeft = touch.clientX <= amazonEdgePx;
-        const fromRight = touch.clientX >= width - amazonEdgePx;
+        const fromLeft = touch.clientX <= edgePx;
+        const fromRight = touch.clientX >= width - edgePx;
 
         WILDU_BROWSER_EDGE_HISTORY_TOUCH = (fromLeft || fromRight) ? {
             x: touch.clientX,
             y: touch.clientY,
             fromLeft,
-            fromRight,
-            amazonEdgeShield: insideAmazonFooter && (fromLeft || fromRight)
+            fromRight
         } : null;
     }, { passive: true, capture: true });
 
@@ -17269,14 +17262,6 @@ function installWilduBrowserEdgeHistoryGuard() {
         const absY = Math.abs(dy);
 
         if (absX < 10 || absX < absY * 1.15) return;
-
-        // Preserve the carousel's existing pan-x semantics away from the two
-        // reserved edge strips. Vertical movement leaves this branch before
-        // preventDefault, exactly as before.
-        if (WILDU_BROWSER_EDGE_HISTORY_TOUCH.amazonEdgeShield) {
-            event.preventDefault();
-            return;
-        }
 
         const horizontalZone = getWilduHorizontalGestureZone(event.target);
         if (horizontalZone && canWilduScrollElementHorizontally(horizontalZone, dx)) {
@@ -17782,7 +17767,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.127';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.128';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -27460,6 +27445,10 @@ function wilduScheduleIOSResourceCoordinatorJob(lane, reason, options) {
             lane: cleanLane,
             reason: reasonText,
             limit: Number(opts.limit || 0) || 0,
+            // Only the bounded Amazon manual-burst lane may ask the existing
+            // coordinator for its shorter next turn.  This never means a
+            // second coordinator, owner or extra concurrent request slot.
+            fastVisibleBurst: opts.fastVisibleBurst === true,
             delayMs: delay,
             due,
             attempts: 0,
@@ -27477,6 +27466,7 @@ function wilduScheduleIOSResourceCoordinatorJob(lane, reason, options) {
             existing.due = Math.min(Number(existing.due || due), due);
             existing.limit = Math.max(Number(existing.limit || 0), Number(job.limit || 0));
             existing.delayMs = Math.min(Number(existing.delayMs || delay), delay);
+            existing.fastVisibleBurst = existing.fastVisibleBurst === true || job.fastVisibleBurst === true;
             existing.reason = reasonText;
             existing.coalescedCount = Number(existing.coalescedCount || 1) + 1;
             try {
@@ -27789,9 +27779,14 @@ function wilduRunIOSResourceCoordinator(reason) {
         } catch (e) {}
         runtime.resourceCoordinatorActive = false;
         if (queue.length) {
-            const backoff = Number(runtime.resourceCoordinatorNoProgressCount || 0) >= WILDU_IOS_RESOURCE_COORDINATOR_NO_PROGRESS_LIMIT
+            const manualAmazonBurstStillActive = job.lane === 'amazon-visible' && job.fastVisibleBurst === true &&
+                typeof wilduGetAmazonHydrationRequestLimit === 'function' &&
+                wilduGetAmazonHydrationRequestLimit(document.getElementById('amazon-slider-engine'), false) > 1;
+            const backoff = manualAmazonBurstStillActive
+                ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS
+                : (Number(runtime.resourceCoordinatorNoProgressCount || 0) >= WILDU_IOS_RESOURCE_COORDINATOR_NO_PROGRESS_LIMIT
                 ? WILDU_IOS_RESOURCE_COORDINATOR_IDLE_BACKOFF_MS
-                : WILDU_IOS_RESOURCE_COORDINATOR_MIN_GAP_MS;
+                : WILDU_IOS_RESOURCE_COORDINATOR_MIN_GAP_MS);
             runtime.resourceCoordinatorNextAllowedAt = Date.now() + backoff;
             wilduArmIOSResourceCoordinator('next:' + String(job.lane || ''), backoff);
         }
@@ -46940,7 +46935,10 @@ const WILDU_AMAZON_FAST_SCROLL_LOOKAHEAD_TTL_MS = 1600;
 const WILDU_AMAZON_FAST_SCROLL_VISIBLE_DEBT_GRACE_MS = 4200;
 const WILDU_AMAZON_FAST_SCROLL_THRESHOLD_PX_MS = 0.45;
 const WILDU_AMAZON_FAST_SCROLL_REPLAN_MS = 160;
-const WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS = 2;
+// Only the short, measured manual-burst pipeline may own these three tiny
+// thumbnail slots.  It is not a general image budget increase.
+const WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS = 3;
+const WILDU_AMAZON_FAST_SCROLL_INLINE_ADMISSION_LIMIT = 2;
 const WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS = 40;
 const WILDU_AMAZON_VARIANT_PROBE_TIMEOUT_MS = 1800;
 const WILDU_AMAZON_COMPOSITION_SEED = String(Date.now()) + ':' + String(Math.random());
@@ -47932,7 +47930,8 @@ function wilduScheduleAmazonImageHydration(reason, delayMs) {
         !wilduIsIOSResourceCoordinatorInternalReason(reason)
     ) {
         const coordinated = wilduScheduleIOSResourceCoordinatorJob('amazon-visible', reason || 'amazon_image_hydration', {
-            delayMs: Math.max(minimumDelay, Number(delayMs || 0) || fallbackDelay)
+            delayMs: Math.max(minimumDelay, Number(delayMs || 0) || fallbackDelay),
+            fastVisibleBurst: fastParallelWindow
         });
         if (coordinated) return true;
     }
@@ -48073,13 +48072,33 @@ function wilduGetAmazonVisibleHydrationLimit(slider, guarded, entries) {
     }
 }
 
+function wilduGetAmazonCardCenterDistance(entry, slider) {
+    try {
+        const card = entry && entry.card;
+        const viewport = slider && slider.getBoundingClientRect ? slider.getBoundingClientRect() : null;
+        const rect = card && card.getBoundingClientRect ? card.getBoundingClientRect() : null;
+        if (!viewport || !rect || !viewport.width || !rect.width) return Number.MAX_SAFE_INTEGER;
+        const viewportCenter = viewport.left + (viewport.width / 2);
+        const cardCenter = rect.left + (rect.width / 2);
+        return Math.abs(cardCenter - viewportCenter);
+    } catch (e) {
+        return Number.MAX_SAFE_INTEGER;
+    }
+}
+
 // Pure priority decision for the carousel's only image owner. It deliberately
 // knows nothing about network, timers or DOM mutation so forward and backward
 // repeated swipes cannot accidentally fall back to document order.
-function wilduSelectAmazonHydrationCandidate(candidates) {
+function wilduSelectAmazonHydrationCandidate(candidates, slider) {
     const list = Array.isArray(candidates) ? candidates : [];
-    const visiblePending = list.find(function (entry) { return entry && entry.visible; });
-    if (visiblePending) return visiblePending;
+    const visiblePending = list.map(function (entry, index) {
+        return { entry, index, distance: wilduGetAmazonCardCenterDistance(entry, slider) };
+    }).filter(function (item) {
+        return item.entry && item.entry.visible;
+    }).sort(function (a, b) {
+        return a.distance - b.distance || a.index - b.index;
+    });
+    if (visiblePending.length) return visiblePending[0].entry;
     const rankedLookahead = list.map(function (entry, index) { return { entry, index }; }).filter(function (item) {
         return item.entry && item.entry.lookahead;
     }).sort(function (a, b) {
@@ -48108,7 +48127,13 @@ function wilduCountAmazonLiveHydratedImages(slider) {
     }
 }
 
-function wilduHydrateVisibleAmazonImages(reason) {
+function wilduHydrateVisibleAmazonImages(reason, options) {
+    // `options.inlineDepth` is intentionally private to this one canonical
+    // hydrator.  It lets one coordinator turn admit the bounded second manual
+    // request instead of waiting for a second coordinator turn, without
+    // creating another timer, owner or queue.
+    const hydrateOptions = options || {};
+    const inlineDepth = Math.max(0, Number(hydrateOptions.inlineDepth || 0));
     const slider = document.getElementById('amazon-slider-engine');
     if (!slider) return 0;
     const placeholder = typeof WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC === 'string' ? WILDU_SOFT_CARD_IMAGE_PLACEHOLDER_SRC : '';
@@ -48164,7 +48189,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
     // A backwards repeated swipe used to select the lowest DOM index first,
     // which can be the farthest reserved card. Visible debt always wins; then
     // choose the nearest measured-direction lookahead, preserving one owner.
-    const selected = wilduSelectAmazonHydrationCandidate(candidates);
+    const selected = wilduSelectAmazonHydrationCandidate(candidates, slider);
     // Normal/recovery operation has one request. A measured manual fling may
     // temporarily use two small-image requests; stale old-direction requests
     // are cancelled before they can occupy either slot.
@@ -48176,7 +48201,25 @@ function wilduHydrateVisibleAmazonImages(reason) {
     inflightEntries = inflightEntries.filter(function (entry) { return entry.inBand && entry.assigned; });
     if (selected && !inflightEntries.some(function (entry) { return entry.node === selected.node; }) &&
         inflightEntries.length >= requestLimit && selected.visible) {
-        const victim = inflightEntries.find(function (entry) { return !entry.visible && entry.node !== selected.node; });
+        let victim = inflightEntries.find(function (entry) { return !entry.visible && entry.node !== selected.node; });
+        // The centered card is the immediate user-facing target.  If the two
+        // bounded slots are occupied by farther visible edge cards, reclaim
+        // only the clearly farther one instead of opening a third request.
+        if (!victim && selected.visible) {
+            const selectedDistance = wilduGetAmazonCardCenterDistance(selected, slider);
+            const fartherVisible = inflightEntries.filter(function (entry) {
+                return entry.visible && entry.node !== selected.node && !entry.loaded;
+            }).sort(function (a, b) {
+                return wilduGetAmazonCardCenterDistance(b, slider) - wilduGetAmazonCardCenterDistance(a, slider);
+            })[0];
+            if (fartherVisible && wilduGetAmazonCardCenterDistance(fartherVisible, slider) > selectedDistance + 8) {
+                victim = fartherVisible;
+                wilduRecordAmazonCarouselEvent('amazon_center_visible_preemption', {
+                    selectedDistance: Math.round(selectedDistance),
+                    victimDistance: Math.round(wilduGetAmazonCardCenterDistance(victim, slider))
+                });
+            }
+        }
         if (victim && wilduParkAmazonImage(victim.node, 'amazon_visible_preemption')) {
             victim.assigned = false;
             inflightEntries = inflightEntries.filter(function (entry) { return entry.assigned; });
@@ -48208,7 +48251,7 @@ function wilduHydrateVisibleAmazonImages(reason) {
             timeoutHandled = true;
         }
     });
-    if (timeoutHandled || inflightEntries.length >= requestLimit) {
+    if (timeoutHandled) {
         const fastFollowup = requestLimit > 1;
         wilduScheduleAmazonImageHydration(
             fastFollowup ? 'shop_fast_scroll_parallel_next' : 'progressive_next',
@@ -48216,6 +48259,10 @@ function wilduHydrateVisibleAmazonImages(reason) {
         );
         return 0;
     }
+    // When both bounded slots are already in flight, completion/error owns the
+    // next admission. Polling the coordinator every 40ms here only creates
+    // churn and cannot make the network decode sooner.
+    if (inflightEntries.length >= requestLimit) return 0;
     if (!selected) {
         const retry = band.filter(function (entry) { return entry.inBand && entry.retryAt > Date.now(); })
             .reduce(function (at, entry) { return Math.min(at, entry.retryAt); }, Infinity);
@@ -48358,14 +48405,32 @@ function wilduHydrateVisibleAmazonImages(reason) {
         selection: selected.visible ? 'visible' : (selected.lookahead ? 'lookahead' : 'band'),
         lookaheadRank: Number(selected.lookaheadRank || 0)
     });
-    if (candidates.length > (hydrationCommitted ? 1 : 0) || !registeredTarget.complete) {
+    let inlineHydrated = 0;
+    const mayInlineParallelAdmission = hydrationCommitted && inlineDepth < WILDU_AMAZON_FAST_SCROLL_INLINE_ADMISSION_LIMIT &&
+        requestLimit > (inflightEntries.length + 1) && candidates.length > 1;
+    if (mayInlineParallelAdmission) {
+        // The 3.1.127 fast path granted a second slot but only scheduled a
+        // second coordinator job.  That job was correctly serialised, which
+        // made the visible card wait for the coordinator cadence.  Admit the
+        // second card here, under this same owner/run/generation, once only.
+        wilduRecordAmazonCarouselEvent('amazon_fast_scroll_inline_parallel_admission', {
+            reason: String(reason || ''),
+            requestLimit,
+            inflightBeforeAdmission: inflightEntries.length,
+            selection: selected.visible ? 'visible' : (selected.lookahead ? 'lookahead' : 'band')
+        });
+        inlineHydrated = Math.max(0, Number(wilduHydrateVisibleAmazonImages(reason, {
+            inlineDepth: inlineDepth + 1
+        }) || 0));
+    }
+    if (!inlineHydrated && (candidates.length > (hydrationCommitted ? 1 : 0) || !registeredTarget.complete)) {
         const parallelSlotAvailable = requestLimit > (inflightEntries.length + (hydrationCommitted ? 1 : 0));
         wilduScheduleAmazonImageHydration(
             parallelSlotAvailable ? 'shop_fast_scroll_parallel_next' : 'progressive_next',
             parallelSlotAvailable ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : WILDU_AMAZON_IOS_IMAGE_STEP_MS
         );
     }
-    return hydrationCommitted ? 1 : 0;
+    return (hydrationCommitted ? 1 : 0) + inlineHydrated;
 }
 
 function readAmazonProductsCache() {
@@ -50425,7 +50490,6 @@ if (window.visualViewport) {
 
 const WILDU_BROWSER_EDGE_HISTORY_GUARD_ENABLED = true;
 const WILDU_BROWSER_EDGE_HISTORY_GUARD_PX = 26;
-const WILDU_AMAZON_EDGE_HISTORY_GUARD_PX = 42;
 const WILDU_ROOT_OVERSCROLL_GESTURE_THRESHOLD_PX = 10;
 let WILDU_ROOT_OVERSCROLL_TOUCH = null;
 let WILDU_ROOT_OVERSCROLL_HANDLED_EVENTS = typeof WeakSet === 'function' ? new WeakSet() : null;
