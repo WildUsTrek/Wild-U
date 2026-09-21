@@ -17767,7 +17767,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.128';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.129';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -27629,6 +27629,18 @@ function wilduRunIOSResourceCoordinator(reason) {
             'amazon-resume': 6
         };
         const getPriority = function (job) {
+            // A displayed Amazon placeholder is user-visible debt, not
+            // background commerce work. Keep it inside this coordinator, but
+            // let it run just after critical image restore (or alongside it
+            // during a bounded manual lease) instead of behind release and
+            // deferred lanes. A near/offscreen reservation does not qualify.
+            if (job && job.lane === 'amazon-visible') {
+                const slider = document.getElementById('amazon-slider-engine');
+                const lease = typeof wilduGetAmazonManualVisibleHydrationLease === 'function'
+                    ? wilduGetAmazonManualVisibleHydrationLease(slider)
+                    : { active: false, visibleDebt: 0 };
+                if (Number(lease.visibleDebt || 0) > 0) return lease.active ? 1 : 2;
+            }
             return priority[job && job.lane] || 20;
         };
         let selectedIndex = -1;
@@ -47100,6 +47112,12 @@ function wilduBuildAmazonCarouselSnapshot(products) {
 
 function wilduDisposeAmazonRenderOwner(slider, reason) {
     if (!slider) return;
+    // A render generation owns its own short manual lease.  A previous
+    // carousel generation must never inherit visible-image urgency.
+    if (typeof WILDU_AMAZON_MOTION !== 'undefined') {
+        WILDU_AMAZON_MOTION.manualVisibleLeaseUntil = 0;
+        WILDU_AMAZON_MOTION.manualVisibleLeaseGeneration = 0;
+    }
     if (typeof WILDU_AMAZON_MOTION !== 'undefined' && WILDU_AMAZON_MOTION.lookaheadExpiryTimer) {
         clearTimeout(WILDU_AMAZON_MOTION.lookaheadExpiryTimer);
         WILDU_AMAZON_MOTION.lookaheadExpiryTimer = 0;
@@ -47123,7 +47141,8 @@ function wilduDisposeAmazonRenderOwner(slider, reason) {
 const AMAZON_PRODUCTS_CACHE_KEY = 'wildAmazonProductsCache';
 const WILDU_AMAZON_MOTION = { manualPause: false, keyboardPause: false, hiddenByUser: false, pointers: new Set(),
     hover: false, blurred: false, keyboardModality: true, lastPointerAt: 0, lastScrollLeft: 0, lastScrollAt: 0,
-    lastFastLookaheadAt: 0, lastFastLookaheadDirection: 0, lastFastLookaheadGeneration: 0, pointerIntentMoved: false,
+    lastFastLookaheadAt: 0, lastFastLookaheadDirection: 0, lastFastLookaheadGeneration: 0,
+    manualVisibleLeaseUntil: 0, manualVisibleLeaseGeneration: 0, pointerIntentMoved: false,
     autoScrollMotionUntil: 0, lookaheadExpiryTimer: 0, slider: null, dispose: null };
 let amazonInitInFlight = false;
 let amazonQuietUntil = 0;
@@ -47432,20 +47451,38 @@ function wilduGetAmazonHydrationRequestLimit(slider, guarded) {
     // Parallelism is deliberately a short-lived manual-fling affordance. It
     // never expands the recovery budget, background work or automatic motion.
     if (guarded || !slider || !slider.isConnected || document.hidden || WILDU_AMAZON_MOTION.hiddenByUser) return 1;
-    const strategy = String(slider.dataset.wilduAmazonLookaheadStrategy || '');
-    const age = Date.now() - Number(WILDU_AMAZON_MOTION.lastFastLookaheadAt || 0);
-    const generation = Number(slider.dataset.wilduAmazonGeneration || 0);
-    const sameGeneration = generation > 0 && generation === Number(WILDU_AMAZON_MOTION.lastFastLookaheadGeneration || 0);
-    const freshManualBurst = sameGeneration && age >= 0 && age <= WILDU_AMAZON_FAST_SCROLL_VISIBLE_DEBT_GRACE_MS;
-    if (strategy !== 'manual_measured_direction' || !freshManualBurst) return 1;
-    // The short lookahead label may expire before an already-visible small
-    // image decodes. Keep only the existing second slot while that concrete
-    // visible debt remains; never extend background, hidden or old generations.
-    const visibleUndecoded = freshManualBurst && wilduGetAmazonImageBand(slider).some(function (entry) {
-        return entry.visible && !entry.loaded && !entry.failed;
-    });
-    if (!visibleUndecoded) return 1;
+    const lease = wilduGetAmazonManualVisibleHydrationLease(slider);
+    if (!lease.active) return 1;
     return WILDU_AMAZON_FAST_SCROLL_MAX_CONCURRENT_REQUESTS;
+}
+
+function wilduGetAmazonManualVisibleHydrationLease(slider) {
+    const empty = { active: false, remainingMs: 0, visibleDebt: 0 };
+    if (!slider || !slider.isConnected || document.hidden || WILDU_AMAZON_MOTION.hiddenByUser) return empty;
+    const generation = Number(slider.dataset.wilduAmazonGeneration || 0);
+    const sameGeneration = generation > 0 && generation === Number(WILDU_AMAZON_MOTION.manualVisibleLeaseGeneration || 0);
+    const remainingMs = Math.max(0, Number(WILDU_AMAZON_MOTION.manualVisibleLeaseUntil || 0) - Date.now());
+    const visibleDebt = wilduGetAmazonImageBand(slider).filter(function (entry) {
+        return entry.visible && !entry.loaded && !entry.failed;
+    }).length;
+    return { active: sameGeneration && remainingMs > 0 && visibleDebt > 0, remainingMs, visibleDebt };
+}
+
+// Read-only runtime telemetry for the USB probe. These attributes do not
+// schedule work or retain nodes: they expose the actual bounded request window
+// so a physical record can distinguish starvation from slow HTTP/decode.
+function wilduSyncAmazonHydrationTelemetry(slider, entries) {
+    try {
+        if (!slider || !slider.isConnected) return;
+        const band = entries || wilduGetAmazonImageBand(slider);
+        const inFlight = band.filter(function (entry) {
+            return entry.assigned && !entry.loaded && !entry.failed;
+        }).length;
+        const lease = wilduGetAmazonManualVisibleHydrationLease(slider);
+        slider.dataset.wilduAmazonFastSlots = String(inFlight);
+        slider.dataset.wilduAmazonManualLeaseMs = String(Math.max(0, Math.round(lease.remainingMs || 0)));
+        slider.dataset.wilduAmazonVisibleDebt = String(Math.max(0, Number(lease.visibleDebt || 0)));
+    } catch (e) {}
 }
 
 function wilduGetAmazonVisibleHydrationDebt(slider) {
@@ -47743,13 +47780,18 @@ function wilduBindAmazonImageRequest(img, slider, src) {
         wilduRecordImageRequestPhase(img, request, 'loaded');
         img.onload = null;
         img.onerror = null;
+        wilduSyncAmazonHydrationTelemetry(slider);
         const fastParallel = wilduGetAmazonHydrationRequestLimit(slider, false) > 1;
         wilduScheduleAmazonImageHydration(
             fastParallel ? 'shop_fast_scroll_parallel_next' : 'image_loaded',
             fastParallel ? WILDU_AMAZON_FAST_SCROLL_PARALLEL_REPLAN_MS : WILDU_SECONDARY_TIMINGS.amazonCompletionMs
         );
     };
-    img.onerror = function () { if (current()) wilduHandleAmazonImageError(img, request); };
+    img.onerror = function () {
+        if (!current()) return;
+        wilduHandleAmazonImageError(img, request);
+        wilduSyncAmazonHydrationTelemetry(slider);
+    };
     // Missing-event safety only; cannot clear ownership of a newer request.
     request.timer = window.setTimeout(function () {
         if (current() && img.complete) {
@@ -48129,8 +48171,8 @@ function wilduCountAmazonLiveHydratedImages(slider) {
 
 function wilduHydrateVisibleAmazonImages(reason, options) {
     // `options.inlineDepth` is intentionally private to this one canonical
-    // hydrator.  It lets one coordinator turn admit the bounded second manual
-    // request instead of waiting for a second coordinator turn, without
+    // hydrator.  It lets one coordinator turn admit the bounded manual
+    // window of up to three requests without waiting for coordinator turns,
     // creating another timer, owner or queue.
     const hydrateOptions = options || {};
     const inlineDepth = Math.max(0, Number(hydrateOptions.inlineDepth || 0));
@@ -48191,14 +48233,15 @@ function wilduHydrateVisibleAmazonImages(reason, options) {
     // choose the nearest measured-direction lookahead, preserving one owner.
     const selected = wilduSelectAmazonHydrationCandidate(candidates, slider);
     // Normal/recovery operation has one request. A measured manual fling may
-    // temporarily use two small-image requests; stale old-direction requests
-    // are cancelled before they can occupy either slot.
+    // temporarily use up to three small-image requests; stale old-direction
+    // requests are cancelled before they can occupy a bounded slot.
     const requestLimit = wilduGetAmazonHydrationRequestLimit(slider, guarded);
     let inflightEntries = band.filter(function (entry) { return entry.assigned && !entry.loaded && !entry.failed; });
     inflightEntries.filter(function (entry) { return !entry.inBand; }).forEach(function (entry) {
         if (wilduParkAmazonImage(entry.node, 'amazon_fast_scroll_stale_preemption')) entry.assigned = false;
     });
     inflightEntries = inflightEntries.filter(function (entry) { return entry.inBand && entry.assigned; });
+    wilduSyncAmazonHydrationTelemetry(slider, band);
     if (selected && !inflightEntries.some(function (entry) { return entry.node === selected.node; }) &&
         inflightEntries.length >= requestLimit && selected.visible) {
         let victim = inflightEntries.find(function (entry) { return !entry.visible && entry.node !== selected.node; });
@@ -48259,7 +48302,7 @@ function wilduHydrateVisibleAmazonImages(reason, options) {
         );
         return 0;
     }
-    // When both bounded slots are already in flight, completion/error owns the
+    // When all bounded slots are already in flight, completion/error owns the
     // next admission. Polling the coordinator every 40ms here only creates
     // churn and cannot make the network decode sooner.
     if (inflightEntries.length >= requestLimit) return 0;
@@ -48356,6 +48399,7 @@ function wilduHydrateVisibleAmazonImages(reason, options) {
     try {
         if (typeof wilduRegisterIOSImagesIn === 'function') wilduRegisterIOSImagesIn(registeredTarget);
     } catch (e) {}
+    wilduSyncAmazonHydrationTelemetry(slider);
     try {
         if (registeredTarget && String(registeredTarget.tagName || '').toUpperCase() === 'IMG') {
             let alive = !!(registeredTarget.currentSrc || registeredTarget.getAttribute('src'));
@@ -48410,9 +48454,9 @@ function wilduHydrateVisibleAmazonImages(reason, options) {
         requestLimit > (inflightEntries.length + 1) && candidates.length > 1;
     if (mayInlineParallelAdmission) {
         // The 3.1.127 fast path granted a second slot but only scheduled a
-        // second coordinator job.  That job was correctly serialised, which
-        // made the visible card wait for the coordinator cadence.  Admit the
-        // second card here, under this same owner/run/generation, once only.
+        // second coordinator job. That job was serialised, making visible
+        // cards wait for coordinator cadence. Admit the bounded remaining
+        // slots here, under this same owner/run/generation.
         wilduRecordAmazonCarouselEvent('amazon_fast_scroll_inline_parallel_admission', {
             reason: String(reason || ''),
             requestLimit,
@@ -50083,6 +50127,20 @@ function startAmazonAutoScroll() {
     behavior: isLoopReset || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'instant' : 'smooth'
     });
     wilduScheduleAmazonImageHydration('auto_scroll_tick', WILDU_AMAZON_IOS_IMAGE_STEP_MS);
+    // Re-arm the normal lookahead immediately after this move is committed,
+    // using the existing owner/coordinator. This gives the next visible trio
+    // the full dwell interval before the following auto-scroll tick without
+    // adding background concurrency or a second recurring timer.
+    const expectedGeneration = Number(slider.dataset.wilduAmazonGeneration || 0);
+    requestAnimationFrame(function () {
+        if (!slider.isConnected || document.getElementById('amazon-slider-engine') !== slider ||
+            Number(slider.dataset.wilduAmazonGeneration || 0) !== expectedGeneration ||
+            !wilduIsAmazonAutoMotionAllowed()) return;
+        if (wilduMarkAmazonAutoscrollLookahead(slider, 'auto_scroll_post_move', 1,
+            WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_CARDS, WILDU_AMAZON_AUTOSCROLL_LOOKAHEAD_TTL_MS) > 0) {
+            wilduScheduleAmazonImageHydration('auto_scroll_prepare', 0);
+        }
+    });
     wilduRecordAmazonCarouselEvent('amazon_carousel_tick', {
         currentIndex,
         isLoopReset,
@@ -50119,6 +50177,8 @@ function wilduSetAmazonCarouselVisibility(hidden, reason) {
     if (nextHidden) {
         // The hidden carousel must not retain a short-lived manual intent.
         wilduClearAmazonTransientLookahead(slider, 'carousel_hidden');
+        motion.manualVisibleLeaseUntil = 0;
+        motion.manualVisibleLeaseGeneration = 0;
         wrapper.style.setProperty('display', 'flex', 'important');
         wrapper.style.setProperty('min-height', '0', 'important');
         wrapper.style.setProperty('height', '0', 'important');
@@ -50170,6 +50230,8 @@ function bindAmazonSliderEventsOnce(slider) {
     state.dispose = function () {
         removers.forEach(function (remove) { remove(); });
         state.pointers.clear();
+        state.manualVisibleLeaseUntil = 0;
+        state.manualVisibleLeaseGeneration = 0;
         if (state.lookaheadExpiryTimer) clearTimeout(state.lookaheadExpiryTimer);
         state.lookaheadExpiryTimer = 0;
         if (amazonAutoScrollTimer) clearInterval(amazonAutoScrollTimer);
@@ -50343,6 +50405,13 @@ function bindAmazonSliderEventsOnce(slider) {
                 state.lastFastLookaheadAt = now;
                 state.lastFastLookaheadDirection = direction;
                 state.lastFastLookaheadGeneration = Number(slider.dataset.wilduAmazonGeneration || 0);
+                // The UI lookahead is intentionally short and may be erased
+                // on expiry. The hydration lease is independent: only a real
+                // measured swipe earns it, and it survives pointer release
+                // until visible debt is served, it expires, or generation
+                // ownership changes.
+                state.manualVisibleLeaseGeneration = state.lastFastLookaheadGeneration;
+                state.manualVisibleLeaseUntil = now + WILDU_AMAZON_FAST_SCROLL_VISIBLE_DEBT_GRACE_MS;
                 if (wilduMarkAmazonAutoscrollLookahead(
                     slider,
                     'shop_fast_scroll_measured',
