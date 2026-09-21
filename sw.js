@@ -375,7 +375,11 @@ if (getScopeRelativePath(url) === 'data/youtube-playlists-config.json') {
 
     
     if (isShellRequest(req, url)) {
-        e.respondWith(handleShellRequest(req, url));
+        const background = [];
+        const response = handleShellRequest(req, url, background);
+        e.respondWith(response);
+        // Lifetime registered inside dispatch; storage never gates HTML delivery.
+        e.waitUntil(response.catch(() => null).then(() => Promise.allSettled(background)));
         return;
     }
 
@@ -701,56 +705,127 @@ async function safeCachePut(cacheName, req, response, maxEntries, trimTo, ownsRe
     }
 }
 
-async function handleShellRequest(req, url) {
-    const version = await getActiveShellVersion();
-    const shellCache = await caches.open(getShellCacheName(version));
+// Shell HTML is currently ~2.2 MB, larger than the runtime asset limit.
+// One best-effort copy, no retry queue. Limits apply ONLY to persistence,
+// never to the foreground response, and are not device memory estimates.
+const SHELL_COPY_MAX_BYTES = 8 * 1024 * 1024;
+const SHELL_COPY_TIMEOUT_MS = 10000;
+let shellCopyJob = null;
 
+function queueShellCacheWrite(req, fresh) {
+    if (shellCopyJob || !fresh || fresh.status !== 200 || !fresh.body ||
+        Number(fresh.headers.get('content-length')) > SHELL_COPY_MAX_BYTES) {
+        return Promise.resolve(false);
+    }
+    const job = { copy: null, reader: null, expired: false };
+    shellCopyJob = job;
+    const cancelCopy = () => {
+        job.expired = true;
+        // Cancelling a tee branch can wait for foreground consumption. Never
+        // await it and never abort the original request or response.
+        try { if (job.reader) job.reader.cancel().catch(() => {}); } catch (_) {}
+        try { if (job.copy && !job.copy.body.locked) job.copy.body.cancel().catch(() => {}); } catch (_) {}
+        job.reader = null;
+        job.copy = null;
+    };
     try {
-        const fresh = await fetch(req, { cache: 'no-store' });
+        job.copy = fresh.clone();
+        // Keep the original Response metadata (including redirected URL).
+        // A second branch meters the body before Cache.put can lock it.
+        job.reader = job.copy.clone().body.getReader();
+    } catch (_) {
+        cancelCopy();
+        shellCopyJob = null;
+        return Promise.resolve(false);
+    }
+    fresh = null;
+    let timer;
+    const deadline = new Promise(resolve => {
+        timer = setTimeout(() => { cancelCopy(); resolve(false); }, SHELL_COPY_TIMEOUT_MS);
+    });
+    // Acquire the cache handle before body completion. A later put on that
+    // handle cannot re-open a cache removed by an updating worker.
+    const context = (async () => {
+        const version = await getActiveShellVersion();
+        if (job.expired) return null;
+        const cache = await caches.open(getShellCacheName(version));
+        return { version, cache };
+    })().catch(() => null);
+    const work = (async () => {
+        try {
+            let bytes = 0;
+            while (!job.expired) {
+                const part = await job.reader.read();
+                if (job.expired) return false;
+                if (part.done) break;
+                bytes += part.value.byteLength;
+                if (bytes > SHELL_COPY_MAX_BYTES) { cancelCopy(); return false; }
+            }
+            job.reader = null;
+            const target = await context;
+            if (job.expired || !target) return false;
+            // Do not store a late result under a retired version. No re-open
+            // after this check; CacheStorage deletion leaves this handle detached.
+            const activeVersion = await getActiveShellVersion();
+            if (job.expired || activeVersion !== target.version) return false;
+            await target.cache.put(req, job.copy);
+            return !job.expired;
+        } catch (_) {
+            return false;
+        } finally {
+            clearTimeout(timer);
+            cancelCopy();
+            // A native storage operation cannot be aborted. Keep the single
+            // reservation until it actually settles, even if the deadline won:
+            // repeated navigations must not accumulate pending cache writes.
+            // Even an early body-budget exit must not release admission while
+            // its native cache-open is still outstanding.
+            context.then(() => { if (shellCopyJob === job) shellCopyJob = null; });
+        }
+    })();
+    return Promise.race([work, deadline]);
+}
 
+async function handleShellRequest(req, url, background = []) {
+    let fresh;
+    try {
+        // Network starts without waiting for optional CacheStorage metadata.
+        fresh = await fetch(req, { cache: 'no-store' });
+    } catch (networkError) {
+        try {
+            const version = await getActiveShellVersion();
+            const shellCache = await caches.open(getShellCacheName(version));
+            const exactCached = await shellCache.match(req);
+            const allowIndexFallback = !isStandaloneRuntimePath(url);
+            const cached = exactCached || (allowIndexFallback ? await shellCache.match(INDEX_URL) : null);
+            if (cached) {
+                swDebug('SHELL_CACHE_FALLBACK', {
+                    request: req.url, cacheName: getShellCacheName(version), version,
+                    exactMatch: !!exactCached, indexFallbackAllowed: allowIndexFallback
+                });
+                return cached;
+            }
+        } catch (_) { /* Cache failure is distinct from the network failure. */ }
+        swDebug('SHELL_TOTAL_FAILURE', {
+            request: req.url, error: networkError && networkError.message ? networkError.message : 'unknown'
+        });
+        return Response.error();
+    }
+
+    // All success/non-OK network responses retain their original identity,
+    // headers, status and body. A write failure cannot enter network fallback.
+    try {
         if (fresh && fresh.ok) {
-            await shellCache.put(req, fresh.clone());
-
-            swDebug('SHELL_NETWORK_OK', {
-                request: req.url,
-                cacheName: getShellCacheName(version),
-                version: version
-            });
+            background.push(queueShellCacheWrite(req, fresh));
+            swDebug('SHELL_NETWORK_OK', { request: req.url, persistence: 'best-effort-bounded' });
         } else {
             swDebug('SHELL_NETWORK_NON_OK', {
                 request: req.url,
-                status: fresh ? fresh.status : 'NO_RESPONSE',
-                cacheName: getShellCacheName(version),
-                version: version
+                status: fresh ? fresh.status : 'NO_RESPONSE'
             });
         }
-
-        return fresh;
-    } catch (e) {
-        const exactCached = await shellCache.match(req);
-        const allowIndexFallback = !isStandaloneRuntimePath(url);
-        const cached = exactCached || (allowIndexFallback ? await shellCache.match(INDEX_URL) : null);
-
-        if (cached) {
-            swDebug('SHELL_CACHE_FALLBACK', {
-                request: req.url,
-                cacheName: getShellCacheName(version),
-                version: version,
-                exactMatch: !!exactCached,
-                indexFallbackAllowed: allowIndexFallback
-            });
-            return cached;
-        }
-
-        swDebug('SHELL_TOTAL_FAILURE', {
-            request: req.url,
-            cacheName: getShellCacheName(version),
-            version: version,
-            error: e && e.message ? e.message : 'unknown'
-        });
-
-        return Response.error();
-    }
+    } catch (_) { /* Diagnostics and cache admission cannot discard fresh. */ }
+    return fresh;
 }
 
 async function handleModuleRequest(req, background = []) {
