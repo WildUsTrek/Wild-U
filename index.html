@@ -4213,6 +4213,44 @@ html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card [
 }
 
 
+/* UI-CARD F1: preserve authored sizes only in iOS list cards. The existing
+   one-time platform class also covers iPad desktop UA. No modal/global reset. */
+html.wildu-ios-card-compositing-v1 #event-list > .wildu-adventure-card,
+html.wildu-ios-card-compositing-v1 #openday-list > .wildu-adventure-card,
+html.wildu-ios-card-compositing-v1 #payday-list > .wildu-adventure-card,
+html.wildu-ios-card-compositing-v1 #ondemand-list > .wildu-adventure-card {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* UI-CARD F2: mobile Pay Day summaries use a deliberate price row.
+   Keep the DOM/click contract and desktop layout; no separator without metrics. */
+@media (max-width: 899px) {
+    :is(#event-list, #payday-list) .wildu-payday-summary > :not(.wildu-payday-price) {
+        font-size: 16px !important;
+        height: auto !important;
+        min-height: 42px;
+        max-width: 100%;
+        white-space: normal !important;
+        overflow-wrap: anywhere;
+    }
+    :is(#event-list, #payday-list) .wildu-payday-summary-with-metrics::before {
+        content: "";
+        flex: 0 0 100%;
+        order: 1;
+        border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    :is(#event-list, #payday-list) .wildu-payday-summary > .wildu-payday-price {
+        order: 2;
+        font-size: 26px !important;
+        height: auto !important;
+        min-height: 42px;
+        max-width: 100%;
+        white-space: normal !important;
+        overflow-wrap: anywhere;
+    }
+}
+
 /* =========================================================
    WILDU V26 — DESKTOP CARD GRID REFINEMENT (REVERSIBILE)
    ---------------------------------------------------------
@@ -17591,6 +17629,9 @@ async function completeRegistration() {
     } finally {
         isRegistrationCompletionInProgress = false;
         if (submitButton) submitButton.disabled = false;
+        // Il render di successo precede il rilascio del lock registrazione.
+        // Riallinea solo il velo Android; altri owner auth attivi restano protetti.
+        try { wilduSyncAuthInteractionVeil('REGISTRATION_LOCK_RELEASED'); } catch (e) {}
     }
 }
 
@@ -17825,7 +17866,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.130';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.131';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -36854,10 +36895,10 @@ function renderTrips(trips, targetId) {
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
+                <div class="wildu-payday-summary${(km || dsl) ? ' wildu-payday-summary-with-metrics' : ''}" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: flex-end; flex-wrap: wrap;">
                     ${km ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: bold; height: 42px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">${km}</div>` : ''}
                     ${dsl ? `<div style="background: #222; color: #fff; padding: 0 12px; border-radius: 8px; font-size: 16px; font-weight: bold; height: 42px; display: flex; align-items: center; box-sizing: border-box; border: 1px solid #333;">${dsl}</div>` : ''}
-                    <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 26px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 42px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
+                    <div class="wildu-payday-price" style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 15px; border-radius: 8px; font-size: 26px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 42px; display: flex; align-items: center; box-sizing: border-box;">${prezzoBase}€</div>
                 </div>
                 
                 <button type="button" class="btn-book wildu-adventure-details-btn" style="width:100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37;" onclick="consumeWilduSoftModalDismissEvent(event); showPayDayDetails('${safeId}')">SCOPRI DETTAGLI</button>
@@ -38416,10 +38457,10 @@ function renderPayDays() {
                     <div style="color:#777; font-size: 14px;">🕒 Orario: ${orario}</div>
                 </div>
                 <p class="wildu-adventure-place" style="color: #ccc; margin: 0 0 15px 0; font-size: 14px;">📍 ${luogoCompleto}</p>
-            <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <div class="wildu-payday-summary${(km || dsl) ? ' wildu-payday-summary-with-metrics' : ''}" style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
                 ${km ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${km}</div>` : ''}
                 ${dsl ? `<div style="background: #222; color: #fff; padding: 0 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;">${dsl}</div>` : ''}
-                <div style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;"> ${prezzo}€</div>
+                <div class="wildu-payday-price" style="background: rgba(212, 175, 55, 0.15); border: 1px solid #d4af37; color: #d4af37; padding: 0 10px; border-radius: 6px; font-size: 13px; font-weight: 900; margin-left: auto; white-space: nowrap; height: 28px; display: flex; align-items: center; box-sizing: border-box;"> ${prezzo}€</div>
             </div>
             <button type="button" class="wildu-adventure-details-btn" onclick="consumeWilduSoftModalDismissEvent(event); showPayDayDetails('${safeId}')" style="width: 100%; background: rgba(212, 175, 55, 0.1); color: #d4af37; border: 2px solid #d4af37; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase;">Scopri i Dettagli</button>
         </div>`;
