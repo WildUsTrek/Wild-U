@@ -3209,6 +3209,13 @@ html.wildu-grouped-travel-nav #btn-ondemand {
 }
         
 
+/* Extend the native swipe surface up to the controls without moving cards.
+   Hidden mode must keep its zero-height, non-interactive slider. */
+#amazon-footer-wrapper:not(.is-wildu-amazon-hidden) > .amazon-slider {
+    padding-top: 40px;
+    margin-top: -40px;
+}
+
 .amazon-slider::-webkit-scrollbar {
     display: none;
 }
@@ -17866,7 +17873,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.131';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.132';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -50363,7 +50370,7 @@ function bindAmazonSliderEventsOnce(slider) {
         }
         if (visibilityControl) {
             const hidden = state.hiddenByUser === true;
-            visibilityControl.textContent = hidden ? 'Mostra negozio' : 'Nascondi';
+            visibilityControl.textContent = hidden ? 'Mostra negozio' : 'nasco';
             visibilityControl.setAttribute('aria-label', hidden ? 'Mostra il carosello prodotti Amazon' : 'Nascondi il carosello prodotti Amazon per questa sessione');
             visibilityControl.setAttribute('aria-pressed', hidden ? 'true' : 'false');
         }
