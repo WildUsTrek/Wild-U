@@ -5448,6 +5448,10 @@ body.volume-modal-open{
   box-shadow:0 34px 120px rgba(0,0,0,.62), 0 0 44px rgba(255,224,150,.10), inset 0 1px 0 rgba(255,255,255,.16);
 }
 
+.avatar-modal-panel{
+  padding-bottom:112px;
+}
+
 .challenge-modal-close,
 .avatar-modal-close{
   position:absolute;
@@ -5486,9 +5490,43 @@ body.volume-modal-open{
   margin-top:16px;
 }
 
+/* The avatar list is intentionally long on small screens: retain both explicit
+   actions in the visible scroll viewport instead of stranding confirmation at
+   the bottom of the face grid. */
+.avatar-modal-actions{
+  position:fixed;
+  left:50%;
+  bottom:max(12px, env(safe-area-inset-bottom));
+  z-index:3;
+  width:min(520px, calc(100vw - 30px));
+  gap:10px;
+  margin:0;
+  padding:14px 22px;
+  background:linear-gradient(180deg, rgba(13,21,38,.82), rgba(13,21,38,.99));
+  box-shadow:0 -12px 24px rgba(0,0,0,.24);
+  transform:translate(-50%, 18px);
+  visibility:hidden;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
+}
+
+.avatar-modal.has-avatar-selection .avatar-modal-actions{
+  visibility:visible;
+  opacity:1;
+  pointer-events:auto;
+  transform:translate(-50%, 0);
+  transition:opacity .16s ease, transform .16s ease;
+}
+
 .challenge-modal-actions .btn,
 .avatar-modal-actions .btn{
   min-width:190px;
+}
+
+.avatar-modal-actions .btn{
+  min-width:0;
+  flex:1 1 0;
 }
 
 .challenge-modal-preview{

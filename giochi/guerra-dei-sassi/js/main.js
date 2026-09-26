@@ -155,6 +155,7 @@ window.openAvatarModal = function openAvatarModal(options) {
   if (grid && !grid.dataset.selectedAvatarId) grid.dataset.selectedAvatarId = current;
   if (typeof renderAvatarGrid === 'function') renderAvatarGrid();
   modal.classList.add('open');
+  modal.classList.remove('has-avatar-selection');
   modal.classList.toggle('is-required', !!(options && options.required));
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('avatar-modal-open');
@@ -163,7 +164,7 @@ window.openAvatarModal = function openAvatarModal(options) {
 window.closeAvatarModal = function closeAvatarModal() {
   const modal = document.getElementById('avatar-modal');
   if (modal) {
-    modal.classList.remove('open', 'is-required');
+    modal.classList.remove('open', 'is-required', 'has-avatar-selection');
     modal.setAttribute('aria-hidden', 'true');
   }
   document.body.classList.remove('avatar-modal-open');
@@ -352,7 +353,9 @@ window.bindUI = function bindUI() {
     chooseAvatarBtn.dataset.boundAvatarOpen = '1';
     chooseAvatarBtn.addEventListener('click', () => {
       const grid = document.getElementById('avatar-grid');
+      const modal = document.getElementById('avatar-modal');
       if (grid) grid.dataset.selectedAvatarId = (typeof getPlayerAvatarId === 'function' ? getPlayerAvatarId() : '');
+      if (modal) modal.classList.remove('has-avatar-selection');
       openAvatarModal({ required: false });
       playSfx('click');
     });
@@ -375,6 +378,8 @@ window.bindUI = function bindUI() {
       const btn = ev.target && ev.target.closest ? ev.target.closest('[data-avatar-id]') : null;
       if (!btn) return;
       avatarGrid.dataset.selectedAvatarId = btn.dataset.avatarId || '';
+      const modal = document.getElementById('avatar-modal');
+      if (modal) modal.classList.add('has-avatar-selection');
       if (typeof renderAvatarGrid === 'function') renderAvatarGrid();
       playSfx('click');
     });
@@ -389,6 +394,18 @@ window.bindUI = function bindUI() {
       if (selected && typeof setPlayerAvatarId === 'function') setPlayerAvatarId(selected);
       closeAvatarModal();
       if (typeof renderProgressSummary === 'function') renderProgressSummary();
+      playSfx('click');
+    });
+  }
+
+  const avatarCancelBtn = document.getElementById('avatar-cancel-btn');
+  if (avatarCancelBtn && avatarCancelBtn.dataset.boundAvatarCancel !== '1') {
+    avatarCancelBtn.dataset.boundAvatarCancel = '1';
+    avatarCancelBtn.addEventListener('click', () => {
+      const grid = document.getElementById('avatar-grid');
+      if (grid) grid.dataset.selectedAvatarId = (typeof getPlayerAvatarId === 'function' ? getPlayerAvatarId() : '');
+      if (typeof renderAvatarGrid === 'function') renderAvatarGrid();
+      closeAvatarModal();
       playSfx('click');
     });
   }
@@ -453,6 +470,9 @@ window.init = function init() {
   showScreen('boot-screen');
   if (typeof syncMotherExitAvailability === 'function') syncMotherExitAvailability();
   if (typeof scheduleBootOpponentPreview === 'function') scheduleBootOpponentPreview();
+  if (window.GuerraDeiSassiCloudSave && typeof window.GuerraDeiSassiCloudSave.initialize === 'function') {
+    window.GuerraDeiSassiCloudSave.initialize();
+  }
 };
 
 document.addEventListener('DOMContentLoaded', init);

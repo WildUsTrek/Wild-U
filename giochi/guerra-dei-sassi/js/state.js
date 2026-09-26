@@ -114,6 +114,11 @@ window.saveProgress = function saveProgress(progress) {
   try {
     if (window.localStorage) window.localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(safe));
   } catch (err) {}
+  try {
+    if (window.GuerraDeiSassiCloudSave && typeof window.GuerraDeiSassiCloudSave.markDirty === 'function') {
+      window.GuerraDeiSassiCloudSave.markDirty('main-progress');
+    }
+  } catch (err) {}
   return safe;
 };
 

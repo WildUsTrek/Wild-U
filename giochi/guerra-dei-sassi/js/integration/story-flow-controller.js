@@ -134,6 +134,10 @@
         await this.playerSession.initialize();
         await this.playerSession.restoreLatestIfNeeded();
       }
+      try {
+        const cloudSave = global.GuerraDeiSassiCloudSave;
+        if (cloudSave && typeof cloudSave.initialize === 'function') await cloudSave.initialize();
+      } catch (_) {}
       await this.childWorld.mount(container, this.createChildContext());
       if (this.flags.enableUnifiedAudio) await this.childWorld.applyAudioPolicy(this.audio.getChildPolicy());
       this.state = 'mounted';
@@ -172,6 +176,13 @@
     if (durable && durable.ok === false) {
       throw root.contracts.contractError('CHECKPOINT_WRITE_FAILED', `Durable checkpoint failed: ${durable.reason || 'unknown'}`);
     }
+    try {
+      const cloudSave = global.GuerraDeiSassiCloudSave;
+      if (cloudSave && typeof cloudSave.markDirty === 'function') cloudSave.markDirty(`story-checkpoint:${String(reason || 'checkpoint')}`);
+      if (cloudSave && /exit|close/i.test(String(reason || '')) && typeof cloudSave.flush === 'function') {
+        await cloudSave.flush('story-exit', { force: true });
+      }
+    } catch (_) {}
     return { childCheckpoint, durable };
   };
 

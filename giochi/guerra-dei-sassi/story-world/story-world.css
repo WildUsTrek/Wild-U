@@ -26277,6 +26277,11 @@
 
         html.perla-contract-real-mobile-v472.perla-mobile-portrait {
             --perla-v551-touch-reserve-y:118px;
+            /* V595.3: all portrait HUD and menu frames must live inside one
+               measured, device-safe game rectangle. This is intentionally a
+               frame gutter, not a per-widget translation: stage/menu/modal
+               variables are derived from #game-container by the V472 sync. */
+            --perla-v595-portrait-frame-gutter:clamp(8px, 1.8svh, 12px);
         }
 
         html.perla-contract-real-mobile-v472.perla-mobile-portrait body,
@@ -26318,6 +26323,19 @@
             aspect-ratio:auto !important;
             object-fit:fill !important;
             object-position:center center !important;
+        }
+
+        /* Portrait only: keep the whole game frame clear of cutouts, status
+           indicators and the home-indicator edge. The canvas, minimap and
+           absolute HUD share this frame; fixed menus receive its measured
+           stage/menu/modal coordinates after the existing V472 re-sync. */
+        html.perla-contract-real-mobile-v472.perla-mobile-portrait #game-container {
+            left:calc(var(--perla-vv-left, 0px) + env(safe-area-inset-left) + var(--perla-v595-portrait-frame-gutter)) !important;
+            top:calc(var(--perla-vv-top, 0px) + env(safe-area-inset-top) + var(--perla-v595-portrait-frame-gutter)) !important;
+            width:calc(var(--perla-vv-width, 100svw) - env(safe-area-inset-left) - env(safe-area-inset-right) - (var(--perla-v595-portrait-frame-gutter) * 2)) !important;
+            height:calc(var(--perla-vv-height, 100svh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - (var(--perla-v595-portrait-frame-gutter) * 2)) !important;
+            max-width:calc(var(--perla-vv-width, 100svw) - env(safe-area-inset-left) - env(safe-area-inset-right) - (var(--perla-v595-portrait-frame-gutter) * 2)) !important;
+            max-height:calc(var(--perla-vv-height, 100svh) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - (var(--perla-v595-portrait-frame-gutter) * 2)) !important;
         }
 
         html.perla-contract-real-mobile-v472.perla-mobile-portrait #perlaComfortHudV336 {
@@ -26410,14 +26428,28 @@
             font-size:7.8px !important;
         }
 
-        /* V595: il contratto fullscreen mobile V551 usa il viewport reale e
-           quindi prevale sulle precedenti safe-area. La mini-mappa resta un
-           unico cluster: warning e valute la seguono gia' dal suo rect runtime. */
+        /* V595.2: the real-mobile frame already excludes the unsafe device
+           area before positioning its absolute HUD. The minimap shares that
+           frame with clock and inventory: adding env(safe-area-inset-top)
+           here would apply the top inset a second time and misalign it. */
         html.perla-contract-real-mobile-v472.perla-mobile-portrait #mini-map {
-            top:78px !important;
-            top:max(78px, calc(env(safe-area-inset-top) + 12px)) !important;
+            top:10px !important;
             right:12px !important;
-            right:max(12px, calc(env(safe-area-inset-right) + 8px)) !important;
+        }
+
+        /* V595.4: do not leave the portrait touch deck or the lower comfort
+           HUD tied to the raw browser viewport.  They occupy the same visual
+           game frame as canvas, HUD and menus; the reserve is only to avoid
+           overlapping the player's controls, never a second safe-area shift. */
+        html.perla-contract-real-mobile-v472.perla-mobile-portrait #mobile-controls {
+            left:var(--perla-stage-left, var(--perla-game-left, 0px)) !important;
+            right:auto !important;
+            width:var(--perla-stage-width, var(--perla-game-width, 100svw)) !important;
+            bottom:calc(var(--perla-stage-bottom-gap, var(--perla-game-bottom-gap, 0px)) + 88px) !important;
+        }
+
+        html.perla-contract-real-mobile-v472.perla-mobile-portrait #perlaComfortHudV336 {
+            bottom:calc(var(--perla-stage-bottom-gap, var(--perla-game-bottom-gap, 0px)) + var(--perla-v552-stats-bottom-y, 18px)) !important;
         }
 
         html.perla-contract-real-mobile-v472.perla-mobile-landscape #mini-map {
