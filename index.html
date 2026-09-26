@@ -12748,6 +12748,12 @@ window.WilduMediaClient = WilduMediaClient;
     let initDataRequestSequence = 0;
     let initBootCompleted = false;
     let authRefreshLock = false;
+    let authLifecycleEpoch = 0;
+    const wilduAuthLockOwners = new Set();
+    let wilduAuthProbeOwner = null;
+    let wilduAuthRecoveryWaiting = false;
+    const wilduAuthPendingNotices = new Set();
+    let wilduAuthPendingSurfaceState = null;
     let pendingAuthStateUser;
     let authStateReplayTimer = null;
     let authProbeInProgress = false;
@@ -12766,6 +12772,7 @@ window.WilduMediaClient = WilduMediaClient;
     let wilduAuthProfileServerReadOwner = null;
     let wilduAuthProfileServerReadSequence = 0;
     let isRegistrationCompletionInProgress = false;
+    let wilduRegistrationOwner = null;
     const WILDU_AUTH_NAV_TAB_IDS = new Set(['travelhub', 'events', 'free', 'ondemand', 'paid', 'rewards', 'profile', 'groups', 'install', 'negozio']);
     let wilduAuthNavigationGeneration = 0;
     let wilduAuthNavigationIntent = null;
@@ -13642,9 +13649,16 @@ function reconcileProfileShellWithClientSession() {
                 at: Date.now()
             };
         const cleanReason = String(reason || candidate.reason || 'AUTH_TERMINAL_FAILURE');
-        wilduAuthTerminalizationPromise = (async function () {
+        wilduInvalidateAuthLifecycle();
+        const terminalEpoch = authLifecycleEpoch;
+        let pendingNotice = null;
+        let terminalOperation = null;
+        terminalOperation = (async function () {
+            await Promise.resolve();
             try {
-                if (!wilduCanTerminalizeAuthPendingToGuest({ userRequested })) return false;
+                // Admission was checked synchronously before acquiring this sole
+                // terminal operation; recheck identity/epoch, not its own busy flag.
+                if (terminalEpoch !== authLifecycleEpoch || String(auth.currentUser?.uid || '') !== String(candidate.uid || '')) return false;
                 authProbeSequence += 1;
                 initDataRequestSequence += 1;
                 clearClientAuthRecovery();
@@ -13654,7 +13668,9 @@ function reconcileProfileShellWithClientSession() {
                 try { clearWilduAuthBridgeAttempt('AUTH_TERMINAL_GUEST:' + cleanReason); } catch (e) {}
                 clearWilduAuthProfileServerReadOwner('AUTH_TERMINAL_GUEST:' + cleanReason);
 
+                pendingNotice = wilduStartAuthPendingNotice('TERMINAL_SIGNOUT');
                 await auth.signOut();
+                if (terminalEpoch !== authLifecycleEpoch) return false;
                 if (auth.currentUser) {
                     throw new Error('AUTH_TERMINAL_SIGNOUT_NOT_SETTLED');
                 }
@@ -13672,6 +13688,7 @@ function reconcileProfileShellWithClientSession() {
                 try { showToast('Accesso non completato. Puoi riprovare quando vuoi.'); } catch (e) {}
                 return true;
             } catch (error) {
+                if (terminalEpoch !== authLifecycleEpoch) return false;
                 try {
                     pageDebug('AUTH_TERMINAL_GUEST_SIGNOUT_FAILED', {
                         code: String(candidate.code || ''),
@@ -13684,9 +13701,11 @@ function reconcileProfileShellWithClientSession() {
                 reconcileProfileShellWithClientSession();
                 return false;
             } finally {
-                wilduAuthTerminalizationPromise = null;
+                wilduFinishAuthPendingNotice(pendingNotice);
+                if (wilduAuthTerminalizationPromise === terminalOperation) wilduAuthTerminalizationPromise = null;
             }
         })();
+        wilduAuthTerminalizationPromise = terminalOperation;
         return true;
     }
 
@@ -13700,6 +13719,7 @@ function reconcileProfileShellWithClientSession() {
             try { pageDebug('AUTH_TERMINAL_USER_GUEST_EXIT_DEFERRED', { online: false }); } catch (e) {}
             return false;
         }
+        if (wilduAuthTerminalizationPromise) return false;
         try {
             pageDebug('AUTH_TERMINAL_USER_GUEST_EXIT', { hasFirebaseUser: true });
         } catch (e) {}
@@ -15222,6 +15242,7 @@ async function handleTelegramAuth(tgUser) {
 // ==========================================
 
     function clearClientAuthRecovery(options = {}) {
+        wilduAuthRecoveryWaiting = false;
         if (authRecoveryTimer) {
             window.clearTimeout(authRecoveryTimer);
             authRecoveryTimer = null;
@@ -15328,7 +15349,7 @@ function scheduleAuthProfileWatchdog(reason) {
 
 function releaseStaleAuthProfileProbeIfNeeded(reason, options = {}) {
     if (!authProbeInProgress) return false;
-    if (authRefreshLock || isRegistrationCompletionInProgress) return false;
+    if (authRefreshLock || wilduAuthProbeOwner || isRegistrationCompletionInProgress) return false;
     const startedAt = Number(authProbeStartedAt || 0);
     const ageMs = startedAt ? Date.now() - startedAt : Number.POSITIVE_INFINITY;
     const force = options.force === true;
@@ -15352,6 +15373,10 @@ function releaseStaleAuthProfileProbeIfNeeded(reason, options = {}) {
 
 function scheduleAuthProfileLivenessRetry(reason) {
     if (authLivenessRetryTimer || isTelegramContext() || !auth.currentUser || clientSession.authState === 'LOGGED') return false;
+    if (authRefreshLock || wilduAuthProbeOwner || isRegistrationCompletionInProgress) {
+        wilduAuthRecoveryWaiting = true;
+        return true;
+    }
     if (wilduAuthRateRemainingMs('getInitData') > 0) {
         scheduleClientAuthRecovery('AUTH_BACKPRESSURE_LIVENESS', { reset: true });
         return true;
@@ -15404,6 +15429,7 @@ function ensureAuthProfileLiveness(reason, options = {}) {
 }
 
     function scheduleClientAuthRecovery(reason, options = {}) {
+        const recoveryEpoch = authLifecycleEpoch;
         if (isTelegramContext() || !auth.currentUser) {
             try {
                 pageDebug('AUTH_RECOVERY_SKIPPED_NO_USER', {
@@ -15451,6 +15477,7 @@ function ensureAuthProfileLiveness(reason, options = {}) {
 
     authRecoveryTimer = window.setTimeout(async function replayAuthenticatedUser() {
         authRecoveryTimer = null;
+        if (recoveryEpoch !== authLifecycleEpoch) return;
         const currentUser = auth.currentUser;
         if (!currentUser || isTelegramContext()) {
             try {
@@ -15467,7 +15494,7 @@ function ensureAuthProfileLiveness(reason, options = {}) {
             scheduleClientAuthRecovery(reason || 'AUTH_BACKPRESSURE');
             return;
         }
-        if (authRefreshLock || authProbeInProgress) {
+        if (authRefreshLock || authProbeInProgress || isRegistrationCompletionInProgress) {
             if (releaseStaleAuthProfileProbeIfNeeded(reason || 'AUTH_RECOVERY_BUSY')) {
                 scheduleClientAuthRecovery(reason || 'AUTH_RECOVERY_PROBE_RELEASED', {
                     reset: true,
@@ -15482,7 +15509,7 @@ function ensureAuthProfileLiveness(reason, options = {}) {
                     authProbeInProgress: !!authProbeInProgress
                 });
             } catch (e) {}
-            scheduleClientAuthRecovery(reason || 'AUTH_RECOVERY_BUSY');
+            wilduAuthRecoveryWaiting = true;
             return;
         }
 
@@ -15647,7 +15674,7 @@ function resetStaleClientAuthPendingToGuest(reason, options = {}) {
         wilduGoogleAuthTransitionTimer = null;
     }
 
-    authRefreshLock = false;
+    wilduInvalidateAuthLifecycle();
     authProbeInProgress = false;
     authProbeStartedAt = 0;
     profileCompletionRequired = false;
@@ -15701,23 +15728,144 @@ function resetStaleClientAuthPendingToGuest(reason, options = {}) {
     return true;
 }
 
+// Resource ownership is independent from permission to APPLY an Auth result.
+// A stale result still releases its own resource, never another generation's.
+function wilduSyncAuthLockOwners() {
+    authRefreshLock = wilduAuthLockOwners.size > 0;
+}
+
+function wilduAcquireAuthLock(origin) {
+    const owner = { epoch: authLifecycleEpoch, origin };
+    wilduAuthLockOwners.add(owner);
+    wilduSyncAuthLockOwners();
+    owner.notice = wilduStartAuthPendingNotice(origin, origin !== 'BRIDGE_REDEEM' && origin !== 'GIS_CREDENTIAL');
+    if (origin === 'BRIDGE_REDEEM' || origin === 'GIS_CREDENTIAL') wilduRenderAuthPendingNotice();
+    return owner;
+}
+
+function wilduReleaseAuthLock(owner) {
+    if (!owner || owner.epoch !== authLifecycleEpoch || !wilduAuthLockOwners.delete(owner)) return;
+    wilduFinishAuthPendingNotice(owner.notice);
+    wilduSyncAuthLockOwners();
+    wilduWakeAuthAfterOwnedWork();
+}
+
+function wilduInvalidateAuthLifecycle() {
+    authLifecycleEpoch += 1;
+    wilduAuthLockOwners.clear();
+    wilduSyncAuthLockOwners();
+    wilduAuthProbeOwner = null;
+    wilduAuthRecoveryWaiting = false;
+    wilduRegistrationOwner = null;
+    isRegistrationCompletionInProgress = false;
+    clearPendingClientAuthStateReplay();
+    for (const notice of Array.from(wilduAuthPendingNotices)) wilduFinishAuthPendingNotice(notice);
+}
+
+function wilduWakeAuthAfterOwnedWork() {
+    if (authRefreshLock || wilduAuthProbeOwner || isRegistrationCompletionInProgress) return;
+    if (pendingAuthStateUser !== undefined) {
+        schedulePendingClientAuthState(auth.currentUser);
+    } else if (wilduAuthRecoveryWaiting) {
+        wilduAuthRecoveryWaiting = false;
+        scheduleClientAuthRecovery('AUTH_OWNED_WORK_SETTLED', { immediate: true });
+    }
+}
+
 function schedulePendingClientAuthState(user) {
     pendingAuthStateUser = user;
-    if (authStateReplayTimer) return;
-
-    const replayWhenUnlocked = function () {
-        if (authRefreshLock) {
-            authStateReplayTimer = window.setTimeout(replayWhenUnlocked, 50);
-            return;
-        }
-
+    if (authStateReplayTimer || authRefreshLock || wilduAuthProbeOwner || isRegistrationCompletionInProgress) return;
+    const epoch = authLifecycleEpoch;
+    authStateReplayTimer = window.setTimeout(function drainAuthStateOnce() {
         authStateReplayTimer = null;
-        const queuedUser = auth.currentUser;
+        if (epoch !== authLifecycleEpoch) return;
+        if (authRefreshLock || wilduAuthProbeOwner || isRegistrationCompletionInProgress) return;
+        if (pendingAuthStateUser === undefined) return;
         pendingAuthStateUser = undefined;
-        handleClientAuthStateChanged(queuedUser, 'AUTH_LOCK_REPLAY');
-    };
+        wilduAuthRecoveryWaiting = false;
+        handleClientAuthStateChanged(auth.currentUser, 'AUTH_LOCK_REPLAY');
+    }, 0);
+}
 
-    authStateReplayTimer = window.setTimeout(replayWhenUnlocked, 50);
+// Observation deadline only: never cancels SDK work or opens a second write.
+// This notice lives inside an existing Auth surface, never a new global veil.
+function wilduStartAuthPendingNotice(phase, allowReload = true) {
+    const notice = { epoch: authLifecycleEpoch, phase, allowReload, timer: null, element: null, ready: false };
+    wilduAuthPendingNotices.add(notice);
+    notice.timer = window.setTimeout(function showPendingOperation() {
+        notice.timer = null;
+        if (!wilduAuthPendingNotices.has(notice) || notice.epoch !== authLifecycleEpoch) return;
+        notice.ready = true;
+        wilduRenderAuthPendingNotice();
+    }, 15000);
+    return notice;
+}
+
+function wilduRenderAuthPendingNotice() {
+    // One panel at most, even if two legitimate owners overlap. Restoring the
+    // exact previous inline styles cannot remove another Auth owner's veil.
+    for (const pending of wilduAuthPendingNotices) {
+        if (pending.element) pending.element.remove();
+        pending.element = null;
+    }
+    if (wilduAuthPendingSurfaceState) {
+        const previous = wilduAuthPendingSurfaceState;
+        previous.parent.style.maxHeight = previous.maxHeight;
+        previous.parent.style.overflowY = previous.overflowY;
+        previous.parent.style.touchAction = previous.parentTouchAction;
+        if (previous.overlay) previous.overlay.style.touchAction = previous.overlayTouchAction;
+        wilduAuthPendingSurfaceState = null;
+    }
+    const notice = Array.from(wilduAuthPendingNotices).reverse()
+        .find(pending => pending.ready && pending.epoch === authLifecycleEpoch);
+    if (!notice) return;
+    const overlay = document.getElementById('wildu-auth-bridge-handoff');
+    const parent = overlay?.querySelector('section') ||
+        ['complete-profile-screen', 'profile-loading-screen', 'login-screen']
+            .map(id => document.getElementById(id)).find(el => el && !el.classList.contains('hidden'));
+    if (!parent) return;
+    wilduAuthPendingSurfaceState = {
+        parent, overlay, maxHeight: parent.style.maxHeight, overflowY: parent.style.overflowY,
+        parentTouchAction: parent.style.touchAction, overlayTouchAction: overlay?.style.touchAction
+    };
+    parent.style.maxHeight = 'calc(100dvh - 48px)';
+    parent.style.overflowY = 'auto';
+    parent.style.touchAction = 'pan-y';
+    if (overlay) overlay.style.touchAction = 'pan-y';
+    const panel = document.createElement('div');
+    panel.setAttribute('role', 'status');
+    panel.setAttribute('aria-live', 'polite');
+    panel.style.cssText = 'margin-bottom:12px;padding:12px;border:1px solid currentColor;border-radius:12px;line-height:1.4';
+    if (notice.allowReload && !wilduIsAuthBridgeRuntimeActive() && !WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Ricarica e verifica';
+        button.style.cssText = 'display:block;width:100%;min-height:44px;padding:10px 16px;cursor:pointer;margin-bottom:10px';
+        button.addEventListener('click', function reloadPendingAuthByUser() {
+            if (!wilduAuthPendingNotices.has(notice) || notice.epoch !== authLifecycleEpoch) return;
+            // Reload is user-requested, NOT cancellation/ACK of an SDK write.
+            if (wilduIsAuthBridgeRuntimeActive() || WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS) return;
+            window.location.reload();
+        });
+        panel.appendChild(button);
+    }
+    const message = document.createElement('p');
+    message.style.margin = '0';
+    message.textContent = notice.phase === 'REGISTRATION'
+            ? 'La conferma del profilo sta richiedendo tempo. Una scrittura gia inviata potrebbe essere stata salvata: non inviamo duplicati. Puoi attendere oppure ricaricare e verificare lo stato.'
+            : notice.phase === 'TERMINAL_SIGNOUT'
+                ? 'La chiusura della sessione non e ancora confermata. Non risulti disconnesso finche il sistema non lo conferma. Puoi attendere oppure ricaricare per verificarne lo stato.'
+                : 'La verifica della sessione sta richiedendo tempo. Non avviamo un secondo accesso mentre questa operazione e in corso.';
+    panel.appendChild(message);
+    notice.element = panel;
+    parent.insertBefore(panel, parent.firstChild);
+}
+
+function wilduFinishAuthPendingNotice(notice) {
+    if (!notice || !wilduAuthPendingNotices.delete(notice)) return;
+    if (notice.timer) window.clearTimeout(notice.timer);
+    if (notice.element) notice.element.remove();
+    wilduRenderAuthPendingNotice();
 }
 
 function clearPendingClientAuthStateReplay() {
@@ -15729,6 +15877,7 @@ function clearPendingClientAuthStateReplay() {
 }
 
 async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') {
+    const lifecycleEpoch = authLifecycleEpoch;
     const expectedUid = String(user?.uid || '').trim();
     const currentUid = String(auth.currentUser?.uid || '').trim();
     try {
@@ -15767,7 +15916,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
             currentUidMatches: String(auth.currentUser?.uid || '').trim() === expectedUid
         });
     } catch (e) {}
-    if (String(auth.currentUser?.uid || '').trim() !== expectedUid) {
+    if (lifecycleEpoch !== authLifecycleEpoch || String(auth.currentUser?.uid || '').trim() !== expectedUid) {
         try {
             pageDebug('AUTH_PROFILE_FINALIZE_FAILED', {
                 reason: String(reason || 'GOOGLE_SIGNIN'),
@@ -15783,6 +15932,11 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
         reason: reason + '_BACKEND_FINALIZE',
         force: true
     });
+    if (lifecycleEpoch !== authLifecycleEpoch || String(auth.currentUser?.uid || '').trim() !== expectedUid) {
+        const staleError = new Error('AUTH_IDENTITY_CHANGED_DURING_FINALIZE');
+        staleError.code = 'AUTH_IDENTITY_CHANGED_DURING_FINALIZE';
+        throw staleError;
+    }
     const profile = data?.userOverlay?.profile || null;
     const backendUid = String(profile?.uid || '').trim();
     try {
@@ -15870,6 +16024,7 @@ async function finalizeWilduAuthenticatedSignIn(user, reason = 'GOOGLE_SIGNIN') 
 }
 
 async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
+    const lifecycleEpoch = authLifecycleEpoch;
     try {
         await ensureWilduClientInteractionBootGate('AUTH_STATE');
     } catch (e) {
@@ -15877,6 +16032,7 @@ async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
         console.warn('Client auth bootstrap gate skipped:', e);
     }
 
+    if (lifecycleEpoch !== authLifecycleEpoch || String(auth.currentUser?.uid || '') !== String(user?.uid || '')) return;
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     const isTelegram = tgUser && tgUser.id;
 
@@ -15892,14 +16048,17 @@ async function handleClientAuthStateChanged(user, reason = 'AUTH_LISTENER') {
         return;
     }
 
-    if (authRefreshLock) {
+    if (authRefreshLock || wilduAuthProbeOwner || isRegistrationCompletionInProgress) {
+        authProbeSequence += 1;
         schedulePendingClientAuthState(user);
         return;
     }
     const probeSequence = ++authProbeSequence;
-    const isCurrentProbe = () => probeSequence === authProbeSequence &&
+    const probeOwner = { epoch: lifecycleEpoch, sequence: probeSequence };
+    wilduAuthProbeOwner = probeOwner;
+    const isCurrentProbe = () => lifecycleEpoch === authLifecycleEpoch && probeSequence === authProbeSequence &&
         String(auth.currentUser?.uid || '') === String(user?.uid || '');
-
+    try {
     if (user) {
         // The existing recovery owner schedules one wake-up, not another
         // Firestore/backend probe while the server budget is cooling down.
@@ -15951,14 +16110,14 @@ if (!navigator.onLine) {
                 if (!isCurrentProbe()) return;
 
                 if (!docSnap.exists) {
-                    authRefreshLock = true;
+                    const lockOwner = wilduAcquireAuthLock('CANONICAL_PROFILE');
                     try {
                         canonicalInitData = await fetchInitData({
                             reason: 'AUTH_STATE_CANONICAL_PROFILE',
                             force: true
                         });
                     } finally {
-                        if (isCurrentProbe()) authRefreshLock = false;
+                        wilduReleaseAuthLock(lockOwner);
                     }
                     if (!isCurrentProbe()) return;
 
@@ -16021,11 +16180,11 @@ if (docSnap.exists) {
     document.getElementById('complete-profile-screen').classList.add('hidden');
 
     if (!canonicalInitData) {
-        authRefreshLock = true;
+        const lockOwner = wilduAcquireAuthLock('INIT_DATA_PROFILE');
         try {
             await fetchInitData({ reason: 'AUTH_STATE', force: true });
         } finally {
-            if (isCurrentProbe()) authRefreshLock = false;
+            wilduReleaseAuthLock(lockOwner);
         }
     }
 
@@ -16059,7 +16218,6 @@ if (docSnap.exists) {
 
         } catch (e) {
             if (!isCurrentProbe()) return;
-            authRefreshLock = false;
             endWilduGoogleAuthTransition('AUTH_PROCESSING_ERROR');
             if (e?.status === 429) {
                 holdClientAuthPending(user, wilduAuthRateMessage(e), 'AUTH_PROFILE_RATE_LIMITED');
@@ -16137,6 +16295,15 @@ if (docSnap.exists) {
     const loginDesc = document.getElementById('login-desc');
     if (loginDesc) loginDesc.innerText = "Accedi in modo sicuro per salvare i tuoi progressi e prenotare i viaggi.";
 }
+    } finally {
+        if (lifecycleEpoch === authLifecycleEpoch && wilduAuthProbeOwner === probeOwner) {
+            wilduAuthProbeOwner = null;
+            authProbeInProgress = false;
+            authProbeStartedAt = 0;
+            wilduWakeAuthAfterOwnedWork();
+            try { wilduSyncAuthInteractionVeil('AUTH_PROBE_OWNER_RELEASED'); } catch (e) {}
+        }
+    }
 }
 
 auth.onAuthStateChanged((user) => {
@@ -16718,8 +16885,7 @@ async function redeemWilduAuthBridgeAttempt(state) {
     // il rientro deve essere atomico: l'observer Auth viene accodato mentre la
     // stessa pipeline attende subito anche il gate canonico backend. In questo
     // modo la shell non puo' tornare guest e richiedere un secondo tap.
-    const previousAuthRefreshLock = authRefreshLock;
-    authRefreshLock = true;
+    const lockOwner = wilduAcquireAuthLock('BRIDGE_REDEEM');
     let signedUser = null;
 
     try {
@@ -16733,6 +16899,7 @@ async function redeemWilduAuthBridgeAttempt(state) {
         const result = await auth.signInWithCustomToken(customToken);
         customToken = '';
         try { response.customToken = ''; } catch (e) {}
+        if (lockOwner.epoch !== authLifecycleEpoch) return false;
         wilduAssertCurrentBridgeAttempt(state);
 
         signedUser = result?.user || auth.currentUser;
@@ -16762,7 +16929,7 @@ async function redeemWilduAuthBridgeAttempt(state) {
             // Firebase e' gia' autenticato e il tentativo server e' one-shot:
             // non riaprire Google. Manteniamo AUTH_PENDING e riproviamo la sola
             // verifica backend con la recovery storica e limitata.
-            if (String(auth.currentUser?.uid || '') !== String(signedUser?.uid || '')) return false;
+            if (lockOwner.epoch !== authLifecycleEpoch || String(auth.currentUser?.uid || '') !== String(signedUser?.uid || '')) return false;
             pageDebug('AUTH_BRIDGE_FINALIZE_DEFERRED', {
                 code: String(error?.code || 'AUTH_BRIDGE_FINALIZE_FAILED')
             });
@@ -16784,11 +16951,13 @@ async function redeemWilduAuthBridgeAttempt(state) {
     } finally {
         customToken = '';
         try { response.customToken = ''; } catch (e) {}
-        authRefreshLock = previousAuthRefreshLock;
+        wilduReleaseAuthLock(lockOwner);
         // finalize puo' aver riconciliato mentre il lock era ancora attivo.
         // Riallineiamo solo il velo dopo il rilascio: nessun retry o stato auth
         // viene creato qui, e un lock esterno ancora attivo resta rispettato.
-        try { wilduSyncAuthInteractionVeil('AUTH_BRIDGE_REDEEM_LOCK_RELEASED'); } catch (e) {}
+        if (lockOwner.epoch === authLifecycleEpoch) {
+            try { wilduSyncAuthInteractionVeil('AUTH_BRIDGE_REDEEM_LOCK_RELEASED'); } catch (e) {}
+        }
     }
 }
 
@@ -17117,7 +17286,7 @@ async function handleWilduGoogleIdentityCredential(response) {
     }
 
     WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = true;
-    authRefreshLock = true;
+    const lockOwner = wilduAcquireAuthLock('GIS_CREDENTIAL');
     beginWilduGoogleAuthTransition('GIS_CREDENTIAL');
     showToast('Accesso Google in verifica...');
 
@@ -17125,12 +17294,15 @@ async function handleWilduGoogleIdentityCredential(response) {
 
     try {
         await WILDU_FIREBASE.ensureLocalAuthPersistence();
+        if (lockOwner.epoch !== authLifecycleEpoch) return;
         const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
         const result = await auth.signInWithCredential(credential);
+        if (lockOwner.epoch !== authLifecycleEpoch) return;
         const signedUser = result?.user || auth.currentUser;
         if (!signedUser) throw new Error('GOOGLE_IDENTITY_FIREBASE_USER_MISSING');
 
         await finalizeWilduAuthenticatedSignIn(signedUser, 'GIS_CREDENTIAL');
+        if (lockOwner.epoch !== authLifecycleEpoch) return;
         finalized = true;
         showToast('Accesso completato. Bentornato!');
     } catch (error) {
@@ -17138,6 +17310,7 @@ async function handleWilduGoogleIdentityCredential(response) {
             'Errore accesso Google iOS:',
             String(error?.code || 'GIS_SIGNIN_FAILED')
         );
+        if (lockOwner.epoch !== authLifecycleEpoch) return;
         if (auth.currentUser) {
             holdClientAuthPending(
                 auth.currentUser,
@@ -17152,12 +17325,14 @@ async function handleWilduGoogleIdentityCredential(response) {
         }
     } finally {
         try { if (response && typeof response === 'object') response.credential = ''; } catch (e) {}
-        authRefreshLock = false;
+        wilduReleaseAuthLock(lockOwner);
         WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS = false;
         // Il percorso iOS GIS finalizza mentre il lock e' ancora attivo:
         // ricalcoliamo il solo velo quando il lock e' stato rilasciato.
-        try { wilduSyncAuthInteractionVeil('GIS_AUTH_LOCK_RELEASED'); } catch (e) {}
-        if (!finalized && auth.currentUser) {
+        if (lockOwner.epoch === authLifecycleEpoch) {
+            try { wilduSyncAuthInteractionVeil('GIS_AUTH_LOCK_RELEASED'); } catch (e) {}
+        }
+        if (lockOwner.epoch === authLifecycleEpoch && !finalized && auth.currentUser) {
             scheduleClientAuthRecovery('GIS_FINALIZE_RETRY', {
                 reset: true,
                 immediate: true
@@ -17406,6 +17581,7 @@ function loginWithGoogleRedirect() {
 // ==========================================
 
 async function completeRegistration() {
+    if (isRegistrationCompletionInProgress) return;
     const phone = document.getElementById('reg-phone').value.trim();
     const submitButton = document.getElementById('complete-registration-btn');
     if (phone.length < 8) {
@@ -17417,15 +17593,22 @@ async function completeRegistration() {
         return;
     }
 
-    if (isRegistrationCompletionInProgress) return;
+    const registrationOwner = { epoch: authLifecycleEpoch };
+    wilduRegistrationOwner = registrationOwner;
+    let userId = '';
+    let mode = 'WEB';
+    const isCurrentRegistration = () => wilduRegistrationOwner === registrationOwner &&
+        registrationOwner.epoch === authLifecycleEpoch && (mode === 'TELEGRAM'
+            ? userId === 'TG-' + String(tempTelegramUser?.id || '')
+            : userId === String(auth.currentUser?.uid || ''));
     isRegistrationCompletionInProgress = true;
     if (submitButton) submitButton.disabled = true;
+    const pendingNotice = wilduStartAuthPendingNotice('REGISTRATION');
 
     rememberWilduLastKnownPhone(phone);
 
     try {
-        let userId, userEmail, userName;
-        let mode = 'WEB';
+        let userEmail, userName;
 
         if (tempTelegramUser) {
             mode = 'TELEGRAM';
@@ -17443,35 +17626,45 @@ async function completeRegistration() {
             return showToast("Errore di sessione. Ricarica l'app.");
         }
 
-        const existingSnap = await FS.getUtente(userId, { source: 'server' });
-        const existingData = existingSnap.exists ? (existingSnap.data() || {}) : {};
+        if (!isCurrentRegistration()) return;
+        await FS.getUtente(userId, { source: 'server' });
+        if (!isCurrentRegistration()) return;
 
-        let payload;
-
-        if (existingSnap.exists) {
-            // PROFILO GIÀ ESISTENTE: non toccare mai progressi, ban, zaino, grado, xp
-            payload = {
+        // Atomic existence check: a delayed first registration must never reset
+        // progress created by another document/device while this one was pending.
+        // SDK retries re-read the same doc; callback has no application effects.
+        const committed = await db.runTransaction(async function writeCurrentRegistration(transaction) {
+            if (!isCurrentRegistration()) throw new Error('REGISTRATION_LIFECYCLE_CHANGED');
+            const ref = FS.getUtenteRef(userId);
+            const snapshot = await transaction.get(ref);
+            if (!isCurrentRegistration()) throw new Error('REGISTRATION_LIFECYCLE_CHANGED');
+            const current = snapshot.exists ? (snapshot.data() || {}) : null;
+            if (current && String(current.email || '') === String(userEmail || '') &&
+                String(current.nome || '') === String(userName || '') &&
+                String(current.telefono || '').trim() === phone) {
+                return { snapshot, payload: {} };
+            }
+            const contact = {
                 email: userEmail,
                 nome: userName,
                 telefono: phone,
                 ultimo_aggiornamento: FV.serverTimestamp()
             };
-        } else {
-            // PRIMA NASCITA REALE
-            payload = {
+            const payload = snapshot.exists ? contact : {
                 xp: 0,
                 grado: "Socio Novizio",
                 registratoIl: FV.serverTimestamp(),
-                email: userEmail,
-                nome: userName,
-                telefono: phone,
+                ...contact,
                 bannato: false,
-                zaino: [],
-                ultimo_aggiornamento: FV.serverTimestamp()
+                zaino: []
             };
-        }
-
-        await FS.setUtente(userId, payload);
+            transaction.set(ref, payload, { merge: true });
+            return { snapshot, payload };
+        });
+        if (!isCurrentRegistration()) return;
+        const existingSnap = committed.snapshot;
+        const existingData = existingSnap.exists ? (existingSnap.data() || {}) : {};
+        const payload = committed.payload;
 
         // Il set completato e' gia' una conferma server. La rilettura canonica
         // rafforza la verifica, ma una sua indisponibilita' temporanea non deve
@@ -17487,6 +17680,7 @@ async function completeRegistration() {
 
         try {
             const persistedSnap = await FS.getUtente(userId, { source: 'server' });
+            if (!isCurrentRegistration()) return;
             const canonicalData = persistedSnap.exists ? (persistedSnap.data() || {}) : {};
             const canonicalPhone = String(canonicalData.telefono || '').trim();
 
@@ -17499,17 +17693,13 @@ async function completeRegistration() {
             persistedData = canonicalData;
             persistedPhone = canonicalPhone;
         } catch (error) {
+            if (!isCurrentRegistration()) return;
             if (error?.code === 'REGISTRATION_PROFILE_NOT_PERSISTED') throw error;
             readbackError = error;
             console.warn('Profilo scritto; rilettura Firestore rinviata:', error);
         }
 
-        if (mode === 'WEB' && String(auth.currentUser?.uid || '') !== String(userId)) {
-            authProbeInProgress = false;
-            authProbeStartedAt = 0;
-            reconcileProfileShellWithClientSession();
-            return;
-        }
+        if (!isCurrentRegistration()) return;
 
         cachedXPData = {
             ...(cachedXPData || {}),
@@ -17547,13 +17737,16 @@ async function completeRegistration() {
                     if (delayMs > 0) {
                         await new Promise(resolve => window.setTimeout(resolve, delayMs));
                     }
+                    if (!isCurrentRegistration()) return;
 
                     try {
                         refreshedData = await fetchInitData({
                             force: true,
                             reason: attempt === 0 ? 'REGISTRATION_COMPLETE' : 'REGISTRATION_CANONICAL_RETRY'
                         });
+                        if (!isCurrentRegistration()) return;
                     } catch (attemptError) {
+                        if (!isCurrentRegistration()) return;
                         refreshError = attemptError;
                         continue;
                     }
@@ -17577,6 +17770,7 @@ async function completeRegistration() {
                     throw sessionError;
                 }
             } catch (refreshError) {
+                if (!isCurrentRegistration()) return;
                 console.error("Profilo salvato, ma aggiornamento dati fallito:", refreshError);
                 authProbeInProgress = false;
                 authProbeStartedAt = 0;
@@ -17623,10 +17817,13 @@ async function completeRegistration() {
         showToast("Contatto salvato. Per sbloccare prenotazioni apri Wild-U nel browser.");
 
         setTimeout(() => {
-            openRegistrationCTA('AUTH_FALLBACK', { force: true });
+            if (registrationOwner.epoch === authLifecycleEpoch && userId === 'TG-' + String(tempTelegramUser?.id || '')) {
+                openRegistrationCTA('AUTH_FALLBACK', { force: true });
+            }
         }, 500);
 
     } catch (e) {
+        if (!isCurrentRegistration()) return;
         console.error("Errore registrazione:", e);
         authProbeInProgress = false;
         authProbeStartedAt = 0;
@@ -17634,11 +17831,15 @@ async function completeRegistration() {
         reconcileProfileShellWithClientSession();
         showToast("Errore durante la registrazione. Riprova.");
     } finally {
-        isRegistrationCompletionInProgress = false;
-        if (submitButton) submitButton.disabled = false;
-        // Il render di successo precede il rilascio del lock registrazione.
-        // Riallinea solo il velo Android; altri owner auth attivi restano protetti.
-        try { wilduSyncAuthInteractionVeil('REGISTRATION_LOCK_RELEASED'); } catch (e) {}
+        wilduFinishAuthPendingNotice(pendingNotice);
+        if (registrationOwner.epoch === authLifecycleEpoch && wilduRegistrationOwner === registrationOwner) {
+            wilduRegistrationOwner = null;
+            isRegistrationCompletionInProgress = false;
+            if (submitButton) submitButton.disabled = false;
+            // Preserve Android's post-unlock veil fix, respecting other owners.
+            try { wilduSyncAuthInteractionVeil('REGISTRATION_LOCK_RELEASED'); } catch (e) {}
+            wilduWakeAuthAfterOwnedWork();
+        }
     }
 }
 
@@ -17721,7 +17922,7 @@ function logout() {
         authStateReplayTimer = null;
     }
     pendingAuthStateUser = undefined;
-    authRefreshLock = false;
+    wilduInvalidateAuthLifecycle();
     authProbeInProgress = false;
     authProbeStartedAt = 0;
     profileCompletionRequired = false;
@@ -17873,7 +18074,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.133';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.134';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -22790,10 +22991,13 @@ async function init() {
     // risolto il primo stato auth persistito del nuovo documento. Su iOS la
     // PWA può essere ricreata dopo il ritorno dal selettore Google: leggere
     // auth.currentUser prima di questo gate produce un falso guest.
+    const initialAuthNotice = wilduStartAuthPendingNotice('INITIAL_STATE');
     try {
         await WILDU_FIREBASE.waitForInitialAuthState();
     } catch (e) {
         console.warn('Firebase auth bootstrap gate skipped:', e);
+    } finally {
+        wilduFinishAuthPendingNotice(initialAuthNotice);
     }
 
     maybeShowWilduGlobalCacheNotice();
@@ -22846,9 +23050,10 @@ async function fetchInitData(options = {}) {
     }
 
     const requestSequence = ++initDataRequestSequence;
+    const requestLifecycleEpoch = authLifecycleEpoch;
     const requestAuthUid = String(auth.currentUser?.uid || '');
     const isStaleInitRequest = function () {
-        return requestSequence !== initDataRequestSequence ||
+        return requestLifecycleEpoch !== authLifecycleEpoch || requestSequence !== initDataRequestSequence ||
             String(auth.currentUser?.uid || '') !== requestAuthUid;
     };
     let requestPromise = null;
@@ -23037,6 +23242,7 @@ const publicCachePayload = {
 };
 
             await safeWritePublicCacheEnvelope(publicCachePayload);
+            if (isStaleInitRequest()) return null;
 
             pageDebug('PUBLIC_CACHE_UPDATED', {
     resources: publicCachePayload.resources.length,

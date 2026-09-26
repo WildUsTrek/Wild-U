@@ -168,22 +168,42 @@
 
   StoryFlowController.prototype.checkpointStory = async function checkpointStory(reason, detail) {
     const childCheckpoint = await this.childWorld.flushCheckpoint(reason);
-    if (!this.playerSession || !this.playerSession.isEnabled()) return childCheckpoint;
-    const durable = await this.playerSession.writeCheckpoint(reason, Object.assign({
-      route: this.route.state,
-      childCheckpoint
-    }, detail || {}));
-    if (durable && durable.ok === false) {
-      throw root.contracts.contractError('CHECKPOINT_WRITE_FAILED', `Durable checkpoint failed: ${durable.reason || 'unknown'}`);
+    if (!childCheckpoint || childCheckpoint.ok !== true || childCheckpoint.localCheckpointConfirmed !== true) {
+      const error = root.contracts.contractError('CHILD_CHECKPOINT_UNCONFIRMED', 'Latest story checkpoint was not confirmed.');
+      error.saveOutcome = {ok:false,localCheckpointConfirmed:false,reason:'child-checkpoint-unconfirmed'};
+      throw error;
     }
+    let durable;
+    try {
+      if (!this.playerSession || !this.playerSession.isEnabled()) durable = {ok:true,disabled:true};
+      else if (this.durableCheckpointPromise) durable = {ok:false,reason:'durable-checkpoint-pending'};
+      else {
+        // Bound the caller, not the underlying IndexedDB transaction. Retain
+        // its owner until settlement so another exit cannot start a duplicate.
+        const operation = Promise.resolve().then(() => this.playerSession.writeCheckpoint(reason,Object.assign({route:this.route.state,childCheckpoint},detail || {})));
+        const tracked = operation.catch(() => ({ok:false,reason:'durable-checkpoint-failed'})).finally(() => { if (this.durableCheckpointPromise === tracked) this.durableCheckpointPromise = null; });
+        this.durableCheckpointPromise = tracked;
+        let timer;
+        try {
+          durable = await Promise.race([tracked,new Promise((resolve) => { timer = global.setTimeout(() => resolve({ok:false,reason:'durable-checkpoint-pending'}),3000); })]);
+        } finally { if (timer) global.clearTimeout(timer); }
+      }
+    } catch (_) { durable = {ok:false,reason:'durable-checkpoint-failed'}; }
+    if (durable && durable.ok === false) {
+      this.eventBus.emit('story:checkpoint-durability-warning',Object.freeze({reason:durable.reason || 'durable-checkpoint-failed'}));
+    }
+    let cloud = {ok:false,reason:'cloud-unavailable'};
     try {
       const cloudSave = global.GuerraDeiSassiCloudSave;
       if (cloudSave && typeof cloudSave.markDirty === 'function') cloudSave.markDirty(`story-checkpoint:${String(reason || 'checkpoint')}`);
       if (cloudSave && /exit|close/i.test(String(reason || '')) && typeof cloudSave.flush === 'function') {
-        await cloudSave.flush('story-exit', { force: true });
+        cloud = await cloudSave.flush('story-exit', { force: true });
       }
     } catch (_) {}
-    return { childCheckpoint, durable };
+    const durableCheckpointStatus = durable && durable.ok === false
+      ? (durable.reason === 'durable-checkpoint-pending' ? 'pending' : 'failed')
+      : (durable && durable.disabled ? 'disabled' : 'confirmed');
+    return { ok:!durable || durable.ok !== false, localCheckpointConfirmed:true, durableCheckpointStatus, childCheckpoint, durable, cloud };
   };
 
   StoryFlowController.prototype.waitForBattleApplication = function waitForBattleApplication(requestId, timeoutMs) {
@@ -425,11 +445,40 @@
     shell.setStoryStatus('exiting', 'Salvataggio partita');
     this.exitPromise = (async () => {
       try {
-        await this.checkpointStory(reason || 'child-exit', { exitTo: 'mother-menu' });
+        let checkpoint;
+        try {
+          checkpoint = await this.checkpointStory(reason || 'child-exit', { exitTo: 'mother-menu' });
+        } catch (error) {
+          checkpoint = error.saveOutcome || {ok:false,localCheckpointConfirmed:false,reason:'checkpoint-failed'};
+          this.eventBus.emit('story:checkpoint-unconfirmed',Object.freeze({reason:checkpoint.reason}));
+        }
+        global.GuerraDeiSassiLastSaveOutcome = checkpoint;
+        const localCheckpointFailed = checkpoint.localCheckpointConfirmed !== true;
+        const durableCheckpointFailed = checkpoint.durableCheckpointStatus === 'failed';
+        const checkpointFailureMessage = localCheckpointFailed
+          ? 'L’ultima posizione non è stata salvata sul dispositivo. Vuoi uscire comunque? Annulla per restare nel mondo e riprovare.'
+          : 'La partita è nella cache locale, ma la copia di recupero non è stata creata. Vuoi uscire comunque? Annulla per restare nel mondo e riprovare.';
+        let failedCheckpointExitAccepted = true;
+        if (localCheckpointFailed || durableCheckpointFailed) {
+          failedCheckpointExitAccepted = false;
+          try { failedCheckpointExitAccepted = typeof global.confirm === 'function' && global.confirm(checkpointFailureMessage); } catch (_) {}
+        }
+        if (!failedCheckpointExitAccepted) {
+          this.state = 'mounted';
+          shell.setStoryStatus('ready','Salvataggio non confermato: puoi riprovare');
+          return {ok:false,cancelled:true,reason:'checkpoint-unconfirmed'};
+        }
         if (this.childWorld.state === 'mounted') await this.childWorld.pause(reason || 'child-exit');
         await this.childWorld.unmount(reason || 'child-exit');
         this.exitBridge.exitChildToMother(reason || 'child-exit');
         shell.showMotherMenu();
+        if (typeof global.flashActionRibbon === 'function') {
+          const cloudSave = global.GuerraDeiSassiCloudSave;
+          const message = checkpoint.localCheckpointConfirmed !== true
+            ? 'Ultima posizione non salvata: non chiudere se vuoi riprovare'
+            : (cloudSave && typeof cloudSave.describeOutcome === 'function' ? cloudSave.describeOutcome(checkpoint.cloud) : 'Salvataggio online non confermato');
+          global.flashActionRibbon(message,checkpoint.cloud && checkpoint.cloud.onlineConfirmed ? 'good' : 'bad');
+        }
         if (this.flags.enableUnifiedAudio) this.audio.resetTo('mother-menu', { reason: reason || 'child-exit' });
         else shell.restoreMotherMenuAudio();
         this.state = 'idle';

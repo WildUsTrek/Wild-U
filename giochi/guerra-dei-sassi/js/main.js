@@ -282,22 +282,34 @@ window.exitMotherMenuToWildu = async function exitMotherMenuToWildu() {
   const exitBridge = integration && integration.runtime && integration.runtime.exit;
   if (motherExitPending || !exitBridge || typeof exitBridge.exitMotherToWildu !== 'function') return;
   motherExitPending = true;
+  const originalExitLabel = button ? button.textContent : '';
   if (button) button.disabled = true;
+  if (button) button.textContent = 'Salvataggio…';
   try {
     if (typeof playSfx === 'function') playSfx('click');
     const cloudSave = window.GuerraDeiSassiCloudSave;
+    let saveOutcome = {ok:false,reason:'cloud-unavailable'};
+    const previousOutcome = window.GuerraDeiSassiLastSaveOutcome;
+    const localCheckpointFailed = previousOutcome && previousOutcome.localCheckpointConfirmed === false;
     let exitTimeout;
     try {
-      if (cloudSave && typeof cloudSave.flush === 'function') {
-        await Promise.race([
+      if (!localCheckpointFailed && cloudSave && typeof cloudSave.flush === 'function') {
+        saveOutcome = await Promise.race([
           Promise.resolve().then(() => cloudSave.flush('mother-exit', { force: true })),
-          new Promise((resolve) => { exitTimeout = window.setTimeout(resolve, 3500); })
+          new Promise((resolve) => { exitTimeout = window.setTimeout(() => resolve({ok:false,reason:'exit-save-pending'}), 3500); })
         ]);
       }
     } catch (saveError) {
       // Local cache remains the fallback; save failure must never trap the user.
     } finally {
       if (exitTimeout) window.clearTimeout(exitTimeout);
+    }
+    const cloudUnconfirmed = !saveOutcome || (!saveOutcome.onlineConfirmed && !saveOutcome.guest);
+    if ((localCheckpointFailed || cloudUnconfirmed) && typeof window.confirm === 'function') {
+      const message = localCheckpointFailed
+        ? 'L’ultima posizione non è stata salvata sul dispositivo. Vuoi uscire comunque?'
+        : 'Il salvataggio online non è confermato: su altri dispositivi potresti trovare la partita precedente. Vuoi uscire comunque? Annulla per restare e riprovare.';
+      if (!window.confirm(message)) return;
     }
     await exitBridge.exitMotherToWildu();
   } catch (error) {
@@ -307,6 +319,7 @@ window.exitMotherMenuToWildu = async function exitMotherMenuToWildu() {
   } finally {
     motherExitPending = false;
     if (button) button.disabled = false;
+    if (button) button.textContent = originalExitLabel;
   }
 };
 

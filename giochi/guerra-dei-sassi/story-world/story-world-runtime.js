@@ -74879,7 +74879,9 @@ window.__UNIFIED_CHILD_LIFECYCLE_PORT__ = Object.freeze({
     flushCheckpoint(reason){
         perlaUnifiedLifecycleStateV648.lastReason=String(reason||'integration_checkpoint');
         if(typeof perlaRtpPass2MaybeAutoSaveContinuityV359==='function') perlaUnifiedLifecycleStateV648.lastCheckpoint=perlaRtpPass2MaybeAutoSaveContinuityV359(perlaUnifiedLifecycleStateV648.lastReason, true);
-        return {ok:true, reason:perlaUnifiedLifecycleStateV648.lastReason, checkpoint:perlaUnifiedLifecycleStateV648.lastCheckpoint||null};
+        const checkpoint=perlaUnifiedLifecycleStateV648.lastCheckpoint;
+        const confirmed=!!(checkpoint && checkpoint.ok===true && !checkpoint.skipped && checkpoint.savedAt);
+        return {ok:confirmed, localCheckpointConfirmed:confirmed, reason:confirmed?perlaUnifiedLifecycleStateV648.lastReason:String(checkpoint&&checkpoint.reason||'local_checkpoint_unconfirmed'), checkpoint:checkpoint||null};
     },
     dispose(reason){
         perlaUnifiedLifecycleStateV648.disposed=true;
