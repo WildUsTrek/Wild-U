@@ -13,7 +13,7 @@
   const SAFETY_WRITE_INTERVAL_MS = 40 * 60 * 1000;
   const MAX_STORY_PAYLOAD_BYTES = 650000;
   const WRITE_TIMEOUT_MS = 3000;
-  const state = { started:false, suspended:false, closing:false, initializationPromise:null, ready:false, applyingRemote:false, dirty:false, changeSequence:0, writeInFlight:null, writeUncertain:false, syncPromise:null, authUnsubscribe:null, hasRemoteDocument:false, activeUid:'', generation:0, remoteRevision:0, lastWriteAt:0, lastStatus:'idle', safetyTimer:null };
+  const state = { started:false, suspended:false, closing:false, initializationPromise:null, ready:false, applyingRemote:false, dirty:false, changeSequence:0, writeInFlight:null, writeUncertain:false, syncPromise:null, authUnsubscribe:null, hasRemoteDocument:false, activeUid:'', generation:0, remoteRevision:0, lastWriteAt:0, lastStatus:'idle', lastErrorCode:'', safetyTimer:null };
   let runtimePromise = null;
   let lifecycleEpoch = 0;
   let archiveSequence = 0;
@@ -156,7 +156,7 @@
   }
   function showGuestNotice() { try { if (global.sessionStorage && global.sessionStorage.getItem('guerra-dei-sassi:guest-notice:v1')) return; if (global.sessionStorage) global.sessionStorage.setItem('guerra-dei-sassi:guest-notice:v1','1'); global.setTimeout(() => { if (typeof global.flashActionRibbon === 'function') global.flashActionRibbon('Senza profilo la partita non può rimanere salvata a lungo','bad'); }, 700); } catch (_) {} }
   function canBypassInterval(reason) { return /(^|[-_:])(exit|pagehide|hidden|critical)([-_:]|$)/i.test(String(reason || '')); }
-  function resetForIdentity(uid) { state.generation += 1; state.activeUid = uid || ''; state.ready = false; state.dirty = false; state.writeUncertain = false; state.writeInFlight = null; state.syncPromise = null; state.hasRemoteDocument = false; state.remoteRevision = 0; state.lastWriteAt = 0; }
+  function resetForIdentity(uid) { state.generation += 1; state.activeUid = uid || ''; state.ready = false; state.dirty = false; state.writeUncertain = false; state.writeInFlight = null; state.syncPromise = null; state.hasRemoteDocument = false; state.remoteRevision = 0; state.lastWriteAt = 0; state.lastErrorCode = ''; }
   function scheduleSafetyFlush() { if (!state.safetyTimer) state.safetyTimer = global.setInterval(() => { flush('safety-40m'); }, SAFETY_WRITE_INTERVAL_MS); }
   function safeTransactionWrite(runtime, uid, generation, payload, expectedRevision) {
     const ref = runtime.doc(runtime.db, COLLECTION, uid);
@@ -164,7 +164,10 @@
       const snapshot = await transaction.get(ref);
       if (snapshot.exists()) { const remote = validateRemotePayload(snapshot.data()); const remoteRevision = normalizeRevision(snapshot.data().revision); if (!remote) return { kind:'remote-invalid' }; if (remoteRevision !== expectedRevision) return { kind:'server-wins', remote, remoteRevision }; } else if (expectedRevision !== 0 || state.hasRemoteDocument) return { kind:'server-document-missing' };
       if (!isActiveIdentity(uid, generation) || !runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { kind:'identity-changed' };
-      const data = { schemaVersion:SCHEMA_VERSION, revision:expectedRevision + 1, progress:payload.progress, storyPayload:payload.storyPayload, updatedAt:runtime.serverTimestamp() };
+      // The host SDK validates plain objects in its own realm. Both containers
+      // originate in this iframe: neutral prototypes preserve fields and SDK
+      // timestamp sentinels without cloning or reinitializing the host runtime.
+      const data = Object.assign(Object.create(null), { schemaVersion:SCHEMA_VERSION, revision:expectedRevision + 1, progress:Object.assign(Object.create(null), payload.progress), storyPayload:payload.storyPayload, updatedAt:runtime.serverTimestamp() });
       if (!snapshot.exists()) data.createdAt = runtime.serverTimestamp();
       transaction.set(ref, data, { merge:true });
       return { kind:'saved', revision:expectedRevision + 1 };
@@ -208,9 +211,18 @@
       return { ok:false, reason:'write-reconcile-pending' };
     });
   }
+  function safeWriteErrorCode(error) {
+    const code = error && typeof error.code === 'string' ? error.code : '';
+    return ['invalid-argument','permission-denied','unauthenticated','unavailable','deadline-exceeded','aborted','failed-precondition','resource-exhausted','internal','cancelled','not-found','already-exists','out-of-range','data-loss','unimplemented'].includes(code) ? code : 'unknown';
+  }
   function boundedWrite(operation, uid, generation, written) {
     let timer = null;
-    const request = operation.then((value) => ({ completed:true, value }), () => ({ completed:true, error:true }));
+    const request = operation.then((value) => ({ completed:true, value }), (error) => {
+      const errorCode = safeWriteErrorCode(error);
+      // Never retain raw messages, document paths, payloads or another owner's error.
+      if (isActiveIdentity(uid, generation)) state.lastErrorCode = errorCode;
+      return { completed:true, error:true, errorCode };
+    });
     const timeout = new Promise((resolve) => { timer = global.setTimeout(() => resolve({ timeout:true }), WRITE_TIMEOUT_MS); });
     return Promise.race([request, timeout]).then((result) => { if (timer) global.clearTimeout(timer); if (result.timeout) { if (isActiveIdentity(uid, generation)) { state.generation += 1; const reconcileGeneration = state.generation; state.writeUncertain = true; state.lastStatus = 'write-uncertain-reconciling'; request.then(() => reconcileUncertainWrite(uid,reconcileGeneration,written)); } return { ok:false, reason:'cloud-save-uncertain' }; } if (!isActiveIdentity(uid, generation) || result.error) return { ok:false, reason:result.error ? 'cloud-save-failed' : 'identity-changed' }; return { ok:true, result:result.value }; });
   }
@@ -238,6 +250,7 @@
     const payload = buildLocalPayload(); if (!payload) return { ok:false, skipped:true, reason:'local-cache-invalid' };
     const expectedRevision = state.remoteRevision;
     const changeSequence = state.changeSequence;
+    state.lastErrorCode = '';
     return boundedWrite(safeTransactionWrite(runtime,uid,generation,payload,expectedRevision),uid,generation,{payload,revision:expectedRevision,sequence:changeSequence}).then((outcome) => {
       if (!outcome.ok) { if (outcome.reason === 'cloud-save-failed') state.lastStatus = 'save-failed'; return outcome; }
       if (!runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };

@@ -74811,6 +74811,23 @@ window.__UNIFIED_CHILD_SAVEGAME_FILE_PORT__ = Object.freeze({
         };
     }
 });
+// IOS-09: autoplay may remain pending beyond the entry command timeout. Keep
+// at most one resume request per context; its completion never controls entry.
+const perlaUnifiedPendingAudioResumesV1 = new WeakSet();
+function perlaUnifiedRequestAudioResumeV1(context){
+    if(context.state!=='suspended'||!context.resume||perlaUnifiedPendingAudioResumesV1.has(context)) return;
+    perlaUnifiedPendingAudioResumesV1.add(context);
+    let request;
+    try{ request=context.resume(); }
+    catch(err){ perlaUnifiedPendingAudioResumesV1.delete(context); return; }
+    Promise.resolve(request).then(()=>{
+        // A late native resume must not outlive a newer mute/pause/disposal.
+        const noLongerOwned=context!==perlaWeatherAudioStateV193.ctx&&context!==perlaIntroAudioStateV364.ctx;
+        if(noLongerOwned||perlaUnifiedChildAudioPolicyV1.muted||perlaUnifiedLifecycleStateV648.paused||perlaUnifiedLifecycleStateV648.disposed){
+            try{ return context.suspend?context.suspend():null; }catch(err){}
+        }
+    }).catch(()=>{}).finally(()=>perlaUnifiedPendingAudioResumesV1.delete(context));
+}
 window.__UNIFIED_CHILD_AUDIO_PORT__ = Object.freeze({
     async applyPolicy(policy){
         const next=policy&&typeof policy==='object'?policy:{};
@@ -74831,7 +74848,9 @@ window.__UNIFIED_CHILD_AUDIO_PORT__ = Object.freeze({
         if(perlaUnifiedChildAudioPolicyV1.muted){
             await Promise.all(contexts.map(context=>{ try{return context.state==='running'&&context.suspend?context.suspend():null;}catch(err){return null;} }));
         }else if(!lifecyclePaused){
-            await Promise.all(contexts.map(context=>{ try{return context.state==='suspended'&&context.resume?context.resume():null;}catch(err){return null;} }));
+            // ACK confirms policy application, not autoplay permission. Muting
+            // still awaits suspension: intro cues do not share weather's gain.
+            contexts.forEach(perlaUnifiedRequestAudioResumeV1);
         }
         return this.status();
     },
