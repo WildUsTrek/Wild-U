@@ -147,34 +147,79 @@ window.closeChallengeModal = function closeChallengeModal() {
   document.body.classList.remove('challenge-modal-open');
 };
 
+let avatarViewportCleanup = null;
+let avatarReturnFocus = null;
+
+function syncAvatarViewport() {
+  const modal = document.getElementById('avatar-modal');
+  if (!modal) return;
+  const viewport = window.visualViewport;
+  const bounds = {
+    top: viewport ? viewport.offsetTop : 0,
+    left: viewport ? viewport.offsetLeft : 0,
+    width: viewport ? viewport.width : window.innerWidth,
+    height: viewport ? viewport.height : window.innerHeight
+  };
+  Object.keys(bounds).forEach((key) => {
+    if (Number.isFinite(bounds[key])) modal.style.setProperty('--avatar-vv-' + key, bounds[key] + 'px');
+  });
+}
+
 window.openAvatarModal = function openAvatarModal(options) {
   const modal = document.getElementById('avatar-modal');
   const grid = document.getElementById('avatar-grid');
   if (!modal) return;
   const current = typeof getPlayerAvatarId === 'function' ? getPlayerAvatarId() : '';
-  if (grid && !grid.dataset.selectedAvatarId) grid.dataset.selectedAvatarId = current;
+  if (!modal.classList.contains('open')) avatarReturnFocus = document.activeElement;
+  if (grid) grid.dataset.selectedAvatarId = current;
   if (typeof renderAvatarGrid === 'function') renderAvatarGrid();
   modal.classList.add('open');
   modal.classList.remove('has-avatar-selection');
-  modal.classList.toggle('is-required', !!(options && options.required));
+  modal.classList.toggle('is-required', !!(options && options.required) || !current);
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('avatar-modal-open');
+  syncAvatarViewport();
+  if (!avatarViewportCleanup) {
+    const viewport = window.visualViewport;
+    window.addEventListener('resize', syncAvatarViewport);
+    if (viewport) {
+      viewport.addEventListener('resize', syncAvatarViewport);
+      viewport.addEventListener('scroll', syncAvatarViewport);
+    }
+    avatarViewportCleanup = () => {
+      window.removeEventListener('resize', syncAvatarViewport);
+      if (viewport) {
+        viewport.removeEventListener('resize', syncAvatarViewport);
+        viewport.removeEventListener('scroll', syncAvatarViewport);
+      }
+      avatarViewportCleanup = null;
+    };
+  }
+  const firstChoice = grid && (grid.querySelector('.selected') || grid.querySelector('[data-avatar-id]'));
+  if (firstChoice) firstChoice.focus({ preventScroll: true });
 };
 
 window.closeAvatarModal = function closeAvatarModal() {
   const modal = document.getElementById('avatar-modal');
+  if (modal && modal.classList.contains('is-required') &&
+      !(typeof getPlayerAvatarId === 'function' && getPlayerAvatarId())) return false;
   if (modal) {
     modal.classList.remove('open', 'is-required', 'has-avatar-selection');
     modal.setAttribute('aria-hidden', 'true');
   }
   document.body.classList.remove('avatar-modal-open');
+  if (avatarViewportCleanup) avatarViewportCleanup();
+  if (avatarReturnFocus && avatarReturnFocus.isConnected) avatarReturnFocus.focus({ preventScroll: true });
+  avatarReturnFocus = null;
+  return true;
 };
 
 window.ensurePlayerAvatarChosen = function ensurePlayerAvatarChosen() {
   if (typeof getPlayerAvatarId !== 'function') return;
   if (!getPlayerAvatarId()) {
     window.setTimeout(() => {
-      if (typeof openAvatarModal === 'function') openAvatarModal({ required: true });
+      const modal = document.getElementById('avatar-modal');
+      if (!getPlayerAvatarId() && !(modal && modal.classList.contains('open')) && typeof openAvatarModal === 'function') openAvatarModal({ required: true });
     }, 280);
   }
 };
@@ -230,19 +275,38 @@ window.syncMotherExitAvailability = function syncMotherExitAvailability() {
   return available;
 };
 
-window.exitMotherMenuToWildu = function exitMotherMenuToWildu() {
+let motherExitPending = false;
+window.exitMotherMenuToWildu = async function exitMotherMenuToWildu() {
   const button = document.getElementById('mother-exit-btn');
   const integration = window.UnifiedGameIntegration;
   const exitBridge = integration && integration.runtime && integration.runtime.exit;
-  if (!exitBridge || typeof exitBridge.exitMotherToWildu !== 'function') return;
+  if (motherExitPending || !exitBridge || typeof exitBridge.exitMotherToWildu !== 'function') return;
+  motherExitPending = true;
   if (button) button.disabled = true;
   try {
     if (typeof playSfx === 'function') playSfx('click');
-    exitBridge.exitMotherToWildu();
+    const cloudSave = window.GuerraDeiSassiCloudSave;
+    let exitTimeout;
+    try {
+      if (cloudSave && typeof cloudSave.flush === 'function') {
+        await Promise.race([
+          Promise.resolve().then(() => cloudSave.flush('mother-exit', { force: true })),
+          new Promise((resolve) => { exitTimeout = window.setTimeout(resolve, 3500); })
+        ]);
+      }
+    } catch (saveError) {
+      // Local cache remains the fallback; save failure must never trap the user.
+    } finally {
+      if (exitTimeout) window.clearTimeout(exitTimeout);
+    }
+    await exitBridge.exitMotherToWildu();
   } catch (error) {
     if (button) button.disabled = false;
     if (typeof flashActionRibbon === 'function') flashActionRibbon('Ritorno a Wildu non disponibile', 'bad');
     console.error('[SASSI] Wildu host exit failed:', error);
+  } finally {
+    motherExitPending = false;
+    if (button) button.disabled = false;
   }
 };
 
@@ -376,7 +440,7 @@ window.bindUI = function bindUI() {
     avatarGrid.dataset.boundAvatarGrid = '1';
     avatarGrid.addEventListener('click', (ev) => {
       const btn = ev.target && ev.target.closest ? ev.target.closest('[data-avatar-id]') : null;
-      if (!btn) return;
+      if (!btn || !avatarGrid.contains(btn)) return;
       avatarGrid.dataset.selectedAvatarId = btn.dataset.avatarId || '';
       const modal = document.getElementById('avatar-modal');
       if (modal) modal.classList.add('has-avatar-selection');
@@ -391,7 +455,9 @@ window.bindUI = function bindUI() {
     avatarConfirmBtn.addEventListener('click', () => {
       const grid = document.getElementById('avatar-grid');
       const selected = grid ? (grid.dataset.selectedAvatarId || '') : '';
-      if (selected && typeof setPlayerAvatarId === 'function') setPlayerAvatarId(selected);
+      const choices = typeof getAvatarChoices === 'function' ? getAvatarChoices() : [];
+      if (!choices.some((choice) => choice.id === selected) || typeof setPlayerAvatarId !== 'function') return;
+      setPlayerAvatarId(selected);
       closeAvatarModal();
       if (typeof renderProgressSummary === 'function') renderProgressSummary();
       playSfx('click');
@@ -405,7 +471,12 @@ window.bindUI = function bindUI() {
       const grid = document.getElementById('avatar-grid');
       if (grid) grid.dataset.selectedAvatarId = (typeof getPlayerAvatarId === 'function' ? getPlayerAvatarId() : '');
       if (typeof renderAvatarGrid === 'function') renderAvatarGrid();
-      closeAvatarModal();
+      const modal = document.getElementById('avatar-modal');
+      if (modal) modal.classList.remove('has-avatar-selection');
+      if (!closeAvatarModal() && grid) {
+        const firstChoice = grid.querySelector('[data-avatar-id]');
+        if (firstChoice) firstChoice.focus({ preventScroll: true });
+      }
       playSfx('click');
     });
   }

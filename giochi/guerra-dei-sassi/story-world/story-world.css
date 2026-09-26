@@ -26445,11 +26445,19 @@
             left:var(--perla-stage-left, var(--perla-game-left, 0px)) !important;
             right:auto !important;
             width:var(--perla-stage-width, var(--perla-game-width, 100svw)) !important;
-            bottom:calc(var(--perla-stage-bottom-gap, var(--perla-game-bottom-gap, 0px)) + 88px) !important;
+            max-width:var(--perla-stage-width, var(--perla-game-width, 100svw)) !important;
+            /* Fixed siblings consume client-rect top/height, not a gap measured
+               from a different (visual) viewport. Keep the whole 76px deck
+               above the frame's lower 88px stats track. */
+            top:calc(var(--perla-stage-top, var(--perla-game-top, 0px)) + var(--perla-stage-height, var(--perla-game-height, 100svh)) - 164px) !important;
+            bottom:auto !important;
         }
 
         html.perla-contract-real-mobile-v472.perla-mobile-portrait #perlaComfortHudV336 {
-            bottom:calc(var(--perla-stage-bottom-gap, var(--perla-game-bottom-gap, 0px)) + var(--perla-v552-stats-bottom-y, 18px)) !important;
+            /* Unlike the fixed deck, this HUD is an absolute child of the
+               already-safe game frame: its offset is local to that frame. */
+            top:auto !important;
+            bottom:var(--perla-v552-stats-bottom-y, 18px) !important;
         }
 
         html.perla-contract-real-mobile-v472.perla-mobile-landscape #mini-map {

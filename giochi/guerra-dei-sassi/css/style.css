@@ -5448,9 +5448,38 @@ body.volume-modal-open{
   box-shadow:0 34px 120px rgba(0,0,0,.62), 0 0 44px rgba(255,224,150,.10), inset 0 1px 0 rgba(255,255,255,.16);
 }
 
-.avatar-modal-panel{
-  padding-bottom:112px;
+/* Avatar has one bounded shell: only the faces scroll, never its actions. */
+.avatar-modal{
+  inset:auto;
+  top:var(--avatar-vv-top, 0px);
+  left:var(--avatar-vv-left, 0px);
+  width:var(--avatar-vv-width, 100%);
+  height:100vh;
+  height:var(--avatar-vv-height, 100dvh);
+  box-sizing:border-box;
+  padding:max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
 }
+
+.avatar-modal-panel{
+  display:flex;
+  flex-direction:column;
+  width:min(520px, 100%);
+  max-height:100%;
+  min-height:0;
+  overflow:hidden;
+  box-sizing:border-box;
+  padding:18px 16px 12px;
+}
+
+.avatar-modal-panel > :not(.avatar-modal-scroll){flex-shrink:0;}
+.avatar-modal-scroll{
+  min-height:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding:2px;
+}
+.avatar-modal.is-required .avatar-modal-close{display:none;}
 
 .challenge-modal-close,
 .avatar-modal-close{
@@ -5490,33 +5519,21 @@ body.volume-modal-open{
   margin-top:16px;
 }
 
-/* The avatar list is intentionally long on small screens: retain both explicit
-   actions in the visible scroll viewport instead of stranding confirmation at
-   the bottom of the face grid. */
+/* This row is a flex sibling of the scroll area, not a fixed descendant of it. */
 .avatar-modal-actions{
-  position:fixed;
-  left:50%;
-  bottom:max(12px, env(safe-area-inset-bottom));
-  z-index:3;
-  width:min(520px, calc(100vw - 30px));
+  position:relative;
+  width:100%;
   gap:10px;
   margin:0;
-  padding:14px 22px;
+  padding:12px 0 0;
   background:linear-gradient(180deg, rgba(13,21,38,.82), rgba(13,21,38,.99));
-  box-shadow:0 -12px 24px rgba(0,0,0,.24);
-  transform:translate(-50%, 18px);
   visibility:hidden;
-  opacity:0;
   pointer-events:none;
-  transition:opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
 }
 
 .avatar-modal.has-avatar-selection .avatar-modal-actions{
   visibility:visible;
-  opacity:1;
   pointer-events:auto;
-  transform:translate(-50%, 0);
-  transition:opacity .16s ease, transform .16s ease;
 }
 
 .challenge-modal-actions .btn,
@@ -5526,7 +5543,22 @@ body.volume-modal-open{
 
 .avatar-modal-actions .btn{
   min-width:0;
+  min-height:44px;
   flex:1 1 0;
+}
+
+/* Static picker thumbnails avoid nine continuous SVG animation/filter paints.
+   Battle, ranking and confirmed player portraits keep their existing effects. */
+.avatar-grid .face-svg,
+.avatar-grid .face-svg *{
+  animation:none !important;
+  filter:none !important;
+}
+
+@media (max-height:420px){
+  .avatar-modal-panel{padding:10px 12px; border-radius:18px;}
+  .avatar-modal-panel .eyebrow,.avatar-modal-copy{display:none;}
+  .avatar-modal-panel h2{font-size:1.1rem; margin-bottom:6px;}
 }
 
 .challenge-modal-preview{

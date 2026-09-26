@@ -10,10 +10,10 @@
   const MIN_WRITE_INTERVAL_MS = 5 * 60 * 1000;
   const SAFETY_WRITE_INTERVAL_MS = 40 * 60 * 1000;
   const MAX_STORY_PAYLOAD_BYTES = 650000;
-  const AUTH_WAIT_MS = 7000;
   const WRITE_TIMEOUT_MS = 3000;
-  const state = { started:false, initializationPromise:null, ready:false, applyingRemote:false, dirty:false, writeInFlight:null, writeUncertain:false, syncPromise:null, authUnsubscribe:null, hasRemoteDocument:false, activeUid:'', generation:0, remoteRevision:0, lastWriteAt:0, lastStatus:'idle', safetyTimer:null };
+  const state = { started:false, suspended:false, closing:false, initializationPromise:null, ready:false, applyingRemote:false, dirty:false, changeSequence:0, writeInFlight:null, writeUncertain:false, syncPromise:null, authUnsubscribe:null, hasRemoteDocument:false, activeUid:'', generation:0, remoteRevision:0, lastWriteAt:0, lastStatus:'idle', safetyTimer:null };
   let runtimePromise = null;
+  let lifecycleEpoch = 0;
 
   function byteLength(value) { try { return new TextEncoder().encode(String(value || '')).byteLength; } catch (_) { return String(value || '').length; } }
   function boundedText(value, maxLength) { return String(value === undefined || value === null ? '' : value).slice(0, maxLength); }
@@ -36,23 +36,42 @@
   function getCacheOwner() { try { const parsed = JSON.parse(global.localStorage.getItem(CACHE_OWNER_KEY) || 'null'); return parsed && typeof parsed.uid === 'string' && parsed.uid.length > 0 && parsed.uid.length <= 256 ? parsed.uid : ''; } catch (_) { return ''; } }
   function setCacheOwner(uid) { try { global.localStorage.setItem(CACHE_OWNER_KEY, JSON.stringify({ schemaVersion:1, uid, updatedAt:new Date().toISOString() })); return getCacheOwner() === uid; } catch (_) { return false; } }
   function backupBeforeRemoteRestore() { try { const record = { schemaVersion:1, createdAt:new Date().toISOString(), progressRaw:global.localStorage.getItem(PROGRESS_KEY), storyRaw:global.localStorage.getItem(STORY_KEY) }; global.localStorage.setItem(PRE_RESTORE_BACKUP_KEY, JSON.stringify(record)); return global.localStorage.getItem(PRE_RESTORE_BACKUP_KEY) !== null; } catch (_) { return false; } }
-  function isActiveIdentity(uid, generation) { return state.activeUid === uid && state.generation === generation; }
+  function isActiveIdentity(uid, generation) { return !state.suspended && state.activeUid === uid && state.generation === generation; }
   function applyRemotePayload(payload, uid, generation) {
-    if (!payload || !isActiveIdentity(uid, generation)) return false;
+    if (!payload || state.closing || !isActiveIdentity(uid, generation)) return false;
     state.applyingRemote = true;
-    try { backupBeforeRemoteRestore(); if (typeof global.saveProgress === 'function') global.saveProgress(payload.progress); else global.localStorage.setItem(PROGRESS_KEY, JSON.stringify(Object.assign({ version:1 }, payload.progress, { updatedAt:Date.now() }))); if (payload.storyPayload) global.localStorage.setItem(STORY_KEY, payload.storyPayload); else global.localStorage.removeItem(STORY_KEY); return setCacheOwner(uid); } catch (_) { return false; } finally { state.applyingRemote = false; }
+    try { if (!backupBeforeRemoteRestore()) return false; if (typeof global.saveProgress === 'function') global.saveProgress(payload.progress); else global.localStorage.setItem(PROGRESS_KEY, JSON.stringify(Object.assign({ version:1 }, payload.progress, { updatedAt:Date.now() }))); if (payload.storyPayload) global.localStorage.setItem(STORY_KEY, payload.storyPayload); else global.localStorage.removeItem(STORY_KEY); return setCacheOwner(uid); } catch (_) { return false; } finally { state.applyingRemote = false; }
   }
   async function ensureRuntime() {
     if (runtimePromise) return runtimePromise;
-    runtimePromise = Promise.all([import('../../../../wildu-map-suite/shared/firebase-config.js'), import('https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js'), import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js'), import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js')]).then(([configModule, appSdk, authSdk, firestoreSdk]) => {
-      const app = appSdk.getApps().length ? appSdk.getApp() : appSdk.initializeApp(configModule.firebaseConfig);
-      return Object.freeze({ auth:authSdk.getAuth(app), onAuthStateChanged:authSdk.onAuthStateChanged, db:firestoreSdk.getFirestore(app), doc:firestoreSdk.doc, getDocFromServer:firestoreSdk.getDocFromServer, runTransaction:firestoreSdk.runTransaction, serverTimestamp:firestoreSdk.serverTimestamp });
+    // The same-origin host already owns the default compat Auth/Firestore.
+    // Never import/initialize another Firebase app here: default getAuth can
+    // migrate the host's browserLocal session to IndexedDB and sign it out.
+    runtimePromise = Promise.resolve().then(() => {
+      const host = global.parent;
+      if (!host || host === global || host.location.origin !== global.location.origin) throw new Error('HOST_SAVE_RUNTIME_UNAVAILABLE');
+      const sdk = host.firebase;
+      const app = sdk && Array.isArray(sdk.apps) && sdk.apps.find((entry) => entry.name === '[DEFAULT]' && entry.options.projectId === 'wild-u-server');
+      if (!app || typeof app.auth !== 'function' || typeof app.firestore !== 'function') throw new Error('HOST_SAVE_RUNTIME_UNAVAILABLE');
+      const auth = app.auth();
+      const db = app.firestore();
+      const snapshotView = (snapshot) => ({ exists:() => snapshot.exists === true, data:() => snapshot.data() });
+      return Object.freeze({
+        auth, db,
+        onAuthStateChanged:(owner, next, error) => owner.onAuthStateChanged(next, error),
+        doc:(store, collection, uid) => {
+          if (collection !== COLLECTION || !uid || String(uid).includes('/')) throw new Error('INVALID_SAVE_PATH');
+          return store.collection(COLLECTION).doc(uid);
+        },
+        getDocFromServer:(ref) => ref.get({ source:'server' }).then(snapshotView),
+        runTransaction:(store, update) => store.runTransaction((transaction) => update({
+          get:(ref) => transaction.get(ref).then(snapshotView),
+          set:(ref, value, options) => transaction.set(ref, value, options)
+        })),
+        serverTimestamp:() => sdk.firestore.FieldValue.serverTimestamp()
+      });
     }).catch((error) => { runtimePromise = null; throw error; });
     return runtimePromise;
-  }
-  function waitForAuthenticatedUser(runtime) {
-    if (runtime.auth.currentUser) return Promise.resolve(runtime.auth.currentUser);
-    return new Promise((resolve) => { let settled = false; let unsubscribe = null; const settle = (user) => { if (settled) return; settled = true; if (unsubscribe) unsubscribe(); resolve(user && user.uid ? user : null); }; const timer = global.setTimeout(() => settle(runtime.auth.currentUser || null), AUTH_WAIT_MS); unsubscribe = runtime.onAuthStateChanged(runtime.auth, (user) => { global.clearTimeout(timer); settle(user); }, () => { global.clearTimeout(timer); settle(null); }); });
   }
   function showGuestNotice() { try { if (global.sessionStorage && global.sessionStorage.getItem('guerra-dei-sassi:guest-notice:v1')) return; if (global.sessionStorage) global.sessionStorage.setItem('guerra-dei-sassi:guest-notice:v1','1'); global.setTimeout(() => { if (typeof global.flashActionRibbon === 'function') global.flashActionRibbon('Senza profilo la partita non può rimanere salvata a lungo','bad'); }, 700); } catch (_) {} }
   function canBypassInterval(reason) { return /(^|[-_:])(exit|pagehide|hidden|critical)([-_:]|$)/i.test(String(reason || '')); }
@@ -71,8 +90,9 @@
     });
   }
   function reconcileUncertainWrite(uid, generation) {
+    if (state.closing || !isActiveIdentity(uid,generation)) return Promise.resolve({ ok:false, reason:'suspended' });
     return ensureRuntime().then((runtime) => runtime.getDocFromServer(runtime.doc(runtime.db,COLLECTION,uid)).then((snapshot) => {
-      if (!isActiveIdentity(uid,generation) || !state.writeUncertain || !runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };
+      if (state.closing || !isActiveIdentity(uid,generation) || !state.writeUncertain || !runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };
       if (snapshot.exists()) {
         const remote = validateRemotePayload(snapshot.data());
         if (!remote || !applyRemotePayload(remote,uid,generation)) { state.lastStatus = 'write-reconcile-invalid'; return { ok:false, reason:'write-reconcile-invalid' }; }
@@ -99,11 +119,17 @@
     const timeout = new Promise((resolve) => { timer = global.setTimeout(() => resolve({ timeout:true }), WRITE_TIMEOUT_MS); });
     return Promise.race([request, timeout]).then((result) => { if (timer) global.clearTimeout(timer); if (result.timeout) { if (isActiveIdentity(uid, generation)) { state.generation += 1; const reconcileGeneration = state.generation; state.writeUncertain = true; state.lastStatus = 'write-uncertain-reconciling'; request.then(() => reconcileUncertainWrite(uid,reconcileGeneration)); } return { ok:false, reason:'cloud-save-uncertain' }; } if (!isActiveIdentity(uid, generation) || result.error) return { ok:false, reason:result.error ? 'cloud-save-failed' : 'identity-changed' }; return { ok:true, result:result.value }; });
   }
-  async function flush(reason, options) {
+  function flush(reason, options) {
+    // Reserve the single flight synchronously, before any promise yields.
+    if (state.writeInFlight) return state.writeInFlight;
+    const attempt = performFlush(reason, options).catch(() => ({ ok:false, reason:'cloud-save-failed' })).finally(() => { if (state.writeInFlight === attempt) state.writeInFlight = null; });
+    state.writeInFlight = attempt;
+    return attempt;
+  }
+  async function performFlush(reason, options) {
     const opts = options || {};
     if (!state.ready || !state.dirty || state.applyingRemote) return { ok:true, skipped:true, reason:'not-dirty-or-not-ready' };
     if (state.writeUncertain) return { ok:false, skipped:true, reason:'cloud-save-uncertain' };
-    if (state.writeInFlight) return state.writeInFlight;
     if (!global.navigator.onLine) return { ok:false, skipped:true, reason:'offline' };
     if (!opts.force && Date.now() - state.lastWriteAt < MIN_WRITE_INTERVAL_MS && !canBypassInterval(reason)) return { ok:true, skipped:true, reason:'minimum-interval' };
     const uid = state.activeUid; const generation = state.generation; const runtime = await ensureRuntime().catch(() => null);
@@ -111,25 +137,25 @@
     const owner = getCacheOwner(); if (owner && owner !== uid) { state.lastStatus = 'local-cache-owned-by-other-user'; return { ok:false, skipped:true, reason:'local-cache-owned-by-other-user' }; }
     const payload = buildLocalPayload(); if (!payload) return { ok:false, skipped:true, reason:'local-cache-invalid' };
     const expectedRevision = state.remoteRevision;
-    const attempt = boundedWrite(safeTransactionWrite(runtime,uid,generation,payload,expectedRevision),uid,generation).then((outcome) => {
+    const changeSequence = state.changeSequence;
+    return boundedWrite(safeTransactionWrite(runtime,uid,generation,payload,expectedRevision),uid,generation).then((outcome) => {
       if (!outcome.ok) { if (outcome.reason === 'cloud-save-failed') state.lastStatus = 'save-failed'; return outcome; }
+      if (!runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };
       const result = outcome.result;
       if (!result || result.kind === 'remote-invalid') { state.lastStatus = 'remote-save-invalid'; return { ok:false, reason:'remote-save-invalid' }; }
       if (result.kind === 'server-wins') { if (!applyRemotePayload(result.remote,uid,generation)) { state.lastStatus = 'server-restore-failed'; return { ok:false, reason:'server-restore-failed' }; } state.remoteRevision = result.remoteRevision; state.hasRemoteDocument = true; state.dirty = false; state.lastStatus = 'server-conflict-wins'; return { ok:true, reason:'server-conflict-wins' }; }
       if (result.kind !== 'saved') { state.lastStatus = String(result.kind || 'save-failed'); return { ok:false, reason:state.lastStatus }; }
       if (!isActiveIdentity(uid,generation) || !setCacheOwner(uid)) return { ok:false, reason:'identity-or-owner-changed' };
-      state.remoteRevision = result.revision; state.dirty = false; state.hasRemoteDocument = true; state.lastWriteAt = Date.now(); state.lastStatus = 'saved'; return { ok:true, reason:String(reason || 'save') };
-    }).finally(() => { if (state.writeInFlight === attempt) state.writeInFlight = null; });
-    state.writeInFlight = attempt;
-    return attempt;
+      state.remoteRevision = result.revision; state.dirty = state.changeSequence !== changeSequence; state.hasRemoteDocument = true; state.lastWriteAt = Date.now(); state.lastStatus = 'saved'; return { ok:true, reason:String(reason || 'save') };
+    });
   }
-  function markDirty(reason) { if (state.applyingRemote) return { ok:true, skipped:true, reason:'applying-remote' }; state.dirty = true; state.lastStatus = `dirty:${String(reason || 'state-change').slice(0,48)}`; return { ok:true, dirty:true }; }
+  function markDirty(reason) { if (state.applyingRemote) return { ok:true, skipped:true, reason:'applying-remote' }; state.changeSequence += 1; state.dirty = true; state.lastStatus = `dirty:${String(reason || 'state-change').slice(0,48)}`; return { ok:true, dirty:true }; }
   function initializeAuthenticatedSync(runtime, user) {
     const uid = user && user.uid; if (!uid) return Promise.resolve({ ok:false, reason:'guest' }); if (state.syncPromise) return state.syncPromise;
     const generation = state.generation;
     const task = (async () => {
       const snapshot = await runtime.getDocFromServer(runtime.doc(runtime.db,COLLECTION,uid));
-      if (!isActiveIdentity(uid,generation)) return { ok:false, reason:'identity-changed' };
+      if (state.closing || !isActiveIdentity(uid,generation) || !runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };
       if (snapshot.exists()) { const remote = validateRemotePayload(snapshot.data()); if (!remote || !applyRemotePayload(remote,uid,generation)) { state.lastStatus = 'remote-save-invalid'; return { ok:false, reason:'remote-save-invalid' }; } state.remoteRevision = normalizeRevision(snapshot.data().revision); state.hasRemoteDocument = true; state.dirty = false; state.writeUncertain = false; state.ready = true; state.lastStatus = 'server-restored'; }
       else { const owner = getCacheOwner(); if (owner && owner !== uid) { state.lastStatus = 'local-cache-owned-by-other-user'; return { ok:false, reason:'local-cache-owned-by-other-user' }; } if (!buildLocalPayload()) { state.lastStatus = 'local-cache-invalid'; return { ok:false, reason:'local-cache-invalid' }; } state.hasRemoteDocument = false; state.remoteRevision = 0; state.dirty = true; state.writeUncertain = false; state.ready = true; state.lastStatus = 'initial-local-cache'; }
       scheduleSafetyFlush(); if (state.dirty) await flush('initial-cache',{ force:true }); return { ok:true, status:state.lastStatus };
@@ -138,11 +164,58 @@
     state.syncPromise = handledTask;
     return handledTask;
   }
-  function synchronizeCurrentUser(runtime,user) { const uid = user && user.uid ? user.uid : ''; if (!uid) { if (state.activeUid || state.ready) resetForIdentity(''); state.lastStatus = 'guest-cache-only'; showGuestNotice(); return Promise.resolve({ ok:true, guest:true }); } if (state.activeUid !== uid) resetForIdentity(uid); if (state.ready && !state.writeUncertain) return Promise.resolve({ ok:true, status:state.lastStatus }); return initializeAuthenticatedSync(runtime,user); }
-  async function initialize() { if (state.initializationPromise) return state.initializationPromise; state.started = true; state.initializationPromise = (async () => { try { const runtime = await ensureRuntime(); const user = await waitForAuthenticatedUser(runtime); state.authUnsubscribe = runtime.onAuthStateChanged(runtime.auth,(nextUser) => { synchronizeCurrentUser(runtime,nextUser); }); return synchronizeCurrentUser(runtime,user); } catch (_) { state.lastStatus = 'cloud-unavailable'; return { ok:false, reason:'cloud-unavailable' }; } })(); return state.initializationPromise; }
+  function synchronizeCurrentUser(runtime,user) { if (state.suspended || state.closing) return Promise.resolve({ ok:false, reason:'suspended' }); const uid = user && user.uid ? user.uid : ''; if (!uid) { if (state.activeUid || state.ready) resetForIdentity(''); state.lastStatus = 'guest-cache-only'; showGuestNotice(); return Promise.resolve({ ok:true, guest:true }); } if (state.activeUid !== uid) resetForIdentity(uid); if (state.ready && !state.writeUncertain) return Promise.resolve({ ok:true, status:state.lastStatus }); return initializeAuthenticatedSync(runtime,user); }
+  async function initialize() {
+    if (state.closing) return { ok:false, reason:'suspended' };
+    if (state.initializationPromise) return state.initializationPromise;
+    state.started = true;
+    state.suspended = false;
+    const generation = state.generation;
+    state.initializationPromise = (async () => {
+      try {
+        const runtime = await ensureRuntime();
+        if (state.suspended || state.closing || generation !== state.generation) return { ok:false, reason:'suspended' };
+        // Subscribe once to the existing owner. Read currentUser at delivery
+        // time: a queued event must not restore an already obsolete identity.
+        state.authUnsubscribe = runtime.onAuthStateChanged(runtime.auth,(nextUser) => {
+          if (state.closing || state.suspended) return;
+          // Even an already superseded null event invalidates pending work;
+          // only the owner's *current* identity may start the next sync.
+          if (!nextUser && state.activeUid) resetForIdentity('');
+          synchronizeCurrentUser(runtime,runtime.auth.currentUser);
+        });
+        return synchronizeCurrentUser(runtime,runtime.auth.currentUser);
+      } catch (_) { state.lastStatus = 'cache-only-runtime-unavailable'; showGuestNotice(); return { ok:false, reason:'cache-only-runtime-unavailable' }; }
+    })();
+    return state.initializationPromise;
+  }
+  function detachHostSubscription() {
+    if (state.authUnsubscribe) state.authUnsubscribe();
+    if (state.safetyTimer) global.clearInterval(state.safetyTimer);
+    state.authUnsubscribe = null;
+    state.safetyTimer = null;
+  }
+  function suspend() {
+    state.suspended = true;
+    resetForIdentity('');
+    detachHostSubscription();
+    state.initializationPromise = null;
+    // Do not terminate, sign out, or clear persistence on the host SDK.
+  }
   global.addEventListener('storage',(event) => { if (event && (event.key === PROGRESS_KEY || event.key === STORY_KEY)) markDirty('cross-frame-cache-change'); });
   global.document.addEventListener('visibilitychange',() => { if (global.document.visibilityState === 'hidden') flush('visibility-hidden',{ force:true }); });
-  global.addEventListener('pagehide',() => { flush('pagehide',{ force:true }); });
-  global.addEventListener('online',() => { ensureRuntime().then((runtime) => synchronizeCurrentUser(runtime,runtime.auth.currentUser)).catch(() => { state.lastStatus = 'cloud-unavailable'; }); });
+  global.addEventListener('pagehide',() => {
+    const epoch = ++lifecycleEpoch;
+    // Fence reads/restores synchronously, while allowing the final write to
+    // finish with its existing identity. BFCache resume creates a new generation.
+    state.closing = true;
+    // Host-close/OS navigation may skip our explicit exit button. Try one
+    // bounded flush, without keeping an Auth listener in the surviving host.
+    // This is best effort: browser termination can never guarantee network IO.
+    detachHostSubscription();
+    flush('pagehide',{ force:true }).finally(() => { if (epoch === lifecycleEpoch) suspend(); });
+  });
+  global.addEventListener('pageshow',(event) => { if (event.persisted) { lifecycleEpoch += 1; suspend(); state.closing = false; initialize(); } });
+  global.addEventListener('online',() => { if (!state.suspended && !state.closing) ensureRuntime().then((runtime) => { if (!state.authUnsubscribe) { state.initializationPromise = null; return initialize(); } return synchronizeCurrentUser(runtime,runtime.auth.currentUser); }).catch(() => { state.lastStatus = 'cache-only-runtime-unavailable'; }); });
   global.GuerraDeiSassiCloudSave = Object.freeze({ initialize, markDirty, flush, status:() => Object.assign({},state) });
 })(window);

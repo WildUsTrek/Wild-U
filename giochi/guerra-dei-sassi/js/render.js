@@ -236,17 +236,41 @@ window.renderAvatarGrid = function renderAvatarGrid() {
   if (!grid) return;
   const currentId = typeof getPlayerAvatarId === 'function' ? getPlayerAvatarId() : '';
   const choices = getAvatarChoices();
-  const selectedId = grid.dataset.selectedAvatarId || currentId || (choices[0] ? choices[0].id : '');
-  if (selectedId && !grid.dataset.selectedAvatarId) grid.dataset.selectedAvatarId = selectedId;
-  grid.innerHTML = choices.map((choice) => {
-    const active = choice.id === selectedId;
-    const face = typeof renderOpponentFaceSvg === 'function'
-      ? renderOpponentFaceSvg(choice.opponent, 'happy', 'avatar-choice')
-      : '';
-    return `<button class="avatar-choice ${active ? 'selected' : ''}" type="button" data-avatar-id="${choice.id}" aria-pressed="${active ? 'true' : 'false'}" aria-label="Scegli questo avatar">
-      <span class="avatar-choice-face">${face}</span>
-    </button>`;
-  }).join('');
+  const requestedId = grid.dataset.selectedAvatarId || currentId || '';
+  const selectedId = choices.some((choice) => choice.id === requestedId) ? requestedId : '';
+  grid.dataset.selectedAvatarId = selectedId;
+  const faceRenderer = typeof renderOpponentFaceSvg === 'function' ? renderOpponentFaceSvg : null;
+  const previousCatalog = grid._avatarCatalog;
+  const sameCatalog = previousCatalog && previousCatalog.length === choices.length &&
+    choices.every((choice, index) => previousCatalog[index] === choice.opponent) &&
+    grid._avatarFaceRenderer === faceRenderer && grid.children.length === choices.length;
+  // Keep SVG nodes, focus and scroll stable on every selection and summary update.
+  if (!sameCatalog) {
+    const fragment = document.createDocumentFragment();
+    choices.forEach((choice) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'avatar-choice';
+      button.dataset.avatarId = choice.id;
+      button.setAttribute('aria-label', 'Scegli ' + choice.name);
+      const face = document.createElement('span');
+      face.className = 'avatar-choice-face';
+      face.setAttribute('aria-hidden', 'true');
+      face.innerHTML = faceRenderer ? faceRenderer(choice.opponent, 'happy', 'avatar-choice') : '';
+      button.appendChild(face);
+      fragment.appendChild(button);
+    });
+    grid.replaceChildren(fragment);
+    grid._avatarCatalog = choices.map((choice) => choice.opponent);
+    grid._avatarFaceRenderer = faceRenderer;
+  }
+  Array.from(grid.children).forEach((button) => {
+    const active = button.dataset.avatarId === selectedId;
+    if (button.classList.contains('selected') !== active) button.classList.toggle('selected', active);
+    if (button.getAttribute('aria-pressed') !== String(active)) button.setAttribute('aria-pressed', String(active));
+  });
+  const confirmButton = document.getElementById('avatar-confirm-btn');
+  if (confirmButton) confirmButton.disabled = !selectedId;
 };
 
 window.renderProgressSummary = function renderProgressSummary() {
