@@ -20,7 +20,7 @@
   function ChildWorldAdapter(options) {
     const settings = options || {};
     this.assetRoot = settings.assetRoot || 'story-world/';
-    this.assetRevision = settings.assetRevision || '20260926.3';
+    this.assetRevision = settings.assetRevision || '20260926.4';
     this.networkCache = settings.networkCache || null;
     this.state = 'idle';
     this.frame = null;
@@ -30,6 +30,10 @@
     this.expectedOrigin = '';
     this.pending = new Map();
     this.sequence = 0;
+    this.mountEpoch = 0;
+    this.worldReadyResult = null;
+    this.worldReadyError = null;
+    this.unmountPromise = null;
     this.messageListener = this.handleMessage.bind(this);
   }
 
@@ -80,6 +84,25 @@
     const message = event.data;
     if (!message || message.channelId !== this.channelId || typeof message.type !== 'string') return;
 
+    // The authenticated frame/channel owns this latch. DOM loaded is not world ready.
+    if (message.type === 'child:world-ready' || message.type === 'child:world-error') {
+      if (this.state === 'unmounting' || this.state === 'idle') return;
+      if (message.type === 'child:world-error' && !this.worldReadyError) {
+        this.worldReadyError = new Error(message.payload && message.payload.message || 'Child world initialization failed.');
+        this.pending.forEach((pending, id) => {
+          if (pending.eventWait && pending.type === 'child:world-ready') {
+            global.clearTimeout(pending.timer);
+            this.pending.delete(id);
+            pending.reject(this.worldReadyError);
+          }
+        });
+      }
+      if (message.type === 'child:world-ready') {
+        if (this.worldReadyError || this.worldReadyResult) return;
+        this.worldReadyResult = Object.freeze(Object.assign({}, message.payload || {}));
+      }
+    }
+
     if (message.requestId && this.pending.has(message.requestId)) {
       const pending = this.pending.get(message.requestId);
       global.clearTimeout(pending.timer);
@@ -101,6 +124,20 @@
     if (this.context && this.context.events && typeof this.context.events.emit === 'function') {
       this.context.events.emit(message.type, message.payload || null);
     }
+  };
+
+  ChildWorldAdapter.prototype.waitForWorldReady = function waitForWorldReady() {
+    if (this.worldReadyError) return Promise.reject(this.worldReadyError);
+    if (this.worldReadyResult) return Promise.resolve(this.worldReadyResult);
+    if (!this.frame || this.state !== 'mounted') return Promise.reject(new Error('Child world is not mounted.'));
+    return this.waitForMessage('child:world-ready', 60000);
+  };
+
+  ChildWorldAdapter.prototype.setInteractive = function setInteractive(enabled) {
+    if (!this.frame) return;
+    this.frame.inert = !enabled;
+    this.frame.style.pointerEvents = enabled ? '' : 'none';
+    this.frame.setAttribute('tabindex', enabled ? '0' : '-1');
   };
 
   ChildWorldAdapter.prototype.command = function command(commandName, reason, timeoutMs, payload) {
@@ -130,6 +167,9 @@
     if (!expectedOrigin || expectedOrigin === 'null') throw new Error('A concrete web origin is required to mount the child world.');
 
     this.state = 'mounting';
+    const epoch = ++this.mountEpoch;
+    this.worldReadyResult = null;
+    this.worldReadyError = null;
     this.container = container;
     this.context = context;
     this.channelId = createChannelId();
@@ -139,6 +179,7 @@
     try {
       const baseUrl = new URL(this.assetRoot, document.baseURI).href;
       const shell = await this.loadShell(baseUrl);
+      if (epoch !== this.mountEpoch || this.state !== 'mounting') throw new Error('Child mount was cancelled.');
       const frame = document.createElement('iframe');
       frame.className = 'unified-story-world-frame';
       frame.title = 'Mondo storia';
@@ -150,14 +191,16 @@
       frame.style.border = '0';
       frame.style.display = 'block';
       this.frame = frame;
+      this.setInteractive(false);
       const ready = this.waitForMessage('child:frame-loaded', 30000);
       frame.srcdoc = this.createDocument(baseUrl, shell);
       container.replaceChildren(frame);
       await ready;
+      if (epoch !== this.mountEpoch || this.state !== 'mounting') throw new Error('Child mount was cancelled.');
       this.state = 'mounted';
       return Object.freeze({ state: this.state, channelId: this.channelId });
     } catch (error) {
-      await this.unmount('mount-failed').catch(() => null);
+      if (epoch === this.mountEpoch) await this.unmount('mount-failed').catch(() => null);
       throw error;
     }
   };
@@ -205,10 +248,18 @@
     return this.command('open-pause-menu', reason || 'mother-story-battle-menu');
   };
 
-  ChildWorldAdapter.prototype.unmount = async function unmount(reason) {
-    if (this.state === 'idle') return { ok: true, alreadyUnmounted: true };
+  ChildWorldAdapter.prototype.unmount = function unmount(reason) {
+    if (this.unmountPromise) return this.unmountPromise;
+    if (this.state === 'idle') return Promise.resolve({ ok: true, alreadyUnmounted: true });
+    ++this.mountEpoch;
     this.state = 'unmounting';
-    try {
+    this.setInteractive(false);
+    this.pending.forEach((pending) => {
+      global.clearTimeout(pending.timer);
+      pending.reject(new Error('Child adapter unmounted.'));
+    });
+    this.pending.clear();
+    this.unmountPromise = (async () => { try {
       if (this.frame && this.frame.contentWindow) {
         await this.command('dispose', reason || 'mother-unmount', 3000).catch(() => null);
       }
@@ -226,9 +277,13 @@
       this.context = null;
       this.channelId = '';
       this.expectedOrigin = '';
+      this.worldReadyResult = null;
+      this.worldReadyError = null;
       this.state = 'idle';
     }
     return { ok: true, state: this.state };
+    })().finally(() => { this.unmountPromise = null; });
+    return this.unmountPromise;
   };
 
   root.ChildWorldAdapter = ChildWorldAdapter;

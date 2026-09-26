@@ -29231,6 +29231,12 @@ function perlaRtpSaveContractFlushV471(reason, options){
     return perlaRtpSaveContractClearDirtyV471(result, saveReason);
 }
 function perlaRtpPass2SaveNow(reason){
+    // Managed startup/teardown must never replace a save that was not fully restored.
+    // This sink also covers autosave and the prelude's implicit dispose checkpoint.
+    if(typeof window.__UNIFIED_CHILD_NOTIFY__==='function' && window.parent!==window){
+        const readiness=perlaUnifiedEntryReadinessV650();
+        if(!readiness.entryReady) return {ok:false, reason:'entry_restore_not_ready_v650', readiness};
+    }
     if(!perlaRtpPass2StorageAvailable()) return {ok:false, reason:'storage_unavailable'};
     const t0=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
     try{
@@ -74891,6 +74897,14 @@ window.__UNIFIED_CHILD_LIFECYCLE_PORT__ = Object.freeze({
     },
     status(){ return Object.assign({}, perlaUnifiedLifecycleStateV648); }
 });
+// ENTRY-07: a populated frame is usable only after the existing full restore
+// settled. Do not reinitialize the store or equate unreadable storage to no save.
+function perlaUnifiedEntryReadinessV650(){
+    const stateReady=!!(perlaRtpStateStoreStateV325.initialized && perlaRtpStateStoreStateV325.catalogBuilt);
+    const restored=perlaRtpPass2SaveLoadBootStateV366.fullResult;
+    const restoreReady=!!(perlaRtpPass2SaveLoadBootStateV366.earlyAttempted && restored && (restored.ok===true || restored.reason==='save_not_found'));
+    return {entryReady:stateReady&&restoreReady, stateReady, restoreReady, reason:!stateReady?'state_store_not_ready':(!restoreReady?String(restored&&restored.reason||'restore_not_completed'):'ready')};
+}
 setupPerlaMobileDebugUI();
 if(typeof perlaRtpPauseMenuBindV360==='function') perlaRtpPauseMenuBindV360();
 if(typeof perlaRtpPass2EarlyRestoreBeforeGameLoopV366==='function') perlaRtpPass2EarlyRestoreBeforeGameLoopV366('pre_asset_load');
@@ -74908,12 +74922,12 @@ loadAssets().then(()=>{
                 console.warn('PERLA RTP startup world population failed', err);
             }).finally(()=>{
                 perlaLoadingHideV345('ready_v345');
-                if(typeof window.__UNIFIED_CHILD_NOTIFY__==='function') window.__UNIFIED_CHILD_NOTIFY__('world-ready', {rtp:true, buildId:PERLA_BUILD_ID});
+                if(typeof window.__UNIFIED_CHILD_NOTIFY__==='function') window.__UNIFIED_CHILD_NOTIFY__('world-ready', Object.assign({rtp:true, buildId:PERLA_BUILD_ID},perlaUnifiedEntryReadinessV650()));
             });
         }, PERLA_V343_STARTUP_DELAY_MS);
     }else{
         perlaLoadingHideV345('ready_no_rtp_v345');
-        if(typeof window.__UNIFIED_CHILD_NOTIFY__==='function') window.__UNIFIED_CHILD_NOTIFY__('world-ready', {rtp:false, buildId:PERLA_BUILD_ID});
+        if(typeof window.__UNIFIED_CHILD_NOTIFY__==='function') window.__UNIFIED_CHILD_NOTIFY__('world-ready', Object.assign({rtp:false, buildId:PERLA_BUILD_ID},perlaUnifiedEntryReadinessV650()));
     }
 }).catch(err=>{ const assetStats=(typeof perlaAssetLoadStatsSnapshotV309==='function')?perlaAssetLoadStatsSnapshotV309():null; const assetInfo=assetStats?`<br><span class="muted">Tentativi: ${assetStats.attempts}, retry: ${assetStats.retries}, falliti: ${(assetStats.failedAssets||[]).join(', ')||'n/d'}</span>`:''; loading.innerHTML=`<div class="perla-loading-card"><div class="perla-loading-title">Errore caricamento asset</div><div class="perla-loading-stage">${String(err.message||err)}</div>${assetInfo}<div class="perla-loading-detail">Avvia con un server locale, non da file://.</div></div>`; if(typeof window.__UNIFIED_CHILD_NOTIFY__==='function') window.__UNIFIED_CHILD_NOTIFY__('world-error', {message:String(err&&err.message||err)}); console.error(err, assetStats); });
 

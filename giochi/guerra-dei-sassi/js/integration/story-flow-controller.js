@@ -23,6 +23,8 @@
     this.state = 'idle';
     this.initialized = false;
     this.exitPromise = null;
+    this.entryPromise = null;
+    this.entryOperation = null;
     this.battlePromise = null;
     this.battleMenuReturnPromise = null;
     this.battleApplicationWaiters = new Map();
@@ -32,12 +34,10 @@
         this.reportError(error, 'exit-failed');
       });
     });
-    this.eventBus.on('child:world-ready', () => {
-      const shell = this.registry.get('mother-shell');
-      if (shell && typeof shell.setStoryStatus === 'function') shell.setStoryStatus('ready', 'Mondo pronto');
-      this.recoverPendingBattle().catch((error) => this.reportError(error, 'battle-recovery-failed'));
-    });
+    // ENTRY-07: enter() alone owns readiness UI and battle recovery.
+    // The adapter latches channel-bound readiness even if it arrives early.
     this.eventBus.on('child:world-error', (payload) => {
+      if (this.state !== 'mounted') return;
       const error = new Error(payload && payload.message || 'Child world failed to initialize.');
       this.reportError(error, 'world-error');
     });
@@ -106,54 +106,95 @@
         this.playerSession.initialize().catch((error) => this.reportError(error, 'player-session-init-failed'));
       }
       shell.bindStoryEntry(() => this.enter().catch((error) => {
+        if (error && error.code === 'STORY_ENTRY_CANCELLED') return;
         this.reportError(error, 'enter-failed');
       }));
     }
     this.initialized = true;
   };
 
-  StoryFlowController.prototype.enter = async function enter() {
-    if (!this.flags.enableStoryWorldAdapter || !this.childWorld) {
-      throw root.contracts.contractError('FEATURE_DISABLED', 'Story world adapter is disabled.');
+  StoryFlowController.prototype.assertEntryCurrent = function assertEntryCurrent(operation) {
+    if (operation && (operation !== this.entryOperation || operation.error)) {
+      throw operation.error || root.contracts.contractError('STORY_ENTRY_CANCELLED', 'Story entry was cancelled.');
     }
-    if (this.state !== 'idle') {
-      throw root.contracts.contractError('STORY_FLOW_BUSY', `Cannot enter story from state ${this.state}.`);
-    }
+  };
 
+  StoryFlowController.prototype.enter = function enter() {
+    if (this.entryPromise) return this.entryPromise;
+    if (!this.flags.enableStoryWorldAdapter || !this.childWorld) return Promise.reject(root.contracts.contractError('FEATURE_DISABLED', 'Story world adapter is disabled.'));
+    if (this.state !== 'idle') return Promise.reject(root.contracts.contractError('STORY_FLOW_BUSY', `Cannot enter story from state ${this.state}.`));
     const shell = this.registry.require('mother-shell');
     const container = shell.getStoryContainer();
+    const operation = { error: null };
+    this.entryOperation = operation;
+    const cancelled = new Promise((resolve, reject) => {
+      operation.cancel = (code) => {
+        if (operation.error) return;
+        operation.error = root.contracts.contractError(code || 'STORY_ENTRY_CANCELLED', 'Story entry interrupted; retry from the menu.');
+        reject(operation.error);
+      };
+    });
+    cancelled.catch(() => null);
+    const step = async (work) => {
+      this.assertEntryCurrent(operation);
+      const value = await Promise.race([Promise.resolve().then(() => { this.assertEntryCurrent(operation); return work(); }), cancelled]);
+      this.assertEntryCurrent(operation);
+      return value;
+    };
+    const timer = global.setTimeout(() => operation.cancel('STORY_ENTRY_TIMEOUT'), 60000);
     this.state = 'mounting';
-    shell.setStoryStatus('loading', 'Caricamento mondo');
-    if (this.flags.enableUnifiedAudio) this.audio.transitionTo('story-world', { source: 'mother-menu' });
-    else shell.suspendMotherMenuAudio();
-    this.route.transition('story-world', { source: 'mother-menu' });
-    shell.showStoryScreen();
-
-    try {
+    this.entryPromise = (async () => { try {
+      shell.setStoryStatus('loading', 'Caricamento mondo');
+      if (this.flags.enableUnifiedAudio) this.audio.transitionTo('story-world', { source: 'mother-menu' });
+      else shell.suspendMotherMenuAudio();
+      this.route.transition('story-world', { source: 'mother-menu' });
+      shell.showStoryScreen();
       if (this.playerSession && this.playerSession.isEnabled()) {
-        await this.playerSession.initialize();
-        await this.playerSession.restoreLatestIfNeeded();
+        await step(() => this.playerSession.initialize());
+        const restored = await step(() => this.playerSession.restoreLatestIfNeeded(() => this.assertEntryCurrent(operation)));
+        if (restored && restored.ok === false) throw root.contracts.contractError('STORY_RESTORE_FAILED', 'Existing story save could not be restored safely.');
       }
       try {
         const cloudSave = global.GuerraDeiSassiCloudSave;
-        if (cloudSave && typeof cloudSave.initialize === 'function') await cloudSave.initialize();
-      } catch (_) {}
-      await this.childWorld.mount(container, this.createChildContext());
-      if (this.flags.enableUnifiedAudio) await this.childWorld.applyAudioPolicy(this.audio.getChildPolicy());
+        if (cloudSave && typeof cloudSave.initialize === 'function') await step(() => cloudSave.initialize());
+      } catch (_) { this.assertEntryCurrent(operation); }
+      await step(() => this.childWorld.mount(container, this.createChildContext()));
+      const ready = await step(() => this.childWorld.waitForWorldReady());
+      if (!ready || ready.entryReady !== true) throw root.contracts.contractError('STORY_WORLD_NOT_READY', `Story state/restore not ready: ${ready && ready.reason || 'unknown'}`);
+      if (this.flags.enableUnifiedAudio) await step(() => this.childWorld.applyAudioPolicy(this.audio.getChildPolicy()));
+      await step(() => this.recoverPendingBattle(operation));
+      let checkpointWarning = false;
+      try {
+        const checkpoint = await step(() => this.checkpointStory('enter-story-world', { route: 'story-world' }, operation));
+        checkpointWarning = !!(checkpoint && checkpoint.ok === false);
+      } catch (error) {
+        this.assertEntryCurrent(operation);
+        checkpointWarning = true;
+        this.eventBus.emit('story:entry-checkpoint-warning', Object.freeze({ message: String(error && error.message || error) }));
+      }
+      this.assertEntryCurrent(operation);
       this.state = 'mounted';
-      await this.recoverPendingBattle();
-      await this.checkpointStory('enter-story-world', { route: 'story-world' });
+      this.childWorld.setInteractive(true);
+      shell.setStoryStatus('ready', checkpointWarning ? 'Mondo pronto - salvataggio locale non confermato' : 'Mondo pronto');
       this.eventBus.emit('story:entered', Object.freeze({ route: 'story-world' }));
       return { ok: true, state: this.state };
     } catch (error) {
-      await this.childWorld.unmount('story-enter-failed').catch(() => null);
-      if (this.route.state === 'story-world') this.route.toMotherMenu({ reason: 'story-enter-failed' });
-      shell.showMotherMenu();
-      if (this.flags.enableUnifiedAudio) this.audio.resetTo('mother-menu', { reason: 'story-enter-failed' });
-      else shell.restoreMotherMenuAudio();
-      this.state = 'idle';
+      if (this.entryOperation === operation) {
+        await this.childWorld.unmount('story-enter-failed').catch(() => null);
+        if (this.entryOperation === operation) {
+          if (this.route.state === 'story-world') this.route.toMotherMenu({ reason: 'story-enter-failed' });
+          shell.showMotherMenu();
+          if (this.flags.enableUnifiedAudio) this.audio.resetTo('mother-menu', { reason: 'story-enter-failed' });
+          else shell.restoreMotherMenuAudio();
+          this.state = 'idle';
+        }
+      }
       throw error;
-    }
+    } finally {
+      global.clearTimeout(timer);
+      if (this.entryOperation === operation) { this.entryOperation = null; this.entryPromise = null; }
+    } })();
+    return this.entryPromise;
   };
 
   StoryFlowController.prototype.createAbortedBattleResult = function createAbortedBattleResult(requestId) {
@@ -166,8 +207,9 @@
     }, requestId);
   };
 
-  StoryFlowController.prototype.checkpointStory = async function checkpointStory(reason, detail) {
+  StoryFlowController.prototype.checkpointStory = async function checkpointStory(reason, detail, entryOperation) {
     const childCheckpoint = await this.childWorld.flushCheckpoint(reason);
+    if (entryOperation) this.assertEntryCurrent(entryOperation);
     if (!childCheckpoint || childCheckpoint.ok !== true || childCheckpoint.localCheckpointConfirmed !== true) {
       const error = root.contracts.contractError('CHILD_CHECKPOINT_UNCONFIRMED', 'Latest story checkpoint was not confirmed.');
       error.saveOutcome = {ok:false,localCheckpointConfirmed:false,reason:'child-checkpoint-unconfirmed'};
@@ -189,6 +231,7 @@
         } finally { if (timer) global.clearTimeout(timer); }
       }
     } catch (_) { durable = {ok:false,reason:'durable-checkpoint-failed'}; }
+    if (entryOperation) this.assertEntryCurrent(entryOperation);
     if (durable && durable.ok === false) {
       this.eventBus.emit('story:checkpoint-durability-warning',Object.freeze({reason:durable.reason || 'durable-checkpoint-failed'}));
     }
@@ -225,9 +268,10 @@
     });
   };
 
-  StoryFlowController.prototype.recoverPendingBattle = async function recoverPendingBattle() {
+  StoryFlowController.prototype.recoverPendingBattle = async function recoverPendingBattle(entryOperation) {
     if (!this.playerSession || !this.playerSession.isEnabled() || !this.childWorld || this.childWorld.state !== 'mounted') return null;
     const pending = await this.playerSession.getRecoverableBattle();
+    if (entryOperation) this.assertEntryCurrent(entryOperation);
     if (!pending) return null;
     const shell = this.registry.require('mother-shell');
     shell.setStoryStatus('recovering', 'Ripristino esito sfida');
@@ -235,12 +279,15 @@
       request: pending.request,
       result: pending.result
     });
-    await this.playerSession.markBattleResultApplied(pending.requestId, application);
+    if (entryOperation) this.assertEntryCurrent(entryOperation);
+    await this.playerSession.markBattleResultApplied(pending.requestId, application, entryOperation ? () => this.assertEntryCurrent(entryOperation) : null);
+    if (entryOperation) this.assertEntryCurrent(entryOperation);
     await this.checkpointStory(`after-${pending.result.status}`, {
       requestId: pending.requestId,
       recovered: true,
       application
-    });
+    }, entryOperation);
+    if (entryOperation) this.assertEntryCurrent(entryOperation);
     shell.setStoryStatus('ready', 'Mondo pronto');
     this.eventBus.emit('story:battle-recovered', Object.freeze({ requestId: pending.requestId, status: pending.result.status }));
     return application;
@@ -435,6 +482,11 @@
 
   StoryFlowController.prototype.exitToMother = function exitToMother(reason) {
     if (this.exitPromise) return this.exitPromise;
+    if (this.entryOperation && this.state === 'mounting') {
+      // Input remains disabled until entry commits: do not save default state on cancel.
+      this.entryOperation.cancel('STORY_ENTRY_CANCELLED');
+      return this.entryPromise.then(() => ({ok:true,cancelled:true}), () => ({ok:true,cancelled:true}));
+    }
     if (this.battlePromise) {
       return Promise.reject(root.contracts.contractError('BATTLE_BUSY', 'Cannot exit the story while a battle is active.'));
     }

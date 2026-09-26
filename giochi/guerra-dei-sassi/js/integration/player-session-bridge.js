@@ -207,7 +207,7 @@
     return null;
   };
 
-  PlayerSessionBridge.prototype.restoreLatestIfNeeded = async function restoreLatestIfNeeded() {
+  PlayerSessionBridge.prototype.restoreLatestIfNeeded = async function restoreLatestIfNeeded(assertCurrent) {
     if (!this.isEnabled()) return { ok: true, disabled: true };
     const current = global.localStorage.getItem(this.legacySaveKey);
     if (current === null || validLegacySave(current)) return { ok: true, restored: false, currentValid: true };
@@ -224,6 +224,8 @@
       payload: { raw: current, legacySaveKey: this.legacySaveKey }
     });
     await this.putCheckpointRecord(backup);
+    // ENTRY-07: cancelled startup may finish its backup, never restore over a new mount.
+    if (typeof assertCurrent === 'function') assertCurrent();
     global.localStorage.setItem(this.legacySaveKey, checkpoint.payload.legacySave);
     if (this.eventBus) this.eventBus.emit('player-session:restored', Object.freeze({ checkpointId: checkpoint.id, backupId: backup.id }));
     return { ok: true, restored: true, checkpointId: checkpoint.id, backupId: backup.id };
@@ -233,9 +235,12 @@
     return this.withStore(JOURNAL_STORE, 'readonly', (store) => store.get(String(requestId || '')));
   };
 
-  PlayerSessionBridge.prototype.putJournal = async function putJournal(record) {
+  PlayerSessionBridge.prototype.putJournal = async function putJournal(record, assertCurrent) {
     const sealed = await this.seal(record);
-    await this.withStore(JOURNAL_STORE, 'readwrite', (store) => store.put(sealed));
+    await this.withStore(JOURNAL_STORE, 'readwrite', (store) => {
+      if (typeof assertCurrent === 'function') assertCurrent();
+      return store.put(sealed);
+    });
     return sealed;
   };
 
@@ -280,7 +285,7 @@
     return record;
   };
 
-  PlayerSessionBridge.prototype.markBattleResultApplied = async function markBattleResultApplied(requestId, application) {
+  PlayerSessionBridge.prototype.markBattleResultApplied = async function markBattleResultApplied(requestId, application, assertCurrent) {
     if (!this.isEnabled()) return { ok: true, disabled: true };
     const existing = await this.getJournal(requestId);
     if (!existing || !await this.verify(existing)) throw root.contracts.contractError('MISSING_BATTLE_RESULT_JOURNAL', 'A valid result journal entry is required before application.');
@@ -291,7 +296,7 @@
       status: 'applied',
       updatedAt: new Date().toISOString(),
       application: cloneJson(application || null)
-    }));
+    }), assertCurrent);
     if (this.eventBus) this.eventBus.emit('player-session:battle-applied', Object.freeze({ requestId: record.requestId }));
     return record;
   };
