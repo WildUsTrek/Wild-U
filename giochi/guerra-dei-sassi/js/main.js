@@ -311,7 +311,18 @@ window.exitMotherMenuToWildu = async function exitMotherMenuToWildu() {
         : 'Il salvataggio online non è confermato: su altri dispositivi potresti trovare la partita precedente. Vuoi uscire comunque? Annulla per restare e riprovare.';
       if (!window.confirm(message)) return;
     }
-    await exitBridge.exitMotherToWildu();
+    // Suppress only the duplicate lifecycle save after this accepted exit.
+    // The host bridge posts a request, not a destruction ACK: the ticket is
+    // short-lived and leaves this game playable if the host does not close it.
+    let exitTicket;
+    try {
+      if (cloudSave && typeof cloudSave.prepareForHostExit === 'function') exitTicket = cloudSave.prepareForHostExit();
+      const hostResult = await exitBridge.exitMotherToWildu();
+      if (hostResult === false || (hostResult && hostResult.ok === false)) throw new Error('Host exit rejected');
+    } catch (hostError) {
+      if (exitTicket && cloudSave && typeof cloudSave.cancelPreparedHostExit === 'function') cloudSave.cancelPreparedHostExit(exitTicket);
+      throw hostError;
+    }
   } catch (error) {
     if (button) button.disabled = false;
     if (typeof flashActionRibbon === 'function') flashActionRibbon('Ritorno a Wildu non disponibile', 'bad');

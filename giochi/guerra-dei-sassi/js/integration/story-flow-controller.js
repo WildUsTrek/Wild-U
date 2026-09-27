@@ -525,7 +525,14 @@
           shell.setStoryStatus('ready','Salvataggio non confermato: puoi riprovare');
           return {ok:false,cancelled:true,reason:'checkpoint-unconfirmed'};
         }
-        if (this.childWorld.state === 'mounted') await this.childWorld.pause(reason || 'child-exit');
+        if (this.childWorld.state === 'mounted') {
+          try { await this.childWorld.pause(reason || 'child-exit'); }
+          catch (error) {
+            // Exit was accepted above. A failed pause must not skip bounded
+            // unmount; diagnostics are best-effort and contain no save payload.
+            try { this.eventBus.emit('story:exit-pause-warning', Object.freeze({ code: 'CHILD_PAUSE_FAILED_DURING_EXIT' })); } catch (ignored) {}
+          }
+        }
         await this.childWorld.unmount(reason || 'child-exit');
         this.exitBridge.exitChildToMother(reason || 'child-exit');
         shell.showMotherMenu();

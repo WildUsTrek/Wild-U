@@ -21,6 +21,7 @@
   const state = {
     paused: false,
     disposed: false,
+    disposePromise: null,
     nextToken: 1,
     raf: new Map(),
     timeouts: new Map(),
@@ -116,6 +117,7 @@
   }
 
   global.requestAnimationFrame = function managedRequestAnimationFrame(callback) {
+    if (state.disposed) return 0;
     const token = state.nextToken++;
     const entry = { callback, nativeId: null };
     state.raf.set(token, entry);
@@ -130,6 +132,7 @@
   };
 
   global.setTimeout = function managedSetTimeout(callback, delay) {
+    if (state.disposed) return 0;
     if (typeof callback !== 'function') return native.setTimeout(callback, delay);
     const args = Array.prototype.slice.call(arguments, 2);
     const token = state.nextToken++;
@@ -152,6 +155,7 @@
   };
 
   global.setInterval = function managedSetInterval(callback, delay) {
+    if (state.disposed) return 0;
     if (typeof callback !== 'function') return native.setInterval(callback, delay);
     const args = Array.prototype.slice.call(arguments, 2);
     const token = state.nextToken++;
@@ -170,6 +174,7 @@
   function installTrackedConstructor(name, NativeConstructor, collection, terminateMethod) {
     if (typeof NativeConstructor !== 'function') return;
     function TrackedConstructor() {
+      if (state.disposed) throw new Error('Child runtime is disposed.');
       const instance = Reflect.construct(NativeConstructor, Array.from(arguments), NativeConstructor);
       collection.add(instance);
       if (terminateMethod && typeof instance[terminateMethod] === 'function') {
@@ -220,18 +225,22 @@
   }
 
   async function pause(reason) {
+    if (state.disposed) return { ok: false, disposed: true };
     if (state.paused) return Object.assign({ ok: true, alreadyPaused: true }, schedulerStatus());
     state.paused = true;
     suspendSchedulers();
     document.documentElement.dataset.unifiedChildPaused = 'true';
     await callLifecycle('pause', reason);
+    if (state.disposed) return { ok: false, disposed: true };
     suspendAudio();
     return Object.assign({ ok: true }, schedulerStatus());
   }
 
   async function resume(reason) {
+    if (state.disposed) return { ok: false, disposed: true };
     if (!state.paused) return Object.assign({ ok: true, alreadyRunning: true }, schedulerStatus());
     await callLifecycle('resume', reason);
+    if (state.disposed) return { ok: false, disposed: true };
     resumeAudio();
     state.paused = false;
     document.documentElement.dataset.unifiedChildPaused = 'false';
@@ -239,14 +248,10 @@
     return Object.assign({ ok: true }, schedulerStatus());
   }
 
-  async function dispose(reason) {
-    if (state.disposed) return { ok: true, alreadyDisposed: true };
-    await callLifecycle('flushCheckpoint', reason);
-    await callLifecycle('dispose', reason);
-    state.disposed = true;
-    state.raf.forEach((entry) => { if (entry.nativeId !== null) native.cancelAnimationFrame(entry.nativeId); });
-    state.timeouts.forEach((entry) => { if (entry.nativeId !== null) native.clearTimeout(entry.nativeId); });
-    state.intervals.forEach((entry) => { if (entry.nativeId !== null) native.clearInterval(entry.nativeId); });
+  function cleanupOwnedResources() {
+    state.raf.forEach((entry) => { try { if (entry.nativeId !== null) native.cancelAnimationFrame(entry.nativeId); } catch (error) {} });
+    state.timeouts.forEach((entry) => { try { if (entry.nativeId !== null) native.clearTimeout(entry.nativeId); } catch (error) {} });
+    state.intervals.forEach((entry) => { try { if (entry.nativeId !== null) native.clearInterval(entry.nativeId); } catch (error) {} });
     state.raf.clear();
     state.timeouts.clear();
     state.intervals.clear();
@@ -254,10 +259,50 @@
     state.audioContexts.forEach((context) => { try { if (context.close) Promise.resolve(context.close()).catch(() => {}); } catch (error) {} });
     state.workers.clear();
     state.audioContexts.clear();
-    return { ok: true, disposed: true };
+  }
+
+  function dispose(reason) {
+    if (state.disposePromise) return state.disposePromise;
+    // Terminal before any callback or await: late work cannot allocate or resume.
+    state.disposed = true;
+    state.paused = true;
+    document.documentElement.dataset.unifiedChildPaused = 'true';
+    const deadlineAt = nowMs() + 2000; // One total budget, below adapter's 3000ms.
+    state.disposePromise = Promise.resolve().then(async () => {
+      let deadlineTimer;
+      let timedOut = false;
+      const checkpoint = { status: 'pending', localCheckpointConfirmed: false };
+      const lifecycle = { status: 'pending' };
+      const deadline = new Promise((resolve) => {
+        deadlineTimer = native.setTimeout(() => { timedOut = true; resolve(); }, Math.max(0, deadlineAt - nowMs()));
+      });
+      try {
+        suspendSchedulers();
+        suspendAudio();
+        const checkpointTask = callLifecycle('flushCheckpoint', reason).then((result) => {
+          checkpoint.localCheckpointConfirmed = !!(result && result.ok === true && result.localCheckpointConfirmed === true);
+          checkpoint.status = checkpoint.localCheckpointConfirmed ? 'confirmed' : 'unconfirmed';
+        }, () => { checkpoint.status = 'failed'; });
+        await Promise.race([checkpointTask, deadline]);
+        // Preserve healthy async checkpoint ordering. At deadline still invoke
+        // the terminal lifecycle callback, but never grant another timeout.
+        const lifecycleTask = callLifecycle('dispose', reason).then(() => {
+          lifecycle.status = 'completed';
+        }, () => { lifecycle.status = 'failed'; });
+        await Promise.race([lifecycleTask, deadline]);
+      } finally {
+        native.clearTimeout(deadlineTimer);
+        cleanupOwnedResources();
+      }
+      // Disposal completion is not a save receipt. Snapshot late-settling state.
+      return { ok: true, disposed: true, timedOut, localCheckpointConfirmed: checkpoint.localCheckpointConfirmed,
+        checkpoint: Object.assign({}, checkpoint), lifecycle: Object.assign({}, lifecycle) };
+    });
+    return state.disposePromise;
   }
 
   global.__UNIFIED_CHILD_NOTIFY__ = function childNotify(type, payload) {
+    if (state.disposed) return;
     notify(`child:${String(type || 'event')}`, payload || null);
   };
 
@@ -265,6 +310,7 @@
 
   global.__UNIFIED_CHILD_UI_PORT__ = Object.freeze({
     openPauseMenu(reason) {
+      if (state.disposed) throw new Error('Child runtime is disposed.');
       const trigger = global.document.querySelector('button[data-hud-action="pause-menu"][aria-label="Apri menu partita"]');
       if (!trigger) throw new Error('Child pause menu trigger is not available.');
       trigger.click();
@@ -279,6 +325,7 @@
     const message = event.data;
     if (event.source !== global.parent || event.origin !== parentOrigin || !message || message.channelId !== channelId || !message.command) return;
     try {
+      if (state.disposed && message.command !== 'dispose') throw new Error('Child runtime is disposed.');
       let result;
       if (message.command === 'pause') result = await pause(message.reason);
       else if (message.command === 'resume') result = await resume(message.reason);
@@ -305,11 +352,12 @@
       }
       else if (message.command === 'dispose') result = await dispose(message.reason);
       else throw new Error(`Unknown child lifecycle command: ${message.command}`);
+      if (state.disposed && message.command !== 'dispose') throw new Error('Child runtime is disposed.');
       notify('child:lifecycle-ack', result, message.requestId);
     } catch (error) {
       notify('child:lifecycle-error', { message: String(error && error.message || error) }, message.requestId);
     }
   });
 
-  global.addEventListener('DOMContentLoaded', () => notify('child:frame-loaded', { managed: true }), { once: true });
+  global.addEventListener('DOMContentLoaded', () => { if (!state.disposed) notify('child:frame-loaded', { managed: true }); }, { once: true });
 })(window);

@@ -30,6 +30,7 @@
   let lateRecoveryBudget = 1;
   let pendingReadTotal = 0;
   let attemptSequence = 0;
+  let preparedHostExit = null;
   const sessionId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 
   function byteLength(value) { try { return new TextEncoder().encode(String(value || '')).byteLength; } catch (_) { return String(value || '').length; } }
@@ -422,10 +423,35 @@
     state.initializationPromise = null;
     // Do not terminate, sign out, or clear persistence on the host SDK.
   }
+  // A posted host-close message is not an ACK. This ticket only suppresses
+  // duplicate lifecycle writes for the already accepted exit, never gameplay
+  // or explicit saves. It expires without a timer if the host leaves us open.
+  function prepareForHostExit() {
+    const ticket = {};
+    preparedHostExit = { ticket, expiresAt:Date.now()+3500, sequence:state.changeSequence, uid:state.activeUid, generation:state.generation };
+    return ticket;
+  }
+  function cancelPreparedHostExit(ticket) {
+    if (preparedHostExit && preparedHostExit.ticket === ticket) preparedHostExit = null;
+  }
+  function hasPreparedHostExit() {
+    if (!preparedHostExit) return false;
+    if (Date.now() >= preparedHostExit.expiresAt || preparedHostExit.sequence !== state.changeSequence || preparedHostExit.uid !== state.activeUid || preparedHostExit.generation !== state.generation) {
+      preparedHostExit = null;
+      return false;
+    }
+    return true;
+  }
   global.addEventListener('storage',(event) => { if (event && (event.key === PROGRESS_KEY || event.key === STORY_KEY)) markDirty('cross-frame-cache-change'); });
-  global.document.addEventListener('visibilitychange',() => { if (global.document.visibilityState === 'hidden') flush('visibility-hidden',{ force:true }); });
+  global.document.addEventListener('visibilitychange',() => { if (global.document.visibilityState === 'hidden' && !hasPreparedHostExit()) flush('visibility-hidden',{ force:true }); });
   global.addEventListener('pagehide',() => {
     const epoch = ++lifecycleEpoch;
+    if (hasPreparedHostExit()) {
+      preparedHostExit = null;
+      state.closing = true;
+      suspend();
+      return;
+    }
     // Fence reads/restores synchronously, while allowing the final write to
     // finish with its existing identity. BFCache resume creates a new generation.
     state.closing = true;
@@ -435,7 +461,7 @@
     detachHostSubscription();
     flush('pagehide',{ force:true }).finally(() => { if (epoch === lifecycleEpoch) suspend(); });
   });
-  global.addEventListener('pageshow',(event) => { if (event.persisted) { lifecycleEpoch += 1; suspend(); state.closing = false; initialize(); } });
+  global.addEventListener('pageshow',(event) => { if (event.persisted) { lifecycleEpoch += 1; preparedHostExit = null; suspend(); state.closing = false; initialize(); } });
   function scheduleRateFlush(minDelay) {
     if (rateTimer || state.closing || state.suspended || !state.ready || !state.dirty || !global.navigator.onLine) return;
     const uid=state.activeUid,generation=state.generation;
@@ -465,5 +491,5 @@
     return task;
   }
   global.addEventListener('online',reconnect);
-  global.GuerraDeiSassiCloudSave = Object.freeze({ initialize, markDirty, flush, describeOutcome, status:() => Object.assign({},state) });
+  global.GuerraDeiSassiCloudSave = Object.freeze({ initialize, markDirty, flush, describeOutcome, prepareForHostExit, cancelPreparedHostExit, status:() => Object.assign({},state) });
 })(window);
