@@ -59,8 +59,9 @@
       this.eventBus.emit('story:battle-result-applied', payload || null);
     });
     this.eventBus.on('audio:policy-changed', (payload) => {
-      if (!this.childWorld || this.childWorld.state !== 'mounted') return;
-      this.childWorld.applyAudioPolicy(payload && payload.policy || this.audio.getChildPolicy()).catch((error) => {
+      if (!this.flags.enableUnifiedAudio || !this.childWorld || !['mounted','paused'].includes(this.childWorld.state)) return;
+      // Read current authority, including changes while the world is in battle.
+      this.childWorld.applyAudioPolicy(this.audio.getChildPolicy()).catch((error) => {
         this.reportError(error, 'child-audio-policy-failed');
       });
     });
@@ -366,6 +367,7 @@
         });
       }
       if (paused && this.childWorld.state === 'paused') {
+        if (this.flags.enableUnifiedAudio) await this.childWorld.applyAudioPolicy(this.audio.getChildPolicy());
         await this.childWorld.resume('story-battle-return');
       }
       this.state = 'mounted';
@@ -421,7 +423,10 @@
       }
     }
     shell.showStoryScreen();
-    if (this.childWorld.state === 'paused') await this.childWorld.resume('story-battle-menu-orphan-recovery');
+    if (this.childWorld.state === 'paused') {
+      if (this.flags.enableUnifiedAudio) await this.childWorld.applyAudioPolicy(this.audio.getChildPolicy());
+      await this.childWorld.resume('story-battle-menu-orphan-recovery');
+    }
     if (this.childWorld.state !== 'mounted') {
       throw root.contracts.contractError('INVALID_CHILD_STATE', `Cannot recover Story menu with child state ${this.childWorld.state}.`);
     }

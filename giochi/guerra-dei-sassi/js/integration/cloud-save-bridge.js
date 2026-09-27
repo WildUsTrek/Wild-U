@@ -13,12 +13,24 @@
   const SAFETY_WRITE_INTERVAL_MS = 40 * 60 * 1000;
   const MAX_STORY_PAYLOAD_BYTES = 650000;
   const WRITE_TIMEOUT_MS = 3000;
+  const RECOVERY_COOLDOWN_MS = 30000;
+  const MAX_PENDING_READS_PER_UID = 2;
+  const MAX_PENDING_READS_TOTAL = 4;
   const state = { started:false, suspended:false, closing:false, initializationPromise:null, ready:false, applyingRemote:false, dirty:false, changeSequence:0, writeInFlight:null, writeUncertain:false, syncPromise:null, authUnsubscribe:null, hasRemoteDocument:false, activeUid:'', generation:0, remoteRevision:0, lastWriteAt:0, lastStatus:'idle', lastErrorCode:'', safetyTimer:null };
   let runtimePromise = null;
   let lifecycleEpoch = 0;
   let archiveSequence = 0;
   const serverReads = new Map();
   const serverWrites = new Map();
+  const pendingReadCounts = new Map();
+  let uncertainAttempt = null;
+  let reconnectPromise = null;
+  let reconnectAfter = 0;
+  let rateTimer = null;
+  let lateRecoveryBudget = 1;
+  let pendingReadTotal = 0;
+  let attemptSequence = 0;
+  const sessionId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
 
   function byteLength(value) { try { return new TextEncoder().encode(String(value || '')).byteLength; } catch (_) { return String(value || '').length; } }
   function boundedText(value, maxLength) { return String(value === undefined || value === null ? '' : value).slice(0, maxLength); }
@@ -97,13 +109,29 @@
   }
   function readServer(runtime, uid) {
     if (serverReads.has(uid)) return serverReads.get(uid);
-    const task = runtime.getDocFromServer(runtime.doc(runtime.db,COLLECTION,uid)).finally(() => { if (serverReads.get(uid) === task) serverReads.delete(uid); });
+    if ((pendingReadCounts.get(uid) || 0) >= MAX_PENDING_READS_PER_UID || pendingReadTotal >= MAX_PENDING_READS_TOTAL) return Promise.reject({ code:'resource-exhausted' });
+    pendingReadCounts.set(uid,(pendingReadCounts.get(uid) || 0) + 1);
+    pendingReadTotal += 1;
+    // A read timeout releases only the logical slot, never claims native cancellation.
+    // Late native results cannot resolve this already rejected race or restore data.
+    const nativeRead = Promise.resolve().then(() => runtime.getDocFromServer(runtime.doc(runtime.db,COLLECTION,uid))).finally(() => {
+      pendingReadTotal -= 1;
+      const remaining = (pendingReadCounts.get(uid) || 1) - 1;
+      if (remaining) pendingReadCounts.set(uid,remaining); else pendingReadCounts.delete(uid);
+    });
+    let timer;
+    const task = Promise.race([nativeRead,new Promise((_,reject) => { timer = global.setTimeout(() => reject({code:'deadline-exceeded'}),WRITE_TIMEOUT_MS); })]).finally(() => {
+      if (timer) global.clearTimeout(timer);
+      if (serverReads.get(uid) === task) serverReads.delete(uid);
+    });
     serverReads.set(uid,task);
     return task;
   }
   function describeOutcome(outcome) {
     if (outcome && outcome.ok && outcome.onlineConfirmed) return 'Partita salvata online';
     if (outcome && /server-conflict|server-restored/.test(outcome.reason || '')) return 'Prevale il salvataggio online; copia locale conservata';
+    if (outcome && outcome.reason === 'cloud-save-uncertain') return 'Salvataggio ancora in verifica; progressi conservati su questo dispositivo';
+    if (outcome && outcome.reason === 'offline') return 'Nessuna connessione: progressi conservati su questo dispositivo';
     return 'Salvataggio online non confermato: verifica prima di cambiare dispositivo';
   }
   function isActiveIdentity(uid, generation) { return !state.suspended && state.activeUid === uid && state.generation === generation; }
@@ -156,7 +184,7 @@
   }
   function showGuestNotice() { try { if (global.sessionStorage && global.sessionStorage.getItem('guerra-dei-sassi:guest-notice:v1')) return; if (global.sessionStorage) global.sessionStorage.setItem('guerra-dei-sassi:guest-notice:v1','1'); global.setTimeout(() => { if (typeof global.flashActionRibbon === 'function') global.flashActionRibbon('Senza profilo la partita non può rimanere salvata a lungo','bad'); }, 700); } catch (_) {} }
   function canBypassInterval(reason) { return /(^|[-_:])(exit|pagehide|hidden|critical)([-_:]|$)/i.test(String(reason || '')); }
-  function resetForIdentity(uid) { state.generation += 1; state.activeUid = uid || ''; state.ready = false; state.dirty = false; state.writeUncertain = false; state.writeInFlight = null; state.syncPromise = null; state.hasRemoteDocument = false; state.remoteRevision = 0; state.lastWriteAt = 0; state.lastErrorCode = ''; }
+  function resetForIdentity(uid) { state.generation += 1; state.activeUid = uid || ''; state.ready = false; state.dirty = false; state.writeUncertain = false; state.writeInFlight = null; state.syncPromise = null; state.hasRemoteDocument = false; state.remoteRevision = 0; state.lastWriteAt = 0; state.lastErrorCode = ''; uncertainAttempt = null; reconnectPromise = null; reconnectAfter = 0; lateRecoveryBudget = 1; if (rateTimer) global.clearTimeout(rateTimer); rateTimer = null; }
   function scheduleSafetyFlush() { if (!state.safetyTimer) state.safetyTimer = global.setInterval(() => { flush('safety-40m'); }, SAFETY_WRITE_INTERVAL_MS); }
   function safeTransactionWrite(runtime, uid, generation, payload, expectedRevision) {
     const ref = runtime.doc(runtime.db, COLLECTION, uid);
@@ -175,18 +203,27 @@
     serverWrites.set(uid,task);
     return task;
   }
-  function reconcileUncertainWrite(uid, generation, written) {
+  function reconcileUncertainWrite(uid, generation) {
     if (state.closing || !isActiveIdentity(uid,generation)) return Promise.resolve({ ok:false, reason:'suspended' });
-    return ensureRuntime().then((runtime) => readServer(runtime,uid).then((snapshot) => {
-      if (state.closing || !isActiveIdentity(uid,generation) || !state.writeUncertain || !runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };
+    const attempt = uncertainAttempt;
+    if (!attempt || attempt.uid !== uid || attempt.generation !== generation) return Promise.resolve({ok:false,reason:'cloud-save-uncertain'});
+    if (!attempt.outcome) { state.lastStatus = 'write-uncertain-awaiting-result'; return Promise.resolve({ok:false,reason:'cloud-save-uncertain'}); }
+    if (attempt.outcome.error) state.lastErrorCode = attempt.outcome.errorCode;
+    if (attempt.recovery) return attempt.recovery;
+    const written = attempt.written;
+    const task = ensureRuntime().then((runtime) => readServer(runtime,uid).then((snapshot) => {
+      if (state.closing || uncertainAttempt !== attempt || !isActiveIdentity(uid,generation) || !state.writeUncertain || !runtime.auth.currentUser || runtime.auth.currentUser.uid !== uid) return { ok:false, reason:'identity-changed' };
       if (snapshot.exists()) {
         const remote = validateRemotePayload(snapshot.data());
         if (!remote) { state.lastStatus = 'write-reconcile-invalid'; return { ok:false, reason:'write-reconcile-invalid' }; }
         const revision = normalizeRevision(snapshot.data().revision);
         const pending = readPending(uid);
-        if (written && revision === written.revision + 1 && samePayload(remote,written.payload)) {
+        const result = attempt.outcome.value;
+        // Equal data is not attribution: another device may write the same payload.
+        if (!attempt.outcome.error && result && result.kind === 'saved' && result.revision === revision && revision === written.revision + 1 && samePayload(remote,written.payload)) {
           if (!acknowledge(uid,revision,remote,written.sequence)) { state.lastStatus = 'local-receipt-failed'; return {ok:false,reason:state.lastStatus}; }
           state.dirty = state.changeSequence !== written.sequence;
+          state.lastWriteAt = Date.now();
         } else if (pending && pending.baseRevision === revision) {
           // The uncertain write did not advance the server. Keep the durable
           // pending snapshot; only a later explicit lifecycle may retry it.
@@ -198,23 +235,31 @@
         state.remoteRevision = revision;
         state.hasRemoteDocument = true;
       } else {
+        if (written.revision > 0) { state.lastStatus = 'server-document-missing'; return {ok:false,reason:state.lastStatus}; }
         state.hasRemoteDocument = false;
         state.remoteRevision = 0;
         // The transaction did not create a canonical document: retain local
         // changes, but do not retry here. A later ordinary flush decides.
       }
       state.writeUncertain = false;
+      uncertainAttempt = null;
       state.lastStatus = snapshot.exists() ? 'write-reconciled-server' : 'write-reconciled-missing';
       return { ok:true, status:state.lastStatus };
-    })).catch(() => {
-      if (isActiveIdentity(uid,generation) && state.writeUncertain) state.lastStatus = 'write-uncertain-reconcile-pending';
+    })).catch((error) => {
+      if (uncertainAttempt === attempt && isActiveIdentity(uid,generation) && state.writeUncertain) {
+        state.lastErrorCode = safeWriteErrorCode(error);
+        state.lastStatus = 'write-uncertain-reconcile-pending';
+      }
       return { ok:false, reason:'write-reconcile-pending' };
-    });
+    }).finally(() => { if (attempt.recovery === task) attempt.recovery = null; });
+    attempt.recovery = task;
+    return task;
   }
   function safeWriteErrorCode(error) {
     const code = error && typeof error.code === 'string' ? error.code : '';
     return ['invalid-argument','permission-denied','unauthenticated','unavailable','deadline-exceeded','aborted','failed-precondition','resource-exhausted','internal','cancelled','not-found','already-exists','out-of-range','data-loss','unimplemented'].includes(code) ? code : 'unknown';
   }
+  function automaticRetryBlocked() { return ['permission-denied','unauthenticated','invalid-argument','failed-precondition','data-loss','unimplemented'].includes(state.lastErrorCode); }
   function boundedWrite(operation, uid, generation, written) {
     let timer = null;
     const request = operation.then((value) => ({ completed:true, value }), (error) => {
@@ -224,7 +269,35 @@
       return { completed:true, error:true, errorCode };
     });
     const timeout = new Promise((resolve) => { timer = global.setTimeout(() => resolve({ timeout:true }), WRITE_TIMEOUT_MS); });
-    return Promise.race([request, timeout]).then((result) => { if (timer) global.clearTimeout(timer); if (result.timeout) { if (isActiveIdentity(uid, generation)) { state.generation += 1; const reconcileGeneration = state.generation; state.writeUncertain = true; state.lastStatus = 'write-uncertain-reconciling'; request.then(() => reconcileUncertainWrite(uid,reconcileGeneration,written)); } return { ok:false, reason:'cloud-save-uncertain' }; } if (!isActiveIdentity(uid, generation) || result.error) return { ok:false, reason:result.error ? 'cloud-save-failed' : 'identity-changed' }; return { ok:true, result:result.value }; });
+    return Promise.race([request, timeout]).then((result) => {
+      if (timer) global.clearTimeout(timer);
+      if (result.timeout) {
+        if (isActiveIdentity(uid,generation)) {
+          state.generation += 1;
+          if (rateTimer) global.clearTimeout(rateTimer);
+          rateTimer = null;
+          Object.freeze(written.payload.progress); Object.freeze(written.payload);
+          const attempt = {id:sessionId+':'+(++attemptSequence),uid,generation:state.generation,written:Object.freeze(written),outcome:null,recovery:null};
+          uncertainAttempt = attempt; state.writeUncertain = true; state.lastStatus = 'write-uncertain-awaiting-result';
+          request.then((outcome) => {
+            attempt.outcome = outcome;
+            if (uncertainAttempt !== attempt || !isActiveIdentity(uid,attempt.generation) || state.closing) return;
+            reconcileUncertainWrite(uid,attempt.generation).then((reconciled) => {
+              if (reconciled.ok && isActiveIdentity(uid,attempt.generation) && state.dirty && lateRecoveryBudget>0) {
+                // At most one automatic successor per external retry/lifecycle.
+                // Repeated slow failures cannot manufacture an endless timer chain.
+                lateRecoveryBudget -= 1;
+                const saved = !outcome.error && outcome.value && outcome.value.kind === 'saved';
+                scheduleRateFlush(saved?0:RECOVERY_COOLDOWN_MS);
+              }
+            });
+          });
+        }
+        return {ok:false,reason:'cloud-save-uncertain'};
+      }
+      if (!isActiveIdentity(uid,generation) || result.error) return {ok:false,reason:result.error?'cloud-save-failed':'identity-changed'};
+      return {ok:true,result:result.value};
+    });
   }
   function flush(reason, options) {
     // Reserve the single flight synchronously, before any promise yields.
@@ -235,12 +308,18 @@
   }
   async function performFlush(reason, options) {
     const opts = options || {};
+    if (!/^reconnect/.test(String(reason || ''))) lateRecoveryBudget = 1;
+    if (automaticRetryBlocked() && /^(safety-|reconnect)/.test(String(reason || ''))) return {ok:false,reason:'explicit-retry-required'};
     if (!state.ready && !state.closing && !state.suspended) await initialize();
     if (!state.ready) return { ok:false, skipped:true, reason:'cloud-not-ready', localOnly:true, guest:state.lastStatus === 'guest-cache-only' };
     if (state.applyingRemote) return { ok:false, skipped:true, reason:'restore-in-progress' };
     if (!state.dirty) return { ok:true, skipped:true, reason:'no-new-changes', onlineConfirmed:!!readRecord(RECEIPT_PREFIX,state.activeUid) };
     if (!persistPending(state.activeUid,state.remoteRevision)) return {ok:false,reason:'pending-snapshot-failed'};
-    if (state.writeUncertain) return { ok:false, skipped:true, reason:'cloud-save-uncertain' };
+    if (state.writeUncertain) {
+      const recovered = await reconcileUncertainWrite(state.activeUid,state.generation);
+      if (!recovered.ok) return {ok:false,skipped:true,reason:'cloud-save-uncertain'};
+      if (!state.dirty) return {ok:true,skipped:true,reason:state.lastStatus,onlineConfirmed:!!readRecord(RECEIPT_PREFIX,state.activeUid)};
+    }
     if (!global.navigator.onLine) return { ok:false, skipped:true, reason:'offline' };
     if (!opts.force && Date.now() - state.lastWriteAt < MIN_WRITE_INTERVAL_MS && !canBypassInterval(reason)) return { ok:true, skipped:true, reason:'minimum-interval' };
     const uid = state.activeUid; const generation = state.generation; const runtime = await ensureRuntime().catch(() => null);
@@ -267,6 +346,8 @@
   function markDirty(reason) { if (state.applyingRemote) return { ok:true, skipped:true, reason:'applying-remote' }; state.changeSequence += 1; state.dirty = true; state.lastStatus = `dirty:${String(reason || 'state-change').slice(0,48)}`; const persisted = !state.activeUid || persistPending(state.activeUid,state.ready ? state.remoteRevision : null); return { ok:persisted, dirty:true, localOnly:!state.ready }; }
   function initializeAuthenticatedSync(runtime, user) {
     const uid = user && user.uid; if (!uid) return Promise.resolve({ ok:false, reason:'guest' }); if (state.syncPromise) return boundedRead(state.syncPromise);
+    if (state.writeUncertain) return reconcileUncertainWrite(uid,state.generation);
+    if (serverWrites.has(uid)) return Promise.resolve({ok:false,reason:'cloud-save-uncertain'});
     const generation = state.generation;
     const receipt = readRecord(RECEIPT_PREFIX,uid);
     if (getCacheOwner() === uid && receipt && !samePayload(buildLocalPayload(),receipt.payload)) persistPending(uid,receipt.revision);
@@ -291,7 +372,7 @@
       else { const owner = getCacheOwner(); if (owner && owner !== uid) { state.lastStatus = 'local-cache-owned-by-other-user'; return { ok:false, reason:'local-cache-owned-by-other-user' }; } const pending = readPending(uid); if (pending && Number(pending.baseRevision) > 0) { state.lastStatus = 'server-document-missing'; return {ok:false,reason:state.lastStatus}; } if (!buildLocalPayload()) { state.lastStatus = 'local-cache-invalid'; return { ok:false, reason:'local-cache-invalid' }; } state.hasRemoteDocument = false; state.remoteRevision = 0; state.dirty = true; state.writeUncertain = false; state.ready = true; state.lastStatus = 'initial-local-cache'; }
       scheduleSafetyFlush(); return { ok:true, status:state.lastStatus };
     })();
-    const handledTask = task.catch(() => { if (isActiveIdentity(uid,generation)) state.lastStatus = 'cloud-unavailable'; return { ok:false, reason:'cloud-unavailable' }; }).finally(() => { if (state.syncPromise === handledTask) state.syncPromise = null; });
+    const handledTask = task.catch((error) => { if (isActiveIdentity(uid,generation)) { state.lastErrorCode = safeWriteErrorCode(error); state.lastStatus = error && error.code === 'resource-exhausted' ? 'cloud-read-budget-exhausted' : 'cloud-unavailable'; } return { ok:false, reason:'cloud-unavailable' }; }).finally(() => { if (state.syncPromise === handledTask) state.syncPromise = null; });
     state.syncPromise = handledTask;
     return boundedRead(handledTask);
   }
@@ -331,6 +412,8 @@
     if (state.safetyTimer) global.clearInterval(state.safetyTimer);
     state.authUnsubscribe = null;
     state.safetyTimer = null;
+    if (rateTimer) global.clearTimeout(rateTimer);
+    rateTimer = null;
   }
   function suspend() {
     state.suspended = true;
@@ -353,6 +436,34 @@
     flush('pagehide',{ force:true }).finally(() => { if (epoch === lifecycleEpoch) suspend(); });
   });
   global.addEventListener('pageshow',(event) => { if (event.persisted) { lifecycleEpoch += 1; suspend(); state.closing = false; initialize(); } });
-  global.addEventListener('online',() => { if (!state.suspended && !state.closing) ensureRuntime().then((runtime) => { if (!state.authUnsubscribe) { state.initializationPromise = null; return initialize(); } return synchronizeCurrentUser(runtime,runtime.auth.currentUser); }).catch(() => { state.lastStatus = 'cache-only-runtime-unavailable'; }); });
+  function scheduleRateFlush(minDelay) {
+    if (rateTimer || state.closing || state.suspended || !state.ready || !state.dirty || !global.navigator.onLine) return;
+    const uid=state.activeUid,generation=state.generation;
+    const delay=Math.max(Number(minDelay)||0,MIN_WRITE_INTERVAL_MS-(Date.now()-state.lastWriteAt),0);
+    rateTimer=global.setTimeout(() => {
+      rateTimer=null;
+      if (isActiveIdentity(uid,generation) && !state.closing && global.navigator.onLine) flush('reconnect-rate-ready');
+    },delay);
+  }
+  function reconnect() {
+    if (state.suspended || state.closing || !global.navigator.onLine) return Promise.resolve({ok:false,reason:'suspended-or-offline'});
+    if (reconnectPromise) return reconnectPromise;
+    if (automaticRetryBlocked()) return Promise.resolve({ok:false,reason:'explicit-retry-required'});
+    if (Date.now()<reconnectAfter) return Promise.resolve({ok:false,reason:'recovery-cooldown'});
+    reconnectAfter=Date.now()+RECOVERY_COOLDOWN_MS;
+    lateRecoveryBudget=1;
+    const generation=state.generation;
+    const task=ensureRuntime().then(async (runtime) => {
+      if (state.closing || state.suspended || generation!==state.generation) return {ok:false,reason:'identity-changed'};
+      const result=state.authUnsubscribe?await synchronizeCurrentUser(runtime,runtime.auth.currentUser):await initialize();
+      if (!result.ok || state.closing || state.suspended || !state.ready || !state.dirty) return result;
+      const outcome=await flush('reconnect');
+      if (outcome.reason==='minimum-interval') scheduleRateFlush();
+      return outcome;
+    }).catch(() => ({ok:false,reason:'cloud-unavailable'})).finally(() => { if(reconnectPromise===task) reconnectPromise=null; });
+    reconnectPromise=task;
+    return task;
+  }
+  global.addEventListener('online',reconnect);
   global.GuerraDeiSassiCloudSave = Object.freeze({ initialize, markDirty, flush, describeOutcome, status:() => Object.assign({},state) });
 })(window);

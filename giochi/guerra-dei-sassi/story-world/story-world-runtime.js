@@ -1,6 +1,85 @@
 (() => {
 'use strict';
 
+// AUDIO-11: initialized before every legacy cue/unlock caller (no late-const TDZ).
+const perlaUnifiedChildAudioPolicyV1 = {muted:false, master:1, effects:1, scalar:1, updatedAt:0};
+const perlaUnifiedLifecycleStateV648 = { paused:false, disposed:false, lastReason:null, lastCheckpoint:null };
+const perlaUnifiedAudioControlV2 = { hidden:document.hidden===true, epoch:0, lastGestureAt:-Infinity, outputs:new Map(), native:new WeakMap() };
+function perlaUnifiedAudioAllowedV2(){
+    return !perlaUnifiedChildAudioPolicyV1.muted && perlaUnifiedChildAudioPolicyV1.scalar>0 && !perlaUnifiedLifecycleStateV648.paused && !perlaUnifiedLifecycleStateV648.disposed && !perlaUnifiedAudioControlV2.hidden;
+}
+function perlaUnifiedAudioGainV2(output){
+    const value=perlaUnifiedAudioAllowedV2()?(output.kind==='weather'?.72*perlaUnifiedChildAudioPolicyV1.scalar:1):0;
+    try{
+        output.gain.gain.cancelScheduledValues(output.context.currentTime);
+        // Zero must be immediate, including already scheduled intro envelopes.
+        output.gain.gain.setValueAtTime(value,output.context.currentTime);
+    }catch(err){ try{ output.gain.gain.value=value; }catch(ignored){} }
+}
+function perlaUnifiedAudioOwnsV2(context){
+    for(const output of perlaUnifiedAudioControlV2.outputs.values()) if(output.context===context) return true;
+    return false;
+}
+function perlaUnifiedRequestAudioStateV2(context){
+    if(!context || context.state==='closed') return;
+    const wantsRunning=perlaUnifiedAudioAllowedV2()&&perlaUnifiedAudioOwnsV2(context);
+    const method=wantsRunning?'resume':'suspend';
+    if(context.state===(wantsRunning?'running':'suspended') || typeof context[method]!=='function') return;
+    let record=perlaUnifiedAudioControlV2.native.get(context);
+    if(!record){ record={epoch:-1,resume:null,suspend:null,resumeCount:0,suspendCount:0}; perlaUnifiedAudioControlV2.native.set(context,record); }
+    if(record.epoch!==perlaUnifiedAudioControlV2.epoch){ record.epoch=perlaUnifiedAudioControlV2.epoch; record.resumeCount=0; record.suspendCount=0; }
+    // Per context: one unresolved operation of each kind, at most two calls of
+    // each kind per meaningful transition. Rejection never starts an auto retry.
+    if(record[method] || record[method+'Count']>=2) return;
+    record[method+'Count']++;
+    const token={}; record[method]=token;
+    let request;
+    try{ request=context[method](); }
+    catch(err){ record[method]=null; return; }
+    Promise.resolve(request).then(()=>{
+        if(record[method]!==token) return;
+        record[method]=null;
+        // Native completion cannot open output, resume input or own a scheduler.
+        // An opposite operation may have completed late: converge within budget.
+        perlaUnifiedRequestAudioStateV2(context);
+    },()=>{ if(record[method]===token) record[method]=null; }).catch(()=>{});
+}
+function perlaUnifiedSyncAudioV2(){
+    for(const output of perlaUnifiedAudioControlV2.outputs.values()) perlaUnifiedAudioGainV2(output);
+    for(const output of perlaUnifiedAudioControlV2.outputs.values()) perlaUnifiedRequestAudioStateV2(output.context);
+}
+function perlaUnifiedRegisterAudioOutputV2(context,gain,kind){
+    const old=perlaUnifiedAudioControlV2.outputs.get(kind);
+    if(old && old.context!==context){
+        try{ old.gain.gain.cancelScheduledValues(old.context.currentTime); old.gain.gain.setValueAtTime(0,old.context.currentTime); }catch(err){ try{old.gain.gain.value=0;}catch(ignored){} }
+    }
+    const output={context,gain,kind};
+    perlaUnifiedAudioControlV2.outputs.set(kind,output);
+    perlaUnifiedAudioGainV2(output);
+    if(old && old.context!==context) perlaUnifiedRequestAudioStateV2(old.context);
+    return gain;
+}
+function perlaUnifiedSetAudioReasonV2(reason,value){
+    const target=reason==='hidden'?perlaUnifiedAudioControlV2:perlaUnifiedLifecycleStateV648;
+    if(perlaUnifiedLifecycleStateV648.disposed || target[reason]===!!value) return;
+    target[reason]=!!value;
+    perlaUnifiedAudioControlV2.epoch++;
+    perlaUnifiedSyncAudioV2();
+}
+function perlaUnifiedAudioGestureV2(event){
+    if(!event || !event.isTrusted || !perlaUnifiedAudioAllowedV2()) return;
+    const now=Date.now();
+    if(now-perlaUnifiedAudioControlV2.lastGestureAt<1000) return;
+    perlaUnifiedAudioControlV2.lastGestureAt=now;
+    perlaUnifiedAudioControlV2.epoch++;
+    perlaUnifiedSyncAudioV2();
+}
+document.addEventListener('visibilitychange',()=>perlaUnifiedSetAudioReasonV2('hidden',document.hidden===true),{passive:true});
+window.addEventListener('pagehide',()=>perlaUnifiedSetAudioReasonV2('hidden',true),{passive:true});
+window.addEventListener('pageshow',()=>perlaUnifiedSetAudioReasonV2('hidden',document.hidden===true),{passive:true});
+document.addEventListener('pointerdown',perlaUnifiedAudioGestureV2,{capture:true,passive:true});
+document.addEventListener('keydown',perlaUnifiedAudioGestureV2,{capture:true,passive:true});
+
 const canvas = document.getElementById('screen');
 function isCoarseViewport(){
     return (navigator.maxTouchPoints||0)>0 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
@@ -27774,9 +27853,10 @@ function perlaRtpPass2PlayActionSoundV345(kind, options){
     let ac=null;
     try{ ac=(typeof perlaWeatherAudioContextV193==='function') ? perlaWeatherAudioContextV193() : null; }catch(err){ ac=null; }
     if(!ac) return false;
-    try{ if(ac.state==='suspended' && typeof ac.resume==='function') ac.resume(); }catch(err){}
+    perlaUnifiedRequestAudioStateV2(ac);
     const master=perlaWeatherAudioStateV193&&perlaWeatherAudioStateV193.master||null;
-    const out=master||ac.destination;
+    if(!master) return false;
+    const out=master;
     const t=ac.currentTime+.01;
     p.freq.forEach((freq,i)=>{
         const osc=ac.createOscillator();
@@ -31737,24 +31817,31 @@ function perlaIntroComicPanelsV363(){
     const panels=perlaIntroTourStateV363.storyboard&&Array.isArray(perlaIntroTourStateV363.storyboard.panels)?perlaIntroTourStateV363.storyboard.panels.slice():[];
     return panels.sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
 }
-const perlaUnifiedChildAudioPolicyV1 = {muted:false, master:1, effects:1, scalar:1, updatedAt:0};
 function perlaUnifiedChildAudioScalarV1(){
     return perlaUnifiedChildAudioPolicyV1.muted ? 0 : Math.max(0, Math.min(1, Number(perlaUnifiedChildAudioPolicyV1.scalar)||0));
 }
-const perlaIntroAudioStateV364 = {ctx:null, lastCueKey:null, lastCueAt:0};
+const perlaIntroAudioStateV364 = {ctx:null, gate:null, lastCueKey:null, lastCueAt:0};
 function perlaIntroAudioContextV364(){
     if(!PERLA_V364_INTRO_AUDIO_CUES_SAFE) return null;
     const Ctx=window.AudioContext||window.webkitAudioContext;
     if(!Ctx) return null;
-    if(!perlaIntroAudioStateV364.ctx) perlaIntroAudioStateV364.ctx=new Ctx();
-    const ctx=perlaIntroAudioStateV364.ctx;
-    if(ctx && ctx.state==='suspended'){
-        try{ ctx.resume(); }catch(err){}
+    if(!perlaIntroAudioStateV364.ctx){
+        let created;
+        try{
+            created=new Ctx();
+            const gate=created.createGain();
+            perlaUnifiedRegisterAudioOutputV2(created,gate,'intro');
+            gate.connect(created.destination);
+            perlaIntroAudioStateV364.gate=gate;
+            perlaIntroAudioStateV364.ctx=created;
+        }catch(err){ try{if(created&&created.close)Promise.resolve(created.close()).catch(()=>{});}catch(ignored){} return null; }
     }
+    const ctx=perlaIntroAudioStateV364.ctx;
+    perlaUnifiedRequestAudioStateV2(ctx);
     return ctx;
 }
 function perlaIntroAudioToneV364(ctx, freq, duration, gain, type, delay){
-    if(!ctx) return;
+    if(!ctx || ctx!==perlaIntroAudioStateV364.ctx || !perlaIntroAudioStateV364.gate) return;
     const unifiedScalar=perlaUnifiedChildAudioScalarV1();
     if(unifiedScalar<=0) return;
     const start=ctx.currentTime+(Number(delay)||0);
@@ -31766,12 +31853,12 @@ function perlaIntroAudioToneV364(ctx, freq, duration, gain, type, delay){
     amp.gain.setValueAtTime(0.0001, start);
     amp.gain.exponentialRampToValueAtTime(Math.max(0.0002, (Number(gain)||0.025)*unifiedScalar), start+.018);
     amp.gain.exponentialRampToValueAtTime(0.0001, start+dur);
-    osc.connect(amp).connect(ctx.destination);
+    osc.connect(amp).connect(perlaIntroAudioStateV364.gate);
     osc.start(start);
     osc.stop(start+dur+.035);
 }
 function perlaIntroAudioNoiseV364(ctx, duration, gain, delay){
-    if(!ctx) return;
+    if(!ctx || ctx!==perlaIntroAudioStateV364.ctx || !perlaIntroAudioStateV364.gate) return;
     const unifiedScalar=perlaUnifiedChildAudioScalarV1();
     if(unifiedScalar<=0) return;
     const dur=Math.max(.05, Number(duration)||.2);
@@ -31787,7 +31874,7 @@ function perlaIntroAudioNoiseV364(ctx, duration, gain, delay){
     amp.gain.setValueAtTime(Math.max(0.0002, (Number(gain)||0.025)*unifiedScalar), start);
     amp.gain.exponentialRampToValueAtTime(0.0001, start+dur);
     src.buffer=buffer;
-    src.connect(filt).connect(amp).connect(ctx.destination);
+    src.connect(filt).connect(amp).connect(perlaIntroAudioStateV364.gate);
     src.start(start);
 }
 function perlaIntroComicPlayCueV364(panel, source){
@@ -57762,10 +57849,14 @@ function perlaWeatherAudioContextV193(){
     if(perlaWeatherAudioStateV193.ctx) return perlaWeatherAudioStateV193.ctx;
     const AC=perlaAudioContextCtorV193();
     if(!AC){ perlaWeatherAudioStateV193.supported=false; return null; }
-    const ac=new AC();
+    let ac,master;
+    try{
+        ac=new AC(); master=ac.createGain();
+        perlaUnifiedRegisterAudioOutputV2(ac,master,'weather');
+        master.connect(ac.destination);
+    }catch(err){ perlaWeatherAudioStateV193.supported=false; try{if(ac&&ac.close)Promise.resolve(ac.close()).catch(()=>{});}catch(ignored){} return null; }
     perlaWeatherAudioStateV193.supported=true;
     perlaWeatherAudioStateV193.ctx=ac;
-    const master=ac.createGain(); master.gain.value=.72*perlaUnifiedChildAudioScalarV1(); master.connect(ac.destination);
 
     const rainGain=ac.createGain(); rainGain.gain.value=0;
     const windGain=ac.createGain(); windGain.gain.value=0;
@@ -57848,7 +57939,7 @@ function perlaUnlockWeatherAudioV193(reason){
     const ac=perlaWeatherAudioContextV193();
     if(!ac) return collectPerlaEnvironmentDebugV188();
     perlaStartRainAudioLoopV193();
-    try{ if(ac.state==='suspended') ac.resume(); }catch(e){}
+    perlaUnifiedRequestAudioStateV2(ac);
     perlaWeatherAudioStateV193.unlocked=true;
     perlaWeatherAudioStateV193.enabled=true;
     perlaWeatherAudioStateV193.ambienceEnabled=true;
@@ -74811,57 +74902,35 @@ window.__UNIFIED_CHILD_SAVEGAME_FILE_PORT__ = Object.freeze({
         };
     }
 });
-// IOS-09: autoplay may remain pending beyond the entry command timeout. Keep
-// at most one resume request per context; its completion never controls entry.
-const perlaUnifiedPendingAudioResumesV1 = new WeakSet();
+// IOS-09 entry contract retained; AUDIO-11 shares bounded native requests with
+// cue/unlock and lifecycle paths. Output policy is independent of native ACK.
 function perlaUnifiedRequestAudioResumeV1(context){
-    if(context.state!=='suspended'||!context.resume||perlaUnifiedPendingAudioResumesV1.has(context)) return;
-    perlaUnifiedPendingAudioResumesV1.add(context);
-    let request;
-    try{ request=context.resume(); }
-    catch(err){ perlaUnifiedPendingAudioResumesV1.delete(context); return; }
-    Promise.resolve(request).then(()=>{
-        // A late native resume must not outlive a newer mute/pause/disposal.
-        const noLongerOwned=context!==perlaWeatherAudioStateV193.ctx&&context!==perlaIntroAudioStateV364.ctx;
-        if(noLongerOwned||perlaUnifiedChildAudioPolicyV1.muted||perlaUnifiedLifecycleStateV648.paused||perlaUnifiedLifecycleStateV648.disposed){
-            try{ return context.suspend?context.suspend():null; }catch(err){}
-        }
-    }).catch(()=>{}).finally(()=>perlaUnifiedPendingAudioResumesV1.delete(context));
+    perlaUnifiedRequestAudioStateV2(context);
 }
 window.__UNIFIED_CHILD_AUDIO_PORT__ = Object.freeze({
     async applyPolicy(policy){
         const next=policy&&typeof policy==='object'?policy:{};
+        const previous=[perlaUnifiedChildAudioPolicyV1.muted,perlaUnifiedChildAudioPolicyV1.master,perlaUnifiedChildAudioPolicyV1.effects].join(':');
         perlaUnifiedChildAudioPolicyV1.muted=!!next.muted;
         perlaUnifiedChildAudioPolicyV1.master=Math.max(0,Math.min(1,Number(next.master)||0));
         perlaUnifiedChildAudioPolicyV1.effects=Math.max(0,Math.min(1,Number(next.effects)||0));
         perlaUnifiedChildAudioPolicyV1.scalar=perlaUnifiedChildAudioPolicyV1.muted?0:perlaUnifiedChildAudioPolicyV1.master*perlaUnifiedChildAudioPolicyV1.effects;
         perlaUnifiedChildAudioPolicyV1.updatedAt=Date.now();
-        const ctx=perlaWeatherAudioStateV193.ctx;
-        const master=perlaWeatherAudioStateV193.master;
-        if(ctx&&master){
-            const now=ctx.currentTime;
-            try{ master.gain.cancelScheduledValues(now); master.gain.setTargetAtTime(.72*perlaUnifiedChildAudioScalarV1(),now,.035); }
-            catch(err){ master.gain.value=.72*perlaUnifiedChildAudioScalarV1(); }
-        }
-        const contexts=[perlaWeatherAudioStateV193.ctx,perlaIntroAudioStateV364.ctx].filter(Boolean);
-        const lifecyclePaused=document.documentElement.dataset.unifiedChildPaused==='true';
-        if(perlaUnifiedChildAudioPolicyV1.muted){
-            await Promise.all(contexts.map(context=>{ try{return context.state==='running'&&context.suspend?context.suspend():null;}catch(err){return null;} }));
-        }else if(!lifecyclePaused){
-            // ACK confirms policy application, not autoplay permission. Muting
-            // still awaits suspension: intro cues do not share weather's gain.
-            contexts.forEach(perlaUnifiedRequestAudioResumeV1);
-        }
+        const current=[perlaUnifiedChildAudioPolicyV1.muted,perlaUnifiedChildAudioPolicyV1.master,perlaUnifiedChildAudioPolicyV1.effects].join(':');
+        if(current!==previous) perlaUnifiedAudioControlV2.epoch++;
+        // Both output gates are applied before ACK, regardless of native state.
+        perlaUnifiedSyncAudioV2();
         return this.status();
     },
     suspend(){
-        const contexts=[perlaWeatherAudioStateV193.ctx,perlaIntroAudioStateV364.ctx].filter(Boolean);
-        return Promise.all(contexts.map(ctx=>{ try{return ctx.state==='running'&&ctx.suspend?ctx.suspend():null;}catch(err){return null;} })).then(()=>this.status());
+        perlaUnifiedSetAudioReasonV2('paused',true);
+        perlaUnifiedSyncAudioV2();
+        return this.status();
     },
     resume(){
-        if(perlaUnifiedChildAudioPolicyV1.muted) return Promise.resolve(this.status());
-        const contexts=[perlaWeatherAudioStateV193.ctx,perlaIntroAudioStateV364.ctx].filter(Boolean);
-        return Promise.all(contexts.map(ctx=>{ try{return ctx.state==='suspended'&&ctx.resume?ctx.resume():null;}catch(err){return null;} })).then(()=>this.status());
+        perlaUnifiedSetAudioReasonV2('paused',false);
+        perlaUnifiedSyncAudioV2();
+        return this.status();
     },
     status(){
         const weatherContext=perlaWeatherAudioStateV193.ctx;
@@ -74872,6 +74941,8 @@ window.__UNIFIED_CHILD_AUDIO_PORT__ = Object.freeze({
             weatherContextState:weatherContext?weatherContext.state:'uninitialized',
             introContextState:introContext?introContext.state:'uninitialized',
             weatherMasterGain:perlaWeatherAudioStateV193.master?perlaWeatherAudioStateV193.master.gain.value:null,
+            introGateGain:perlaIntroAudioStateV364.gate?perlaIntroAudioStateV364.gate.gain.value:null,
+            outputReasons:{paused:perlaUnifiedLifecycleStateV648.paused,hidden:perlaUnifiedAudioControlV2.hidden,disposed:perlaUnifiedLifecycleStateV648.disposed},
             weatherMix:{
                 enabled:!!perlaWeatherAudioStateV193.enabled,
                 ambienceEnabled:!!perlaWeatherAudioStateV193.ambienceEnabled,
@@ -74886,17 +74957,16 @@ window.__UNIFIED_CHILD_AUDIO_PORT__ = Object.freeze({
         };
     }
 });
-const perlaUnifiedLifecycleStateV648 = { paused:false, disposed:false, lastReason:null, lastCheckpoint:null };
 window.__UNIFIED_CHILD_LIFECYCLE_PORT__ = Object.freeze({
     pause(reason){
-        perlaUnifiedLifecycleStateV648.paused=true;
+        perlaUnifiedSetAudioReasonV2('paused',true);
         perlaUnifiedLifecycleStateV648.lastReason=String(reason||'integration_pause');
         if(typeof perlaRtpActionResetMovementOnUiLockV350==='function') perlaRtpActionResetMovementOnUiLockV350('integration_pause_v648');
         if(typeof perlaRtpPass2MaybeAutoSaveContinuityV359==='function') perlaUnifiedLifecycleStateV648.lastCheckpoint=perlaRtpPass2MaybeAutoSaveContinuityV359('integration_pause_v648', true);
         return {ok:true, paused:true, reason:perlaUnifiedLifecycleStateV648.lastReason};
     },
     resume(reason){
-        perlaUnifiedLifecycleStateV648.paused=false;
+        perlaUnifiedSetAudioReasonV2('paused',false);
         perlaUnifiedLifecycleStateV648.lastReason=String(reason||'integration_resume');
         if(typeof perlaRtpPauseMenuRefreshWorldViewportV650==='function') perlaRtpPauseMenuRefreshWorldViewportV650(perlaUnifiedLifecycleStateV648.lastReason);
         return {ok:true, paused:false, reason:perlaUnifiedLifecycleStateV648.lastReason};
@@ -74909,7 +74979,7 @@ window.__UNIFIED_CHILD_LIFECYCLE_PORT__ = Object.freeze({
         return {ok:confirmed, localCheckpointConfirmed:confirmed, reason:confirmed?perlaUnifiedLifecycleStateV648.lastReason:String(checkpoint&&checkpoint.reason||'local_checkpoint_unconfirmed'), checkpoint:checkpoint||null};
     },
     dispose(reason){
-        perlaUnifiedLifecycleStateV648.disposed=true;
+        perlaUnifiedSetAudioReasonV2('disposed',true);
         perlaUnifiedLifecycleStateV648.lastReason=String(reason||'integration_dispose');
         if(typeof perlaRtpActionResetMovementOnUiLockV350==='function') perlaRtpActionResetMovementOnUiLockV350('integration_dispose_v648');
         return {ok:true, disposed:true, reason:perlaUnifiedLifecycleStateV648.lastReason};

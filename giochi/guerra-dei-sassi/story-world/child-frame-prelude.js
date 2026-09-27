@@ -203,20 +203,20 @@
     return Promise.resolve(port[method](reason));
   }
 
-  async function suspendAudio() {
+  function suspendAudio() {
     const port = global.__UNIFIED_CHILD_AUDIO_PORT__;
-    if (port && typeof port.suspend === 'function') return Promise.resolve(port.suspend());
-    return Promise.all(Array.from(state.audioContexts).map((context) => {
-      try { return context.state === 'running' && context.suspend ? context.suspend() : null; } catch (error) { return null; }
-    }));
+    if (port && typeof port.suspend === 'function') { try { Promise.resolve(port.suspend()).catch(() => {}); } catch (error) {} return; }
+    state.audioContexts.forEach((context) => {
+      try { if (context.state === 'running' && context.suspend) Promise.resolve(context.suspend()).catch(() => {}); } catch (error) {}
+    });
   }
 
-  async function resumeAudio() {
+  function resumeAudio() {
     const port = global.__UNIFIED_CHILD_AUDIO_PORT__;
-    if (port && typeof port.resume === 'function') return Promise.resolve(port.resume());
-    return Promise.all(Array.from(state.audioContexts).map((context) => {
-      try { return context.state === 'suspended' && context.resume ? context.resume() : null; } catch (error) { return null; }
-    }));
+    if (port && typeof port.resume === 'function') { try { Promise.resolve(port.resume()).catch(() => {}); } catch (error) {} return; }
+    state.audioContexts.forEach((context) => {
+      try { if (context.state === 'suspended' && context.resume) Promise.resolve(context.resume()).catch(() => {}); } catch (error) {}
+    });
   }
 
   async function pause(reason) {
@@ -225,14 +225,14 @@
     suspendSchedulers();
     document.documentElement.dataset.unifiedChildPaused = 'true';
     await callLifecycle('pause', reason);
-    await suspendAudio();
+    suspendAudio();
     return Object.assign({ ok: true }, schedulerStatus());
   }
 
   async function resume(reason) {
     if (!state.paused) return Object.assign({ ok: true, alreadyRunning: true }, schedulerStatus());
     await callLifecycle('resume', reason);
-    await resumeAudio();
+    resumeAudio();
     state.paused = false;
     document.documentElement.dataset.unifiedChildPaused = 'false';
     resumeSchedulers();
@@ -251,7 +251,7 @@
     state.timeouts.clear();
     state.intervals.clear();
     state.workers.forEach((worker) => { try { worker.terminate(); } catch (error) {} });
-    state.audioContexts.forEach((context) => { try { if (context.close) context.close(); } catch (error) {} });
+    state.audioContexts.forEach((context) => { try { if (context.close) Promise.resolve(context.close()).catch(() => {}); } catch (error) {} });
     state.workers.clear();
     state.audioContexts.clear();
     return { ok: true, disposed: true };
