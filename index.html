@@ -3972,6 +3972,17 @@ html.wildu-ios-card-compositing-v1 #ondemand-list > .wildu-adventure-card [style
     backdrop-filter: none !important;
 }
 
+/* Covered travel-list filters remain expensive while a modal scrolls.
+   Keep the existing platform/gesture profiles separate for legacy parsers.
+   Only the underlay changes; modal backgrounds and input owners are intact. */
+@supports selector(:has(*)) {
+    html:has(#od-details-modal.is-visible, #wildu-date-options-modal.is-visible, #wildu-related-modal.is-visible)
+    :is(#event-list, #openday-list, #payday-list, #ondemand-list) > .wildu-adventure-card [style*="backdrop-filter"] {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+}
+
 /* WILDU PERF P4 - containment progressivo, con fallback CSS nativo. */
 @supports (content-visibility: auto) {
     #event-list > .wildu-adventure-card:not(:focus-within),
@@ -5459,6 +5470,17 @@ html.wildu-detail-transition-busy body {
     font-size: 12.5px;
     font-weight: 900;
     letter-spacing: .1px;
+}
+
+/* Give the complete date its own row; only overflowing text is fitted. */
+:is(#wildu-date-options-modal, #wildu-related-modal) .wildu-soft-card > .wildu-soft-card-date {
+    grid-column: 1 / -1;
+    justify-self: start;
+    white-space: nowrap;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-left: 4px;
+    padding-right: 4px;
 }
 
 .wildu-soft-actions {
@@ -18132,7 +18154,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.140';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.141';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -29694,6 +29716,46 @@ function resetWilduOverlayScrollPosition(root) {
     } catch (e) {}
 }
 
+function wilduFitSoftModalDates(modal) {
+    if (!modal || !modal.isConnected ||
+        (modal.id !== 'wildu-date-options-modal' && modal.id !== 'wildu-related-modal') ||
+        !modal.classList.contains('is-visible') || !modal.clientWidth) return false;
+    const badges = modal.querySelectorAll('.wildu-soft-card > .wildu-soft-card-date');
+    badges.forEach(function (badge) { badge.style.removeProperty('font-size'); });
+    badges.forEach(function (badge) {
+        let fontSize = parseFloat(window.getComputedStyle(badge).fontSize);
+        if (!Number.isFinite(fontSize) || !badge.clientWidth) return;
+        for (let step = 0; step < 8 && fontSize > 10 && badge.scrollWidth > badge.clientWidth + 1; step++) {
+            fontSize = Math.max(10, fontSize - Math.max(.5, (fontSize - 10) / (8 - step)));
+            badge.style.fontSize = fontSize + 'px';
+        }
+    });
+    return true;
+}
+
+// Width-only fitting: browser chrome height changes cannot schedule scroll work.
+let WILDU_SOFT_DATE_FIT_WIDTH = window.innerWidth;
+let WILDU_SOFT_DATE_FIT_FRAME = null;
+function wilduScheduleSoftDateFitForWidthChange() {
+    if (window.innerWidth === WILDU_SOFT_DATE_FIT_WIDTH || WILDU_SOFT_DATE_FIT_FRAME !== null) return;
+    WILDU_SOFT_DATE_FIT_FRAME = requestAnimationFrame(function () {
+        WILDU_SOFT_DATE_FIT_FRAME = null;
+        const width = window.innerWidth;
+        if (width === WILDU_SOFT_DATE_FIT_WIDTH) return;
+        WILDU_SOFT_DATE_FIT_WIDTH = width;
+        ['wildu-date-options-modal', 'wildu-related-modal'].forEach(function (id) {
+            wilduFitSoftModalDates(document.getElementById(id));
+        });
+    });
+}
+window.addEventListener('resize', wilduScheduleSoftDateFitForWidthChange, { passive: true });
+window.addEventListener('pageshow', function () {
+    WILDU_SOFT_DATE_FIT_WIDTH = window.innerWidth;
+    ['wildu-date-options-modal', 'wildu-related-modal'].forEach(function (id) {
+        wilduFitSoftModalDates(document.getElementById(id));
+    });
+}, { passive: true });
+
 function openWilduSoftModalAtTop(modal) {
     if (!modal) return false;
 
@@ -29708,6 +29770,7 @@ function openWilduSoftModalAtTop(modal) {
 
     requestAnimationFrame(function () {
         resetWilduOverlayScrollPosition(modal);
+        wilduFitSoftModalDates(modal);
     });
     window.setTimeout(function () {
         resetWilduOverlayScrollPosition(modal);
@@ -36082,10 +36145,10 @@ function wilduBuildSoftCardHtml(ref, extraMeta) {
         : '<div class="wildu-soft-card-fallback" aria-hidden="true">' + wilduGetDetailTypeIcon(ref.type) + '</div>';
     const type = wilduGetDetailTypeLabel(ref.type);
     const date = ref.date || 'Data da definire';
+    const dateBadge = '<span class="wildu-soft-card-date">📅 ' + escapeWilduHtml(date) + '</span>';
     const place = ref.region || ref.place || '';
     const meta = [
         '<span class="wildu-soft-type-pill">' + escapeWilduHtml(type) + '</span>',
-        '<span class="wildu-soft-card-date">📅 ' + escapeWilduHtml(date) + '</span>',
         place ? '<span>· ' + escapeWilduHtml(place) + '</span>' : '',
         extraMeta ? '<span>· ' + escapeWilduHtml(extraMeta) + '</span>' : ''
     ].filter(Boolean).join('');
@@ -36097,6 +36160,7 @@ function wilduBuildSoftCardHtml(ref, extraMeta) {
                 '<span class="wildu-soft-card-title">' + escapeWilduHtml(ref.title) + '</span>' +
                 '<span class="wildu-soft-card-meta">' + meta + '</span>' +
             '</span>' +
+            dateBadge +
         '</button>';
 }
 
