@@ -5792,6 +5792,15 @@ html.wildu-detail-transition-busy body {
     transition: opacity .24s ease, transform .24s cubic-bezier(.4,0,.2,1) !important;
 }
 
+/* Android category swipe: keep directional feedback without backdrop sampling.
+   This platform marker only styles these two transient gesture overlays. */
+html.wildu-android-travel-swipe-lite .wildu-travel-swipe-preview,
+html.wildu-android-travel-swipe-lite .wildu-travel-swipe-ghost {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 0 3px 10px rgba(0,0,0,.28);
+}
+
 .wildu-travel-swipe-ghost-kicker {
     color: var(--w-gold);
     font-size: 10px;
@@ -6527,6 +6536,22 @@ html.wildu-detail-transition-busy body {
     overflow-wrap: anywhere;
 }
 
+#wildu-booking-contact-exit,
+#custom-booking-modal button[onclick="closeCustomBooking()"],
+#custom-booking-modal button[onclick="sendCustomBooking()"] {
+    font-family: inherit;
+    font-size: 16px;
+    line-height: 1.35;
+    min-height: 48px;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#custom-booking-modal button[onclick="closeCustomBooking()"] {
+    min-width: max-content;
+}
+
 .wildu-program-confirm-overlay {
     z-index: 12020;
     padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
@@ -6769,7 +6794,7 @@ html.wildu-detail-transition-busy body {
         <p style="margin:0; color:#d8d8d8; line-height:1.5;">Vuoi chiedere subito informazioni sulla prenotazione appena confermata?</p>
         <div class="wildu-booking-contact-actions">
             <button id="wildu-booking-contact-open" type="button" class="btn-book">Richiedi info sulla tua prenotazione</button>
-            <button id="wildu-booking-contact-exit" type="button" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:700; cursor:pointer;">Esci</button>
+            <button id="wildu-booking-contact-exit" type="button" style="padding:12px; border:1px solid #555; border-radius:8px; background:#292929; color:#fff; font-weight:700; cursor:pointer;">ATTENDI DI ESSERE RICONTATTO (max 12h)</button>
         </div>
     </div>
 </div>
@@ -18074,7 +18099,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.134';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.135';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -41191,6 +41216,8 @@ if (profKeyEl) {
     const WILDU_SCREEN_WAKE_LOCK_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED = true;
+    // Android moves only the small directional overlays, not the entire tall list.
+    const WILDU_ANDROID_TRAVEL_SWIPE_LITE = wilduIsAndroidClientDevice();
     const WILDU_TRAVEL_TAB_SWIPE_SWITCH_DELAY_MS = 190;
     const WILDU_TRAVEL_TAB_SWIPE_FEEDBACK_MIN_MS = 360;
     const WILDU_TRAVEL_TAB_SWIPE_UNLOCK_MS = 680;
@@ -41995,7 +42022,7 @@ if (profKeyEl) {
     }
 
     function animateWilduTravelTabIncoming(targetTab, dx) {
-        if (WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED !== true) return;
+        if (WILDU_ANDROID_TRAVEL_SWIPE_LITE || WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED !== true) return;
         if (!WILDU_TRAVEL_NAV_TAB_IDS.includes(targetTab)) return;
 
         const el = document.getElementById('sec-' + targetTab);
@@ -42052,7 +42079,7 @@ if (profKeyEl) {
 
         setWilduTravelTabSwipePerformanceMode(true);
 
-        if (visualEl) {
+        if (visualEl && !WILDU_ANDROID_TRAVEL_SWIPE_LITE) {
             const damped = targetTab ? dx * .32 : dx * .12;
             const rotate = Math.max(-4.0, Math.min(4.0, dx / 96));
             const opacity = Math.max(.72, 1 - (absX / 560));
@@ -42124,6 +42151,7 @@ if (profKeyEl) {
     function installWilduTravelTabSwipe() {
         if (window.__wilduTravelTabSwipeInstalled) return;
         window.__wilduTravelTabSwipeInstalled = true;
+        document.documentElement.classList.toggle('wildu-android-travel-swipe-lite', WILDU_ANDROID_TRAVEL_SWIPE_LITE);
 
         document.addEventListener('touchstart', function (event) {
             if (wilduTravelTabSwipeTouch) {
@@ -42146,7 +42174,7 @@ if (profKeyEl) {
                 feedbackShownAt: 0,
                 target: event.target,
                 visualEl,
-                promoteVisual: !!visualEl && visualEl.scrollHeight <= Math.max(window.innerHeight * 4, 3200),
+                promoteVisual: !WILDU_ANDROID_TRAVEL_SWIPE_LITE && !!visualEl && visualEl.scrollHeight <= Math.max(window.innerHeight * 4, 3200),
                 frameId: null,
                 pendingFrame: null,
                 feedbackVisible: false,
@@ -42237,7 +42265,7 @@ if (profKeyEl) {
                 wilduPlayCardInteractionFeedback('swipe');
                 wilduTravelTabSwipeTransitionInProgress = true;
                 const visualEl = state.visualEl;
-                if (visualEl) {
+                if (visualEl && !WILDU_ANDROID_TRAVEL_SWIPE_LITE) {
                     const sign = dx >= 0 ? 1 : -1;
                     visualEl.style.transition = 'transform .20s cubic-bezier(.25,.85,.2,1), opacity .18s ease';
                     visualEl.style.transform = 'translateX(' + (sign * 86) + 'px) rotate(' + (sign * 3.1) + 'deg)';
