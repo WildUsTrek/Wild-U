@@ -18154,7 +18154,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.142';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.143';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -29891,8 +29891,11 @@ function wilduInstallPhysicalSwipe(card, options) {
         const absY = Math.abs(dy);
 
         if (!horizontal) {
-            if (absX < 12 && absY < 12) return;
-            if (absX > 18 && absX > absY * ratio) {
+            // Solo popup Android: acquisisci il primo move orizzontale utile.
+            // La decisione verticale conserva la zona iniziale di 12 px.
+            const shouldClaimHorizontal = (androidSoftAxisLock ? absX >= 6 : absX > 18) && absX > absY * ratio;
+            if (absX < 12 && absY < 12 && !shouldClaimHorizontal) return;
+            if (shouldClaimHorizontal) {
                 horizontal = true;
                 if (deferAndroidDetailPromotion) card.style.willChange = 'transform, opacity';
             } else if (absY > absX * 1.05) {
