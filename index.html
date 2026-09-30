@@ -18132,7 +18132,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.139';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.140';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -26098,7 +26098,9 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
     };
 
     WILDU_DETAIL_MAP_RUNTIME.check = checkNearViewport;
-    if (detailModal) {
+    // Android already receives viewport entry/expansion updates from the observer.
+    // Keep scroll geometry polling only for other platforms or the legacy fallback.
+    if (detailModal && (!wilduIsAndroidClientDevice() || typeof IntersectionObserver !== 'function')) {
         WILDU_DETAIL_MAP_RUNTIME.scrollRoot = detailModal;
         WILDU_DETAIL_MAP_RUNTIME.scrollHandler = checkNearViewport;
         detailModal.addEventListener('scroll', checkNearViewport, { passive: true });
@@ -35839,6 +35841,11 @@ function wilduScheduleSoftModalImageHydration(list, reason) {
             return true;
         }
         list.__wilduSoftImageScrollHydrationNextAt = now + 180;
+        // Android Date/Suggested lists need no hydration frame once every deferred image is hydrated.
+        // Check after the existing throttle, so fast scrolls do not add per-event DOM queries.
+        if (wilduIsAndroidClientDevice() &&
+            (list.id === 'wildu-date-options-list' || list.id === 'wildu-related-list') &&
+            !list.querySelector('img[data-wildu-soft-image-src]:not([data-wildu-soft-image-hydrated="1"])')) return true;
     }
 
     wilduEnsureSoftModalVisibleHydrationLiveness(list, reason);
