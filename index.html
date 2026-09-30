@@ -4033,6 +4033,18 @@ html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card [
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
 }
+/* Detail-only temporary paint reduction; normal appearance returns at rest. */
+#od-details-modal.wildu-android-detail-scroll-active #od-details-card {
+    box-shadow: 0 3px 8px rgba(0,0,0,.28) !important;
+}
+#od-details-modal.wildu-android-detail-scroll-active #od-details-card [style*="box-shadow"],
+#od-details-modal.wildu-android-detail-scroll-active #od-modal-book-top {
+    box-shadow: none !important;
+}
+#od-details-modal.wildu-android-detail-scroll-active #od-details-card [style*="backdrop-filter"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
 .wildu-adventure-title {
     display: block !important;
     min-width: 0 !important;
@@ -18099,7 +18111,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.135';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.136';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -29722,6 +29734,7 @@ function wilduInstallPhysicalSwipe(card, options) {
     const threshold = Number(options.threshold || 108);
     const ratio = Number(options.ratio || 1.25);
     const maxRotate = Number(options.maxRotate || 5);
+    const deferAndroidDetailPromotion = card.id === 'od-details-card' && wilduIsAndroidClientDevice();
 
     function isBlockedTarget(target) {
         if (typeof options.isBlockedTarget === 'function') {
@@ -29750,7 +29763,7 @@ function wilduInstallPhysicalSwipe(card, options) {
         startX = touch.clientX;
         startY = touch.clientY;
         lastDx = 0;
-        card.style.willChange = 'transform, opacity';
+        card.style.willChange = deferAndroidDetailPromotion ? '' : 'transform, opacity';
         card.style.transition = 'none';
     }, { passive: true });
 
@@ -29768,6 +29781,7 @@ function wilduInstallPhysicalSwipe(card, options) {
             if (absX < 12 && absY < 12) return;
             if (absX > 18 && absX > absY * ratio) {
                 horizontal = true;
+                if (deferAndroidDetailPromotion) card.style.willChange = 'transform, opacity';
             } else if (absY > absX * 1.05) {
                 tracking = false;
                 card.style.willChange = '';
@@ -29853,6 +29867,7 @@ function wilduSetDetailModalVisible(visible) {
     if (!modal) return null;
 
     const isVisible = visible === true;
+    if (!isVisible) releaseWilduAndroidDetailScrollEffects();
     const wasVisible = wilduIsDetailModalElementVisible(modal);
     if (!isVisible && !wasVisible && WILDU_DETAIL_RUNTIME.phase === 'closed') {
         wilduIOSBlackBoxRecord('detail_close_ignored_duplicate', {
@@ -31655,6 +31670,39 @@ function installWilduAndroidTravelScrollPerformance() {
     window.addEventListener('pagehide', function () {
         setWilduAndroidTravelScrollPerformanceMode(false);
     }, { passive: true });
+    return true;
+}
+
+// One Android-only cosmetic owner for the shared detail scroller. Native scroll,
+// image/map ownership and modal navigation stay unchanged.
+const WILDU_ANDROID_DETAIL_SCROLL_PERF = { installed: false, releaseTimer: null };
+function releaseWilduAndroidDetailScrollEffects() {
+    const state = WILDU_ANDROID_DETAIL_SCROLL_PERF;
+    if (state.releaseTimer !== null) {
+        window.clearTimeout(state.releaseTimer);
+        state.releaseTimer = null;
+    }
+    const modal = document.getElementById('od-details-modal');
+    if (modal) modal.classList.remove('wildu-android-detail-scroll-active');
+}
+function installWilduAndroidDetailScrollPerformance() {
+    const state = WILDU_ANDROID_DETAIL_SCROLL_PERF;
+    const modal = document.getElementById('od-details-modal');
+    if (state.installed || !modal || !wilduIsAndroidClientDevice()) return false;
+    state.installed = true;
+    const arm = function () {
+        if (document.hidden || !wilduIsDetailModalElementVisible(modal)) return;
+        if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer);
+        modal.classList.add('wildu-android-detail-scroll-active');
+        state.releaseTimer = window.setTimeout(releaseWilduAndroidDetailScrollEffects, 140);
+    };
+    modal.addEventListener('touchstart', arm, { passive: true });
+    modal.addEventListener('scroll', arm, { passive: true });
+    modal.addEventListener('touchcancel', releaseWilduAndroidDetailScrollEffects, { passive: true });
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) releaseWilduAndroidDetailScrollEffects();
+    }, { passive: true });
+    window.addEventListener('pagehide', releaseWilduAndroidDetailScrollEffects, { passive: true });
     return true;
 }
 
@@ -41216,7 +41264,7 @@ if (profKeyEl) {
     const WILDU_SCREEN_WAKE_LOCK_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_ENABLED = true;
     const WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED = true;
-    // Android moves only the small directional overlays, not the entire tall list.
+    // Android keeps the original rotation, with lightweight effects until motion ends.
     const WILDU_ANDROID_TRAVEL_SWIPE_LITE = wilduIsAndroidClientDevice();
     const WILDU_TRAVEL_TAB_SWIPE_SWITCH_DELAY_MS = 190;
     const WILDU_TRAVEL_TAB_SWIPE_FEEDBACK_MIN_MS = 360;
@@ -41242,6 +41290,7 @@ if (profKeyEl) {
     let wilduTravelNavMenuPositionRaf = null;
     let wilduTravelTabSwipeTouch = null;
     let wilduTravelTabSwipeTransitionInProgress = false;
+    let wilduAndroidTravelSwipeResetGeneration = 0;
     let wilduTravelSwipeFeedbackDismissTimer = null;
     let wilduTravelNavLongPressTimer = null;
     let wilduTravelNavLongPressPointer = null;
@@ -42004,7 +42053,10 @@ if (profKeyEl) {
     }
 
     function resetWilduTravelTabSwipeVisual(el, animated, options = {}) {
-        setWilduTravelTabSwipePerformanceMode(false);
+        const resetGeneration = WILDU_ANDROID_TRAVEL_SWIPE_LITE ? ++wilduAndroidTravelSwipeResetGeneration : 0;
+        const keepAndroidEffects = WILDU_ANDROID_TRAVEL_SWIPE_LITE && el &&
+            (animated !== false || options.keepTravelFeedback === true);
+        if (!keepAndroidEffects) setWilduTravelTabSwipePerformanceMode(false);
         if (!el) return;
         el.style.transition = animated === false ? 'none' : 'transform .22s cubic-bezier(.2,.85,.2,1), opacity .18s ease';
         el.style.transform = '';
@@ -42012,7 +42064,11 @@ if (profKeyEl) {
         el.style.willChange = '';
         if (animated !== false) {
             window.setTimeout(function () {
+                if (WILDU_ANDROID_TRAVEL_SWIPE_LITE &&
+                    (resetGeneration !== wilduAndroidTravelSwipeResetGeneration ||
+                     wilduTravelTabSwipeTouch || wilduTravelTabSwipeTransitionInProgress)) return;
                 el.style.transition = '';
+                if (WILDU_ANDROID_TRAVEL_SWIPE_LITE) setWilduTravelTabSwipePerformanceMode(false);
             }, 230);
         } else {
             el.style.transition = '';
@@ -42022,7 +42078,7 @@ if (profKeyEl) {
     }
 
     function animateWilduTravelTabIncoming(targetTab, dx) {
-        if (WILDU_ANDROID_TRAVEL_SWIPE_LITE || WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED !== true) return;
+        if (WILDU_TRAVEL_TAB_SWIPE_PAIRED_ANIMATION_ENABLED !== true) return;
         if (!WILDU_TRAVEL_NAV_TAB_IDS.includes(targetTab)) return;
 
         const el = document.getElementById('sec-' + targetTab);
@@ -42079,7 +42135,7 @@ if (profKeyEl) {
 
         setWilduTravelTabSwipePerformanceMode(true);
 
-        if (visualEl && !WILDU_ANDROID_TRAVEL_SWIPE_LITE) {
+        if (visualEl) {
             const damped = targetTab ? dx * .32 : dx * .12;
             const rotate = Math.max(-4.0, Math.min(4.0, dx / 96));
             const opacity = Math.max(.72, 1 - (absX / 560));
@@ -42152,6 +42208,21 @@ if (profKeyEl) {
         if (window.__wilduTravelTabSwipeInstalled) return;
         window.__wilduTravelTabSwipeInstalled = true;
         document.documentElement.classList.toggle('wildu-android-travel-swipe-lite', WILDU_ANDROID_TRAVEL_SWIPE_LITE);
+        if (WILDU_ANDROID_TRAVEL_SWIPE_LITE) {
+            const releaseSwipeEffects = function () {
+                if (wilduTravelTabSwipeTouch) {
+                    cancelWilduTravelTabSwipeFrame(wilduTravelTabSwipeTouch);
+                    resetWilduTravelTabSwipeVisual(wilduTravelTabSwipeTouch.visualEl, false);
+                    wilduTravelTabSwipeTouch = null;
+                }
+                ++wilduAndroidTravelSwipeResetGeneration;
+                setWilduTravelTabSwipePerformanceMode(false);
+            };
+            document.addEventListener('visibilitychange', function () {
+                if (document.hidden) releaseSwipeEffects();
+            }, { passive: true });
+            window.addEventListener('pagehide', releaseSwipeEffects, { passive: true });
+        }
 
         document.addEventListener('touchstart', function (event) {
             if (wilduTravelTabSwipeTouch) {
@@ -42174,7 +42245,7 @@ if (profKeyEl) {
                 feedbackShownAt: 0,
                 target: event.target,
                 visualEl,
-                promoteVisual: !WILDU_ANDROID_TRAVEL_SWIPE_LITE && !!visualEl && visualEl.scrollHeight <= Math.max(window.innerHeight * 4, 3200),
+                promoteVisual: !!visualEl && visualEl.scrollHeight <= Math.max(window.innerHeight * 4, 3200),
                 frameId: null,
                 pendingFrame: null,
                 feedbackVisible: false,
@@ -42264,8 +42335,9 @@ if (profKeyEl) {
                 // Un solo feedback al rilascio valido: nessun suono durante il drag.
                 wilduPlayCardInteractionFeedback('swipe');
                 wilduTravelTabSwipeTransitionInProgress = true;
+                if (WILDU_ANDROID_TRAVEL_SWIPE_LITE) setWilduTravelTabSwipePerformanceMode(true);
                 const visualEl = state.visualEl;
-                if (visualEl && !WILDU_ANDROID_TRAVEL_SWIPE_LITE) {
+                if (visualEl) {
                     const sign = dx >= 0 ? 1 : -1;
                     visualEl.style.transition = 'transform .20s cubic-bezier(.25,.85,.2,1), opacity .18s ease';
                     visualEl.style.transform = 'translateX(' + (sign * 86) + 'px) rotate(' + (sign * 3.1) + 'deg)';
@@ -42296,6 +42368,7 @@ if (profKeyEl) {
 
                 window.setTimeout(function () {
                     wilduTravelTabSwipeTransitionInProgress = false;
+                    if (WILDU_ANDROID_TRAVEL_SWIPE_LITE) setWilduTravelTabSwipePerformanceMode(false);
                 }, WILDU_TRAVEL_TAB_SWIPE_UNLOCK_MS);
             } else {
                 resetWilduTravelTabSwipeVisual(state.visualEl, true);
@@ -51291,6 +51364,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindPublicCacheSecretTrigger();
     bindWilduStickyNavSafeArea();
     installWilduAndroidTravelScrollPerformance();
+    installWilduAndroidDetailScrollPerformance();
     installWilduIOSImageMemoryWindow();
 
     // Anti-stato marcio dopo reload da modulo STOP:
