@@ -18154,7 +18154,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.143';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.144';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -29604,6 +29604,7 @@ function unlockWilduOverlayScrollIfIdle() {
     WILDU_SOFT_SCROLL_LOCK.locked = false;
     WILDU_SOFT_SCROLL_LOCK.scrollY = 0;
     window.scrollTo(0, y);
+    scheduleWilduAmazonFooterOffsetSync();
 }
 
 function wilduUnlockOverlayScrollAfterSoftModalClose(surface, source) {
@@ -30044,6 +30045,7 @@ function wilduSetDetailModalVisible(visible) {
         wilduResetDetailRuntimePhase();
         WILDU_DETAIL_RUNTIME.generation += 1;
         wilduReleaseDetailMedia();
+        scheduleWilduAmazonFooterOffsetSync();
     }
     return modal;
 }
@@ -40700,6 +40702,8 @@ if (profKeyEl) {
                 return;
             } catch (err) {
                 if (err && err.name === 'AbortError') return;
+            } finally {
+                scheduleWilduAmazonFooterOffsetSync();
             }
         }
 
@@ -40708,6 +40712,8 @@ if (profKeyEl) {
             showToast('Esperienza copiata con link diretto Wild-U.');
         } catch (err) {
             showToast('Condivisione esperienza non riuscita.');
+        } finally {
+            scheduleWilduAmazonFooterOffsetSync();
         }
     }
 
@@ -51080,36 +51086,43 @@ function pauseAmazonAutoScroll(reason) {
 
 
 function syncAmazonFooterViewportOffset() {
+    if (document.hidden) return;
+    let offset = 0;
     try {
         const vv = window.visualViewport;
-        let offset = 0;
-
         if (vv) {
             const active = document.activeElement;
             const activeTag = active && active.tagName ? active.tagName.toLowerCase() : '';
             const isTextEditing =
-                active && (
+                active && !active.readOnly && !active.disabled && (
                     active.isContentEditable ||
                     activeTag === 'textarea' ||
                     activeTag === 'select' ||
                     (activeTag === 'input' && !/^(button|checkbox|radio|range|submit|reset|file|image|color)$/i.test(String(active.type || '')))
                 );
             const delta = window.innerHeight - vv.height - vv.offsetTop;
-            offset = isTextEditing && delta > 0 ? delta : 0;
+            offset = isTextEditing && Number.isFinite(delta) && delta > 0 ? delta : 0;
         }
+    } catch (e) {}
+    // CSS and wilduAnchorAmazonFooter own the fixed shell; only update its offset.
+    try {
+        const style = document.documentElement.style;
+        const value = offset + 'px';
+        if (style.getPropertyValue('--amazon-footer-offset') !== value) {
+            style.setProperty('--amazon-footer-offset', value);
+        }
+    } catch (e) {}
+}
 
-        document.documentElement.style.setProperty('--amazon-footer-offset', offset + 'px');
-        try {
-            const wrapper = document.getElementById('amazon-footer-wrapper');
-            if (wrapper && wrapper.style.display !== 'none') {
-                wrapper.style.bottom = 'var(--amazon-footer-offset, 0px)';
-                wrapper.style.transform = 'translate3d(0,0,0)';
-                wrapper.style.webkitTransform = 'translate3d(0,0,0)';
-            }
-        } catch (e) {}
-    } catch (e) {
-        document.documentElement.style.setProperty('--amazon-footer-offset', '0px');
-    }
+let wilduAmazonFooterOffsetSyncPending = false;
+function scheduleWilduAmazonFooterOffsetSync() {
+    if (wilduAmazonFooterOffsetSyncPending) return;
+    wilduAmazonFooterOffsetSyncPending = true;
+    // Coalesce focus/lifecycle changes; read current state after focus transfer.
+    Promise.resolve().then(function () {
+        wilduAmazonFooterOffsetSyncPending = false;
+        syncAmazonFooterViewportOffset();
+    });
 }
 
 function syncWilduDisplayModeClass() {
@@ -51131,6 +51144,10 @@ function syncWilduDisplayModeClass() {
 }
 
 window.addEventListener('resize', syncAmazonFooterViewportOffset);
+window.addEventListener('focus', scheduleWilduAmazonFooterOffsetSync, true);
+window.addEventListener('blur', scheduleWilduAmazonFooterOffsetSync, true);
+window.addEventListener('pageshow', scheduleWilduAmazonFooterOffsetSync);
+document.addEventListener('visibilitychange', scheduleWilduAmazonFooterOffsetSync);
 window.addEventListener('resize', syncWilduDisplayModeClass);
 window.addEventListener('orientationchange', syncWilduDisplayModeClass);
 
