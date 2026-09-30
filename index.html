@@ -18154,7 +18154,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.141';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.142';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -29820,7 +29820,23 @@ function wilduInstallPhysicalSwipe(card, options) {
     const threshold = Number(options.threshold || 108);
     const ratio = Number(options.ratio || 1.25);
     const maxRotate = Number(options.maxRotate || 5);
-    const deferAndroidDetailPromotion = card.id === 'od-details-card' && wilduIsAndroidClientDevice();
+    const androidSoftAxisLock = options.androidSoftAxisLock === true && wilduIsAndroidClientDevice();
+    const deferAndroidDetailPromotion = (card.id === 'od-details-card' && wilduIsAndroidClientDevice()) || androidSoftAxisLock;
+    // Il browser deve conoscere gli assi prima del touchstart, non a swipe acquisito.
+    // Conserviamo pan verticale e pinch; l'orizzontale resta alla chiusura custom.
+    if (androidSoftAxisLock) card.style.touchAction = 'pan-y pinch-zoom';
+
+    function abandonAndroidSoftSwipe() {
+        tracking = false;
+        horizontal = false;
+        hasMoved = false;
+        lastDx = 0;
+        card.style.transition = 'none';
+        card.style.transform = '';
+        card.style.opacity = '';
+        card.style.willChange = '';
+        hideWilduSwipeHint();
+    }
 
     function isBlockedTarget(target) {
         if (typeof options.isBlockedTarget === 'function') {
@@ -29838,6 +29854,10 @@ function wilduInstallPhysicalSwipe(card, options) {
     }
 
     card.addEventListener('touchstart', function (evt) {
+        if (androidSoftAxisLock && (!evt.touches || evt.touches.length !== 1)) {
+            abandonAndroidSoftSwipe();
+            return;
+        }
         const touch = evt.touches && evt.touches[0];
         if (!touch) return;
         if (typeof options.canStart === 'function' && !options.canStart()) return;
@@ -29855,6 +29875,13 @@ function wilduInstallPhysicalSwipe(card, options) {
 
     card.addEventListener('touchmove', function (evt) {
         if (!tracking) return;
+        // Se Android ha acquisito il pan, non continuiamo una chiusura concorrente.
+        // Anche il multitouch appartiene al browser (pinch), mai alla chiusura.
+        if (androidSoftAxisLock && (!evt.cancelable || !evt.touches || evt.touches.length !== 1 ||
+            (typeof options.canStart === 'function' && !options.canStart()))) {
+            abandonAndroidSoftSwipe();
+            return;
+        }
         const touch = evt.touches && evt.touches[0];
         if (!touch) return;
 
@@ -29883,6 +29910,10 @@ function wilduInstallPhysicalSwipe(card, options) {
         // manteniamo il ramo storico; su Android cancelliamo solo quando il
         // browser dichiara che l'operazione puo' effettivamente avere effetto.
         if (typeof evt.preventDefault === 'function' && (!wilduIsAndroidClientDevice() || evt.cancelable)) evt.preventDefault();
+        if (androidSoftAxisLock && !evt.defaultPrevented) {
+            abandonAndroidSoftSwipe();
+            return;
+        }
 
         hasMoved = true;
         lastDx = dx;
@@ -29896,6 +29927,11 @@ function wilduInstallPhysicalSwipe(card, options) {
 
     card.addEventListener('touchend', function (evt) {
         if (!tracking) return;
+        if (androidSoftAxisLock && ((evt.touches && evt.touches.length > 0) ||
+            (typeof options.canStart === 'function' && !options.canStart()))) {
+            abandonAndroidSoftSwipe();
+            return;
+        }
         const shouldClose = horizontal && hasMoved && Math.abs(lastDx) >= threshold;
         const finalDx = lastDx;
 
@@ -29940,6 +29976,10 @@ function wilduInstallPhysicalSwipe(card, options) {
     }, { passive: false });
 
     card.addEventListener('touchcancel', function () {
+        if (androidSoftAxisLock) {
+            abandonAndroidSoftSwipe();
+            return;
+        }
         tracking = false;
         horizontal = false;
         hasMoved = false;
@@ -36574,6 +36614,7 @@ function installWilduSoftModalHorizontalDismiss() {
             threshold: 88,
             ratio: 1.28,
             maxRotate: 4,
+            androidSoftAxisLock: true,
             commitCloseOnTouchEnd: true,
             canStart: function () {
                 return modal.classList.contains('is-visible');
