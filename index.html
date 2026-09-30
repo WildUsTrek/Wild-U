@@ -18154,7 +18154,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.145';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.146';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -30025,6 +30025,7 @@ function wilduSetDetailModalVisible(visible) {
         WILDU_DETAIL_RUNTIME.closeLatchUntil = 0;
         WILDU_DETAIL_RUNTIME.closeLatchSource = '';
         WILDU_DETAIL_RUNTIME.phase = 'open';
+        wilduConfigureTripShareControls();
         wilduRefreshIOSImageMemoryWindow('DETAIL_OPENED');
         const generation = WILDU_DETAIL_RUNTIME.generation;
         WILDU_DETAIL_RUNTIME.scrollFrame = requestAnimationFrame(function () {
@@ -40285,6 +40286,7 @@ if (profKeyEl) {
         const preview = document.getElementById('share-app-link-preview');
         const nativeBtn = document.getElementById('share-app-native-btn');
         const copyBtn = document.getElementById('share-app-copy-btn');
+        const directIOS = isWilduIOSClientDevice();
         const canUseNativeShare = (typeof navigator !== 'undefined' && typeof navigator.share === 'function');
         const url = getWilduClientAppShareUrl();
 
@@ -40293,20 +40295,23 @@ if (profKeyEl) {
         }
 
         if (nativeBtn) {
-            nativeBtn.innerHTML = canUseNativeShare
+            nativeBtn.innerHTML = directIOS
+                ? '<i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp'
+                : canUseNativeShare
                 ? '<i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi ora'
                 : '<i class="fa-solid fa-link" aria-hidden="true"></i> Copia link';
-            nativeBtn.onclick = canUseNativeShare ? executeWilduClientAppShare : copyWilduClientAppLink;
+            nativeBtn.onclick = (directIOS || canUseNativeShare) ? executeWilduClientAppShare : copyWilduClientAppLink;
         }
 
         if (copyBtn) {
-            copyBtn.style.display = canUseNativeShare ? 'flex' : 'none';
+            copyBtn.style.display = (directIOS || canUseNativeShare) ? 'flex' : 'none';
         }
 
         if (modal) {
             modal.style.display = 'flex';
             setTimeout(() => {
                 if (!nativeBtn) return;
+                if (directIOS && (document.hidden || modal.style.display !== 'flex')) return;
                 try {
                     nativeBtn.focus({ preventScroll: true });
                 } catch (e) {
@@ -40316,7 +40321,7 @@ if (profKeyEl) {
             return;
         }
 
-        if (canUseNativeShare) {
+        if (directIOS || canUseNativeShare) {
             executeWilduClientAppShare(event);
         } else {
             copyWilduClientAppLink(event);
@@ -40330,6 +40335,16 @@ if (profKeyEl) {
         }
 
         const shareData = getWilduClientAppShareData();
+
+        if (isWilduIOSClientDevice()) {
+            try {
+                window.location.assign('whatsapp://send?text=' + encodeURIComponent(shareData.text + '\n' + shareData.url));
+            } catch (err) {
+                showToast('Impossibile aprire WhatsApp. Usa Copia link.');
+            }
+            return;
+        }
+
 
         if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
             await copyWilduClientAppLink(event);
@@ -40359,6 +40374,21 @@ if (profKeyEl) {
         if (event) {
             event.preventDefault();
             event.stopPropagation();
+        }
+
+        if (isWilduIOSClientDevice()) {
+            try {
+                if (!window.isSecureContext || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                    showToast('Copia non disponibile. Puoi usare WhatsApp.');
+                    return;
+                }
+                await navigator.clipboard.writeText(getWilduClientAppShareUrl());
+                closeWilduClientShareModal();
+                showToast('Link app copiato.');
+            } catch (err) {
+                showToast('Copia non riuscita. Riprova oppure usa WhatsApp.');
+            }
+            return;
         }
 
         try {
@@ -40649,7 +40679,21 @@ if (profKeyEl) {
         return false;
     }
 
-    async function shareWilduCurrentTrip(event) {
+    function wilduConfigureTripShareControls() {
+        const share = document.getElementById('od-modal-share-trip');
+        const options = document.getElementById('od-modal-share-options');
+        if (!share || !options) return;
+        options.style.display = 'none';
+        if (isWilduIOSClientDevice()) {
+            share.setAttribute('aria-controls', 'od-modal-share-options');
+            share.setAttribute('aria-expanded', 'false');
+        } else {
+            share.removeAttribute('aria-controls');
+            share.removeAttribute('aria-expanded');
+        }
+    }
+
+    async function shareWilduCurrentTrip(event, action) {
         if (event) {
             event.preventDefault();
             event.stopPropagation();
@@ -40658,6 +40702,37 @@ if (profKeyEl) {
         const shareData = getWilduCurrentTripShareData();
         if (!shareData) {
             showToast('Apri una scheda viaggio prima di condividere.');
+            return;
+        }
+
+        // Avoid the native share path associated with viewport shrinkage on iOS.
+        // Keep the user gesture synchronous for WhatsApp; copy never focuses a hidden input.
+        if (isWilduIOSClientDevice()) {
+            if (action !== 'copy' && action !== 'whatsapp') {
+                const share = document.getElementById('od-modal-share-trip');
+                const options = document.getElementById('od-modal-share-options');
+                if (!share || !options) return;
+                const expanded = options.style.display !== 'none';
+                options.style.display = expanded ? 'none' : 'flex';
+                share.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                return;
+            }
+            try {
+                if (action === 'copy') {
+                    if (!window.isSecureContext || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                        showToast('Copia non disponibile. Puoi usare WhatsApp.');
+                        return;
+                    }
+                    await navigator.clipboard.writeText(shareData.copyText);
+                    showToast('Viaggio copiato. Incollalo nell’app che preferisci.');
+                } else {
+                    window.location.assign('whatsapp://send?text=' + encodeURIComponent(shareData.copyText));
+                }
+            } catch (err) {
+                showToast(action === 'copy'
+                    ? 'Copia non riuscita. Riprova oppure usa WhatsApp.'
+                    : 'Impossibile aprire WhatsApp. Usa Copia viaggio.');
+            }
             return;
         }
 
@@ -47802,10 +47877,10 @@ function wilduPresentAmazonFooterAfterReturn(reason) {
             runtime.visualReturnFrame = 0;
             if (document.hidden || !wrapper.isConnected || token !== runtime.lastCloseToken ||
                 generation !== runtime.generation || WILDU_SOFT_SCROLL_LOCK.locked || wilduAnySoftModalVisible()) return;
+            syncAmazonFooterViewportOffset();
             wrapper.style.visibility = wrapper.__wilduReturnVisibility || '';
             delete wrapper.dataset.wilduReturnPending;
             delete wrapper.__wilduReturnVisibility;
-            syncAmazonFooterViewportOffset();
             wilduRecordAmazonCarouselEvent('amazon_footer_return_presented', { reason: String(reason || ''), token, generation });
         });
     });
@@ -47833,8 +47908,8 @@ function wilduAnchorAmazonFooter(reason) {
         wrapper.style.setProperty('min-height', '96px', 'important');
         wrapper.style.setProperty('transform', 'translate3d(0,0,0)', 'important');
         wrapper.style.setProperty('-webkit-transform', 'translate3d(0,0,0)', 'important');
-        wrapper.style.display = 'flex';
         syncAmazonFooterViewportOffset();
+        wrapper.style.display = 'flex';
         if (wrapper.dataset.wilduReturnPending === '1') {
             wrapper.style.visibility = 'hidden';
             wilduPresentAmazonFooterAfterReturn(reason);
@@ -51085,43 +51160,6 @@ function pauseAmazonAutoScroll(reason) {
 
 
 
-function getWilduAmazonIOSViewportOffset(vv, active) {
-    // Local footer policy, not a detector of a particular WebKit bug.
-    // Ordinary viewports and other platforms do not read layout here.
-    if (document.hidden || !isWilduIOSClientDevice() || !wilduIsStandaloneDisplayMode() || currentTab !== 'events') return 0;
-    const height = window.innerHeight;
-    const top = vv.offsetTop;
-    const deficit = height - vv.height;
-    if (![height, vv.height, vv.width, top, vv.scale].every(Number.isFinite) ||
-        height <= 0 || vv.height <= 0 || vv.scale !== 1 || top <= 2 || deficit <= 2 ||
-        top > deficit + 2 || Math.abs(vv.width - window.innerWidth) > 2) return 0;
-    if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT|IFRAME)$/.test(active.tagName))) return 0;
-    if (WILDU_SOFT_SCROLL_LOCK.locked || WILDU_DETAIL_RUNTIME.phase !== 'closed' ||
-        WILDU_SOFT_MODAL_FLOW_RUNTIME.visualReturnPending ||
-        WILDU_SOFT_MODAL_FLOW_RUNTIME.unlockTimer || WILDU_AMAZON_MOTION.hiddenByUser ||
-        wilduAnySoftModalVisible() || wilduHasBlockingTopLayer()) return 0;
-    const overlays = document.querySelectorAll('.modal-overlay, body > [aria-modal="true"], dialog[open]');
-    if (overlays.length > 32 || Array.from(overlays).some(wilduIsDisplayed)) return 0;
-    const wrapper = document.getElementById('amazon-footer-wrapper');
-    if (!wrapper || !wrapper.isConnected || wrapper.parentElement !== document.body ||
-        wrapper.dataset.wilduReturnPending === '1' || wrapper.classList.contains('is-wildu-amazon-hidden')) return 0;
-    const style = window.getComputedStyle(wrapper);
-    const bodyStyle = window.getComputedStyle(document.body);
-    const rootStyle = window.getComputedStyle(document.documentElement);
-    const applied = Number.parseFloat(style.bottom);
-    const owned = Number.parseFloat(document.documentElement.style.getPropertyValue('--amazon-footer-offset') || '0');
-    if (bodyStyle.position === 'fixed' || [bodyStyle, rootStyle].some(s =>
-            s.transform !== 'none' || s.filter !== 'none' || s.perspective !== 'none' || /paint|layout|strict|content/.test(s.contain)) ||
-        style.position !== 'fixed' || style.display === 'none' || style.visibility === 'hidden' ||
-        style.opacity === '0' || !Number.isFinite(applied) || !Number.isFinite(owned) || Math.abs(applied - owned) > 0.5 ||
-        (style.transform !== 'none' && style.transform !== 'matrix(1, 0, 0, 1, 0, 0)')) return 0;
-    const rect = wrapper.getBoundingClientRect();
-    // Remove the offset already consumed by CSS: a corrected footer must not
-    // disable itself, and a natively recovered footer must not be corrected twice.
-    const displacement = height - rect.bottom - applied;
-    return rect.height > 0 && Number.isFinite(displacement) && Math.abs(displacement - top) <= 2 ? -top : 0;
-}
-
 function syncAmazonFooterViewportOffset() {
     if (document.hidden) return;
     let offset = 0;
@@ -51139,7 +51177,6 @@ function syncAmazonFooterViewportOffset() {
                 );
             const delta = window.innerHeight - vv.height - vv.offsetTop;
             offset = isTextEditing && Number.isFinite(delta) && delta > 0 ? delta : 0;
-            if (!isTextEditing) offset = getWilduAmazonIOSViewportOffset(vv, active);
         }
     } catch (e) {}
     // CSS and wilduAnchorAmazonFooter own the fixed shell; only update its offset.
@@ -51722,6 +51759,10 @@ window.addEventListener('pageshow', (event) => {
             <a id="trip-modal-link-ufficiale" href="#" target="_blank" style="display:none; background:#333; border:1px solid #444; color:#fff; text-align:center; padding:12px; border-radius:10px; text-decoration:none; font-weight:bold; font-size:15px;">🔗 LINK SITO UFFICIALE</a>
             <button id="od-modal-book" style="background:#00aaff; color:#000; border:none; padding:18px; border-radius:10px; font-weight:bold; font-size:18px; cursor:pointer; text-transform:uppercase;">ISCRIVITI GRATIS ORA</button>
             <button type="button" id="od-modal-share-trip" class="wildu-trip-share-btn" onclick="shareWilduCurrentTrip(event)"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Condividi viaggio</button>
+            <div id="od-modal-share-options" style="display:none; flex-direction:column; gap:12px; width:100%;">
+                <button type="button" id="od-modal-whatsapp-trip" class="wildu-trip-share-btn" onclick="shareWilduCurrentTrip(event, 'whatsapp')"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i> WhatsApp</button>
+                <button type="button" id="od-modal-copy-trip" class="wildu-trip-share-btn" onclick="shareWilduCurrentTrip(event, 'copy')"><i class="fa-solid fa-copy" aria-hidden="true"></i> Copia viaggio</button>
+            </div>
             <button type="button" id="od-modal-date-options" class="wildu-detail-date-options-btn"><i class="bi bi-calendar2-week" aria-hidden="true"></i> Vedi altre date</button>
             <button type="button" id="od-modal-close-bottom" class="wildu-detail-bottom-close wildu-detail-bottom-x" onclick="handleWilduDetailClose('bottom')" aria-label="Chiudi scheda">X</button>
         </div>
