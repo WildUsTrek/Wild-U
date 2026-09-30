@@ -7255,6 +7255,12 @@ html.wildu-android-travel-swipe-lite .wildu-travel-swipe-ghost {
                     </button>
                 </div>
             </details>
+                <div style="margin-top:26px;">
+                    <div class="wildu-rewards-divider"><span>Viaggi Wild-U</span></div>
+                    <div class="wildu-rewards-travel-links">
+                        <button id="wildu-rewards-full-catalogue" type="button" class="wildu-rewards-travel-link" onclick="showWilduNavTab('events')">Catalogo completo viaggi</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -18154,7 +18160,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.146';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.147';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -26146,6 +26152,22 @@ function wilduPrepareDetailMapLoad(mapContainer, mapIframe, iframeUrl) {
     scheduleAutoloadWatchdog('detail_prepare_fallback');
 }
 
+function getWilduExplicitMapsSearchQuery(linkInfo) {
+    if (!linkInfo || !linkInfo.isGoogleMaps || linkInfo.isShortLink) return "";
+    try {
+        const url = new URL(linkInfo.href);
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.port) return "";
+        if (!["google.com", "www.google.com", "maps.google.com"].includes(url.hostname.toLowerCase())) return "";
+        const api = url.searchParams.getAll("api");
+        if (!/^\/maps\/search\/?$/.test(url.pathname) || api.length !== 1 || api[0] !== "1") return "";
+        const queries = url.searchParams.getAll("query");
+        if (queries.length !== 1 || url.searchParams.has("query_place_id")) return "";
+        return queries[0].trim();
+    } catch (_) {
+        return "";
+    }
+}
+
 function renderUnifiedDetailMap(payload) {
     payload = payload || {};
 
@@ -26203,9 +26225,10 @@ function renderUnifiedDetailMap(payload) {
         buttonUrl = linkInfo.href;
 
         if (query) {
-            // Più stabile dell'embedding diretto del link:
-            // link reale come bottone, iframe costruito con luogo+regione.
-            iframeUrl = buildWilduMapsEmbedUrl(query, zoom);
+            // Conserva la ricerca esplicita dei link Search standard, senza aggiungere la regione.
+            // Gli altri link mantengono il fallback storico luogo+regione.
+            const embedQuery = getWilduExplicitMapsSearchQuery(linkInfo) || query;
+            iframeUrl = buildWilduMapsEmbedUrl(embedQuery, zoom);
             mode = linkInfo.isShortLink
                 ? "SHORT_GOOGLE_LINK_BUTTON_QUERY_EMBED"
                 : "LONG_GOOGLE_LINK_BUTTON_QUERY_EMBED";
