@@ -4038,7 +4038,9 @@ html.wildu-android-travel-scroll-active #ondemand-list > .wildu-adventure-card [
     box-shadow: 0 3px 8px rgba(0,0,0,.28) !important;
 }
 #od-details-modal.wildu-android-detail-scroll-active #od-details-card [style*="box-shadow"],
-#od-details-modal.wildu-android-detail-scroll-active #od-modal-book-top {
+#od-details-modal.wildu-android-detail-scroll-active #od-modal-book-top,
+#od-details-modal.wildu-android-detail-scroll-active #od-modal-share-trip,
+#od-details-modal.wildu-android-detail-scroll-active #od-modal-close-bottom {
     box-shadow: none !important;
 }
 #od-details-modal.wildu-android-detail-scroll-active #od-details-card [style*="backdrop-filter"] {
@@ -18111,7 +18113,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.136';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.137';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -31675,13 +31677,20 @@ function installWilduAndroidTravelScrollPerformance() {
 
 // One Android-only cosmetic owner for the shared detail scroller. Native scroll,
 // image/map ownership and modal navigation stay unchanged.
-const WILDU_ANDROID_DETAIL_SCROLL_PERF = { installed: false, releaseTimer: null };
+const WILDU_ANDROID_DETAIL_SCROLL_PERF = {
+    installed: false, active: false, scrolling: false,
+    touchIds: new Set(), releaseTimer: null
+};
 function releaseWilduAndroidDetailScrollEffects() {
     const state = WILDU_ANDROID_DETAIL_SCROLL_PERF;
     if (state.releaseTimer !== null) {
         window.clearTimeout(state.releaseTimer);
         state.releaseTimer = null;
     }
+    state.touchIds.clear();
+    state.scrolling = false;
+    if (!state.active) return;
+    state.active = false;
     const modal = document.getElementById('od-details-modal');
     if (modal) modal.classList.remove('wildu-android-detail-scroll-active');
 }
@@ -31690,15 +31699,54 @@ function installWilduAndroidDetailScrollPerformance() {
     const modal = document.getElementById('od-details-modal');
     if (state.installed || !modal || !wilduIsAndroidClientDevice()) return false;
     state.installed = true;
-    const arm = function () {
-        if (document.hidden || !wilduIsDetailModalElementVisible(modal)) return;
+    const hasScrollEnd = 'onscrollend' in modal;
+    const scheduleRelease = function () {
         if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer);
-        modal.classList.add('wildu-android-detail-scroll-active');
-        state.releaseTimer = window.setTimeout(releaseWilduAndroidDetailScrollEffects, 140);
+        state.releaseTimer = null;
+        if (!state.active || state.touchIds.size) return;
+        // Native scrollend covers release + inertia. The bounded fallback only
+        // recovers a missing terminal event; each scroll renews it.
+        const delay = hasScrollEnd && state.scrolling ? 1500 : 140;
+        state.releaseTimer = window.setTimeout(releaseWilduAndroidDetailScrollEffects, delay);
     };
-    modal.addEventListener('touchstart', arm, { passive: true });
-    modal.addEventListener('scroll', arm, { passive: true });
-    modal.addEventListener('touchcancel', releaseWilduAndroidDetailScrollEffects, { passive: true });
+    const arm = function () {
+        if (document.hidden || !wilduIsDetailModalElementVisible(modal)) return false;
+        if (!state.active) {
+            state.active = true;
+            modal.classList.add('wildu-android-detail-scroll-active');
+        }
+        scheduleRelease();
+        return true;
+    };
+    modal.addEventListener('touchstart', function (event) {
+        if (document.hidden || !wilduIsDetailModalElementVisible(modal)) return;
+        const touches = event.changedTouches;
+        if (!touches || !touches.length) return;
+        for (const touch of touches) state.touchIds.add(touch.identifier);
+        arm();
+    }, { passive: true });
+    modal.addEventListener('scroll', function (event) {
+        if (event.target !== modal || document.hidden || !wilduIsDetailModalElementVisible(modal)) return;
+        state.scrolling = true;
+        arm();
+    }, { passive: true });
+    const finishTouch = function (event) {
+        let tracked = false;
+        for (const touch of event.changedTouches || []) {
+            if (state.touchIds.delete(touch.identifier)) tracked = true;
+        }
+        if (!tracked) return;
+        // Cancellation can hand scrolling to the browser, without touchend.
+        if (event.type === 'touchcancel' && hasScrollEnd) state.scrolling = true;
+        scheduleRelease();
+    };
+    document.addEventListener('touchend', finishTouch, { passive: true, capture: true });
+    document.addEventListener('touchcancel', finishTouch, { passive: true, capture: true });
+    modal.addEventListener('scrollend', function (event) {
+        if (event.target !== modal) return;
+        state.scrolling = false;
+        if (!state.touchIds.size) releaseWilduAndroidDetailScrollEffects();
+    }, { passive: true });
     document.addEventListener('visibilitychange', function () {
         if (document.hidden) releaseWilduAndroidDetailScrollEffects();
     }, { passive: true });
