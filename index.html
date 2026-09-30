@@ -18154,7 +18154,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.144';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.145';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -47802,10 +47802,10 @@ function wilduPresentAmazonFooterAfterReturn(reason) {
             runtime.visualReturnFrame = 0;
             if (document.hidden || !wrapper.isConnected || token !== runtime.lastCloseToken ||
                 generation !== runtime.generation || WILDU_SOFT_SCROLL_LOCK.locked || wilduAnySoftModalVisible()) return;
-            syncAmazonFooterViewportOffset();
             wrapper.style.visibility = wrapper.__wilduReturnVisibility || '';
             delete wrapper.dataset.wilduReturnPending;
             delete wrapper.__wilduReturnVisibility;
+            syncAmazonFooterViewportOffset();
             wilduRecordAmazonCarouselEvent('amazon_footer_return_presented', { reason: String(reason || ''), token, generation });
         });
     });
@@ -47833,8 +47833,8 @@ function wilduAnchorAmazonFooter(reason) {
         wrapper.style.setProperty('min-height', '96px', 'important');
         wrapper.style.setProperty('transform', 'translate3d(0,0,0)', 'important');
         wrapper.style.setProperty('-webkit-transform', 'translate3d(0,0,0)', 'important');
-        syncAmazonFooterViewportOffset();
         wrapper.style.display = 'flex';
+        syncAmazonFooterViewportOffset();
         if (wrapper.dataset.wilduReturnPending === '1') {
             wrapper.style.visibility = 'hidden';
             wilduPresentAmazonFooterAfterReturn(reason);
@@ -51085,6 +51085,43 @@ function pauseAmazonAutoScroll(reason) {
 
 
 
+function getWilduAmazonIOSViewportOffset(vv, active) {
+    // Local footer policy, not a detector of a particular WebKit bug.
+    // Ordinary viewports and other platforms do not read layout here.
+    if (document.hidden || !isWilduIOSClientDevice() || !wilduIsStandaloneDisplayMode() || currentTab !== 'events') return 0;
+    const height = window.innerHeight;
+    const top = vv.offsetTop;
+    const deficit = height - vv.height;
+    if (![height, vv.height, vv.width, top, vv.scale].every(Number.isFinite) ||
+        height <= 0 || vv.height <= 0 || vv.scale !== 1 || top <= 2 || deficit <= 2 ||
+        top > deficit + 2 || Math.abs(vv.width - window.innerWidth) > 2) return 0;
+    if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT|IFRAME)$/.test(active.tagName))) return 0;
+    if (WILDU_SOFT_SCROLL_LOCK.locked || WILDU_DETAIL_RUNTIME.phase !== 'closed' ||
+        WILDU_SOFT_MODAL_FLOW_RUNTIME.visualReturnPending ||
+        WILDU_SOFT_MODAL_FLOW_RUNTIME.unlockTimer || WILDU_AMAZON_MOTION.hiddenByUser ||
+        wilduAnySoftModalVisible() || wilduHasBlockingTopLayer()) return 0;
+    const overlays = document.querySelectorAll('.modal-overlay, body > [aria-modal="true"], dialog[open]');
+    if (overlays.length > 32 || Array.from(overlays).some(wilduIsDisplayed)) return 0;
+    const wrapper = document.getElementById('amazon-footer-wrapper');
+    if (!wrapper || !wrapper.isConnected || wrapper.parentElement !== document.body ||
+        wrapper.dataset.wilduReturnPending === '1' || wrapper.classList.contains('is-wildu-amazon-hidden')) return 0;
+    const style = window.getComputedStyle(wrapper);
+    const bodyStyle = window.getComputedStyle(document.body);
+    const rootStyle = window.getComputedStyle(document.documentElement);
+    const applied = Number.parseFloat(style.bottom);
+    const owned = Number.parseFloat(document.documentElement.style.getPropertyValue('--amazon-footer-offset') || '0');
+    if (bodyStyle.position === 'fixed' || [bodyStyle, rootStyle].some(s =>
+            s.transform !== 'none' || s.filter !== 'none' || s.perspective !== 'none' || /paint|layout|strict|content/.test(s.contain)) ||
+        style.position !== 'fixed' || style.display === 'none' || style.visibility === 'hidden' ||
+        style.opacity === '0' || !Number.isFinite(applied) || !Number.isFinite(owned) || Math.abs(applied - owned) > 0.5 ||
+        (style.transform !== 'none' && style.transform !== 'matrix(1, 0, 0, 1, 0, 0)')) return 0;
+    const rect = wrapper.getBoundingClientRect();
+    // Remove the offset already consumed by CSS: a corrected footer must not
+    // disable itself, and a natively recovered footer must not be corrected twice.
+    const displacement = height - rect.bottom - applied;
+    return rect.height > 0 && Number.isFinite(displacement) && Math.abs(displacement - top) <= 2 ? -top : 0;
+}
+
 function syncAmazonFooterViewportOffset() {
     if (document.hidden) return;
     let offset = 0;
@@ -51102,6 +51139,7 @@ function syncAmazonFooterViewportOffset() {
                 );
             const delta = window.innerHeight - vv.height - vv.offsetTop;
             offset = isTextEditing && Number.isFinite(delta) && delta > 0 ? delta : 0;
+            if (!isTextEditing) offset = getWilduAmazonIOSViewportOffset(vv, active);
         }
     } catch (e) {}
     // CSS and wilduAnchorAmazonFooter own the fixed shell; only update its offset.
