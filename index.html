@@ -301,17 +301,14 @@ body::before {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    border: 1px solid rgba(212,175,55,.62);
-    background:
-        linear-gradient(135deg, rgba(45,90,39,.94), rgba(45,90,39,.62) 48%, rgba(212,175,55,.22));
-    color: #fff;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.10),
-        0 4px 14px rgba(45,90,39,.30);
+    border: 1px solid transparent;
+    background: #222;
+    color: #888;
+    box-shadow: none;
 }
 
 .nav .nav-share-btn i {
-    color: var(--w-gold);
+    color: inherit;
     font-size: 12px;
 }
 
@@ -339,23 +336,16 @@ html.wildu-grouped-travel-nav #btn-ondemand {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border: 1px solid rgba(212,175,55,.50);
-    background:
-        radial-gradient(circle at top left, rgba(212,175,55,.20), transparent 44%),
-        linear-gradient(135deg, rgba(45,90,39,.96), rgba(22,31,24,.96));
-    color: #fff;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.10),
-        0 4px 14px rgba(45,90,39,.28);
+    border: 1px solid transparent;
+    background: #222;
+    color: #888;
+    box-shadow: none;
 }
 
-#btn-travel-hub.active,
-#btn-travel-hub[aria-expanded="true"] {
-    background:
-        radial-gradient(circle at top left, rgba(212,175,55,.30), transparent 42%),
-        linear-gradient(135deg, rgba(45,90,39,1), rgba(212,175,55,.24));
+#btn-travel-hub.active {
+    background: var(--w-green);
     color: #fff;
-    box-shadow: 0 0 14px rgba(45,90,39,.78);
+    box-shadow: 0 0 12px var(--w-green);
 }
 
 .wildu-travel-nav-menu {
@@ -14013,20 +14003,8 @@ function reconcileProfileShellWithClientSession() {
     }
 
     function maybeShowStartupRegistrationCTA() {
-        if (isClientLogged()) return;
-        if (!canShowRegistrationCTA('APP_START', { force: false })) return;
-
-        regCtaCurrentReason = 'APP_START';
-        regCtaSessionShown = true;
-
-        writeRegCtaState({
-            lastShownAt: Date.now(),
-            lastReason: 'APP_START'
-        });
-
-        if (typeof show === 'function') {
-            show('profile');
-        }
+        // Registration stays contextual; startup never overrides navigation.
+        return false;
     }
 
 function requireLoggedAccess(reason, options = {}) {
@@ -18160,7 +18138,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.147';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.148';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21637,67 +21615,291 @@ function consumeWilduGlobalCacheUrlParamsOnce() {
     }
 }
 
-function consumeWilduReturnTabUrlParamOnce() {
+// One document entry intent. Catalog refreshes and detail queues only deliver to it.
+function wilduEntryFlow() {
+    if (wilduEntryFlow.runtime) return wilduEntryFlow.runtime;
+    const flow = { ready: false, navigated: false, context: null, catalog: null, request: null, intent: null };
+    wilduEntryFlow.runtime = flow;
     try {
-        const currentUrl = new URL(window.location.href);
-        const params = currentUrl.searchParams;
-        const rawTab = String(params.get('wilduReturnTab') || '').trim().toLowerCase();
-
-        // Micro-parametro one-shot usato solo dal MapViewer quando l'utente preme "Esci".
-        // Non tocca nocache/cache/off/globalCacheEpoch/moduleRefresh/gameRefresh/etc.
-        if (!rawTab) return false;
-
-        const allowedTabs = {
-            rewards: 'rewards'
-        };
-
-        const targetTab = allowedTabs[rawTab] || '';
-
-        // Anche se il valore non è valido, consumiamo solo questo parametro per evitare URL sporchi.
-        params.delete('wilduReturnTab');
-
-        const cleanSearch = params.toString();
-        const cleanUrl =
-            currentUrl.pathname +
-            (cleanSearch ? '?' + cleanSearch : '') +
-            currentUrl.hash;
-
-        if (window.history && typeof window.history.replaceState === 'function') {
-            window.history.replaceState(window.history.state || {}, document.title, cleanUrl);
+        const params = new URL(window.location.href).searchParams;
+        const legacyType = normalizeWilduSharedExperienceType(params.get('wilduShareType'));
+        const legacyId = String(params.get('wilduShareId') || '').trim();
+        const compact = parseWilduCompactShareParam(params.get('w'));
+        const type = legacyType && legacyId ? legacyType : normalizeWilduSharedExperienceType(compact.type);
+        const id = legacyType && legacyId ? legacyId : String(compact.id || '').trim();
+        const profile = String(params.has('wilduOpen') ? params.get('wilduOpen') : params.get('open') || '').trim().toLowerCase();
+        const returned = String(params.get('wilduReturnTab') || '').trim().toLowerCase();
+        if (type && id) flow.intent = { kind: 'experience', type, id };
+        else if (profile === 'profile' || profile === 'profilo') flow.intent = { kind: 'tab', target: 'profile' };
+        else if (returned === 'rewards') flow.intent = { kind: 'tab', target: 'rewards' };
+        if (flow.intent) Object.assign(flow.intent, { state: 'CAPTURED', attempts: 0, handoffs: 0 });
+    } catch (e) {}
+    // These listeners belong only to the entry token, not to auth/media lifecycle.
+    window.addEventListener('pagehide', function () {
+        const owner = flow.intent;
+        if (owner && !wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'UNAVAILABLE', 'PAGE_SUSPENDED', true);
+    }, { passive: true });
+    window.addEventListener('pageshow', function () {
+        const owner = flow.intent;
+        if (owner && owner.reason === 'PAGE_SUSPENDED' && !owner.suspensionNotice) {
+            owner.suspensionNotice = true;
+            showToast('Apertura interrotta. Riapri il collegamento per riprovare.');
         }
+    }, { passive: true });
+    return flow;
+}
 
-        if (!targetTab) {
-            pageDebug('WILDU_RETURN_TAB_IGNORED', {
-                rawTab,
-                cleanUrl
-            });
-            return false;
-        }
+function wilduEntryIsTerminal(owner) {
+    return !owner || ['OPENED', 'NOT_FOUND', 'UNAVAILABLE', 'BLOCKED', 'CANCELLED'].indexOf(owner.state) !== -1;
+}
 
-        setTimeout(() => {
-            try {
-                if (typeof show === 'function') {
-                    show(targetTab);
-                    pageDebug('WILDU_RETURN_TAB_CONSUMED', {
-                        targetTab,
-                        cleanUrl
-                    });
-                }
-            } catch (e) {
-                pageDebug('WILDU_RETURN_TAB_SHOW_FAILED', {
-                    targetTab,
-                    error: e && e.message ? e.message : String(e)
-                });
-            }
-        }, 0);
-
-        return true;
-    } catch (e) {
-        pageDebug('WILDU_RETURN_TAB_CONSUME_FAILED', {
-            error: e && e.message ? e.message : String(e)
+function wilduCleanEntryUrl() {
+    try {
+        const url = new URL(window.location.href);
+        ['w', 'wilduShareType', 'wilduShareId', 'wilduReturnTab'].forEach(key => url.searchParams.delete(key));
+        ['wilduOpen', 'open'].forEach(function (key) {
+            const value = String(url.searchParams.get(key) || '').trim().toLowerCase();
+            if (value === 'profile' || value === 'profilo') url.searchParams.delete(key);
         });
+        window.history.replaceState(window.history.state || {}, document.title, url.pathname + url.search + url.hash);
+    } catch (e) {} // Memory state, not replaceState, guarantees one-shot delivery.
+}
+
+function wilduFinishEntry(owner, state, reason, quiet) {
+    const flow = wilduEntryFlow();
+    if (flow.intent !== owner || wilduEntryIsTerminal(owner)) return false;
+    owner.state = state;
+    owner.reason = reason;
+    if (owner.transitionTimer && WILDU_DETAIL_RUNTIME.transitionTimer === owner.transitionTimer) {
+        clearTimeout(owner.transitionTimer);
+        WILDU_DETAIL_RUNTIME.transitionTimer = 0;
+        if (WILDU_DETAIL_RUNTIME.phase === 'scheduled' && WILDU_DETAIL_RUNTIME.key === owner.key) {
+            WILDU_DETAIL_RUNTIME.phase = 'closed';
+            WILDU_DETAIL_RUNTIME.key = '';
+            wilduSetDetailTransitionBusy(false);
+        }
+    }
+    if (owner.postCloseTimer && WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer === owner.postCloseTimer) {
+        clearTimeout(owner.postCloseTimer);
+        WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
+    }
+    owner.transitionTimer = owner.postCloseTimer = 0;
+    if (state === 'OPENED' || state === 'CANCELLED') wilduCleanEntryUrl();
+    if (!quiet && !document.hidden) {
+        if (state === 'NOT_FOUND') showToast('Esperienza condivisa non trovata.');
+        else if (state === 'UNAVAILABLE') showToast('Non riesco a verificare il viaggio. Riprova quando torna la connessione.');
+        else if (state === 'BLOCKED') showToast('Apertura esperienza non riuscita. Riapri il collegamento per riprovare.');
+    }
+    pageDebug('WILDU_ENTRY_TERMINAL', { kind: owner.kind, state, reason });
+    return true;
+}
+
+function wilduCancelEntryForNavigation() {
+    const flow = wilduEntryFlow();
+    if (flow.context) return;
+    flow.navigated = true;
+    if (flow.intent) {
+        if (!wilduEntryIsTerminal(flow.intent)) wilduFinishEntry(flow.intent, 'CANCELLED', 'USER_NAVIGATION', true);
+        else wilduCleanEntryUrl();
+    }
+}
+
+function wilduEntryOwnerValid(owner) {
+    if (!owner) return true;
+    const flow = wilduEntryFlow();
+    if (flow.intent !== owner || wilduEntryIsTerminal(owner)) return false;
+    if (wilduEntryAuthPending()) {
+        wilduFinishEntry(owner, 'UNAVAILABLE', 'AUTH_FLOW_PENDING', true);
         return false;
     }
+    if (owner.epoch !== authLifecycleEpoch || owner.uid !== String(auth.currentUser?.uid || '')) {
+        wilduFinishEntry(owner, 'CANCELLED', 'AUTH_CHANGED', true);
+        return false;
+    }
+    if (document.hidden) {
+        wilduFinishEntry(owner, 'UNAVAILABLE', 'PAGE_SUSPENDED', true);
+        return false;
+    }
+    if (owner.deadline && Date.now() > owner.deadline) {
+        wilduFinishEntry(owner, 'BLOCKED', 'ADMISSION_DEADLINE');
+        return false;
+    }
+    return true;
+}
+
+function wilduRunEntryOwned(owner, action) {
+    if (!owner) return action();
+    if (!wilduEntryOwnerValid(owner)) return false;
+    const flow = wilduEntryFlow(), previous = flow.context;
+    flow.context = owner;
+    try { return action(); }
+    catch (e) { wilduFinishEntry(owner, 'BLOCKED', 'OPEN_EXCEPTION'); return false; }
+    finally {
+        flow.context = previous;
+        if (!wilduEntryIsTerminal(owner)) {
+            owner.transitionTimer = WILDU_DETAIL_RUNTIME.transitionTimer;
+            owner.postCloseTimer = WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer;
+        }
+    }
+}
+
+function wilduEntryQueueCancelled(timer) {
+    const flow = wilduEntryFlow(), owner = flow.intent;
+    if (owner && !flow.context && timer && (owner.transitionTimer === timer || owner.postCloseTimer === timer)) {
+        wilduFinishEntry(owner, 'CANCELLED', 'DETAIL_QUEUE_CANCELLED', true);
+    }
+}
+
+function wilduEntryAttempt(owner) {
+    if (!owner) return true;
+    if (!wilduEntryOwnerValid(owner)) return false;
+    if (owner.attempts >= WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_MAX_ATTEMPTS + 1) {
+        wilduFinishEntry(owner, 'BLOCKED', 'ADMISSION_ATTEMPTS');
+        return false;
+    }
+    owner.attempts += 1;
+    return true;
+}
+
+function wilduCommitEntryDetail() {
+    const owner = wilduEntryFlow().context;
+    if (!owner || !wilduEntryOwnerValid(owner)) return;
+    const current = WILDU_ACTIVE_DETAIL_CONTEXT;
+    if (wilduIsDetailModalVisible() && WILDU_DETAIL_RUNTIME.phase === 'open' &&
+        String(WILDU_DETAIL_RUNTIME.key) === owner.key && current &&
+        current.type === owner.type && String(current.id || '').trim() === owner.canonicalId) {
+        owner.suggestionGeneration = WILDU_DETAIL_RUNTIME.generation;
+        owner.previousSkipSuggestions = WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS;
+        WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
+        wilduFinishEntry(owner, 'OPENED', 'DETAIL_COMMITTED', true);
+    }
+}
+
+function wilduReleaseEntrySuggestions() {
+    const owner = wilduEntryFlow().intent;
+    if (owner && owner.suggestionGeneration === WILDU_DETAIL_RUNTIME.generation) {
+        WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = owner.previousSkipSuggestions === true;
+        owner.suggestionGeneration = null;
+    }
+}
+
+function wilduEntrySetReady(authKnown) {
+    const flow = wilduEntryFlow();
+    if (flow.ready) return;
+    flow.ready = true;
+    if (!authKnown) {
+        if (flow.intent) wilduFinishEntry(flow.intent, 'UNAVAILABLE', 'INITIAL_AUTH_UNRESOLVED');
+        return;
+    }
+    if (wilduEntryAuthPending()) {
+        if (flow.intent) wilduFinishEntry(flow.intent, 'UNAVAILABLE', 'AUTH_FLOW_PENDING', true);
+        return;
+    }
+    if (flow.intent) {
+        flow.intent.epoch = authLifecycleEpoch;
+        flow.intent.uid = String(auth.currentUser?.uid || '');
+        wilduTryEntry();
+        return;
+    }
+    if (authKnown && !auth.currentUser && !isClientLogged() && !profileCompletionRequired &&
+        !flow.navigated) {
+        flow.navigated = true;
+        show('travelhub', { source: 'guest-entry' });
+    }
+}
+
+function wilduEntryAuthPending() {
+    if (profileCompletionRequired || WILDU_AUTH_BRIDGE_IN_PROGRESS || WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE ||
+        WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS || WILDU_AUTH_BRIDGE_RETURN_RUNTIME.returnPending) return true;
+    try {
+        // Read only: the auth owner alone clears or redeems a durable attempt.
+        const attempt = JSON.parse(localStorage.getItem(WILDU_AUTH_BRIDGE_STORAGE_KEY) || 'null');
+        return !!(attempt && WILDU_AUTH_BRIDGE_TOKEN_SHAPE.test(String(attempt.attemptId || '')) &&
+            WILDU_AUTH_BRIDGE_TOKEN_SHAPE.test(String(attempt.verifier || '')) && Number(attempt.createdAt) &&
+            Date.now() - Number(attempt.createdAt) < WILDU_AUTH_BRIDGE_TTL_MS);
+    } catch (e) { return false; }
+}
+
+function wilduEntryCatalog(data, source, sequence) {
+    const flow = wilduEntryFlow();
+    flow.catalog = { source, sequence, valid: {
+        trip: Array.isArray(data && data.events),
+        openday: Array.isArray(data && data.opendays),
+        payday: Array.isArray(data && data.paydays)
+    } };
+}
+
+function wilduEntryNeedsRemote() {
+    const flow = wilduEntryFlow(), owner = flow.intent;
+    return !!(owner && owner.kind === 'experience' && !wilduEntryIsTerminal(owner) &&
+        !wilduResolveDetailItem(owner.type, owner.id).item);
+}
+
+function wilduEntryObserveRequest(sequence, promise, isStale) {
+    const flow = wilduEntryFlow(), request = { sequence, settled: false, failed: false };
+    flow.request = request;
+    const owner = flow.intent;
+    if (owner && owner.kind === 'experience' && !wilduEntryIsTerminal(owner)) {
+        if (owner.requestSequence && owner.requestSequence !== sequence && ++owner.handoffs > 1) {
+            wilduFinishEntry(owner, 'UNAVAILABLE', 'REQUEST_SUPERSEDED');
+        } else owner.requestSequence = sequence;
+    }
+    function completed(failed) {
+        request.settled = true;
+        request.failed = failed || isStale();
+        if (flow.request !== request) return;
+        wilduTryEntry();
+        if (flow.ready && owner && owner.state === 'WAIT_DATA') wilduFinishEntry(owner, 'UNAVAILABLE', 'REQUEST_ENDED');
+    }
+    promise.then(() => completed(false), () => completed(true));
+}
+
+function wilduTryEntry() {
+    const flow = wilduEntryFlow(), owner = flow.intent;
+    if (!owner || !flow.ready || wilduEntryIsTerminal(owner) || owner.state === 'OPENING') return false;
+    if (!wilduEntryOwnerValid(owner)) return false;
+    if (owner.kind === 'tab') {
+        return wilduRunEntryOwned(owner, function () {
+            show(owner.target, { entryOwner: owner, source: 'url-entry' });
+            const section = document.getElementById('sec-' + owner.target);
+            return wilduFinishEntry(owner, section && currentTab === owner.target && !section.classList.contains('hidden') ? 'OPENED' : 'BLOCKED', 'TAB_DISPATCH');
+        });
+    }
+    const catalog = flow.catalog, request = flow.request;
+    if (!catalog || (request && request.failed)) {
+        owner.state = 'WAIT_DATA';
+        if (request && request.settled) wilduFinishEntry(owner, 'UNAVAILABLE', 'CATALOG_UNAVAILABLE');
+        return false;
+    }
+    if (!catalog.valid[owner.type]) {
+        owner.state = 'WAIT_DATA';
+        if (catalog.source === 'REMOTE') wilduFinishEntry(owner, 'UNAVAILABLE', 'INVALID_COLLECTION');
+        return false;
+    }
+    const resolved = wilduResolveDetailItem(owner.type, owner.id);
+    if (!resolved.item) {
+        owner.state = 'WAIT_DATA';
+        if (resolved.ambiguous) wilduFinishEntry(owner, 'BLOCKED', 'AMBIGUOUS_ID');
+        else if (catalog.source === 'REMOTE') wilduFinishEntry(owner, 'NOT_FOUND', 'REMOTE_CONFIRMED');
+        return false;
+    }
+    owner.state = 'OPENING';
+    owner.canonicalId = resolved.canonicalId;
+    owner.key = owner.type + ':' + String(resolved.id);
+    // Each existing deferred attempt is clamped to 1800ms; preserve its cumulative budget.
+    owner.deadline = Date.now() + (WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_MAX_ATTEMPTS + 1) * 1800;
+    return wilduRunEntryOwned(owner, function () {
+        show(owner.type === 'openday' ? 'free' : 'events', { entryOwner: owner, source: 'shared-experience' });
+        const accepted = wilduScheduleDetailOpen({ type: owner.type, id: resolved.id }, { entryOwner: owner });
+        if (!accepted && !wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'BLOCKED', 'SCHEDULE_REJECTED');
+        return accepted;
+    });
+}
+
+function consumeWilduReturnTabUrlParamOnce() {
+    const owner = wilduEntryFlow().intent;
+    wilduTryEntry();
+    return !!(owner && owner.kind === 'tab');
 }
 
 function normalizeWilduSharedExperienceType(rawType) {
@@ -21725,169 +21927,21 @@ function parseWilduCompactShareParam(value) {
 }
 
 function openWilduSharedExperience(type, id, source) {
-    const cleanType = normalizeWilduSharedExperienceType(type);
-    const cleanId = String(id || '').trim();
-
-    if (!cleanType || !cleanId || typeof wilduFindDetailItem !== 'function') {
-        pageDebug('WILDU_SHARED_EXPERIENCE_INVALID', {
-            source,
-            type,
-            id
-        });
-        return false;
-    }
-
-    const item = wilduFindDetailItem(cleanType, cleanId);
-    if (!item) {
-        if (typeof showToast === 'function') {
-            showToast('Esperienza condivisa non trovata.');
-        }
-        pageDebug('WILDU_SHARED_EXPERIENCE_NOT_FOUND', {
-            source,
-            type: cleanType,
-            id: cleanId
-        });
-        return false;
-    }
-
-    try {
-        if (typeof show === 'function') {
-            show(cleanType === 'openday' ? 'free' : 'events');
-        }
-
-        setTimeout(() => {
-            try {
-                WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
-                if (cleanType === 'openday') showOpenDayDetails(cleanId);
-                else if (cleanType === 'payday') showPayDayDetails(cleanId);
-                else showTripDetails(cleanId);
-
-                pageDebug('WILDU_SHARED_EXPERIENCE_OPENED', {
-                    source,
-                    type: cleanType,
-                    id: cleanId
-                });
-            } catch (e) {
-                if (typeof showToast === 'function') {
-                    showToast('Apertura esperienza condivisa non riuscita.');
-                }
-                pageDebug('WILDU_SHARED_EXPERIENCE_OPEN_FAILED', {
-                    source,
-                    type: cleanType,
-                    id: cleanId,
-                    error: e && e.message ? e.message : String(e)
-                });
-            }
-        }, 120);
-
-        return true;
-    } catch (e) {
-        pageDebug('WILDU_SHARED_EXPERIENCE_TAB_FAILED', {
-            source,
-            type: cleanType,
-            id: cleanId,
-            error: e && e.message ? e.message : String(e)
-        });
-        return false;
-    }
+    const owner = wilduEntryFlow().intent;
+    if (!owner || owner.type !== normalizeWilduSharedExperienceType(type) || owner.id !== String(id || '').trim()) return false;
+    return wilduTryEntry();
 }
 
 function consumeWilduSharedExperienceUrlParamOnce(source) {
-    try {
-        const currentUrl = new URL(window.location.href);
-        const params = currentUrl.searchParams;
-        const compactShare = parseWilduCompactShareParam(params.get('w'));
-        const rawType = String(params.get('wilduShareType') || compactShare.type || '').trim();
-        const rawId = String(params.get('wilduShareId') || compactShare.id || '').trim();
-
-        if (!rawType && !rawId) return false;
-
-        params.delete('w');
-        params.delete('wilduShareType');
-        params.delete('wilduShareId');
-
-        const cleanSearch = params.toString();
-        const cleanUrl =
-            currentUrl.pathname +
-            (cleanSearch ? '?' + cleanSearch : '') +
-            currentUrl.hash;
-
-        if (window.history && typeof window.history.replaceState === 'function') {
-            window.history.replaceState(window.history.state || {}, document.title, cleanUrl);
-        }
-
-        const type = normalizeWilduSharedExperienceType(rawType);
-        if (!type || !rawId) {
-            pageDebug('WILDU_SHARED_EXPERIENCE_IGNORED', {
-                source,
-                rawType,
-                rawId,
-                cleanUrl
-            });
-            return false;
-        }
-
-        setTimeout(() => {
-            openWilduSharedExperience(type, rawId, source);
-        }, 0);
-
-        pageDebug('WILDU_SHARED_EXPERIENCE_CONSUMED', {
-            source,
-            type,
-            id: rawId,
-            cleanUrl
-        });
-
-        return true;
-    } catch (e) {
-        pageDebug('WILDU_SHARED_EXPERIENCE_CONSUME_FAILED', {
-            source,
-            error: e && e.message ? e.message : String(e)
-        });
-        return false;
-    }
+    const owner = wilduEntryFlow().intent;
+    wilduTryEntry();
+    return !!(owner && owner.kind === 'experience');
 }
 
 function consumeWilduOpenProfileUrlParamOnce(source) {
-    try {
-        const currentUrl = new URL(window.location.href);
-        const params = currentUrl.searchParams;
-        const target = String(params.get('wilduOpen') || params.get('open') || '').trim().toLowerCase();
-
-        if (target !== 'profile' && target !== 'profilo') return false;
-
-        params.delete('wilduOpen');
-        params.delete('open');
-
-        const cleanSearch = params.toString();
-        const cleanUrl =
-            currentUrl.pathname +
-            (cleanSearch ? '?' + cleanSearch : '') +
-            currentUrl.hash;
-
-        if (window.history && typeof window.history.replaceState === 'function') {
-            window.history.replaceState(window.history.state || {}, document.title, cleanUrl);
-        }
-
-        setTimeout(() => {
-            if (typeof show === 'function') {
-                show('profile');
-            }
-        }, 0);
-
-        pageDebug('WILDU_OPEN_PROFILE_CONSUMED', {
-            source,
-            cleanUrl
-        });
-
-        return true;
-    } catch (e) {
-        pageDebug('WILDU_OPEN_PROFILE_CONSUME_FAILED', {
-            source,
-            error: e && e.message ? e.message : String(e)
-        });
-        return false;
-    }
+    const owner = wilduEntryFlow().intent;
+    wilduTryEntry();
+    return !!(owner && owner.kind === 'tab');
 }
 
 
@@ -23077,9 +23131,11 @@ async function init() {
     // risolto il primo stato auth persistito del nuovo documento. Su iOS la
     // PWA può essere ricreata dopo il ritorno dal selettore Google: leggere
     // auth.currentUser prima di questo gate produce un falso guest.
+    let entryAuthKnown = false;
     const initialAuthNotice = wilduStartAuthPendingNotice('INITIAL_STATE');
     try {
         await WILDU_FIREBASE.waitForInitialAuthState();
+        entryAuthKnown = true;
     } catch (e) {
         console.warn('Firebase auth bootstrap gate skipped:', e);
     } finally {
@@ -23104,6 +23160,7 @@ async function init() {
         document.addEventListener('visibilitychange', resumeDurableGoogleLogin, { passive: true });
     }
 
+    wilduEntrySetReady(entryAuthKnown);
     consumeWilduReturnTabUrlParamOnce();
 
     refreshClientConsoleSwitch({ reason: 'BOOT', force: true }).then(() => {
@@ -23129,6 +23186,7 @@ async function init() {
 }
 
 async function fetchInitData(options = {}) {
+    wilduEntryFlow();
     const force = options.force === true;
 
     if (initDataPromise && !force) {
@@ -23221,6 +23279,7 @@ if (cachedPublicData && !bypassPublicCache) {
         hydrateWilduTravelHubImages(true);
         queueWilduCatalogCoverPreload('PUBLIC_CACHE_RENDER');
         reconcileProfileShellWithClientSession();
+        if (!isStaleInitRequest()) wilduEntryCatalog(data, 'CACHE', requestSequence);
         if (!consumeWilduSharedExperienceUrlParamOnce('PUBLIC_CACHE_RENDER')) {
             consumeWilduOpenProfileUrlParamOnce('PUBLIC_CACHE_RENDER');
         }
@@ -23231,12 +23290,7 @@ if (cachedPublicData && !bypassPublicCache) {
 
         // 2. Se la cache pubblica è ancora valida e NON siamo in un flusso utente loggato,
         // saltiamo completamente la chiamata remota.
-        if (hasValidPublicCache && !auth.currentUser) {
-            if (!regCtaSessionShown) {
-                setTimeout(() => {
-                    maybeShowStartupRegistrationCTA();
-                }, 700);
-            }
+        if (hasValidPublicCache && !auth.currentUser && !wilduEntryNeedsRemote()) {
 
             pageDebug('PUBLIC_CACHE_SHORT_CIRCUIT', {
     mode: 'CACHE_ONLY_NO_REMOTE_FETCH'
@@ -23316,6 +23370,7 @@ if (cachedPublicData && !bypassPublicCache) {
 
             markConfirmedRemoteSuccess();
             syncClientSessionFromInitData(data);
+            const entryRawCatalog = data;
 
 const publicCachePayload = {
     assets: data.assets || {},
@@ -23405,15 +23460,11 @@ const publicCachePayload = {
             renderOnDemandTrips();
             hydrateWilduTravelHubImages(true);
             reconcileProfileShellWithClientSession();
+            wilduEntryCatalog(entryRawCatalog, 'REMOTE', requestSequence);
             if (!consumeWilduSharedExperienceUrlParamOnce('INITDATA_REMOTE_RENDERED')) {
                 consumeWilduOpenProfileUrlParamOnce('INITDATA_REMOTE_RENDERED');
             }
 
-            if (!regCtaSessionShown) {
-                setTimeout(() => {
-                    maybeShowStartupRegistrationCTA();
-                }, 700);
-            }
 
             markWilduBootVeilStableWithCatalogCovers('INITDATA_REMOTE_RENDERED', {
                 cold: !cachedPublicData || bypassPublicCache || force
@@ -23439,11 +23490,6 @@ const publicCachePayload = {
 
             reconcileProfileShellWithClientSession();
 
-            if (!regCtaSessionShown) {
-                setTimeout(() => {
-                    maybeShowStartupRegistrationCTA();
-                }, 700);
-            }
 
             hideWilduBootVeil('INITDATA_ERROR_FAIL_OPEN');
 
@@ -23456,6 +23502,7 @@ const publicCachePayload = {
     });
 
     initDataPromise = requestPromise;
+    wilduEntryObserveRequest(requestSequence, requestPromise, isStaleInitRequest);
     return requestPromise;
 }
     
@@ -28594,6 +28641,7 @@ function wilduCancelAmazonImageHydration(reason) {
 }
 
 function wilduCancelPostSoftModalDetailOpen(reason) {
+    wilduEntryQueueCancelled(WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer);
     WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseToken += 1;
     if (WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer) {
         try { window.clearTimeout(WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer); } catch (e) {}
@@ -29022,6 +29070,9 @@ function wilduCloseSoftModalAtomic(modal, list, surface, evt, source) {
 }
 
 function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
+    const entryOwner = options && options.entryOwner;
+    if (!entryOwner) wilduCancelEntryForNavigation();
+    return wilduRunEntryOwned(entryOwner, function () {
     if (!ref || !ref.type || !ref.id) return false;
     wilduCancelPostSoftModalDetailOpen('schedule_new_detail');
     const key = String(ref.type) + ':' + String(ref.id);
@@ -29081,8 +29132,9 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
         const minDelay = iosHandoff ? 80 : 16;
         const delay = Math.max(minDelay, Math.min(1800, Number(delayMs || 0) || (iosHandoff ? WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS : 16)));
         WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = window.setTimeout(function () {
+            if (!wilduEntryOwnerValid(options && options.entryOwner)) return;
             WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
-            runAttempt(attempt);
+            wilduRunEntryOwned(options && options.entryOwner, function () { runAttempt(attempt); });
         }, delay);
         try {
             wilduIOSBlackBoxRecord('soft_modal_post_close_detail_scheduled', {
@@ -29100,6 +29152,7 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
         WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
         const guard = getOpenGuard(attempt);
         if (guard && guard.blocked) {
+            if (!wilduEntryAttempt(options && options.entryOwner)) return;
             if (handoff) {
                 try {
                     wilduIOSBlackBoxRecord('soft_modal_detail_handoff_blocked', {
@@ -29129,10 +29182,12 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
             if (!guard.terminal && attempt < WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_MAX_ATTEMPTS) {
                 scheduleAttempt(attempt + 1, guard.retryMs || WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_RETRY_MS, guard);
             } else if (!guard.terminal) {
+                if (options && options.entryOwner) wilduFinishEntry(options.entryOwner, 'BLOCKED', 'ADMISSION_TIMEOUT', true);
                 wilduIOSBlackBoxRecord('detail_open_admission_timeout', { key, guard: guard.guard, attempt });
                 showToast('Dettaglio non ancora pronto. Tocca nuovamente per aprirlo.');
                 wilduSetDetailTransitionBusy(false);
             } else {
+                if (options && options.entryOwner) wilduFinishEntry(options.entryOwner, 'BLOCKED', String(guard.guard), true);
                 wilduSetDetailTransitionBusy(false);
             }
             return;
@@ -29151,10 +29206,11 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
             } catch (e) {}
         }
         const openOptions = Object.assign({}, options || {}, {
-            bypassSoftModalInputGuard: true,
+            bypassSoftModalInputGuard: !(options && options.entryOwner),
             softModalDetailHandoff: handoff || undefined
         });
         const opened = wilduScheduleDetailOpen(ref, openOptions);
+        if (!opened && options && options.entryOwner) wilduFinishEntry(options.entryOwner, 'BLOCKED', 'DEFERRED_SCHEDULE_REJECTED');
         try {
             wilduIOSBlackBoxRecord(opened ? 'soft_modal_post_close_detail_opened' : 'soft_modal_post_close_detail_cancelled', {
                 reason: opened ? 'scheduled' : 'schedule_rejected',
@@ -29169,6 +29225,8 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
 
     scheduleAttempt(0, baseDelay, null);
     return true;
+
+    });
 }
 
 function wilduSetDetailTransitionBusy(busy) {
@@ -29218,6 +29276,7 @@ function wilduCancelDetailScrollResets() {
 }
 
 function wilduCancelScheduledDetailOpen() {
+    wilduEntryQueueCancelled(WILDU_DETAIL_RUNTIME.transitionTimer);
     WILDU_DETAIL_RUNTIME.transitionToken += 1;
     if (WILDU_DETAIL_RUNTIME.transitionTimer) {
         clearTimeout(WILDU_DETAIL_RUNTIME.transitionTimer);
@@ -29267,6 +29326,10 @@ function wilduGetDetailOpenResourceAdmissionGuard(reason, handoff) {
 }
 
 function wilduAcceptDetailOpen(type, id, options) {
+    const entryOwner = wilduEntryFlow().context;
+    if (!entryOwner) wilduCancelEntryForNavigation();
+    else if (!wilduEntryOwnerValid(entryOwner)) return false;
+    if (entryOwner) options = Object.assign({}, options || {}, { entryOwner });
     const key = String(type || '') + ':' + String(id || '');
     if (!key || key === ':') return false;
     if (typeof wilduIsSoftModalInputGuardActive === 'function' &&
@@ -29406,11 +29469,23 @@ function wilduBuildDetailRef(type, item) {
     };
 }
 
+function wilduResolveDetailItem(type, id) {
+    const target = String(id || '').trim();
+    if (!target) return { item: null, ambiguous: false };
+    const source = wilduGetDetailSourceList(type);
+    if (!Array.isArray(source)) return { item: null, ambiguous: false };
+    function primary(item) {
+        return type === 'trip' ? (item.eventDocId || item.id) : (item['ID Evento (Super-Key)'] || item['ID Evento']);
+    }
+    const exact = source.filter(item => item && primary(item) === id);
+    const matches = exact.length ? exact : source.filter(item => item && wilduGetDetailItemId(type, item) === target);
+    if (matches.length !== 1) return { item: null, ambiguous: matches.length > 1 };
+    const item = matches[0];
+    return { item, id: primary(item) || item.eventDocId || item.id, canonicalId: wilduGetDetailItemId(type, item), ambiguous: false };
+}
+
 function wilduFindDetailItem(type, id) {
-    const targetId = String(id || '').trim();
-    return wilduGetDetailSourceList(type).find(function (item) {
-        return wilduGetDetailItemId(type, item) === targetId;
-    }) || null;
+    return wilduResolveDetailItem(type, id).item;
 }
 
 function wilduSetActiveDetailContext(type, item, id) {
@@ -30020,6 +30095,11 @@ function wilduSetDetailModalVisible(visible) {
     if (!modal) return null;
 
     const isVisible = visible === true;
+    if (!isVisible) {
+        wilduReleaseEntrySuggestions();
+        wilduConfigureTripShareControls.surface = null;
+        wilduShowShareIdentityNotice(false, false);
+    }
     if (!isVisible) releaseWilduAndroidDetailScrollEffects();
     const wasVisible = wilduIsDetailModalElementVisible(modal);
     if (!isVisible && !wasVisible && WILDU_DETAIL_RUNTIME.phase === 'closed') {
@@ -30048,6 +30128,7 @@ function wilduSetDetailModalVisible(visible) {
         WILDU_DETAIL_RUNTIME.closeLatchUntil = 0;
         WILDU_DETAIL_RUNTIME.closeLatchSource = '';
         WILDU_DETAIL_RUNTIME.phase = 'open';
+        wilduCommitEntryDetail();
         wilduConfigureTripShareControls();
         wilduRefreshIOSImageMemoryWindow('DETAIL_OPENED');
         const generation = WILDU_DETAIL_RUNTIME.generation;
@@ -34837,8 +34918,12 @@ function wilduCloseDetailModalOnly() {
 }
 
 function wilduScheduleDetailOpen(ref, options) {
+    const entryOwner = options && options.entryOwner;
+    if (!entryOwner) wilduCancelEntryForNavigation();
+    return wilduRunEntryOwned(entryOwner, function () {
     if (!ref || !ref.type || !ref.id) return false;
     options = options || {};
+    if (!wilduEntryAttempt(options.entryOwner)) return false;
     const key = String(ref.type) + ':' + String(ref.id);
     if (WILDU_DETAIL_RUNTIME.phase !== 'closed') return false;
     if (wilduIsDetailModalVisible() || wilduAnySoftModalVisible()) return false;
@@ -34871,6 +34956,7 @@ function wilduScheduleDetailOpen(ref, options) {
     WILDU_DETAIL_RUNTIME.key = key;
     wilduSetDetailTransitionBusy(true);
     WILDU_DETAIL_RUNTIME.transitionTimer = window.setTimeout(function () {
+        if (!wilduEntryOwnerValid(options.entryOwner)) return;
         WILDU_DETAIL_RUNTIME.transitionTimer = 0;
         if (token !== WILDU_DETAIL_RUNTIME.transitionToken) return;
         if (WILDU_DETAIL_RUNTIME.phase !== 'scheduled' || WILDU_DETAIL_RUNTIME.key !== key) {
@@ -34884,7 +34970,7 @@ function wilduScheduleDetailOpen(ref, options) {
             WILDU_DETAIL_RUNTIME.softModalGuardBypassKey = key;
         }
         try {
-            wilduOpenDetailByRef(ref, options);
+            wilduRunEntryOwned(options.entryOwner, function () { wilduOpenDetailByRef(ref, options); });
             if (options.dateReturnFocus === true) {
                 const dateReturnTarget = document.querySelector('#od-details-card > button[aria-label="Chiudi scheda"]');
                 if (dateReturnTarget && dateReturnTarget.isConnected) {
@@ -34901,20 +34987,29 @@ function wilduScheduleDetailOpen(ref, options) {
         }
     }, Math.max(32, Number(transitionPreflight && transitionPreflight.delayMs || 0)));
     return true;
+
+    });
 }
 
 function wilduOpenDetailByRef(ref, options) {
+    const entryOwner = options && options.entryOwner;
+    return wilduRunEntryOwned(entryOwner, function () {
     if (!ref || !ref.type || !ref.id) return;
     options = options || {};
     const admission = wilduGetDetailOpenResourceAdmissionGuard('dispatch:' + ref.type + ':' + ref.id, options.softModalDetailHandoff);
     if (admission.blocked) return wilduSchedulePostSoftModalDetailOpen(ref, options, 'dispatch_admission');
-    if (options.skipSuggestions === true) {
+    if (options.skipSuggestions === true && !options.entryOwner) {
         WILDU_SKIP_NEXT_DETAIL_SUGGESTIONS = true;
     }
     if (ref.type === 'openday') showOpenDayDetails(ref.id);
     else if (ref.type === 'payday') showPayDayDetails(ref.id);
     else if (ref.type === 'ondemand') openOnDemandDetails(ref.id);
     else showTripDetails(ref.id, options.detailContext || null);
+
+    if (entryOwner && !wilduEntryIsTerminal(entryOwner) && !WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer && !WILDU_DETAIL_RUNTIME.transitionTimer) {
+        wilduFinishEntry(entryOwner, 'BLOCKED', 'RENDERER_DID_NOT_COMMIT');
+    }
+    });
 }
 
 function wilduCollectDetailRefs() {
@@ -37979,7 +38074,9 @@ function wilduResolveOfficialPriceContract(ev, accessContext, referenceDate) {
 }
 
 function showTripDetails(id, detailContext = null) {
-    const ev = allTrips.find(e => (e.eventDocId || e.id) === id);
+    const resolved = wilduResolveDetailItem('trip', id);
+    const ev = resolved.item;
+    if (ev) id = resolved.id;
     if (!ev) {
         showToast("⚠️ Dettagli non trovati.");
         return;
@@ -40598,10 +40695,88 @@ if (profKeyEl) {
         return first;
     }
 
-    function getWilduCurrentTripShareData() {
-        const current = (typeof WILDU_ACTIVE_DETAIL_CONTEXT !== 'undefined' && WILDU_ACTIVE_DETAIL_CONTEXT)
-            ? WILDU_ACTIVE_DETAIL_CONTEXT
-            : null;
+    function wilduCaptureShareSurface() {
+    const share = document.getElementById('od-modal-share-trip');
+    if (!share || share.style.display === 'none' || !wilduIsDetailModalVisible() || WILDU_DETAIL_RUNTIME.phase !== 'open') return null;
+    return { generation: WILDU_DETAIL_RUNTIME.generation, key: WILDU_DETAIL_RUNTIME.key, context: WILDU_ACTIVE_DETAIL_CONTEXT };
+}
+
+function wilduShareSurfaceIsCurrent(surface) {
+    const current = wilduCaptureShareSurface();
+    return !!(surface && current && current.generation === surface.generation && current.key === surface.key && current.context === surface.context);
+}
+
+function wilduResolveCurrentShareIdentity() {
+    const surface = wilduCaptureShareSurface();
+    if (!surface) return null;
+    const stamp = wilduConfigureTripShareControls.surface;
+    if (!stamp || !wilduShareSurfaceIsCurrent(stamp)) return null;
+    const key = String(surface.key || ''), split = key.indexOf(':');
+    const type = normalizeWilduSharedExperienceType(key.slice(0, split));
+    if (!type || split < 1) return null;
+    const context = surface.context;
+    const runtimeId = key.slice(split + 1).trim();
+    const contextId = context && context.type === type ? String(context.id || '').trim() : '';
+    const rawId = context && context.type === type && context.raw ? wilduGetDetailItemId(type, context.raw) : '';
+    if ((context && context.type !== type) || (contextId && contextId !== runtimeId) || (rawId && rawId !== runtimeId)) {
+        return { surface, current: null, fallback: true };
+    }
+    const known = wilduResolveDetailItem(type, runtimeId);
+    if (known.ambiguous) return { surface, current: null, fallback: true };
+    if (known.item && context && context.raw && rawId) {
+        const rawIdentity = type === 'trip' ? (context.raw.eventDocId || context.raw.id)
+            : (context.raw['ID Evento (Super-Key)'] || context.raw['ID Evento'] || context.raw.eventDocId || context.raw.id);
+        // The serialized canonical ID must resolve back to this record, including raw ID type.
+        if (known.id !== rawIdentity) return { surface, current: null, fallback: true };
+    }
+    // A still-visible, stamped public record remains shareable after catalog/cache eviction.
+    if (runtimeId && context && (contextId === runtimeId || rawId === runtimeId)) {
+        return { surface, current: Object.assign({}, context, { id: runtimeId }), fallback: false };
+    }
+    const candidates = [];
+    if (context && context.type === type) {
+        candidates.push(context.id);
+        if (context.raw) candidates.push(wilduGetDetailItemId(type, context.raw));
+    }
+    candidates.push(runtimeId);
+    for (const id of candidates) {
+        const resolved = wilduResolveDetailItem(type, id);
+        if (resolved.item && resolved.canonicalId === runtimeId) {
+            return { surface, current: context && context.type === type
+                ? Object.assign({}, context, { id: resolved.canonicalId })
+                : wilduBuildDetailRef(type, resolved.item), fallback: false };
+        }
+    }
+    return { surface, current: null, fallback: true };
+}
+
+function wilduShowShareIdentityNotice(fallback, toast) {
+    let notice = document.getElementById('od-modal-share-notice');
+    const share = document.getElementById('od-modal-share-trip');
+    if (!notice && share && share.parentNode) {
+        notice = document.createElement('p');
+        notice.id = 'od-modal-share-notice';
+        notice.setAttribute('role', 'status');
+        notice.style.cssText = 'font-size:13px;line-height:1.4;margin:8px 0;color:inherit;';
+        share.parentNode.insertBefore(notice, share.nextSibling);
+    }
+    const message = 'Non riesco a recuperare il link di questa esperienza. Condividerai il link generale di Wild-U.';
+    if (notice) {
+        notice.textContent = fallback ? message : '';
+        notice.hidden = !fallback;
+    }
+    if (fallback && toast) showToast(message);
+}
+
+function getWilduCurrentTripShareData() {
+        const identity = wilduResolveCurrentShareIdentity();
+        if (!identity) return null;
+        if (identity.fallback) {
+            const app = getWilduClientAppShareData();
+            return { title: app.title, text: app.text, url: app.url, copyText: app.text + '\n' + app.url,
+                imageUrl: '', genericFallback: true, surface: identity.surface };
+        }
+        const current = identity.current;
 
         const type = current && current.type ? current.type : 'trip';
         const id = cleanWilduShareText(current && current.id);
@@ -40665,6 +40840,8 @@ if (profKeyEl) {
         ]);
 
         return {
+            surface: identity.surface,
+            genericFallback: false,
             title: 'Wild-U - ' + title,
             type: type,
             id: id,
@@ -40703,6 +40880,9 @@ if (profKeyEl) {
     }
 
     function wilduConfigureTripShareControls() {
+        wilduConfigureTripShareControls.surface = wilduCaptureShareSurface();
+        const identity = wilduResolveCurrentShareIdentity();
+        wilduShowShareIdentityNotice(!!(identity && identity.fallback), false);
         const share = document.getElementById('od-modal-share-trip');
         const options = document.getElementById('od-modal-share-options');
         if (!share || !options) return;
@@ -40728,6 +40908,9 @@ if (profKeyEl) {
             return;
         }
 
+        if (!wilduShareSurfaceIsCurrent(shareData.surface)) return;
+        wilduShowShareIdentityNotice(shareData.genericFallback === true, shareData.genericFallback === true);
+
         // Avoid the native share path associated with viewport shrinkage on iOS.
         // Keep the user gesture synchronous for WhatsApp; copy never focuses a hidden input.
         if (isWilduIOSClientDevice()) {
@@ -40747,7 +40930,7 @@ if (profKeyEl) {
                         return;
                     }
                     await navigator.clipboard.writeText(shareData.copyText);
-                    showToast('Viaggio copiato. Incollalo nell’app che preferisci.');
+                    showToast(shareData.genericFallback ? 'Link generale di Wild-U copiato.' : 'Viaggio copiato. Incollalo nell’app che preferisci.');
                 } else {
                     window.location.assign('whatsapp://send?text=' + encodeURIComponent(shareData.copyText));
                 }
@@ -40767,8 +40950,9 @@ if (profKeyEl) {
                     url: shareData.url
                 };
 
-                if (shouldWilduAttemptTripImageFileShare()) {
+                if (!shareData.genericFallback && shouldWilduAttemptTripImageFileShare()) {
                     const files = await withWilduShareTimeout(prepareWilduTripShareImageFile(shareData), 1400, []);
+                    if (!wilduShareSurfaceIsCurrent(shareData.surface)) return;
                     if (files && files.length) {
                         const withFiles = {
                             title: shareData.title,
@@ -40796,6 +40980,7 @@ if (profKeyEl) {
                     });
                 }
 
+                if (!wilduShareSurfaceIsCurrent(shareData.surface)) return;
                 await navigator.share(nativeData);
                 return;
             } catch (err) {
@@ -40806,10 +40991,11 @@ if (profKeyEl) {
         }
 
         try {
+            if (!wilduShareSurfaceIsCurrent(shareData.surface)) return;
             await writeWilduClientShareText(shareData.copyText);
-            showToast('Esperienza copiata con link diretto Wild-U.');
+            showToast(shareData.genericFallback ? 'Link generale di Wild-U copiato.' : 'Esperienza copiata con link diretto Wild-U.');
         } catch (err) {
-            showToast('Condivisione esperienza non riuscita.');
+            showToast(shareData.genericFallback ? 'Condivisione del link generale non riuscita.' : 'Condivisione esperienza non riuscita.');
         } finally {
             scheduleWilduAmazonFooterOffsetSync();
         }
@@ -42757,6 +42943,7 @@ if (profKeyEl) {
     }
 
     function showWilduNavTab(id) {
+        wilduCancelEntryForNavigation();
         if (wilduDeferUserNavigationForAuth(id)) return false;
         show(id, {
             scrollPolicy: 'top',
@@ -42766,6 +42953,8 @@ if (profKeyEl) {
     }
 
     function show(id, options = {}) {
+        if (!options.entryOwner) wilduCancelEntryForNavigation();
+        else if (!wilduEntryOwnerValid(options.entryOwner)) return;
         let requestedTab = id;
         const previousTab = currentTab;
         const scrollPolicy = options.scrollPolicy || 'section-start';
@@ -44698,7 +44887,11 @@ function openWilduRuntimeResource(f, a, i, r, encodedLinks, moduleRev, openMode)
         showToast("Apertura sicura in corso...");
         openWilduSecureRedirect(targetUrl, r, rev).catch(function (err) {
             console.error("[WILDU SECURE LAUNCH] secure_redirect fallito:", err);
-            showToast("Accesso sicuro non riuscito. Riprova dalla app.");
+            showToast(profileCompletionRequired
+                ? "Completa la registrazione nella scheda Profilo, incluso il numero di telefono, poi riprova."
+                : (!auth.currentUser
+                    ? "Accedi o registrati dalla scheda Profilo, poi riprova."
+                    : "Accesso sicuro non riuscito. Verifica la connessione e riprova dalla Taverna."));
         });
         return;
     }
@@ -47209,7 +47402,9 @@ function syncWilduAudioNavDockPosition() {
     // 2. APRI IL POP-UP E DECODIFICA IL JSON (VERSIONE UNIVERSALE)
 function showOpenDayDetails(id) {
     // Cerchiamo l'evento usando sia la chiave primaria che quella secondaria per sicurezza
-    const od = allOpenDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
+    const resolved = wilduResolveDetailItem('openday', id);
+    const od = resolved.item;
+    if (od) id = resolved.id;
     if (!od) {
         showToast("⚠️ Dettagli non trovati nel calendario.");
         return;
@@ -47415,7 +47610,9 @@ configureWilduDetailDateOptions('openday', od, id);
 
 
 function showPayDayDetails(id) {
-    const pd = allPayDays.find(e => (e["ID Evento (Super-Key)"] || e["ID Evento"]) === id);
+    const resolved = wilduResolveDetailItem('payday', id);
+    const pd = resolved.item;
+    if (pd) id = resolved.id;
     if(!pd) {
         showToast("⚠️ Dettagli non trovati nel calendario.");
         return;
