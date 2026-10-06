@@ -43,7 +43,7 @@
                 margin: 12px auto 0 auto;
                 max-width: 420px;
             ">
-                Scegli una sfida del bosco. L’elenco arriva dalla Media Suite Admin e può cambiare senza modificare questo modulo.
+                Scegli una sfida del bosco.
             </p>
         </div>
 
@@ -755,10 +755,9 @@
             listEl.innerHTML = `
                 <div class="card" style="border-left-color:#ffb84d; text-align:center;">
                     <div style="font-size:42px; margin-bottom:10px;">📭</div>
-                    <h3 style="color:#ffcc88; margin:0 0 8px 0;">Nessun gioco pubblicato</h3>
+                    <h3 style="color:#ffcc88; margin:0 0 8px 0;">Nessun gioco disponibile al momento</h3>
                     <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
-                        Vai nella <strong>Media Suite Admin → Giochi</strong>, abilita almeno un gioco,
-                        poi ricarica questa app con <code>?gameRefresh=1</code>.
+                        Torna a trovarci presto per nuove sfide.
                     </p>
                 </div>
             `;
@@ -1031,7 +1030,7 @@
 
     async function bootGamesLauncher() {
         try {
-            setStatus("Caricamento giochi dalla Media Suite Admin...");
+            setStatus("Caricamento giochi...");
             const runtime = await loadGameRuntime();
             games = extractGames(runtime);
             loadedGamesRuntime = runtime || null;
@@ -1042,7 +1041,7 @@
             if (!games.length) {
                 setStatus("", false);
             } else {
-                setStatus(`${games.length} giochi caricati da <code>wildu_media_runtime/game_versions</code>.`);
+                setStatus(`${games.length} giochi disponibili.`);
                 if (gamesStatusTimer) clearTimeout(gamesStatusTimer);
                 gamesStatusTimer = setTimeout(function () {
                     gamesStatusTimer = 0;
@@ -1068,8 +1067,7 @@
             console.error("[WILDU GIOCHI] caricamento game_versions fallito:", e);
 
             setStatus(
-                `Non riesco a leggere <code>wildu_media_runtime/game_versions</code>.<br>
-                Controlla connessione, regole Firestore o cache. Dettaglio: ${escapeHtml(e.message || e)}`,
+                `Giochi momentaneamente non disponibili. Riprova tra poco.`,
                 true
             );
 
@@ -1079,7 +1077,7 @@
                         <div style="font-size:42px; margin-bottom:10px;">⚠️</div>
                         <h3 style="color:#ff6666; margin:0 0 8px 0;">Giochi non disponibili</h3>
                         <p style="color:#aaa; font-size:14px; line-height:1.5; margin:0;">
-                            Il launcher non deve usare link statici: serve la sorgente dinamica <code>game_versions</code>.
+                            Verifica la connessione e riprova tra poco.
                         </p>
                     </div>
                 `;
