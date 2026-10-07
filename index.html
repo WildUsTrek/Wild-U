@@ -16470,6 +16470,7 @@ function wilduSetAuthBridgeHandoffVisible(visible, reason, options = {}) {
 // Barriera Android per il solo pending gia' esistente. Il bridge iOS conserva
 // integralmente la decisione storica: provider e ownership restano invariati.
 function wilduSyncAuthInteractionVeil(reason) {
+    try { wilduScheduleEntryAuthRecheck(); } catch (e) {}
     // iOS ha gia' un bridge/velo stabile e non viene ampliato da questa
     // candidata Android. Se in futuro emergera' un suo bypass reale, dovra'
     // avere prova e piano separati: qui nessuna superficie iOS cambia stato.
@@ -18138,7 +18139,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.148';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.149';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21615,6 +21616,103 @@ function consumeWilduGlobalCacheUrlParamsOnce() {
     }
 }
 
+// Inbound links observe authentication; they never start or alter it.
+function wilduEntrySyncObservation(flow) {
+    const owner = flow && flow.intent;
+    const needed = !!(owner && (!wilduEntryIsTerminal(owner) || owner.notice));
+    if (needed && !flow.observation) {
+        const wake = function () {
+            if (!document.hidden) wilduScheduleEntryAuthRecheck();
+        };
+        const leave = function () {
+            if (!wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'UNAVAILABLE', 'PAGE_SUSPENDED', true);
+        };
+        const visibility = function () { if (document.hidden) leave(); else wake(); };
+        flow.observation = { wake, leave, visibility };
+        window.addEventListener('focus', wake, { passive: true });
+        window.addEventListener('pageshow', wake, { passive: true });
+        window.addEventListener('pagehide', leave, { passive: true });
+        document.addEventListener('visibilitychange', visibility, { passive: true });
+    } else if (!needed && flow && flow.observation) {
+        const handlers = flow.observation;
+        window.removeEventListener('focus', handlers.wake);
+        window.removeEventListener('pageshow', handlers.wake);
+        window.removeEventListener('pagehide', handlers.leave);
+        document.removeEventListener('visibilitychange', handlers.visibility);
+        flow.observation = null;
+    }
+}
+
+function wilduEntryFlushNotice(flow) {
+    const owner = flow && flow.intent;
+    if (!owner || !owner.notice || document.hidden || WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE) return;
+    const message = owner.notice;
+    owner.notice = '';
+    showToast(message);
+    wilduEntrySyncObservation(flow);
+}
+
+function wilduScheduleEntryAuthRecheck() {
+    // Do not call the lazy factory from an auth notification.
+    const flow = wilduEntryFlow.runtime;
+    if (!flow || !flow.intent || flow.wakeTimer ||
+        (wilduEntryIsTerminal(flow.intent) && !flow.intent.notice)) return;
+    const owner = flow.intent;
+    flow.wakeTimer = window.setTimeout(function () {
+        flow.wakeTimer = 0;
+        if (flow.intent !== owner) return;
+        try {
+            wilduEntryFlushNotice(flow);
+            if (!document.hidden && flow.ready && !wilduEntryIsTerminal(owner)) wilduTryEntry();
+        } catch (e) {
+            if (!wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'BLOCKED', 'ENTRY_WAKE_FAILED');
+        }
+    }, 0);
+}
+
+function wilduEntryClearOwnedTimers(owner) {
+    let cancelledTransition = false;
+    if (owner.transitionTimer && WILDU_DETAIL_RUNTIME.transitionTimer === owner.transitionTimer) {
+        window.clearTimeout(owner.transitionTimer);
+        WILDU_DETAIL_RUNTIME.transitionTimer = 0;
+        cancelledTransition = true;
+    }
+    if (owner.postCloseTimer && WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer === owner.postCloseTimer) {
+        window.clearTimeout(owner.postCloseTimer);
+        WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
+    }
+    if (cancelledTransition && WILDU_DETAIL_RUNTIME.phase === 'scheduled' && WILDU_DETAIL_RUNTIME.key === owner.key) {
+        WILDU_DETAIL_RUNTIME.phase = 'closed';
+        WILDU_DETAIL_RUNTIME.key = '';
+        wilduSetDetailTransitionBusy(false);
+    }
+    owner.transitionTimer = owner.postCloseTimer = 0;
+}
+
+function wilduEntryWaitForAuth(owner) {
+    if (owner.state !== 'WAIT_AUTH') {
+        owner.admissionRemainingMs = owner.deadline ? Math.max(0, owner.deadline - Date.now()) : null;
+        owner.deadline = 0;
+        owner.state = 'WAIT_AUTH';
+        wilduEntryClearOwnedTimers(owner);
+    }
+    if (!owner.authWaitDeadline) owner.authWaitDeadline = Date.now() + 60000;
+    const remaining = owner.authWaitDeadline - Date.now();
+    if (remaining <= 0) {
+        wilduFinishEntry(owner, 'UNAVAILABLE', 'AUTH_WAIT_TIMEOUT', true);
+        return false;
+    }
+    if (!owner.authWaitTimer) {
+        owner.authWaitTimer = window.setTimeout(function () {
+            owner.authWaitTimer = 0;
+            if (wilduEntryFlow.runtime && wilduEntryFlow.runtime.intent === owner && owner.state === 'WAIT_AUTH') {
+                wilduFinishEntry(owner, 'UNAVAILABLE', 'AUTH_WAIT_TIMEOUT', true);
+            }
+        }, remaining);
+    }
+    return false;
+}
+
 // One document entry intent. Catalog refreshes and detail queues only deliver to it.
 function wilduEntryFlow() {
     if (wilduEntryFlow.runtime) return wilduEntryFlow.runtime;
@@ -21634,18 +21732,7 @@ function wilduEntryFlow() {
         else if (returned === 'rewards') flow.intent = { kind: 'tab', target: 'rewards' };
         if (flow.intent) Object.assign(flow.intent, { state: 'CAPTURED', attempts: 0, handoffs: 0 });
     } catch (e) {}
-    // These listeners belong only to the entry token, not to auth/media lifecycle.
-    window.addEventListener('pagehide', function () {
-        const owner = flow.intent;
-        if (owner && !wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'UNAVAILABLE', 'PAGE_SUSPENDED', true);
-    }, { passive: true });
-    window.addEventListener('pageshow', function () {
-        const owner = flow.intent;
-        if (owner && owner.reason === 'PAGE_SUSPENDED' && !owner.suspensionNotice) {
-            owner.suspensionNotice = true;
-            showToast('Apertura interrotta. Riapri il collegamento per riprovare.');
-        }
-    }, { passive: true });
+    wilduEntrySyncObservation(flow);
     return flow;
 }
 
@@ -21670,26 +21757,25 @@ function wilduFinishEntry(owner, state, reason, quiet) {
     if (flow.intent !== owner || wilduEntryIsTerminal(owner)) return false;
     owner.state = state;
     owner.reason = reason;
-    if (owner.transitionTimer && WILDU_DETAIL_RUNTIME.transitionTimer === owner.transitionTimer) {
-        clearTimeout(owner.transitionTimer);
-        WILDU_DETAIL_RUNTIME.transitionTimer = 0;
-        if (WILDU_DETAIL_RUNTIME.phase === 'scheduled' && WILDU_DETAIL_RUNTIME.key === owner.key) {
-            WILDU_DETAIL_RUNTIME.phase = 'closed';
-            WILDU_DETAIL_RUNTIME.key = '';
-            wilduSetDetailTransitionBusy(false);
-        }
-    }
-    if (owner.postCloseTimer && WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer === owner.postCloseTimer) {
-        clearTimeout(owner.postCloseTimer);
-        WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer = 0;
-    }
-    owner.transitionTimer = owner.postCloseTimer = 0;
-    if (state === 'OPENED' || state === 'CANCELLED') wilduCleanEntryUrl();
-    if (!quiet && !document.hidden) {
+    wilduEntryClearOwnedTimers(owner);
+    if (owner.authWaitTimer) window.clearTimeout(owner.authWaitTimer);
+    owner.authWaitTimer = 0;
+    if (flow.wakeTimer) window.clearTimeout(flow.wakeTimer);
+    flow.wakeTimer = 0;
+    owner.notice = '';
+    if (state === 'OPENED' || (state === 'CANCELLED' && reason !== 'AUTH_CHANGED')) wilduCleanEntryUrl();
+    if (/^(AUTH_WAIT_TIMEOUT|AUTH_TERMINAL_FAILURE|AUTH_CHANGED|INITIAL_AUTH_UNRESOLVED)$/.test(reason)) {
+        owner.notice = 'Apertura del collegamento sospesa durante la verifica dell’accesso. Quando l’accesso è pronto, riapri il collegamento per riprovare.';
+    } else if (reason === 'PAGE_SUSPENDED') {
+        owner.notice = 'Apertura interrotta. Riapri il collegamento per riprovare.';
+    } else if (!quiet && !document.hidden) {
         if (state === 'NOT_FOUND') showToast('Esperienza condivisa non trovata.');
         else if (state === 'UNAVAILABLE') showToast('Non riesco a verificare il viaggio. Riprova quando torna la connessione.');
         else if (state === 'BLOCKED') showToast('Apertura esperienza non riuscita. Riapri il collegamento per riprovare.');
     }
+    wilduEntrySyncObservation(flow);
+    // A pagehide event may precede document.hidden; never notify until return.
+    if (reason !== 'PAGE_SUSPENDED') wilduEntryFlushNotice(flow);
     pageDebug('WILDU_ENTRY_TERMINAL', { kind: owner.kind, state, reason });
     return true;
 }
@@ -21699,8 +21785,14 @@ function wilduCancelEntryForNavigation() {
     if (flow.context) return;
     flow.navigated = true;
     if (flow.intent) {
+        flow.intent.notice = '';
         if (!wilduEntryIsTerminal(flow.intent)) wilduFinishEntry(flow.intent, 'CANCELLED', 'USER_NAVIGATION', true);
-        else wilduCleanEntryUrl();
+        else {
+            if (flow.wakeTimer) window.clearTimeout(flow.wakeTimer);
+            flow.wakeTimer = 0;
+            wilduCleanEntryUrl();
+            wilduEntrySyncObservation(flow);
+        }
     }
 }
 
@@ -21708,10 +21800,6 @@ function wilduEntryOwnerValid(owner) {
     if (!owner) return true;
     const flow = wilduEntryFlow();
     if (flow.intent !== owner || wilduEntryIsTerminal(owner)) return false;
-    if (wilduEntryAuthPending()) {
-        wilduFinishEntry(owner, 'UNAVAILABLE', 'AUTH_FLOW_PENDING', true);
-        return false;
-    }
     if (owner.epoch !== authLifecycleEpoch || owner.uid !== String(auth.currentUser?.uid || '')) {
         wilduFinishEntry(owner, 'CANCELLED', 'AUTH_CHANGED', true);
         return false;
@@ -21720,7 +21808,25 @@ function wilduEntryOwnerValid(owner) {
         wilduFinishEntry(owner, 'UNAVAILABLE', 'PAGE_SUSPENDED', true);
         return false;
     }
-    if (owner.deadline && Date.now() > owner.deadline) {
+    if (typeof wilduAuthTerminalFailureActive !== 'undefined' && wilduAuthTerminalFailureActive) {
+        wilduFinishEntry(owner, 'UNAVAILABLE', 'AUTH_TERMINAL_FAILURE', true);
+        return false;
+    }
+    if (wilduEntryAuthPending()) return wilduEntryWaitForAuth(owner);
+    if (owner.state === 'WAIT_AUTH') {
+        if (Date.now() >= owner.authWaitDeadline) {
+            wilduFinishEntry(owner, 'UNAVAILABLE', 'AUTH_WAIT_TIMEOUT', true);
+            return false;
+        }
+        if (owner.authWaitTimer) window.clearTimeout(owner.authWaitTimer);
+        owner.authWaitTimer = 0;
+        if (owner.admissionRemainingMs !== null) {
+            owner.deadline = Date.now() + owner.admissionRemainingMs;
+        }
+        owner.admissionRemainingMs = null;
+        owner.state = 'CAPTURED';
+    }
+    if (owner.deadline && Date.now() >= owner.deadline) {
         wilduFinishEntry(owner, 'BLOCKED', 'ADMISSION_DEADLINE');
         return false;
     }
@@ -21736,7 +21842,7 @@ function wilduRunEntryOwned(owner, action) {
     catch (e) { wilduFinishEntry(owner, 'BLOCKED', 'OPEN_EXCEPTION'); return false; }
     finally {
         flow.context = previous;
-        if (!wilduEntryIsTerminal(owner)) {
+        if (!wilduEntryIsTerminal(owner) && owner.state !== 'WAIT_AUTH') {
             owner.transitionTimer = WILDU_DETAIL_RUNTIME.transitionTimer;
             owner.postCloseTimer = WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer;
         }
@@ -21791,24 +21897,21 @@ function wilduEntrySetReady(authKnown) {
         if (flow.intent) wilduFinishEntry(flow.intent, 'UNAVAILABLE', 'INITIAL_AUTH_UNRESOLVED');
         return;
     }
-    if (wilduEntryAuthPending()) {
-        if (flow.intent) wilduFinishEntry(flow.intent, 'UNAVAILABLE', 'AUTH_FLOW_PENDING', true);
-        return;
-    }
     if (flow.intent) {
         flow.intent.epoch = authLifecycleEpoch;
         flow.intent.uid = String(auth.currentUser?.uid || '');
         wilduTryEntry();
         return;
     }
-    if (authKnown && !auth.currentUser && !isClientLogged() && !profileCompletionRequired &&
-        !flow.navigated) {
+    if (wilduEntryAuthPending()) return;
+    if (!auth.currentUser && !isClientLogged() && !profileCompletionRequired && !flow.navigated) {
         flow.navigated = true;
         show('travelhub', { source: 'guest-entry' });
     }
 }
 
 function wilduEntryAuthPending() {
+    if (typeof wilduGetAuthProfileCriticalSnapshot === 'function' && wilduGetAuthProfileCriticalSnapshot().active) return true;
     if (profileCompletionRequired || WILDU_AUTH_BRIDGE_IN_PROGRESS || WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE ||
         WILDU_GOOGLE_IDENTITY_SIGNIN_IN_PROGRESS || WILDU_AUTH_BRIDGE_RETURN_RUNTIME.returnPending) return true;
     try {
@@ -21887,11 +21990,11 @@ function wilduTryEntry() {
     owner.canonicalId = resolved.canonicalId;
     owner.key = owner.type + ':' + String(resolved.id);
     // Each existing deferred attempt is clamped to 1800ms; preserve its cumulative budget.
-    owner.deadline = Date.now() + (WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_MAX_ATTEMPTS + 1) * 1800;
+    if (!owner.deadline) owner.deadline = Date.now() + (WILDU_SOFT_MODAL_POST_CLOSE_DETAIL_MAX_ATTEMPTS + 1) * 1800;
     return wilduRunEntryOwned(owner, function () {
         show(owner.type === 'openday' ? 'free' : 'events', { entryOwner: owner, source: 'shared-experience' });
         const accepted = wilduScheduleDetailOpen({ type: owner.type, id: resolved.id }, { entryOwner: owner });
-        if (!accepted && !wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'BLOCKED', 'SCHEDULE_REJECTED');
+        if (!accepted && owner.state !== 'WAIT_AUTH' && !wilduEntryIsTerminal(owner)) wilduFinishEntry(owner, 'BLOCKED', 'SCHEDULE_REJECTED');
         return accepted;
     });
 }
@@ -29210,7 +29313,7 @@ function wilduSchedulePostSoftModalDetailOpen(ref, options, source) {
             softModalDetailHandoff: handoff || undefined
         });
         const opened = wilduScheduleDetailOpen(ref, openOptions);
-        if (!opened && options && options.entryOwner) wilduFinishEntry(options.entryOwner, 'BLOCKED', 'DEFERRED_SCHEDULE_REJECTED');
+        if (!opened && options && options.entryOwner && options.entryOwner.state !== 'WAIT_AUTH') wilduFinishEntry(options.entryOwner, 'BLOCKED', 'DEFERRED_SCHEDULE_REJECTED');
         try {
             wilduIOSBlackBoxRecord(opened ? 'soft_modal_post_close_detail_opened' : 'soft_modal_post_close_detail_cancelled', {
                 reason: opened ? 'scheduled' : 'schedule_rejected',
@@ -35006,7 +35109,7 @@ function wilduOpenDetailByRef(ref, options) {
     else if (ref.type === 'ondemand') openOnDemandDetails(ref.id);
     else showTripDetails(ref.id, options.detailContext || null);
 
-    if (entryOwner && !wilduEntryIsTerminal(entryOwner) && !WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer && !WILDU_DETAIL_RUNTIME.transitionTimer) {
+    if (entryOwner && entryOwner.state !== 'WAIT_AUTH' && !wilduEntryIsTerminal(entryOwner) && !WILDU_SOFT_MODAL_FLOW_RUNTIME.postCloseTimer && !WILDU_DETAIL_RUNTIME.transitionTimer) {
         wilduFinishEntry(entryOwner, 'BLOCKED', 'RENDERER_DID_NOT_COMMIT');
     }
     });
