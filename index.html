@@ -18139,7 +18139,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.149';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.150';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -21713,6 +21713,75 @@ function wilduEntryWaitForAuth(owner) {
     return false;
 }
 
+// The shared destination owns input until admission settles; authentication owns its UI.
+function wilduIsEntryInputLocked() {
+    const flow = wilduEntryFlow.runtime;
+    if (!flow || !flow.intent) return false;
+    const owner = flow.intent;
+    if (!wilduEntryIsTerminal(owner)) return true;
+    if (owner.state !== 'OPENED' || Date.now() >= flow.inputDeadline) return false;
+    const boot = document.getElementById('wildu-boot-veil');
+    return !!(WILDU_AUTH_BRIDGE_HANDOFF_VISIBLE ||
+        (boot && !boot.classList.contains('wildu-boot-veil-hidden')));
+}
+
+function wilduInstallEntryInputGuard(flow) {
+    if (!flow.intent || flow.inputGuard) return;
+    flow.inputDeadline = Date.now() + 90000;
+    const guard = { touch: false, pointer: false, clickUntil: 0 };
+    flow.inputGuard = guard;
+    const types = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove',
+        'touchend', 'touchcancel', 'mousedown', 'mouseup', 'click', 'dblclick', 'wheel', 'keydown'];
+    const reset = function () { guard.touch = guard.pointer = false; guard.clickUntil = 0; };
+    const handle = function (event) {
+        const type = event.type;
+        const locked = wilduIsEntryInputLocked();
+        const target = event.target;
+        // Completing/recovering access must remain possible. These are existing auth surfaces.
+        const authSurface = target && typeof target.closest === 'function' &&
+            target.closest('#complete-profile-screen,#profile-terminal-retry-btn,#login-method-google,#login-method-telegram');
+        const allowedAuth = !!authSurface && !guard.touch && !guard.pointer;
+        if (allowedAuth) return;
+        const tail = ((type === 'touchmove' || type === 'touchend' || type === 'touchcancel') && guard.touch) ||
+            ((type === 'pointermove' || type === 'pointerup' || type === 'pointercancel') && guard.pointer) ||
+            (type === 'click' && Date.now() < guard.clickUntil);
+        if (!locked && !tail) {
+            if (!guard.touch && !guard.pointer && Date.now() >= guard.clickUntil) {
+                types.forEach(function (name) { window.removeEventListener(name, handle, true); });
+                window.removeEventListener('pagehide', reset);
+                window.removeEventListener('blur', reset);
+                flow.inputGuard = null;
+            }
+            return;
+        }
+        if (type === 'keydown' && (event.ctrlKey || event.metaKey || event.altKey || /^F\d+$/.test(event.key))) return;
+        if (type === 'keydown' && event.key === 'Tab' &&
+            (profileCompletionRequired || wilduAuthTerminalFailureActive)) return;
+        if (type === 'touchstart') guard.touch = true;
+        if (type === 'pointerdown') guard.pointer = true;
+        if (type === 'touchend' || type === 'touchcancel') {
+            guard.touch = !!(event.touches && event.touches.length);
+            guard.clickUntil = Date.now() + 500;
+        }
+        if (type === 'pointerup' || type === 'pointercancel') {
+            guard.pointer = false;
+            guard.clickUntil = Date.now() + 500;
+        }
+        if (event.cancelable) event.preventDefault();
+        event.stopImmediatePropagation();
+    };
+    types.forEach(function (type) {
+        window.addEventListener(type, handle, { capture: true, passive: false });
+    });
+    window.addEventListener('pagehide', reset);
+    window.addEventListener('blur', reset);
+    // The catalog may never answer. Never leave an input lock without a terminal exit.
+    flow.inputTimer = window.setTimeout(function () {
+        flow.inputTimer = 0;
+        if (!wilduEntryIsTerminal(flow.intent)) wilduFinishEntry(flow.intent, 'UNAVAILABLE', 'ENTRY_INPUT_TIMEOUT');
+    }, 90000);
+}
+
 // One document entry intent. Catalog refreshes and detail queues only deliver to it.
 function wilduEntryFlow() {
     if (wilduEntryFlow.runtime) return wilduEntryFlow.runtime;
@@ -21732,6 +21801,7 @@ function wilduEntryFlow() {
         else if (returned === 'rewards') flow.intent = { kind: 'tab', target: 'rewards' };
         if (flow.intent) Object.assign(flow.intent, { state: 'CAPTURED', attempts: 0, handoffs: 0 });
     } catch (e) {}
+    wilduInstallEntryInputGuard(flow);
     wilduEntrySyncObservation(flow);
     return flow;
 }
@@ -21756,6 +21826,8 @@ function wilduFinishEntry(owner, state, reason, quiet) {
     const flow = wilduEntryFlow();
     if (flow.intent !== owner || wilduEntryIsTerminal(owner)) return false;
     owner.state = state;
+    if (flow.inputTimer) window.clearTimeout(flow.inputTimer);
+    flow.inputTimer = 0;
     owner.reason = reason;
     wilduEntryClearOwnedTimers(owner);
     if (owner.authWaitTimer) window.clearTimeout(owner.authWaitTimer);
@@ -21766,6 +21838,8 @@ function wilduFinishEntry(owner, state, reason, quiet) {
     if (state === 'OPENED' || (state === 'CANCELLED' && reason !== 'AUTH_CHANGED')) wilduCleanEntryUrl();
     if (/^(AUTH_WAIT_TIMEOUT|AUTH_TERMINAL_FAILURE|AUTH_CHANGED|INITIAL_AUTH_UNRESOLVED)$/.test(reason)) {
         owner.notice = 'Apertura del collegamento sospesa durante la verifica dell’accesso. Quando l’accesso è pronto, riapri il collegamento per riprovare.';
+    } else if (reason === 'ENTRY_INPUT_TIMEOUT') {
+        owner.notice = 'Caricamento del collegamento non completato. Riapri il collegamento per riprovare.';
     } else if (reason === 'PAGE_SUSPENDED') {
         owner.notice = 'Apertura interrotta. Riapri il collegamento per riprovare.';
     } else if (!quiet && !document.hidden) {
@@ -21782,7 +21856,7 @@ function wilduFinishEntry(owner, state, reason, quiet) {
 
 function wilduCancelEntryForNavigation() {
     const flow = wilduEntryFlow();
-    if (flow.context) return;
+    if (flow.context || wilduIsEntryInputLocked()) return;
     flow.navigated = true;
     if (flow.intent) {
         flow.intent.notice = '';
@@ -21998,6 +22072,8 @@ function wilduTryEntry() {
         return accepted;
     });
 }
+
+wilduEntryFlow();
 
 function consumeWilduReturnTabUrlParamOnce() {
     const owner = wilduEntryFlow().intent;
@@ -42445,7 +42521,7 @@ function getWilduCurrentTripShareData() {
     }
 
     function canWilduStartTravelTabSwipe(target) {
-        return WILDU_TRAVEL_TAB_SWIPE_ENABLED === true &&
+        return !wilduIsEntryInputLocked() && WILDU_TRAVEL_TAB_SWIPE_ENABLED === true &&
             !wilduTravelTabSwipeTransitionInProgress &&
             isWilduGroupedTravelNavEnabled() &&
             WILDU_TRAVEL_NAV_TAB_IDS.includes(currentTab) &&
@@ -42893,7 +42969,7 @@ function getWilduCurrentTripShareData() {
             const state = wilduTravelTabSwipeTouch;
             wilduTravelTabSwipeTouch = null;
             cancelWilduTravelTabSwipeFrame(state);
-            if (!changed || !state.horizontal || !state.consumed) {
+            if (wilduIsEntryInputLocked() || !changed || !state.horizontal || !state.consumed) {
                 resetWilduTravelTabSwipeVisual(state && state.visualEl, true);
                 return;
             }
@@ -42937,6 +43013,7 @@ function getWilduCurrentTripShareData() {
 
                 window.setTimeout(function () {
                     resetWilduTravelTabSwipeVisual(visualEl, false, { keepTravelFeedback: true });
+                    if (wilduIsEntryInputLocked()) { dismissWilduTravelSwipeFeedback(); return; }
                     show(targetTab, { scrollPolicy: 'top', scrollBehavior: 'auto', source: 'travel-tab-swipe' });
                     animateWilduTravelTabIncoming(targetTab, dx);
                 }, WILDU_TRAVEL_TAB_SWIPE_SWITCH_DELAY_MS);
@@ -43046,6 +43123,7 @@ function getWilduCurrentTripShareData() {
     }
 
     function showWilduNavTab(id) {
+        if (wilduIsEntryInputLocked()) return false;
         wilduCancelEntryForNavigation();
         if (wilduDeferUserNavigationForAuth(id)) return false;
         show(id, {
