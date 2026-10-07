@@ -18139,7 +18139,7 @@ function updateProfileUI() {
 
 
 const SHELL_VERSION_URL = 'version.json';
-const WILDU_EMBEDDED_SHELL_VERSION = '3.1.150';
+const WILDU_EMBEDDED_SHELL_VERSION = '3.1.151';
 const SHELL_META_KEY = 'wildShellMeta';
 const SHELL_RELOAD_LOCK_KEY = 'wildShellReloadLock';
 const SHELL_RELOAD_LOCK_MS = 5 * 60 * 1000; // 5 minuti anti-loop
@@ -25471,6 +25471,7 @@ function extractUnifiedMapDataFromItem(item) {
         luogo,
         regione,
         titolo,
+        meetingMap: item.meetingMap || null,
         lat,
         lng
     };
@@ -26394,6 +26395,22 @@ function getWilduExplicitMapsSearchQuery(linkInfo) {
     }
 }
 
+// Public browser key restricted to Maps Embed API and the Wild-U origin.
+const WILDU_RESOLVED_MAPS_BROWSER_KEY = "AIzaSyDwpFE9IRwQvQysfU22eCZIfYC9uEWpSTc";
+
+function buildWilduResolvedMeetingMap(payload, linkInfo) {
+    const value = payload && payload.meetingMap;
+    if (!value || value.v !== 1 || typeof value.approximate !== 'boolean' ||
+        typeof value.placeId !== 'string' || !/^[A-Za-z0-9_-]{10,200}$/.test(value.placeId) ||
+        typeof value.query !== 'string' || !value.query.trim() || value.query.length > 300 ||
+        !linkInfo || !linkInfo.isGoogleMaps || value.url !== linkInfo.href) return null;
+    const expected = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(value.query) + '&query_place_id=' + encodeURIComponent(value.placeId);
+    if (value.url !== expected) return null;
+    return { approximate: value.approximate, buttonUrl: expected,
+        iframeUrl: 'https://www.google.com/maps/embed/v1/place?key=' + encodeURIComponent(WILDU_RESOLVED_MAPS_BROWSER_KEY) +
+        '&q=' + encodeURIComponent('place_id:' + value.placeId) + '&zoom=' + (value.approximate ? '13' : '15') + '&language=it' };
+}
+
 function renderUnifiedDetailMap(payload) {
     payload = payload || {};
 
@@ -26413,6 +26430,7 @@ function renderUnifiedDetailMap(payload) {
     const hasCoords = hasUsableWilduCoords(lat, lng);
 
     const linkInfo = inspectWilduGoogleMapsLink(linkMaps);
+    const resolvedMeeting = hasCoords ? null : buildWilduResolvedMeetingMap(payload, linkInfo);
     const query = hasCoords
         ? `${lat},${lng}`
         : buildWilduMapQuery(luogo, regione);
@@ -26420,6 +26438,14 @@ function renderUnifiedDetailMap(payload) {
     let buttonUrl = "";
     let iframeUrl = "";
     let mode = "NO_DATA";
+
+    // Reset only the presentation owned by the managed Maps branch.
+    const previousApproximation = document.getElementById('wildu-map-approximation');
+    if (previousApproximation) previousApproximation.remove();
+    mapContainer.style.minHeight = resolvedMeeting ? '204px' : '';
+    mapIframe.style.minHeight = resolvedMeeting ? '200px' : '';
+    if (resolvedMeeting) mapIframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    else mapIframe.removeAttribute('referrerpolicy');
 
     // Reset anti-residuo da card precedente.
     mapsBtn.href = "#";
@@ -26444,6 +26470,13 @@ function renderUnifiedDetailMap(payload) {
         buttonUrl = linkInfo.isGoogleMaps ? linkInfo.href : buildWilduMapsSearchUrl(query);
         iframeUrl = buildWilduMapsEmbedUrl(query, 16);
         mode = linkInfo.isGoogleMaps ? "COORDS_WITH_VALID_GOOGLE_LINK" : "COORDS_ONLY";
+    }
+
+    // Managed Place ID: same external point, officially supported embed.
+    else if (resolvedMeeting) {
+        buttonUrl = resolvedMeeting.buttonUrl;
+        iframeUrl = resolvedMeeting.iframeUrl;
+        mode = resolvedMeeting.approximate ? 'RESOLVED_CITY_FALLBACK' : 'RESOLVED_MEETING_POINT';
     }
 
     // 2) Link Google Maps valido, senza coordinate.
@@ -26473,6 +26506,14 @@ function renderUnifiedDetailMap(payload) {
         mode = linkInfo.hasLink
             ? "NON_GOOGLE_LINK_IGNORED_QUERY_FALLBACK"
             : "NO_LINK_QUERY_FALLBACK";
+    }
+
+    if (resolvedMeeting && resolvedMeeting.approximate) {
+        const note = document.createElement('div');
+        note.id = 'wildu-map-approximation';
+        note.textContent = 'Posizione indicativa: centro della località';
+        note.style.cssText = 'position:absolute;top:6px;left:6px;right:6px;z-index:3;padding:5px 8px;border-radius:6px;background:rgba(0,0,0,.85);color:#fff;font-size:12px;line-height:1.3;pointer-events:none';
+        mapContainer.appendChild(note);
     }
 
     function openWilduMapsSoftConfirmModal(url) {
